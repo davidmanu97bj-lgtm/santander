@@ -3277,16 +3277,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
     const target = activeClosureKind(kind);
     const t = tabSummary(summary, target);
-    const amountToDriver = target === "explora"
-      ? number(summary.amountToDriverForBilling || t.amountToDriver || 0)
-      : number(t.amountToDriver || 0);
     const amountFromDriver = target === "explora"
       ? number(summary.amountFromDriverForBilling || tabSummary(summary, "chofer").amountFromDriver || 0)
       : number(t.amountFromDriver || 0);
-    if (amountToDriver > 0.49) {
-      return adminClosureActionHtml({ uid, kind, action:"admin-pay-now", label:"Cargar comprobante", tone:"red" });
-    }
-    const label = amountFromDriver > 0.49 ? "Paga chofer" : "Sin acción";
+    // En el tablero admin, Explora y Gastos NO habilitan carga directa solo por tener saldo.
+    // Deben quedar bloqueados hasta que exista un cierre/pedido iniciado por el chofer; recién ahí
+    // aparece el botón rojo para que admin cargue comprobante o revise el comprobante recibido.
+    const label = amountFromDriver > 0.49 ? "Paga chofer" : "Sin pedido activo";
     return adminClosureActionHtml({ uid, kind, action:"none", label, tone:"locked", disabled:true });
   }
 
