@@ -883,24 +883,30 @@ body.explora-pay-mode.pay-notifications-open #payEfficiencyBtn{display:none!impo
 /* v52 · Admin: tablero global de cierres por chofer */
 body.pay-admin-closures-open{
   background:#f3f4f8;
+  overflow:hidden;
 }
 .explora-pay-admin-closures{
-  min-height:100vh;
-  padding:18px 14px 96px;
+  height:100vh;
+  height:100svh;
+  padding:8px 10px calc(90px + env(safe-area-inset-bottom));
   background:linear-gradient(180deg,#f7f8fb 0%,#edf0f6 100%);
   color:#111827;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
 }
 .pay-admin-closures-head{
   display:flex;
   align-items:center;
-  gap:12px;
-  margin:2px 0 14px;
+  gap:10px;
+  margin:0 0 7px;
+  flex:0 0 auto;
 }
 .pay-admin-closures-back{
-  width:42px;
-  height:42px;
+  width:38px;
+  height:38px;
   border:0;
-  border-radius:16px;
+  border-radius:14px;
   background:#111827;
   color:#fff;
   display:grid;
@@ -908,8 +914,8 @@ body.pay-admin-closures-open{
   box-shadow:0 10px 26px rgba(17,24,39,.18);
 }
 .pay-admin-closures-back svg{
-  width:22px;
-  height:22px;
+  width:21px;
+  height:21px;
   fill:none;
   stroke:currentColor;
   stroke-width:2.3;
@@ -918,34 +924,35 @@ body.pay-admin-closures-open{
 }
 .pay-admin-closures-head span{
   display:block;
-  font-size:11px;
+  font-size:10px;
   font-weight:950;
   letter-spacing:.14em;
   color:#b48a2c;
 }
 .pay-admin-closures-head h1{
   margin:0;
-  font-size:30px;
-  line-height:1;
+  font-size:24px;
+  line-height:.98;
   letter-spacing:-.04em;
 }
 .pay-admin-closures-head p{
-  margin:5px 0 0;
+  margin:3px 0 0;
   color:#6b7280;
-  font-size:13px;
-  font-weight:700;
+  font-size:11.5px;
+  font-weight:800;
 }
 .pay-admin-closures-legend{
-  border:1px solid rgba(203,213,225,.9);
-  border-radius:20px;
-  background:#fff;
-  padding:12px 14px;
-  margin:0 0 14px;
-  box-shadow:0 12px 30px rgba(15,23,42,.06);
+  border:1px solid rgba(203,213,225,.88);
+  border-radius:16px;
+  background:rgba(255,255,255,.88);
+  padding:7px 10px;
+  margin:0 0 8px;
+  box-shadow:0 10px 24px rgba(15,23,42,.05);
+  flex:0 0 auto;
 }
 .pay-admin-closures-legend strong{
   display:block;
-  font-size:12px;
+  font-size:10px;
   font-weight:950;
   text-transform:uppercase;
   letter-spacing:.08em;
@@ -953,16 +960,28 @@ body.pay-admin-closures-open{
 }
 .pay-admin-closures-legend small{
   display:block;
-  margin-top:4px;
+  margin-top:2px;
   color:#6b7280;
-  font-size:12px;
+  font-size:10.5px;
   font-weight:750;
-  line-height:1.35;
+  line-height:1.25;
 }
 .pay-admin-closures-list{
-  display:grid;
-  gap:16px;
+  flex:1 1 auto;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  scroll-snap-type:y mandatory;
+  scroll-behavior:smooth;
+  overscroll-behavior-y:contain;
+  -webkit-overflow-scrolling:touch;
+  padding:0 0 4px;
+  scrollbar-width:none;
 }
+.pay-admin-closures-list::-webkit-scrollbar{display:none;}
 .pay-admin-closures-empty{
   border:1px dashed rgba(148,163,184,.9);
   border-radius:22px;
@@ -974,33 +993,48 @@ body.pay-admin-closures-open{
 }
 .pay-admin-driver-closure-card{
   width:100%;
-  border:1px solid rgba(203,213,225,.92);
+  min-height:100%;
+  scroll-snap-align:start;
+  scroll-snap-stop:always;
+  border:2px solid rgba(15,23,42,.12);
   border-radius:28px;
   background:#fff;
-  padding:14px;
-  box-shadow:0 18px 40px rgba(15,23,42,.08);
+  padding:10px;
+  box-shadow:0 22px 44px rgba(15,23,42,.12);
+  display:flex;
+  flex-direction:column;
+  position:relative;
+  overflow:hidden;
+}
+.pay-admin-driver-closure-card::before{
+  content:"";
+  position:absolute;
+  inset:0 0 auto 0;
+  height:5px;
+  background:linear-gradient(90deg,#111827,#b48a2c,#111827);
 }
 .pay-admin-driver-closure-head{
   display:flex;
-  align-items:flex-start;
+  align-items:center;
   justify-content:space-between;
-  gap:12px;
-  padding:4px 2px 13px;
+  gap:10px;
+  padding:7px 3px 9px;
   border-bottom:1px solid rgba(226,232,240,.95);
-  margin-bottom:12px;
+  margin-bottom:8px;
+  flex:0 0 auto;
 }
 .pay-admin-driver-closure-head span{
   display:block;
-  font-size:10px;
+  font-size:9.5px;
   font-weight:950;
   letter-spacing:.16em;
   color:#b48a2c;
 }
 .pay-admin-driver-closure-head h2{
-  margin:2px 0 0;
-  font-size:22px;
-  line-height:1.05;
-  letter-spacing:-.035em;
+  margin:1px 0 0;
+  font-size:23px;
+  line-height:1.02;
+  letter-spacing:-.045em;
   color:#0f172a;
 }
 .pay-admin-driver-closure-head strong{
@@ -1008,85 +1042,91 @@ body.pay-admin-closures-open{
   border-radius:999px;
   background:#0f172a;
   color:#fff;
-  padding:8px 11px;
-  font-size:13px;
+  padding:7px 10px;
+  font-size:12px;
   font-weight:950;
   white-space:nowrap;
 }
 .pay-admin-driver-closure-grid{
+  flex:1 1 auto;
+  min-height:0;
   display:grid;
-  grid-template-columns:1fr;
-  gap:10px;
+  grid-template-rows:repeat(5,minmax(0,1fr));
+  gap:7px;
 }
 .pay-admin-closure-module{
   border:1px solid rgba(226,232,240,.96);
-  border-radius:22px;
+  border-radius:18px;
   background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);
-  padding:12px;
+  padding:7px 8px;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
 }
 .pay-admin-closure-module header{
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
-  margin-bottom:10px;
+  margin-bottom:5px;
+  min-height:0;
 }
 .pay-admin-closure-module header span{
   display:block;
-  font-size:13px;
+  font-size:11px;
   font-weight:950;
   color:#111827;
   text-transform:uppercase;
   letter-spacing:.055em;
 }
 .pay-admin-closure-module header small{
-  display:block;
-  margin-top:2px;
-  color:#64748b;
-  font-size:11px;
-  font-weight:800;
-  line-height:1.25;
+  display:none;
 }
 .pay-admin-closure-metrics{
   display:grid;
-  grid-template-columns:1fr;
-  gap:7px;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:5px;
 }
 .pay-admin-closure-metric{
   display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  min-height:36px;
-  border-radius:14px;
+  flex-direction:column;
+  justify-content:center;
+  gap:2px;
+  min-height:34px;
+  border-radius:12px;
   background:#f1f5f9;
-  padding:8px 10px;
+  padding:5px 5px;
+  text-align:center;
 }
 .pay-admin-closure-metric span{
   color:#64748b;
-  font-size:11.5px;
-  font-weight:850;
+  font-size:9.5px;
+  line-height:1.05;
+  font-weight:900;
 }
 .pay-admin-closure-metric strong{
   color:#0f172a;
-  font-size:13px;
+  font-size:11.5px;
+  line-height:1;
   font-weight:950;
   white-space:nowrap;
 }
 .pay-admin-closure-action-wrap{
-  margin-top:10px;
+  margin-top:5px;
 }
 .pay-admin-closure-action{
   width:100%;
-  min-height:42px;
+  min-height:30px;
   border:1px solid rgba(15,23,42,.16);
-  border-radius:16px;
+  border-radius:12px;
   background:#111827;
   color:#fff;
-  font-size:12px;
+  font-size:9.5px;
+  line-height:1.05;
   font-weight:950;
   letter-spacing:.025em;
   text-transform:uppercase;
-  box-shadow:0 10px 24px rgba(15,23,42,.14);
+  box-shadow:0 8px 18px rgba(15,23,42,.12);
+  padding:5px 7px;
 }
 .pay-admin-closure-action.is-primary{
   background:#111827;
@@ -1113,9 +1153,21 @@ body.pay-admin-closures-open{
 .pay-admin-closure-module-caja_chica{border-left:4px solid #f59e0b;}
 .pay-admin-closure-module-pendientes{border-left:4px solid #dc2626;}
 .pay-admin-closures-open .pay-floating-spark{display:none!important;}
+@media (max-height:760px){
+  .pay-admin-closures-legend{display:none;}
+  .explora-pay-admin-closures{padding-top:7px;}
+  .pay-admin-closures-head{margin-bottom:6px;}
+  .pay-admin-driver-closure-head h2{font-size:21px;}
+  .pay-admin-driver-closure-grid{gap:6px;}
+  .pay-admin-closure-module{padding:6px 7px;border-radius:16px;}
+  .pay-admin-closure-metric{min-height:31px;padding:4px 4px;}
+  .pay-admin-closure-action{min-height:28px;font-size:9px;}
+}
 @media (min-width:780px){
   .explora-pay-admin-closures{padding-left:24px;padding-right:24px;}
-  .pay-admin-driver-closure-grid{grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch;}
+  .pay-admin-driver-closure-grid{grid-template-rows:none;grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch;}
   .pay-admin-closure-module{display:flex;flex-direction:column;}
-  .pay-admin-closure-action-wrap{margin-top:auto;padding-top:10px;}
+  .pay-admin-closure-metrics{grid-template-columns:1fr;}
+  .pay-admin-closure-metric{text-align:left;align-items:flex-start;}
+  .pay-admin-closure-action-wrap{margin-top:auto;padding-top:8px;}
 }
