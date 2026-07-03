@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-whatsapp-receipt-link";
+  const VERSION = "explora-pago-home-v52-whatsapp-request-scroll-fix";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -4730,7 +4730,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       requestedByName:isAdmin() ? accountName() : displayName(),
       requestedByRole:isAdmin() ? "admin" : "driver",
       ...paymentPayload,
-      whatsappNoticeTo:EXPLORA_WHATSAPP_DISPLAY,
+      whatsappNoticeTo:isAdmin() ? safe(paymentPayload.driverPaymentPhone || driverPaymentProfileForUid(targetUid).phone) : EXPLORA_WHATSAPP_DISPLAY,
+      whatsappNoticeTargetRole:isAdmin() ? "driver" : "admin",
       whatsappNoticeText:whatsappText,
       ...(isBillingRequest && !isAdmin() ? efficiencyPayloadFromKm({ kmActual, kmInicial:kmInitial, summary, pending:billingKmPending, uid:targetUid, beforeMs:cutoffAtMs }) : {}),
       ...(isBillingRequest && isAdmin() && billingKmPending ? { kmPendienteChofer:true, eficienciaPendienteDatos:true, kmTaskStatus:"pending_driver_km", statusLabel:`${closureTitle(kind)} solicitado · KM pendiente del chofer` } : {}),
@@ -4761,7 +4762,16 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     };
     const created = await addDoc(collection(state.db, "cierres_semanales"), payload);
     state.closures = [{ ...payload, id:created.id, createdAtMs:cutoffAtMs, updatedAtMs:cutoffAtMs }, ...state.closures.filter(row => row.id !== created.id)];
-    if (!isAdmin()) openWhatsappToExplora(whatsappText);
+    if (isAdmin()) {
+      // Si Explora solo pide el cierre, también se abre WhatsApp al número cargado por el chofer.
+      // En admin-pay-now no se manda este aviso previo para evitar duplicar: ahí se notifica luego con el comprobante.
+      if (state.modalMode !== "admin-pay-now") {
+        const driverPhone = safe(paymentPayload.driverPaymentPhone || driverPaymentProfileForUid(targetUid).phone);
+        openWhatsappToPhone(driverPhone, whatsappText);
+      }
+    } else {
+      openWhatsappToExplora(whatsappText);
+    }
     if (isBillingRequest && !isAdmin() && kmActual > 0) {
       updateDriverEfficiencyState(targetUid, {
         lastKnownKm:Number(kmActual || 0),
