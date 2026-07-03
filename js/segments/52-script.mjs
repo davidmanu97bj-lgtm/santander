@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v51-activity-photo-viewer";
+  const VERSION = "explora-pago-home-v52-admin-closures-board";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -756,6 +756,23 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           <div class="pay-notification-empty">No tenés cierres abiertos.</div>
         </div>
       </section>
+      <section class="explora-pay-admin-closures" id="payAdminClosuresScreen" hidden aria-label="Cierres admin por chofer">
+        <header class="pay-admin-closures-head">
+          <button class="pay-admin-closures-back" id="payAdminClosuresBack" type="button" aria-label="Volver al inicio"><svg viewBox="0 0 24 24"><path d="M15 6 9 12l6 6"></path></svg></button>
+          <div>
+            <span>ADMIN</span>
+            <h1>Cierres</h1>
+            <p>Todos los choferes activos, sin entrar uno por uno.</p>
+          </div>
+        </header>
+        <div class="pay-admin-closures-legend">
+          <strong>Regla operativa</strong>
+          <small>Chofer y Explora cierran facturación juntos. Gastos, caja chica y pendientes se controlan por separado.</small>
+        </div>
+        <div class="pay-admin-closures-list" id="payAdminClosuresList">
+          <div class="pay-admin-closures-empty">Cargando choferes…</div>
+        </div>
+      </section>
       <button class="pay-floating-spark pay-efficiency-btn" id="payEfficiencyBtn" type="button" aria-label="Eficiencia Operativa"><span class="pay-efficiency-icon" aria-hidden="true"></span><span class="pay-efficiency-asterisk" aria-hidden="true">*</span></button>
       <nav class="pay-bottom-nav" id="payBottomNav" aria-label="Navegación principal Explora">
         <button class="pay-nav-btn is-active" data-pay-nav="inicio" type="button"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 10v10h14V10"></path></svg><span>Inicio</span></button>
@@ -917,7 +934,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }));
     document.querySelectorAll("[data-pay-run]").forEach(button => button.addEventListener("click", () => {
       if (isAdmin() && button.closest("#payBottomNav")) {
-        showPayView("notificaciones");
+        showPayView("admin-cierres");
         return;
       }
       runExistingAction(button.dataset.payRun);
@@ -1011,6 +1028,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     $("payMoreBack")?.addEventListener("click", () => showPayView("inicio"));
     $("payNotificationsBack")?.addEventListener("click", () => showPayView("inicio"));
     $("payNotificationsSettings")?.addEventListener("click", () => showPayView("mas"));
+    $("payAdminClosuresBack")?.addEventListener("click", () => showPayView("inicio"));
+    $("payAdminClosuresList")?.addEventListener("click", event => {
+      const button = event.target?.closest?.("[data-pay-admin-closure-action]");
+      if (!button) return;
+      handleAdminClosuresAction(button).catch(error => window.alert(error?.message || "No se pudo completar la acción."));
+    });
     $("payAdminDeleteClose")?.addEventListener("click", closeAdminDeleteModal);
     $("payAdminDeleteCancel")?.addEventListener("click", closeAdminDeleteModal);
     $("payAdminDeleteBackdrop")?.addEventListener("click", event => { if (event.target?.id === "payAdminDeleteBackdrop") closeAdminDeleteModal(); });
@@ -1042,6 +1065,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         openAdminDeleteModal();
         return;
       }
+      if (action === "admin-cierres") {
+        showPayView("admin-cierres");
+        return;
+      }
       showPayView("inicio");
       runExistingAction(action);
     });
@@ -1053,6 +1080,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         openAdminDeleteModal();
         return;
       }
+      if (action === "admin-cierres") {
+        showPayView("admin-cierres");
+        return;
+      }
       showPayView("inicio");
       runExistingAction(action);
     });
@@ -1060,20 +1091,22 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function setBottomNavActive(target = "inicio") {
     document.querySelectorAll("#payBottomNav .pay-nav-btn").forEach(button => {
-      const nav = button.dataset.payNav || (button.id === "payNavClosure" ? "cierre" : "");
+      const nav = button.dataset.payNav || (isAdmin() && button.dataset.payRun ? "admin-cierres" : "") || (button.id === "payNavClosure" ? "cierre" : "");
       button.classList.toggle("is-active", nav === target);
     });
   }
 
   function showPayView(view = "inicio") {
-    const target = view === "mas" ? "mas" : view === "notificaciones" ? "notificaciones" : "inicio";
+    const target = view === "mas" ? "mas" : view === "notificaciones" ? "notificaciones" : view === "admin-cierres" ? "admin-cierres" : "inicio";
     state.view = target;
     const dashboard = $("exploraPagoDashboard");
     const more = $("payMoreScreen");
     const notifications = $("payNotificationsScreen");
+    const adminClosures = $("payAdminClosuresScreen");
     const isMore = target === "mas";
     const isNotifications = target === "notificaciones";
-    const hideHome = isMore || isNotifications;
+    const isAdminClosures = target === "admin-cierres";
+    const hideHome = isMore || isNotifications || isAdminClosures;
     if (dashboard) {
       dashboard.hidden = hideHome;
       dashboard.style.display = hideHome ? "none" : "";
@@ -1089,12 +1122,19 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       notifications.style.display = isNotifications ? "block" : "none";
       notifications.setAttribute("aria-hidden", isNotifications ? "false" : "true");
     }
+    if (adminClosures) {
+      adminClosures.hidden = !isAdminClosures;
+      adminClosures.style.display = isAdminClosures ? "block" : "none";
+      adminClosures.setAttribute("aria-hidden", isAdminClosures ? "false" : "true");
+    }
     document.body.classList.toggle("pay-more-open", isMore);
     document.body.classList.toggle("pay-notifications-open", isNotifications);
-    setBottomNavActive(isNotifications ? "" : target);
+    document.body.classList.toggle("pay-admin-closures-open", isAdminClosures);
+    setBottomNavActive(isAdminClosures ? "admin-cierres" : isNotifications ? "" : target);
     if (isMore) renderMoreScreen();
     if (isNotifications) renderNotificationsScreen();
-    if (isMore || isNotifications) window.scrollTo({ top: 0, behavior: "auto" });
+    if (isAdminClosures) renderAdminClosuresScreen();
+    if (isMore || isNotifications || isAdminClosures) window.scrollTo({ top: 0, behavior: "auto" });
   }
 
   function payOverlayIsOpen() {
@@ -1104,13 +1144,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function forceHomeLanding() {
     state.view = "inicio";
     state.tab = "chofer";
-    document.body.classList.remove("pay-more-open", "pay-notifications-open");
+    document.body.classList.remove("pay-more-open", "pay-notifications-open", "pay-admin-closures-open");
     const dashboard = $("exploraPagoDashboard");
     const more = $("payMoreScreen");
     const notifications = $("payNotificationsScreen");
+    const adminClosures = $("payAdminClosuresScreen");
     if (dashboard) { dashboard.hidden = false; dashboard.style.display = ""; dashboard.setAttribute("aria-hidden", "false"); }
     if (more) { more.hidden = true; more.style.display = "none"; more.setAttribute("aria-hidden", "true"); }
     if (notifications) { notifications.hidden = true; notifications.style.display = "none"; notifications.setAttribute("aria-hidden", "true"); }
+    if (adminClosures) { adminClosures.hidden = true; adminClosures.style.display = "none"; adminClosures.setAttribute("aria-hidden", "true"); }
     setBottomNavActive("inicio");
   }
 
@@ -3107,6 +3149,270 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (title) title.textContent = admin ? "Últimas actividades" : "Última actividad";
   }
 
+
+  function driverRowsFor(rows = [], uid = "") {
+    const targetUid = safe(uid);
+    if (!targetUid) return [];
+    return (rows || []).filter(row => closureBelongsToDriver(row, targetUid) || driverUidOf(row) === targetUid);
+  }
+
+  function adminDriverSummaryFromState(uid = "") {
+    return computeSummary({
+      records:driverRowsFor(state.records, uid),
+      expenses:driverRowsFor(state.expenses, uid),
+      closures:driverRowsFor(state.closures, uid),
+      debts:driverRowsFor(state.debts, uid),
+      debtPayments:driverRowsFor(state.debtPayments, uid)
+    });
+  }
+
+  function setAdminBoardDriver(uid = "") {
+    const targetUid = safe(uid);
+    const driver = state.drivers.find(item => item.uid === targetUid || item.id === targetUid);
+    if (!targetUid || !driver) throw new Error("No se pudo identificar al chofer.");
+    state.selectedDriverUid = driver.uid;
+    state.selectedDriverName = driver.name;
+  }
+
+  function pendingAdminClosureForDriver(uid = "", kind = "") {
+    const targetUid = safe(uid);
+    const target = activeClosureKind(kind);
+    if (!targetUid || !target) return null;
+    return (state.closures || [])
+      .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
+      .filter(row => !closureIsCompleted(row))
+      .filter(row => !/cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
+      .filter(row => closureBelongsToDriver(row, targetUid))
+      .filter(row => {
+        const rowKind = closureKindOf(row);
+        if (target === "caja_chica") return rowKind === "caja_chica";
+        if (target === "gastos") return rowKind === "gastos";
+        if (isBillingClosureKind(target)) return isBillingClosureKind(rowKind);
+        return rowKind === target;
+      })
+      .sort((a,b)=>rowMs(b)-rowMs(a))[0] || null;
+  }
+
+  function adminClosureActionForDriver(closure = {}, uid = "") {
+    if (!closure || closureIsCompleted(closure)) return "none";
+    if (uid && !closureBelongsToDriver(closure, uid)) return "none";
+    const due = number(closure.amountDueFromDriver || 0);
+    const toDriver = number(closure.amountDueToDriver || 0);
+    const proof = closureHasProof(closure);
+    if (toDriver > 0 && !proof) return "admin_upload";
+    if (due > 0 && proof) return "admin_review";
+    if (due > 0 && !proof) return "admin_waiting_driver";
+    return "view";
+  }
+
+  function adminDebtReductionForDriver(uid = "") {
+    const targetUid = safe(uid);
+    if (!targetUid) return null;
+    return debtPaymentRows(driverRowsFor(state.debtPayments, targetUid))
+      .filter(row => !(row.adminAcknowledged === true || row.acknowledged === true || row.adminAccepted === true || row.accepted === true || row.read === true))
+      .sort((a,b)=>rowMs(b)-rowMs(a))[0] || null;
+  }
+
+  function adminClosureMetricHtml(label = "", value = 0) {
+    return `<div class="pay-admin-closure-metric"><span>${esc(label)}</span><strong>${esc(currency(value || 0))}</strong></div>`;
+  }
+
+  function adminClosureActionHtml({ uid = "", kind = "", action = "", label = "", tone = "", disabled = false, id = "" } = {}) {
+    const cls = ["pay-admin-closure-action", tone ? `is-${tone}` : ""].filter(Boolean).join(" ");
+    return `<button class="${cls}" data-pay-admin-closure-action="${esc(action)}" data-driver-uid="${esc(uid)}" data-kind="${esc(kind)}" data-row-id="${esc(id)}" type="button"${disabled ? " disabled" : ""}>${esc(label)}</button>`;
+  }
+
+  function adminBillingRequestAction(uid = "", kind = "chofer", summary = computeSummary()) {
+    const pending = pendingAdminClosureForDriver(uid, kind);
+    const pendingAction = pending ? adminClosureActionForDriver(pending, uid) : "";
+    if (pending && (pendingAction === "admin_review" || pendingAction === "admin_upload")) {
+      const label = pendingAction === "admin_upload" ? "Cargar comprobante" : "Chofer cargó comprobante";
+      return adminClosureActionHtml({ uid, kind, action:"open-closure", id:safe(pending.id), label, tone:"red" });
+    }
+    if (pending) {
+      const waiting = pendingAction === "admin_waiting_driver" ? "Esperando chofer" : "Cierre abierto";
+      return adminClosureActionHtml({ uid, kind, action:"open-closure", id:safe(pending.id), label:waiting, tone:"locked", disabled:pendingAction === "admin_waiting_driver" });
+    }
+    const target = activeClosureKind(kind);
+    const t = tabSummary(summary, target);
+    const enabled = target === "chofer"
+      ? number(summary.amountFromDriverForBilling || t.amountFromDriver || 0) > 0.49
+      : target === "caja_chica"
+        ? number(t.amountFromDriver || 0) > 0.49
+        : !!closureButtonState(kind, summary).enabled;
+    return adminClosureActionHtml({ uid, kind, action:"request-closure", label:"Pedir cierre", tone:enabled ? "primary" : "locked", disabled:!enabled });
+  }
+
+  function adminIncomingClosureAction(uid = "", kind = "explora") {
+    const pending = pendingAdminClosureForDriver(uid, kind);
+    const action = pending ? adminClosureActionForDriver(pending, uid) : "";
+    if (pending && (action === "admin_upload" || action === "admin_review")) {
+      const label = action === "admin_upload" ? "Chofer pidió cierre · cargar comprobante" : "Chofer cargó comprobante · cerrar";
+      return adminClosureActionHtml({ uid, kind, action:"open-closure", id:safe(pending.id), label, tone:"red" });
+    }
+    if (pending && action === "admin_waiting_driver") {
+      return adminClosureActionHtml({ uid, kind, action:"open-closure", id:safe(pending.id), label:"Esperando chofer", tone:"locked", disabled:true });
+    }
+    return adminClosureActionHtml({ uid, kind, action:"none", label:"Sin pedido activo", tone:"locked", disabled:true });
+  }
+
+  function adminDebtAction(uid = "") {
+    const payment = adminDebtReductionForDriver(uid);
+    if (!payment) return adminClosureActionHtml({ uid, kind:"pendientes", action:"none", label:"Sin reducción pendiente", tone:"locked", disabled:true });
+    const amount = amountOf(payment);
+    return adminClosureActionHtml({ uid, kind:"pendientes", action:"accept-debt", id:safe(payment.id || payment.paymentId), label:`Chofer redujo deuda · aceptar${amount > 0 ? ` ${currency(amount)}` : ""}`, tone:"red" });
+  }
+
+  function adminClosureModuleHtml({ kind = "", title = "", subtitle = "", metrics = [], actionHtml = "" } = {}) {
+    return `
+      <article class="pay-admin-closure-module pay-admin-closure-module-${esc(kind)}">
+        <header><div><span>${esc(title)}</span><small>${esc(subtitle)}</small></div></header>
+        <div class="pay-admin-closure-metrics">${metrics.join("")}</div>
+        <div class="pay-admin-closure-action-wrap">${actionHtml}</div>
+      </article>`;
+  }
+
+  function renderAdminDriverClosureCard(driver = {}) {
+    const uid = safe(driver.uid || driver.id);
+    const summary = adminDriverSummaryFromState(uid);
+    const chofer = tabSummary(summary, "chofer");
+    const explora = tabSummary(summary, "explora");
+    const gastos = tabSummary(summary, "gastos");
+    const caja = tabSummary(summary, "caja_chica");
+    const pendientes = summary.pendientes || tabSummary(summary, "pendientes");
+    const debtPayment = adminDebtReductionForDriver(uid);
+    const debtPaymentAmount = debtPayment ? amountOf(debtPayment) : 0;
+    const modules = [
+      adminClosureModuleHtml({
+        kind:"chofer", title:"Chofer", subtitle:"Valor del chofer 50%",
+        metrics:[
+          adminClosureMetricHtml("Efectivo chofer", chofer.cashInDriver || 0),
+          adminClosureMetricHtml("Parte chofer", chofer.billingShareEach || 0),
+          adminClosureMetricHtml("Debe liquidar", chofer.amountFromDriver || 0)
+        ],
+        actionHtml:adminBillingRequestAction(uid, "chofer", summary)
+      }),
+      adminClosureModuleHtml({
+        kind:"explora", title:"Explora", subtitle:"Valor de Explora 50%",
+        metrics:[
+          adminClosureMetricHtml("Digital Explora", explora.nonCashInExplora || 0),
+          adminClosureMetricHtml("Parte Explora", explora.billingShareEach || 0),
+          adminClosureMetricHtml("Explora liquida", explora.amountToDriver || 0)
+        ],
+        actionHtml:adminIncomingClosureAction(uid, "explora")
+      }),
+      adminClosureModuleHtml({
+        kind:"gastos", title:"Gastos", subtitle:"Compartido 50/50 · liquida Explora",
+        metrics:[
+          adminClosureMetricHtml("Gastos cargados", gastos.expenseTotal || 0),
+          adminClosureMetricHtml("Parte chofer", gastos.driverExpenseShare || 0),
+          adminClosureMetricHtml("Explora liquida", gastos.amountToDriver || 0)
+        ],
+        actionHtml:adminIncomingClosureAction(uid, "gastos")
+      }),
+      adminClosureModuleHtml({
+        kind:"caja_chica", title:"Caja chica", subtitle:"100% a cargo del chofer",
+        metrics:[
+          adminClosureMetricHtml("Efectivo base", caja.gross || 0),
+          adminClosureMetricHtml("Caja chica 5%", caja.cashboxTotal || 0),
+          adminClosureMetricHtml("Chofer liquida", caja.amountFromDriver || 0)
+        ],
+        actionHtml:adminBillingRequestAction(uid, "caja_chica", summary)
+      }),
+      adminClosureModuleHtml({
+        kind:"pendientes", title:"Pendientes", subtitle:"100% a cargo del chofer",
+        metrics:[
+          adminClosureMetricHtml("Deuda actual", pendientes.remainingAmount || 0),
+          adminClosureMetricHtml("Pagado", pendientes.totalPaid || 0),
+          adminClosureMetricHtml("Última reducción", debtPaymentAmount || 0)
+        ],
+        actionHtml:adminDebtAction(uid)
+      })
+    ];
+    const totalOpen = [chofer.amountFromDriver, explora.amountToDriver, gastos.amountToDriver, caja.amountFromDriver, pendientes.remainingAmount].reduce((sum, value) => sum + Math.max(0, number(value)), 0);
+    return `
+      <article class="pay-admin-driver-closure-card" data-driver-uid="${esc(uid)}">
+        <header class="pay-admin-driver-closure-head">
+          <div><span>CHOFER</span><h2>${esc(driver.name || "Chofer")}</h2></div>
+          <strong>${esc(currency(totalOpen || 0))}</strong>
+        </header>
+        <div class="pay-admin-driver-closure-grid">${modules.join("")}</div>
+      </article>`;
+  }
+
+  function renderAdminClosuresScreen() {
+    const list = $("payAdminClosuresList");
+    if (!list) return;
+    if (!isAdmin()) {
+      list.innerHTML = `<div class="pay-admin-closures-empty">Esta vista es solo para administrador.</div>`;
+      return;
+    }
+    if (!state.drivers.length) {
+      list.innerHTML = `<div class="pay-admin-closures-empty">No hay choferes activos para mostrar.</div>`;
+      return;
+    }
+    list.innerHTML = state.drivers.map(renderAdminDriverClosureCard).join("");
+  }
+
+  async function acceptAdminDebtReduction(rowId = "") {
+    const id = safe(rowId);
+    if (!id) throw new Error("No se pudo identificar la reducción de deuda.");
+    const payment = (state.debtPayments || []).find(row => safe(row.id || row.paymentId) === id || safe(row.paymentId) === id);
+    const docId = safe(payment?.id || payment?.paymentId || id);
+    const nowMs = Date.now();
+    await updateDoc(doc(state.db, "deuda_pagos", docId), {
+      adminAcknowledged:true,
+      acknowledged:true,
+      adminAccepted:true,
+      accepted:true,
+      read:true,
+      acknowledgedByUid:state.auth?.currentUser?.uid || "",
+      acknowledgedByName:accountName(),
+      acknowledgedAt:serverTimestamp(),
+      acknowledgedAtMs:nowMs,
+      updatedAt:serverTimestamp(),
+      updatedAtMs:nowMs
+    });
+    if (payment?.paymentId) {
+      updateDoc(doc(state.db, "notificaciones", `debt_payment_${payment.paymentId}`), {
+        adminAcknowledged:true,
+        acknowledged:true,
+        read:true,
+        acknowledgedByUid:state.auth?.currentUser?.uid || "",
+        acknowledgedAt:serverTimestamp(),
+        acknowledgedAtMs:nowMs,
+        updatedAt:serverTimestamp(),
+        updatedAtMs:nowMs
+      }).catch(()=>{});
+    }
+    state.debtPayments = state.debtPayments.map(row => (safe(row.id || row.paymentId) === id || safe(row.paymentId) === id) ? { ...row, adminAcknowledged:true, acknowledged:true, adminAccepted:true, accepted:true, read:true, acknowledgedAtMs:nowMs } : row);
+    render();
+  }
+
+  async function handleAdminClosuresAction(button) {
+    if (!isAdmin()) throw new Error("Solo administrador.");
+    const action = safe(button.dataset.payAdminClosureAction);
+    const uid = safe(button.dataset.driverUid);
+    const kind = activeClosureKind(button.dataset.kind || "");
+    const rowId = safe(button.dataset.rowId);
+    if (action === "none") return;
+    if (action === "accept-debt") {
+      await acceptAdminDebtReduction(rowId);
+      return;
+    }
+    setAdminBoardDriver(uid);
+    if (action === "request-closure") {
+      await openClosureModal("request", null, kind);
+      return;
+    }
+    if (action === "open-closure") {
+      const closure = (state.closures || []).find(row => safe(row.id || row.closureId) === rowId) || pendingAdminClosureForDriver(uid, kind);
+      if (!closure) throw new Error("No se encontró el cierre pendiente.");
+      await openClosureModal("admin-review", closure, kind);
+      return;
+    }
+  }
+
   function movementRows(summary = computeSummary()) {
     const rows = [];
     // Chofer: mantiene la lógica del ciclo abierto. Admin: auditoría global en bruto.
@@ -3253,6 +3559,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       showPayView("mas");
     } else if (state.view === "notificaciones") {
       showPayView("notificaciones");
+    } else if (state.view === "admin-cierres") {
+      showPayView("admin-cierres");
     } else {
       setBottomNavActive("inicio");
     }
@@ -4467,5 +4775,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once:true });
   else boot();
-  window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal });
+  window.ExploraActions = window.ExploraActions || {};
+  window.ExploraActions["admin-cierres"] = () => showPayView("admin-cierres");
+  window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen });
 })();
