@@ -1622,3 +1622,60 @@ body.pay-admin-closures-open .explora-pay-admin-closures{
     font-size:11px!important;
   }
 }
+
+/* v4031 · Fix quirúrgico: en Cierres el menú inferior debe fijarse al viewport real, igual que Últimas actividades.
+   El bug venía de anclar la vista de cierres a 100svh; en iPhone eso deja el nav flotando arriba. */
+body.pay-admin-closures-open{
+  height:auto!important;
+  min-height:100dvh!important;
+  overflow:hidden!important;
+}
+body.pay-admin-closures-open .explora-pay-admin-closures{
+  height:100dvh!important;
+  min-height:100dvh!important;
+  max-height:100dvh!important;
+}
+body.pay-admin-closures-open .pay-bottom-nav{
+  position:fixed!important;
+  left:50%!important;
+  right:auto!important;
+  bottom:0!important;
+  transform:translateX(-50%)!important;
+  width:min(100vw,520px)!important;
+  max-width:520px!important;
+  height:calc(88px + env(safe-area-inset-bottom))!important;
+  min-height:calc(88px + env(safe-area-inset-bottom))!important;
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom))!important;
+  border-radius:26px 26px 0 0!important;
+  background:rgba(255,255,255,.98)!important;
+  display:grid!important;
+  grid-template-columns:1fr 1fr 86px 1fr 1fr!important;
+  align-items:end!important;
+  justify-items:center!important;
+  overflow:visible!important;
+  z-index:9999!important;
+}
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main{
+  position:absolute!important;
+  left:50%!important;
+  bottom:calc(45px + env(safe-area-inset-bottom))!important;
+  transform:translateX(-50%)!important;
+  width:76px!important;
+  height:76px!important;
+  min-width:76px!important;
+  color:#fff!important;
+}
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon{
+  color:#fff!important;
+  opacity:1!important;
+  visibility:visible!important;
+}
+@media (max-width:390px){
+  body.pay-admin-closures-open .pay-bottom-nav{grid-template-columns:1fr 1fr 76px 1fr 1fr!important;}
+  body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main{
+    width:70px!important;
+    height:70px!important;
+    min-width:70px!important;
+    bottom:calc(44px + env(safe-area-inset-bottom))!important;
+  }
+}
