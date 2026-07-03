@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-admin-closures-snap";
+  const VERSION = "explora-pago-home-v52-admin-closures-snap-fix";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -1032,8 +1032,19 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     $("payAdminClosuresList")?.addEventListener("click", event => {
       const button = event.target?.closest?.("[data-pay-admin-closure-action]");
       if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
       handleAdminClosuresAction(button).catch(error => window.alert(error?.message || "No se pudo completar la acción."));
     });
+    // Respaldo iOS/PWA: si el contenedor se re-renderiza o el scroll-snap captura el toque,
+    // el click igual llega por delegación global.
+    document.addEventListener("click", event => {
+      const button = event.target?.closest?.(".pay-admin-closures-open [data-pay-admin-closure-action]");
+      if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
+      handleAdminClosuresAction(button).catch(error => window.alert(error?.message || "No se pudo completar la acción."));
+    }, true);
     $("payAdminDeleteClose")?.addEventListener("click", closeAdminDeleteModal);
     $("payAdminDeleteCancel")?.addEventListener("click", closeAdminDeleteModal);
     $("payAdminDeleteBackdrop")?.addEventListener("click", event => { if (event.target?.id === "payAdminDeleteBackdrop") closeAdminDeleteModal(); });
@@ -3052,9 +3063,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         return { visible:true, enabled:amountToDriver > 0.49, pending:true };
       }
       if (target === "chofer") {
-        const t = tabSummary(summary, "chofer");
-        const amountFromDriver = number(summary.amountFromDriverForBilling || t.amountFromDriver || 0);
-        return { visible:true, enabled:isAdmin() && amountFromDriver > 0.49, pending:true };
+        const tChofer = tabSummary(summary, "chofer");
+        const tExplora = tabSummary(summary, "explora");
+        const amountFromDriver = number(summary.amountFromDriverForBilling || tChofer.amountFromDriver || 0);
+        const amountToDriver = number(summary.amountToDriverForBilling || tExplora.amountToDriver || 0);
+        const hasBilling = number(summary.gross || tChofer.gross || tExplora.gross || 0) > 0.49;
+        return { visible:true, enabled:isAdmin() && (amountFromDriver > 0.49 || amountToDriver > 0.49 || hasBilling), pending:true };
       }
       if (target === "caja_chica" || target === "gastos") return { visible:true, enabled:false, pending:true };
       return { visible:false, enabled:false, pending:true };
@@ -3073,11 +3087,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
 
     if (target === "chofer") {
-      const t = tabSummary(summary, "chofer");
-      const amountFromDriver = number(summary.amountFromDriverForBilling || t.amountFromDriver || 0);
-      // Admin puede pedir cierre al chofer cuando el efectivo del chofer supera su parte.
-      // El chofer no se pide a sí mismo este cierre desde su módulo.
-      return { visible:true, enabled:isAdmin() && amountFromDriver > 0 };
+      const tChofer = tabSummary(summary, "chofer");
+      const tExplora = tabSummary(summary, "explora");
+      const amountFromDriver = number(summary.amountFromDriverForBilling || tChofer.amountFromDriver || 0);
+      const amountToDriver = number(summary.amountToDriverForBilling || tExplora.amountToDriver || 0);
+      const hasBilling = number(summary.gross || tChofer.gross || tExplora.gross || 0) > 0.49;
+      // Admin puede pedir el cierre de facturación desde CHOFER aunque termine pagando Explora.
+      // El cierre afecta Chofer+Explora juntos, pero el modal muestra solo la tarjeta que se pidió.
+      return { visible:true, enabled:isAdmin() && (amountFromDriver > 0.49 || amountToDriver > 0.49 || hasBilling) };
     }
 
     if (target === "explora") {
@@ -3236,7 +3253,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const target = activeClosureKind(kind);
     const t = tabSummary(summary, target);
     const enabled = target === "chofer"
-      ? number(summary.amountFromDriverForBilling || t.amountFromDriver || 0) > 0.49
+      ? (number(summary.amountFromDriverForBilling || t.amountFromDriver || 0) > 0.49 || number(summary.amountToDriverForBilling || tabSummary(summary, "explora").amountToDriver || 0) > 0.49 || number(summary.gross || t.gross || 0) > 0.49)
       : target === "caja_chica"
         ? number(t.amountFromDriver || 0) > 0.49
         : !!closureButtonState(kind, summary).enabled;
@@ -3405,6 +3422,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (action === "request-closure") {
       state.latestSummary = adminDriverSummaryFromState(uid);
       await openClosureModal("request", null, kind);
+      // El modal se renderiza después de fetchDrivers(); reforzamos el chofer seleccionado
+      // para que el submit trabaje sobre el chofer de esta pantalla y no sobre otro estado.
+      const select = $("payClosureDriverSelect");
+      if (select) select.value = uid;
       return;
     }
     if (action === "open-closure") {
