@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-whatsapp-request-scroll-fix";
+  const VERSION = "explora-pago-home-v52-closure-compact-modal-fix";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -4105,6 +4105,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const fileInput = $("payClosureReceiptInput");
     if (amountInput) amountInput.value = "";
     if (fileInput) fileInput.value = "";
+    document.body?.classList.add("pay-closure-modal-open");
     $("payClosureBackdrop")?.classList.add("is-open");
     $("payClosureBackdrop")?.setAttribute("aria-hidden", "false");
     renderClosureModal();
@@ -4287,6 +4288,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     state.modalFile = null;
     const input = $("payClosureReceiptInput");
     if (input) input.value = "";
+    document.body?.classList.add("pay-closure-modal-open");
     $("payClosureBackdrop")?.classList.add("is-open");
     $("payClosureBackdrop")?.setAttribute("aria-hidden", "false");
     if (isAdmin()) await fetchDrivers();
@@ -4294,6 +4296,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function closeClosureModal() {
+    document.body?.classList.remove("pay-closure-modal-open");
     $("payClosureBackdrop")?.classList.remove("is-open");
     $("payClosureBackdrop")?.setAttribute("aria-hidden", "true");
     state.modalFile = null;
@@ -4330,34 +4333,22 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const cash = number(closure.cashInDriver || 0);
     const digital = number(closure.exploraCash || closure.nonCashInExplora || 0);
     const share = number(closure.billingShareEach || 0);
-    const status = safe(closure.statusLabel || closure.estado || closure.status || "pendiente");
-    const cut = closureTimeLabel(closure);
-    const driver = closureDriverName(closure);
-    const kindLabel = closureTitle(kind);
     const k = activeClosureKind(kind);
-    const result = due > 0 ? "Chofer debe liquidar a Explora" : toDriver > 0 ? "Explora debe liquidar a chofer" : "Nadie debe liquidar";
+    const result = due > 0 ? "Chofer debe liquidar a Explora" : toDriver > 0 ? "Explora debe liquidar al chofer" : "Nadie debe liquidar";
     const amount = Math.max(due, toDriver);
-    const base = [
-      ["Motivo", closureRequesterText(closure)],
-      ["Chofer", driver],
-      ["Tipo de cierre", kindLabel],
-      ["Corte", cut],
-      ["Estado", status],
-      [result, currency(amount), "closure-payment-result settlement-result-green"]
-    ];
     const detail = k === "caja_chica"
-      ? [["Efectivo base", currency(closure.cashboxGross || gross)], ["Caja chica total 5%", currency(closure.cashboxTotal || closure.mainTotal || amount)], ["En poder del chofer", currency(closure.cashboxInDriver || due)]]
+      ? [["Efectivo base", currency(closure.cashboxGross || gross)], ["Caja chica 5%", currency(closure.cashboxTotal || closure.mainTotal || amount)]]
       : k === "gastos"
-        ? [["Gastos incluidos", currency(expenseTotal)], ["Parte chofer 50%", currency(expenseTotal * .5)], ["Parte Explora 50%", currency(toDriver || expenseTotal * .5)]]
+        ? [["Gastos cargados", currency(expenseTotal)], ["Parte Explora", currency(toDriver || expenseTotal * .5)]]
         : [["Efectivo chofer", currency(cash)], ["Digital Explora", currency(digital)], ["Total facturado", currency(gross)], ["Parte de cada uno", currency(share)]];
     const receiptUrl = closureProofUrl(closure);
-    const receipt = receiptUrl ? [["Comprobante", "cargado"]] : [];
-    const rows = base.concat(detail, [["Estado", closureStatusText(closure)]], receipt).map(([label,value,className]) => `<article${className ? ` class="${esc(className)}"` : ""}><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
-    const paymentData = paymentDataFromClosure(closure);
-    const paymentRows = closurePaymentRowsHtml({ driverPayment:paymentData.driverPayment, direction:paymentData.direction });
-    const receiptLink = receiptUrl ? `<a class="pay-closure-receipt-link" href="${esc(receiptUrl)}" target="_blank" rel="noopener">Abrir comprobante</a>` : "";
-    const alert = due > 0 && !receiptUrl && !adminView ? `<div class="pay-closure-alert">Para quedar al día, cargá el comprobante de transferencia.</div>` : "";
-    return rows + paymentRows + receiptLink + alert;
+    const rows = [[result, amount > 0 ? currency(amount) : "Al día", "closure-payment-result settlement-result-green"]]
+      .concat(detail)
+      .concat(receiptUrl ? [["Comprobante", "cargado"]] : [])
+      .map(([label,value,className]) => `<article${className ? ` class="${esc(className)}"` : ""}><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
+    const receiptLink = receiptUrl ? `<a class="pay-closure-receipt-link" href="${esc(receiptUrl)}" target="_blank" rel="noopener">Ver foto del comprobante</a>` : "";
+    const alert = due > 0 && !receiptUrl && !adminView ? `<div class="pay-closure-alert">Cargá el comprobante de transferencia para cerrar.</div>` : "";
+    return rows + receiptLink + alert;
   }
 
   function renderClosureModal() {
@@ -4433,7 +4424,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           submit.disabled = false;
           submit.textContent = "Guardar KM actual";
         } else if (action === "driver_upload") {
-          subtitle.textContent = "Resolvé tu situación: transferí a Explora y cargá el comprobante.";
+          subtitle.textContent = "Transferí y cargá el comprobante para avisar a Explora.";
           submit.disabled = false;
           submit.textContent = "Subir comprobante y cerrar";
         } else if (action === "driver_review") {
@@ -4455,11 +4446,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       if (state.modalMode === "admin-review" && isAdmin()) {
         title.textContent = `Revisar ${closureTitle(kind).toLowerCase()}`;
         if (action === "admin_upload") {
-          subtitle.textContent = `${closureRequesterText(closure)}. Explora debe liquidar y cargar el comprobante para notificar al chofer.`;
+          subtitle.textContent = `${closureRequesterText(closure)}. Cargá el comprobante y se notificará al chofer por WhatsApp.`;
           submit.disabled = false;
           submit.textContent = "Subir comprobante y cerrar";
         } else if (action === "admin_review") {
-          subtitle.textContent = `${closureDriverName(closure)} cargó el comprobante. El cierre quedará cerrado automáticamente.`;
+          subtitle.textContent = `${closureDriverName(closure)} cargó el comprobante. Revisá y cerrá.`;
           submit.disabled = false;
           submit.textContent = "Cerrar";
         } else if (action === "admin_waiting_driver") {
