@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-admin-closure-modules-bottomnav-fix";
+  const VERSION = "explora-pago-home-v52-whatsapp-receipt-link";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -2261,15 +2261,24 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return lines.join("\n");
   }
 
-  function openWhatsappToExplora(text = "") {
+  function normalizeWhatsappPhone(value = "") {
+    let digits = safe(value).replace(/\D+/g, "");
+    if (digits.startsWith("00")) digits = digits.slice(2);
+    digits = digits.replace(/^0+/, "");
+    if (/^(2|3)\d{9}$/.test(digits)) return `549${digits}`;
+    if (/^54(2|3)\d{9}$/.test(digits)) return `549${digits.slice(2)}`;
+    return digits;
+  }
+
+  function openWhatsappToPhone(phone = "", text = "") {
+    const normalizedPhone = normalizeWhatsappPhone(phone);
+    if (!normalizedPhone) return false;
     const encodedText = encodeURIComponent(text || "");
-    const webUrl = `https://wa.me/${EXPLORA_WHATSAPP}?text=${encodedText}`;
-    const nativeUrl = `whatsapp://send?phone=${EXPLORA_WHATSAPP}&text=${encodedText}`;
+    const webUrl = `https://wa.me/${normalizedPhone}?text=${encodedText}`;
+    const nativeUrl = `whatsapp://send?phone=${normalizedPhone}&text=${encodedText}`;
     const ua = safe(navigator?.userAgent || "");
     const mobile = /Android|iPhone|iPad|iPod/i.test(ua);
 
-    // En iOS/Android no usamos wa.me/api.whatsapp.com como primera opción porque abre
-    // una página intermedia de WhatsApp. El esquema nativo abre directamente la app.
     if (mobile) {
       let appOpened = false;
       let fallbackTimer = null;
@@ -2307,6 +2316,103 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     } catch (_) {
       try { window.location.href = webUrl; return true; } catch (__) { return false; }
     }
+  }
+
+  function openWhatsappToExplora(text = "") {
+    return openWhatsappToPhone(EXPLORA_WHATSAPP, text);
+  }
+
+  function closureDriverWhatsappPhone(closure = {}) {
+    const uid = safe(closure.driverUid || closure.choferUid || closure.uid || getDriverUid());
+    return safe(
+      closure.driverPaymentPhone ||
+      closure.choferTelefono ||
+      closure.telefonoChofer ||
+      closure.phone ||
+      closure.whatsapp ||
+      driverPaymentProfileForUid(uid).phone
+    );
+  }
+
+  function closureReceiptLink(closure = {}, receipt = null) {
+    return safe(
+      receipt?.url ||
+      closure.receiptUrl ||
+      closure.adminReceiptUrl ||
+      closure.driverReceiptUrl ||
+      closure.comprobanteUrl ||
+      closure.urlComprobante
+    );
+  }
+
+  function closureNotifyAmount(closure = {}) {
+    return Math.max(
+      number(closure.paymentResultAmount || 0),
+      number(closure.amountDueToDriver || 0),
+      number(closure.amountDueFromDriver || 0),
+      number(closure.amountToDriver || 0),
+      number(closure.amountFromDriver || 0)
+    );
+  }
+
+  function closureNotifyKindTitle(closure = {}) {
+    const kind = closureKindOf(closure) || mapModuleKey(closure.moduleKey || closure.closureModuleKey || closure.requestModule || closure.homeModule || "") || "cierre";
+    return closureTitle(kind).toLowerCase();
+  }
+
+  function adminPaidDriverWhatsappText({ closure = {}, receipt = null } = {}) {
+    const driverName = closureDriverName(closure);
+    const amount = closureNotifyAmount(closure);
+    const link = closureReceiptLink(closure, receipt);
+    const lines = [
+      `Hola ${driverName}.`,
+      `Explora informa que el pago al chofer por ${currency(amount)} ya fue enviado.`,
+      `Tipo de cierre: ${closureNotifyKindTitle(closure)}.`,
+      ""
+    ];
+    if (link) {
+      lines.push("📎 Ver foto del comprobante:");
+      lines.push(link);
+      lines.push("");
+    }
+    lines.push("Por favor consultá tu cuenta.");
+    lines.push("Muchas gracias por usar Explora.");
+    return lines.join("\n");
+  }
+
+  function driverUploadedReceiptWhatsappText({ closure = {}, receipt = null } = {}) {
+    const driverName = closureDriverName(closure);
+    const amount = closureNotifyAmount(closure);
+    const link = closureReceiptLink(closure, receipt);
+    const lines = [
+      "Hola David.",
+      `El chofer ${driverName} ya subió el comprobante de ${closureNotifyKindTitle(closure)} por ${currency(amount)}.`,
+      ""
+    ];
+    if (link) {
+      lines.push("📎 Ver foto del comprobante:");
+      lines.push(link);
+      lines.push("");
+    }
+    lines.push("Por favor chequeá tu cuenta en Explora.");
+    lines.push("Muchas gracias por usar Explora.");
+    return lines.join("\n");
+  }
+
+  function notifyClosureReceiptWhatsapp({ closure = {}, receipt = null, uploadedBy = "admin" } = {}) {
+    try {
+      if (uploadedBy === "admin") {
+        const phone = closureDriverWhatsappPhone(closure);
+        if (!phone) return false;
+        return openWhatsappToPhone(phone, adminPaidDriverWhatsappText({ closure, receipt }));
+      }
+      if (uploadedBy === "driver") {
+        return openWhatsappToExplora(driverUploadedReceiptWhatsappText({ closure, receipt }));
+      }
+    } catch (error) {
+      console.warn("EXPLORA_PAY_WHATSAPP_RECEIPT", error?.message || error);
+    }
+    return false;
   }
 
   function renderDriverProfileModal() {
@@ -4686,9 +4792,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const receipt = await uploadClosureReceipt(closure, state.modalFile);
     const closed = closureClosedPayload({ closure, receipt, uploadedBy:"admin" });
     await updateDoc(doc(state.db, "cierres_semanales", closure.id), closed);
+    const completedClosure = { ...closure, ...closed, receiptUrl:receipt?.url || null, receiptPath:receipt?.path || null };
     state.closures = state.closures.map(row => safe(row.id || row.closureId) === safe(closure.id) ? { ...row, ...closed, receiptUrl:receipt?.url || row.receiptUrl || null, receiptPath:receipt?.path || row.receiptPath || null } : row);
     render();
-    return { ...closure, ...closed, receiptUrl:receipt?.url || null, receiptPath:receipt?.path || null };
+    notifyClosureReceiptWhatsapp({ closure:completedClosure, receipt, uploadedBy:"admin" });
+    return completedClosure;
   }
 
   function extensionForFile(file) {
@@ -4762,7 +4870,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const ref = doc(state.db, "cierres_semanales", closure.id);
     if (due > 0 && !closureHasProof(closure)) {
       const receipt = await uploadClosureReceipt(closure, state.modalFile);
-      await updateDoc(ref, closureClosedPayload({ closure, receipt, uploadedBy:"driver" }));
+      const closed = closureClosedPayload({ closure, receipt, uploadedBy:"driver" });
+      await updateDoc(ref, closed);
+      notifyClosureReceiptWhatsapp({ closure:{ ...closure, ...closed }, receipt, uploadedBy:"driver" });
       return;
     }
     if (toDriver > 0 && closureHasProof(closure)) {
@@ -4799,7 +4909,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const ref = doc(state.db, "cierres_semanales", closure.id);
     if (toDriver > 0 && !closureHasProof(closure)) {
       const receipt = await uploadClosureReceipt(closure, state.modalFile);
-      await updateDoc(ref, closureClosedPayload({ closure, receipt, uploadedBy:"admin" }));
+      const closed = closureClosedPayload({ closure, receipt, uploadedBy:"admin" });
+      await updateDoc(ref, closed);
+      notifyClosureReceiptWhatsapp({ closure:{ ...closure, ...closed }, receipt, uploadedBy:"admin" });
       return;
     }
     if (due > 0 && closureHasProof(closure)) {
