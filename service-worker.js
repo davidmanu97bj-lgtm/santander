@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4023-activity-photo-viewer */
+/* Compatibilidad validada: v4024-admin-closures-board */
 /* EXPLORA PWA service worker · v2.5.3 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4023-activity-photo-viewer`;
+const CACHE_NAME = `${CACHE_PREFIX}v4024-admin-closures-board`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -35,8 +35,8 @@ const APP_SHELL = [
   './css/segments/50-style.css?v=4016-card-alerts',
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
-  './css/segments/52-style.css?v=4023-activity-photo-viewer',
-  './js/segments/52-script.mjs?v=4023-activity-photo-viewer',
+  './css/segments/52-style.css?v=4024-admin-closures-board',
+  './js/segments/52-script.mjs?v=4024-admin-closures-board',
   './assets/icono_eficiencia_km.png',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
