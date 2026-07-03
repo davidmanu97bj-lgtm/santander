@@ -1422,3 +1422,71 @@ body.pay-admin-closures-open .pay-nav-main svg{
     margin-top:-14px!important;
   }
 }
+
+/* v4029 · Admin cierres: acciones sólo con pedido del chofer + bottom nav igual al menú inicial */
+body.pay-admin-closures-open .explora-pay-admin-closures{
+  padding-bottom:calc(104px + env(safe-area-inset-bottom))!important;
+}
+body.pay-admin-closures-open .pay-bottom-nav{
+  position:fixed!important;
+  left:50%!important;
+  right:auto!important;
+  bottom:0!important;
+  transform:translateX(-50%)!important;
+  width:min(100%,520px)!important;
+  max-width:520px!important;
+  height:88px!important;
+  padding:8px 15px calc(8px + env(safe-area-inset-bottom))!important;
+  border-radius:22px 22px 0 0!important;
+  display:grid!important;
+  grid-template-columns:repeat(5,1fr)!important;
+  align-items:end!important;
+  background:rgba(255,255,255,.96)!important;
+  box-shadow:0 -10px 30px rgba(20,22,35,.12)!important;
+  z-index:120!important;
+}
+body.pay-admin-closures-open .pay-nav-btn{
+  padding:4px 2px 0!important;
+  gap:3px!important;
+  font-size:12px!important;
+  line-height:1.1!important;
+}
+body.pay-admin-closures-open .pay-nav-btn svg{
+  width:26px!important;
+  height:26px!important;
+}
+body.pay-admin-closures-open .pay-nav-main{
+  width:72px!important;
+  height:72px!important;
+  align-self:center!important;
+  justify-self:center!important;
+  margin-top:-48px!important;
+  border-radius:999px!important;
+  font-size:12px!important;
+  gap:3px!important;
+  padding:4px 2px 0!important;
+}
+body.pay-admin-closures-open .pay-nav-main .pay-nav-plus-icon{
+  width:35px!important;
+  height:35px!important;
+  font-size:38px!important;
+  line-height:.82!important;
+}
+body.pay-admin-closures-open .pay-nav-main svg{
+  width:35px!important;
+  height:35px!important;
+}
+@media (max-height:760px){
+  body.pay-admin-closures-open .explora-pay-admin-closures{
+    padding-bottom:calc(96px + env(safe-area-inset-bottom))!important;
+  }
+  body.pay-admin-closures-open .pay-bottom-nav{
+    height:84px!important;
+    padding:7px 15px calc(7px + env(safe-area-inset-bottom))!important;
+  }
+  body.pay-admin-closures-open .pay-nav-main{
+    width:68px!important;
+    height:68px!important;
+    margin-top:-46px!important;
+  }
+}
