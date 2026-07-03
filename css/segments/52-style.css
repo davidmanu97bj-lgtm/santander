@@ -1369,3 +1369,56 @@ body.pay-admin-closures-open .pay-admin-closure-action{
   body.pay-admin-closures-open .pay-admin-closure-metric{height:clamp(25px,5svh,30px)!important;}
   body.pay-admin-closures-open .pay-admin-closure-action{min-height:clamp(23px,4.6svh,28px)!important;}
 }
+
+/* v4028 · lógica visual del tablero admin: menú inferior pegado abajo */
+body.pay-admin-closures-open .explora-pay-admin-closures{
+  padding-bottom:calc(78px + env(safe-area-inset-bottom))!important;
+}
+body.pay-admin-closures-open .pay-bottom-nav{
+  position:fixed!important;
+  left:0!important;
+  right:0!important;
+  bottom:0!important;
+  transform:none!important;
+  width:100vw!important;
+  max-width:none!important;
+  height:calc(72px + env(safe-area-inset-bottom))!important;
+  padding:5px 12px calc(5px + env(safe-area-inset-bottom))!important;
+  border-radius:20px 20px 0 0!important;
+  align-items:end!important;
+  z-index:120!important;
+}
+body.pay-admin-closures-open .pay-nav-btn{
+  padding:0 2px!important;
+  gap:1px!important;
+  font-size:10.5px!important;
+}
+body.pay-admin-closures-open .pay-nav-btn svg{
+  width:22px!important;
+  height:22px!important;
+}
+body.pay-admin-closures-open .pay-nav-main{
+  width:58px!important;
+  height:58px!important;
+  margin-top:-18px!important;
+  align-self:end!important;
+  font-size:10.5px!important;
+}
+body.pay-admin-closures-open .pay-nav-main svg{
+  width:29px!important;
+  height:29px!important;
+}
+@media (max-height:760px){
+  body.pay-admin-closures-open .explora-pay-admin-closures{
+    padding-bottom:calc(72px + env(safe-area-inset-bottom))!important;
+  }
+  body.pay-admin-closures-open .pay-bottom-nav{
+    height:calc(66px + env(safe-area-inset-bottom))!important;
+    padding-top:4px!important;
+  }
+  body.pay-admin-closures-open .pay-nav-main{
+    width:54px!important;
+    height:54px!important;
+    margin-top:-14px!important;
+  }
+}
