@@ -1679,3 +1679,39 @@ body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon{
     bottom:calc(44px + env(safe-area-inset-bottom))!important;
   }
 }
+
+/* v4033 · Cierre: scroll táctil estable + acciones visibles con comprobante */
+.pay-closure-backdrop{
+  height:100dvh;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  touch-action:pan-y;
+  padding:10px 10px max(12px, env(safe-area-inset-bottom))!important;
+}
+.pay-closure-modal{
+  display:flex;
+  flex-direction:column;
+  max-height:calc(100dvh - 24px - env(safe-area-inset-bottom))!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  touch-action:pan-y;
+  padding-bottom:12px!important;
+}
+.pay-closure-actions{
+  position:sticky;
+  bottom:0;
+  z-index:12;
+  background:linear-gradient(180deg, rgba(255,255,255,.94) 0%, #fff 35%, #fff 100%);
+  box-shadow:0 -10px 18px rgba(255,255,255,.96);
+  padding:10px 0 max(2px, env(safe-area-inset-bottom));
+  margin-top:10px!important;
+  margin-bottom:0!important;
+}
+.pay-closure-field input[type="file"]{
+  width:100%;
+  max-width:100%;
+}
