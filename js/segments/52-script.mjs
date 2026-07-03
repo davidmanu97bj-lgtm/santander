@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-admin-closures-snap-km-admin-fix";
+  const VERSION = "explora-pago-home-v52-admin-closures-action-visual-fix";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -3082,19 +3082,16 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
     if (target === "gastos") {
       const t = tabSummary(summary, "gastos");
-      // Gastos: los pide el chofer si hay gastos abiertos para reintegrar.
-      return { visible:true, enabled:!isAdmin() && number(t.expenseTotal || 0) > 0 && number(t.amountToDriver || 0) > 0 };
+      // Gastos: si Explora debe reintegrar, el admin carga comprobante; si entra el chofer, puede pedir el cierre.
+      return { visible:true, enabled:number(t.expenseTotal || 0) > 0 && number(t.amountToDriver || 0) > 0 };
     }
 
     if (target === "chofer") {
       const tChofer = tabSummary(summary, "chofer");
-      const tExplora = tabSummary(summary, "explora");
       const amountFromDriver = number(summary.amountFromDriverForBilling || tChofer.amountFromDriver || 0);
-      const amountToDriver = number(summary.amountToDriverForBilling || tExplora.amountToDriver || 0);
-      const hasBilling = number(summary.gross || tChofer.gross || tExplora.gross || 0) > 0.49;
-      // Admin puede pedir el cierre de facturación desde CHOFER aunque termine pagando Explora.
-      // El cierre afecta Chofer+Explora juntos, pero el modal muestra solo la tarjeta que se pidió.
-      return { visible:true, enabled:isAdmin() && (amountFromDriver > 0.49 || amountToDriver > 0.49 || hasBilling) };
+      // CHOFER solo se activa cuando el chofer realmente debe liquidar.
+      // Si Explora debe pagar, la acción vive en la tarjeta EXPLORA.
+      return { visible:true, enabled:amountFromDriver > 0.49 };
     }
 
     if (target === "explora") {
@@ -3252,15 +3249,23 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
     const target = activeClosureKind(kind);
     const t = tabSummary(summary, target);
-    const enabled = target === "chofer"
-      ? (number(summary.amountFromDriverForBilling || t.amountFromDriver || 0) > 0.49 || number(summary.amountToDriverForBilling || tabSummary(summary, "explora").amountToDriver || 0) > 0.49 || number(summary.gross || t.gross || 0) > 0.49)
-      : target === "caja_chica"
-        ? number(t.amountFromDriver || 0) > 0.49
-        : !!closureButtonState(kind, summary).enabled;
-    return adminClosureActionHtml({ uid, kind, action:"request-closure", label:"Pedir cierre", tone:enabled ? "primary" : "locked", disabled:!enabled });
+    let enabled = false;
+    let label = "Pedir cierre";
+    if (target === "chofer") {
+      const amountFromDriver = number(summary.amountFromDriverForBilling || t.amountFromDriver || 0);
+      const amountToDriver = number(summary.amountToDriverForBilling || tabSummary(summary, "explora").amountToDriver || 0);
+      enabled = amountFromDriver > 0.49;
+      if (!enabled) label = amountToDriver > 0.49 ? "Liquida Explora" : "Sin acción";
+    } else if (target === "caja_chica") {
+      enabled = number(t.amountFromDriver || 0) > 0.49;
+      if (!enabled) label = "Sin caja chica";
+    } else {
+      enabled = !!closureButtonState(kind, summary).enabled;
+    }
+    return adminClosureActionHtml({ uid, kind, action:enabled ? "request-closure" : "none", label, tone:enabled ? "primary" : "locked", disabled:!enabled });
   }
 
-  function adminIncomingClosureAction(uid = "", kind = "explora") {
+  function adminIncomingClosureAction(uid = "", kind = "explora", summary = computeSummary()) {
     const pending = pendingAdminClosureForDriver(uid, kind);
     const action = pending ? adminClosureActionForDriver(pending, uid) : "";
     if (pending && (action === "admin_upload" || action === "admin_review")) {
@@ -3270,7 +3275,19 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (pending && action === "admin_waiting_driver") {
       return adminClosureActionHtml({ uid, kind, action:"open-closure", id:safe(pending.id), label:"Esperando chofer", tone:"locked", disabled:true });
     }
-    return adminClosureActionHtml({ uid, kind, action:"none", label:"Sin pedido activo", tone:"locked", disabled:true });
+    const target = activeClosureKind(kind);
+    const t = tabSummary(summary, target);
+    const amountToDriver = target === "explora"
+      ? number(summary.amountToDriverForBilling || t.amountToDriver || 0)
+      : number(t.amountToDriver || 0);
+    const amountFromDriver = target === "explora"
+      ? number(summary.amountFromDriverForBilling || tabSummary(summary, "chofer").amountFromDriver || 0)
+      : number(t.amountFromDriver || 0);
+    if (amountToDriver > 0.49) {
+      return adminClosureActionHtml({ uid, kind, action:"admin-pay-now", label:"Cargar comprobante", tone:"red" });
+    }
+    const label = amountFromDriver > 0.49 ? "Paga chofer" : "Sin acción";
+    return adminClosureActionHtml({ uid, kind, action:"none", label, tone:"locked", disabled:true });
   }
 
   function adminDebtAction(uid = "") {
@@ -3316,7 +3333,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           adminClosureMetricHtml("Parte Explora", explora.billingShareEach || 0),
           adminClosureMetricHtml("Explora liquida", explora.amountToDriver || 0)
         ],
-        actionHtml:adminIncomingClosureAction(uid, "explora")
+        actionHtml:adminIncomingClosureAction(uid, "explora", summary)
       }),
       adminClosureModuleHtml({
         kind:"gastos", title:"Gastos", subtitle:"Compartido 50/50 · liquida Explora",
@@ -3325,7 +3342,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           adminClosureMetricHtml("Parte chofer", gastos.driverExpenseShare || 0),
           adminClosureMetricHtml("Explora liquida", gastos.amountToDriver || 0)
         ],
-        actionHtml:adminIncomingClosureAction(uid, "gastos")
+        actionHtml:adminIncomingClosureAction(uid, "gastos", summary)
       }),
       adminClosureModuleHtml({
         kind:"caja_chica", title:"Caja chica", subtitle:"100% a cargo del chofer",
@@ -3419,6 +3436,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       return;
     }
     setAdminBoardDriver(uid);
+    if (action === "admin-pay-now") {
+      state.latestSummary = adminDriverSummaryFromState(uid);
+      await openClosureModal("admin-pay-now", null, kind);
+      const select = $("payClosureDriverSelect");
+      if (select) select.value = uid;
+      return;
+    }
     if (action === "request-closure") {
       state.latestSummary = adminDriverSummaryFromState(uid);
       await openClosureModal("request", null, kind);
@@ -4134,7 +4158,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   async function openClosureModal(mode = "request", closure = null, kind = state.tab) {
     if (state.busy) return;
     const resolvedKind = closureKindOf(closure || {}) || activeClosureKind(kind);
-    if (mode === "request") {
+    if (mode === "request" || mode === "admin-pay-now") {
       if (!isClosureTab(resolvedKind)) return;
       const status = closureButtonState(resolvedKind, modalSummaryBase(resolvedKind));
       if (!status.enabled) return;
@@ -4143,7 +4167,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     state.modalKind = resolvedKind;
     // En modo request no pre-cargar cierres abiertos anteriores.
     // "Pedir cierre" debe trabajar únicamente con el período abierto actual.
-    state.modalClosure = mode === "request" ? null : (closure || pendingClosureFor(getDriverUid(), resolvedKind) || null);
+    state.modalClosure = (mode === "request" || mode === "admin-pay-now") ? null : (closure || pendingClosureFor(getDriverUid(), resolvedKind) || null);
     state.modalFile = null;
     const input = $("payClosureReceiptInput");
     if (input) input.value = "";
@@ -4335,16 +4359,21 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       }
     }
 
-    title.textContent = isAdmin() ? `Pedir cierre de ${closureTitle(kind).toLowerCase()}` : `Pedir ${closureTitle(kind).toLowerCase()}`;
-    subtitle.textContent = isAdmin()
-      ? (getDriverUid() ? `Chofer seleccionado: ${state.selectedDriverName || "chofer"}. Esta acción corta únicamente la tarjeta ${closureTitle(kind).toLowerCase()}.` : "Seleccioná primero un chofer para cargar sus datos y pedir el cierre.")
-      : `Esta acción pide solamente el cierre de ${closureTitle(kind).toLowerCase()}. El comprobante lo sube quien debe pagar.`;
-    submit.textContent = `Pedir cierre de ${closureTitle(kind).toLowerCase()}`;
+    const adminPayNow = state.modalMode === "admin-pay-now" && isAdmin();
+    title.textContent = adminPayNow ? `Cargar comprobante de ${closureTitle(kind).toLowerCase()}` : (isAdmin() ? `Pedir cierre de ${closureTitle(kind).toLowerCase()}` : `Pedir ${closureTitle(kind).toLowerCase()}`);
+    subtitle.textContent = adminPayNow
+      ? (getDriverUid() ? `Explora liquida ahora a ${state.selectedDriverName || "chofer"}. Esta acción crea y cierra solamente la tarjeta ${closureTitle(kind).toLowerCase()}.` : "Seleccioná primero un chofer para cargar el comprobante.")
+      : (isAdmin()
+        ? (getDriverUid() ? `Chofer seleccionado: ${state.selectedDriverName || "chofer"}. Esta acción corta únicamente la tarjeta ${closureTitle(kind).toLowerCase()}.` : "Seleccioná primero un chofer para cargar sus datos y pedir el cierre.")
+        : `Esta acción pide solamente el cierre de ${closureTitle(kind).toLowerCase()}. El comprobante lo sube quien debe pagar.`);
+    submit.textContent = adminPayNow ? "Subir comprobante y cerrar" : `Pedir cierre de ${closureTitle(kind).toLowerCase()}`;
     submit.disabled = isAdmin() && !getDriverUid();
-    // CAMBIO 3: En modo request el campo de archivo está SIEMPRE oculto.
-    // El comprobante lo sube quien tiene que pagar DESPUÉS de que se crea el cierre.
-    // Regla: el solicitante nunca sube comprobante al pedir —el cierre queda ABIERTO para la otra parte.
-    fileField.hidden = true;
+    // En modo request el archivo está oculto. En admin-pay-now el comprobante de Explora es obligatorio.
+    fileField.hidden = !adminPayNow;
+    if (adminPayNow) {
+      const fileLabel = fileField.querySelector("label");
+      if (fileLabel) fileLabel.textContent = "Comprobante obligatorio";
+    }
     // El KM de facturación lo declara solamente el chofer.
     // Si el admin pide cierre desde el tablero, no se le pide KM al admin:
     // el cierre queda pendiente para que el chofer declare el KM al abrir su menú o resolver el cierre.
@@ -4391,6 +4420,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       else if (state.modalMode === "confirm" && state.modalClosure && closureActionForViewer(state.modalClosure) === "driver_km") await driverSubmitClosureKm(state.modalClosure);
       else if (state.modalMode === "confirm" && state.modalClosure) await driverConfirmClosure(state.modalClosure);
       else if (state.modalMode === "admin-review" && state.modalClosure && isAdmin()) await adminSubmitClosure(state.modalClosure);
+      else if (state.modalMode === "admin-pay-now" && isAdmin()) await adminCreateAndCloseClosure();
       else await requestClosure();
       setModalMessage("Listo.", "ok");
       setTimeout(closeClosureModal, 700);
@@ -4629,6 +4659,20 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       }).catch(error => console.warn("EXPLORA_PAY_REQUEST_KM_STATE", error?.code || error?.message));
     }
     render();
+    return { ...payload, id:created.id, createdAtMs:cutoffAtMs, updatedAtMs:cutoffAtMs };
+  }
+
+  async function adminCreateAndCloseClosure() {
+    if (!isAdmin()) throw new Error("Solo administrador.");
+    if (!(state.modalFile instanceof File) || !(state.modalFile.size > 0)) throw new Error("Seleccioná el comprobante de Explora.");
+    const closure = await requestClosure();
+    if (!closure?.id) throw new Error("No se pudo crear el cierre para cargar comprobante.");
+    const receipt = await uploadClosureReceipt(closure, state.modalFile);
+    const closed = closureClosedPayload({ closure, receipt, uploadedBy:"admin" });
+    await updateDoc(doc(state.db, "cierres_semanales", closure.id), closed);
+    state.closures = state.closures.map(row => safe(row.id || row.closureId) === safe(closure.id) ? { ...row, ...closed, receiptUrl:receipt?.url || row.receiptUrl || null, receiptPath:receipt?.path || row.receiptPath || null } : row);
+    render();
+    return { ...closure, ...closed, receiptUrl:receipt?.url || null, receiptPath:receipt?.path || null };
   }
 
   function extensionForFile(file) {
