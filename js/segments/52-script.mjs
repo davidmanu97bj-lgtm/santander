@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-admin-closures-board";
+  const VERSION = "explora-pago-home-v52-admin-closures-snap";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -762,12 +762,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           <div>
             <span>ADMIN</span>
             <h1>Cierres</h1>
-            <p>Todos los choferes activos, sin entrar uno por uno.</p>
+            <p>Una pantalla por chofer · deslizá para resolver rápido.</p>
           </div>
         </header>
         <div class="pay-admin-closures-legend">
-          <strong>Regla operativa</strong>
-          <small>Chofer y Explora cierran facturación juntos. Gastos, caja chica y pendientes se controlan por separado.</small>
+          <strong>Vista rápida</strong>
+          <small>Scroll vertical con salto por chofer. Cada botón trabaja solo sobre su tarjeta.</small>
         </div>
         <div class="pay-admin-closures-list" id="payAdminClosuresList">
           <div class="pay-admin-closures-empty">Cargando choferes…</div>
@@ -3272,7 +3272,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       </article>`;
   }
 
-  function renderAdminDriverClosureCard(driver = {}) {
+  function renderAdminDriverClosureCard(driver = {}, index = 0, total = 0) {
     const uid = safe(driver.uid || driver.id);
     const summary = adminDriverSummaryFromState(uid);
     const chofer = tabSummary(summary, "chofer");
@@ -3333,7 +3333,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return `
       <article class="pay-admin-driver-closure-card" data-driver-uid="${esc(uid)}">
         <header class="pay-admin-driver-closure-head">
-          <div><span>CHOFER</span><h2>${esc(driver.name || "Chofer")}</h2></div>
+          <div><span>CHOFER ${esc(String(index + 1))} / ${esc(String(total || 1))}</span><h2>${esc(driver.name || "Chofer")}</h2></div>
           <strong>${esc(currency(totalOpen || 0))}</strong>
         </header>
         <div class="pay-admin-driver-closure-grid">${modules.join("")}</div>
@@ -3351,7 +3351,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       list.innerHTML = `<div class="pay-admin-closures-empty">No hay choferes activos para mostrar.</div>`;
       return;
     }
-    list.innerHTML = state.drivers.map(renderAdminDriverClosureCard).join("");
+    const total = state.drivers.length;
+    list.innerHTML = state.drivers.map((driver, index) => renderAdminDriverClosureCard(driver, index, total)).join("");
   }
 
   async function acceptAdminDebtReduction(rowId = "") {
@@ -3402,6 +3403,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
     setAdminBoardDriver(uid);
     if (action === "request-closure") {
+      state.latestSummary = adminDriverSummaryFromState(uid);
       await openClosureModal("request", null, kind);
       return;
     }
@@ -4103,12 +4105,17 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     render();
   }
 
+  function modalSummaryBase(kind = state.modalKind || state.tab) {
+    if (isAdmin() && getDriverUid()) return adminDriverSummaryFromState(getDriverUid());
+    return state.latestSummary || computeSummary();
+  }
+
   async function openClosureModal(mode = "request", closure = null, kind = state.tab) {
     if (state.busy) return;
     const resolvedKind = closureKindOf(closure || {}) || activeClosureKind(kind);
     if (mode === "request") {
       if (!isClosureTab(resolvedKind)) return;
-      const status = closureButtonState(resolvedKind, state.latestSummary || computeSummary());
+      const status = closureButtonState(resolvedKind, modalSummaryBase(resolvedKind));
       if (!status.enabled) return;
     }
     state.modalMode = mode;
@@ -4199,7 +4206,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (!title || !subtitle || !summary || !fileField || !submit || !cancel) return;
     const closure = state.modalClosure;
     const kind = closureKindOf(closure || {}) || activeClosureKind(state.modalKind || state.tab) || "gastos";
-    const latest = tabSummary(state.latestSummary || computeSummary(), kind);
+    const modalBase = modalSummaryBase(kind);
+    const latest = tabSummary(modalBase, kind);
     fileField.hidden = true;
     if (debtField) debtField.hidden = true;
     if (kmField) kmField.hidden = true;
@@ -4306,11 +4314,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       }
     }
 
-    title.textContent = isAdmin() ? `Pedir ${closureTitle(kind).toLowerCase()} a un chofer` : `Pedir ${closureTitle(kind).toLowerCase()}`;
+    title.textContent = isAdmin() ? `Pedir cierre de ${closureTitle(kind).toLowerCase()}` : `Pedir ${closureTitle(kind).toLowerCase()}`;
     subtitle.textContent = isAdmin()
-      ? (getDriverUid() ? `Chofer seleccionado: ${state.selectedDriverName || "chofer"}. El corte será inmediato.` : "Seleccioná primero un chofer para cargar sus datos y pedir el cierre.")
-      : "El corte será inmediato: lo nuevo que cargues después empieza desde cero en este mismo tipo de cierre.";
-    submit.textContent = `Pedir ${closureTitle(kind).toLowerCase()}`;
+      ? (getDriverUid() ? `Chofer seleccionado: ${state.selectedDriverName || "chofer"}. Esta acción corta únicamente la tarjeta ${closureTitle(kind).toLowerCase()}.` : "Seleccioná primero un chofer para cargar sus datos y pedir el cierre.")
+      : `Esta acción pide solamente el cierre de ${closureTitle(kind).toLowerCase()}. El comprobante lo sube quien debe pagar.`;
+    submit.textContent = `Pedir cierre de ${closureTitle(kind).toLowerCase()}`;
     submit.disabled = isAdmin() && !getDriverUid();
     // CAMBIO 3: En modo request el campo de archivo está SIEMPRE oculto.
     // El comprobante lo sube quien tiene que pagar DESPUÉS de que se crea el cierre.
@@ -4333,8 +4341,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       summary.innerHTML = `<article><span>Efectivo base</span><strong>${currency(latest.gross || 0)}</strong></article><article><span>Caja chica 5%</span><strong>${currency(latest.cashboxTotal || 0)}</strong></article><article><span>En poder del chofer</span><strong>${currency(latest.cashboxInDriver || 0)}</strong></article><article class="closure-payment-result settlement-result-green"><span class="closure-liquidation-label">Chofer debe liquidar a Explora</span><strong>${currency(latest.amountFromDriver || 0)}</strong></article>`;
     } else if (kind === "gastos") {
       summary.innerHTML = `<article><span>Gastos cargados</span><strong>${currency(latest.expenseTotal || 0)}</strong></article><article><span>Parte chofer</span><strong>${currency(latest.driverExpenseShare || 0)}</strong></article><article><span>Parte Explora</span><strong>${currency(latest.exploraExpenseShare || 0)}</strong></article><article class="closure-payment-result settlement-result-green"><span class="closure-liquidation-label">Explora debe liquidar a chofer</span><strong>${currency(latest.amountToDriver || 0)}</strong></article>`;
+    } else if (kind === "chofer") {
+      summary.innerHTML = `<article><span>Efectivo chofer</span><strong>${currency(latest.cashInDriver || 0)}</strong></article><article><span>Parte chofer</span><strong>${currency(latest.billingShareEach || 0)}</strong></article><article class="closure-payment-result settlement-result-green"><span class="closure-liquidation-label">Debe liquidar</span><strong>${currency(latest.amountFromDriver || 0)}</strong></article>`;
+    } else if (kind === "explora") {
+      summary.innerHTML = `<article><span>Digital Explora</span><strong>${currency(latest.nonCashInExplora || 0)}</strong></article><article><span>Parte Explora</span><strong>${currency(latest.billingShareEach || 0)}</strong></article><article class="closure-payment-result settlement-result-green"><span class="closure-liquidation-label">Explora liquida</span><strong>${currency(latest.amountToDriver || 0)}</strong></article>`;
     } else {
-      summary.innerHTML = `<article><span>Efectivo chofer</span><strong>${currency(latest.cashInDriver || 0)}</strong></article><article><span>Digital Explora</span><strong>${currency(latest.nonCashInExplora || 0)}</strong></article><article><span>Total facturado</span><strong>${currency(latest.gross || 0)}</strong></article><article><span>Parte de cada uno</span><strong>${currency(latest.billingShareEach || 0)}</strong></article><article class="closure-payment-result settlement-result-green"><span class="closure-liquidation-label">Resultado</span><strong>${latest.amountFromDriver > 0 ? `Chofer debe liquidar a Explora ${currency(latest.amountFromDriver)}` : latest.amountToDriver > 0 ? `Explora debe liquidar a chofer ${currency(latest.amountToDriver)}` : "Nadie debe liquidar"}</strong></article>`;
+      summary.innerHTML = `<article><span>Efectivo chofer</span><strong>${currency(latest.cashInDriver || 0)}</strong></article><article><span>Digital Explora</span><strong>${currency(latest.nonCashInExplora || 0)}</strong></article><article><span>Parte de cada uno</span><strong>${currency(latest.billingShareEach || 0)}</strong></article><article class="closure-payment-result settlement-result-green"><span class="closure-liquidation-label">Resultado</span><strong>${latest.amountFromDriver > 0 ? `Chofer debe liquidar a Explora ${currency(latest.amountFromDriver)}` : latest.amountToDriver > 0 ? `Explora debe liquidar a chofer ${currency(latest.amountToDriver)}` : "Nadie debe liquidar"}</strong></article>`;
     }
     const payData = closureAmountLine(latest);
     const driverPayment = driverPaymentProfileForUid(getDriverUid());
