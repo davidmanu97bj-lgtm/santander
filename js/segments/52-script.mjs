@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-admin-closures-action-visual-fix";
+  const VERSION = "explora-pago-home-v52-admin-closure-modules-bottomnav-fix";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -194,8 +194,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return target === "chofer" || target === "explora" || target === "facturacion";
   }
 
+  function mapModuleKey(kind = state.tab) {
+    const target = activeClosureKind(kind);
+    if (["chofer", "explora", "gastos", "caja_chica", "pendientes", "facturacion"].includes(target)) return target;
+    return "";
+  }
+
   function closureKindOf(row = {}) {
-    return activeClosureKind(row.closureKind || row.closureType || row.payTab || row.closeKind || row.kind || row.cierreTipo || row.type || row.category);
+    const raw = row.closureKind || row.closureType || row.payTab || row.closeKind || row.kind || row.cierreTipo || row.type || row.category;
+    return safe(raw) ? activeClosureKind(raw) : "";
   }
 
   function normalizeHomeModuleValue(value = "") {
@@ -228,7 +235,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     // Debe ser estricto: si no sabemos la tarjeta exacta donde nació el pedido,
     // no mostramos cartel en Home para evitar falsos positivos.
     const explicit = firstHomeModuleFromFields(row, [
-      "homeModule", "homeTab", "homeCard",
+      "homeModule", "homeTab", "homeCard", "moduleKey", "closureModuleKey",
       "requestModule", "requestedModule", "requestedTab", "requestedFrom",
       "originModule", "originTab", "sourceModule", "sourceTab", "settlementType"
     ]);
@@ -252,6 +259,18 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const target = activeClosureKind(kind);
     if (!["caja_chica", "gastos", "explora", "chofer"].includes(target)) return false;
     return closureHomeModuleOf(row) === target;
+  }
+
+  function closureMatchesIndependentModule(row = {}, kind = state.tab) {
+    const target = mapModuleKey(kind);
+    if (!target) return false;
+    const rowKind = mapModuleKey(closureKindOf(row));
+    const homeKind = mapModuleKey(closureHomeModuleOf(row));
+    if (target === "caja_chica") return rowKind === "caja_chica" || homeKind === "caja_chica";
+    if (target === "gastos") return rowKind === "gastos" || homeKind === "gastos";
+    if (target === "pendientes") return rowKind === "pendientes" || homeKind === "pendientes";
+    if (isBillingClosureKind(target)) return isBillingClosureKind(rowKind) || isBillingClosureKind(homeKind);
+    return rowKind === target || homeKind === target;
   }
 
   function isClosureTab(kind = state.tab) {
@@ -1750,13 +1769,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const cuts = rows
       .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
       .filter(row => {
-        const rowKind = closureKindOf(row);
-        if (target === "caja_chica") return rowKind === "caja_chica";
-        if (target === "gastos") return rowKind === "gastos";
-        // Un cierre pedido desde Chofer o desde Explora corta TODO el período de facturación.
-        // Por eso ambos contadores usan el mismo corte: efectivo del chofer + digital de Explora.
-        if (isBillingClosureKind(target)) return isBillingClosureKind(rowKind);
-        return rowKind === target;
+        // Cada módulo corta solamente su propio período abierto.
+        // Facturación agrupa Chofer+Explora, pero NO corta Caja chica ni Gastos.
+        return closureMatchesIndependentModule(row, target);
       })
       .filter(row => !/cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
       .map(closureCutMs)
@@ -1776,17 +1791,24 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (isAdmin() && !targetUid) return null;
     const pending = state.closures
       .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
-      .filter(row => {
-        const rowKind = closureKindOf(row);
-        if (target === "caja_chica") return rowKind === "caja_chica";
-        if (target === "gastos") return rowKind === "gastos";
-        if (isBillingClosureKind(target)) return isBillingClosureKind(rowKind);
-        return rowKind === target;
-      })
+      .filter(row => closureMatchesIndependentModule(row, target))
       .filter(row => !targetUid || closureBelongsToDriver(row, targetUid))
       .filter(row => !/confirmed|completed|closed|cerrado|al_dia|al día|pagado|cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
       .sort((a,b)=>rowMs(b)-rowMs(a));
     return pending[0] || null;
+  }
+
+  function pendingModuleClosureFor(uid = getDriverUid(), kind = state.tab) {
+    const targetUid = safe(uid);
+    const target = mapModuleKey(kind);
+    if (!target) return null;
+    if (isAdmin() && !targetUid) return null;
+    return state.closures
+      .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
+      .filter(row => closureMatchesIndependentModule(row, target))
+      .filter(row => !targetUid || closureBelongsToDriver(row, targetUid))
+      .filter(row => !/confirmed|completed|closed|cerrado|al_dia|al día|pagado|cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
+      .sort((a,b)=>rowMs(b)-rowMs(a))[0] || null;
   }
 
   function pendingClosureRows(uid = notificationDriverUid()) {
@@ -3052,7 +3074,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const target = activeClosureKind(kind);
     if (!isClosureTab(target) || !hasAdminDriverSelected()) return { visible:false, enabled:false };
 
-    const pending = pendingHomeClosureFor(getDriverUid(), target);
+    // Estado de cierre independiente por módulo: un pedido de facturación no bloquea caja chica/gastos.
+    const pending = pendingModuleClosureFor(getDriverUid(), target);
     if (pending) {
       // Si existe un cierre anterior pendiente, NO debe bloquear un nuevo período abierto.
       // Facturación corta Chofer+Explora juntos; por eso, si después del corte Explora vuelve a
@@ -3197,13 +3220,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       .filter(row => !closureIsCompleted(row))
       .filter(row => !/cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
       .filter(row => closureBelongsToDriver(row, targetUid))
-      .filter(row => {
-        const rowKind = closureKindOf(row);
-        if (target === "caja_chica") return rowKind === "caja_chica";
-        if (target === "gastos") return rowKind === "gastos";
-        if (isBillingClosureKind(target)) return isBillingClosureKind(rowKind);
-        return rowKind === target;
-      })
+      .filter(row => closureMatchesIndependentModule(row, target))
       .sort((a,b)=>rowMs(b)-rowMs(a))[0] || null;
   }
 
@@ -3631,13 +3648,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function closureMatchesSummaryKind(row = {}, kind = state.tab) {
-    const target = activeClosureKind(kind);
-    const rowKind = closureKindOf(row);
-    if (!target || !rowKind) return false;
-    if (target === "caja_chica") return rowKind === "caja_chica";
-    if (target === "gastos") return rowKind === "gastos";
-    if (isBillingClosureKind(target)) return isBillingClosureKind(rowKind);
-    return rowKind === target;
+    const target = mapModuleKey(kind);
+    if (!target) return false;
+    return closureMatchesIndependentModule(row, target);
   }
 
   function firstUsefulNumber(row = {}, fields = []) {
@@ -4555,6 +4568,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const paymentPayload = closurePaymentDataForPayload(targetUid, summary);
     const whatsappText = closureWhatsappText({ kind, summary, targetName, targetUid, requestedBy:isAdmin() ? accountName() : displayName() });
     const cutoffAtMs = Date.now();
+    const moduleKey = mapModuleKey(kind) || kind;
+    const periodId = `${targetUid}_${moduleKey}_${Number(summary.resetMs || 0)}_${cutoffAtMs}`;
+    console.log("[CIERRE] pedir cierre", { driverUid:targetUid, moduleKey, periodId });
     let kmInitial = 0, kmActual = 0;
     const isBillingRequest = isBillingClosureKind(kind);
     let billingKmPending = false;
@@ -4580,6 +4596,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       periodType:"on_demand",
       closureKind:kind,
       closureType:kind,
+      moduleKey,
+      closureModuleKey:moduleKey,
+      periodId,
       payTab:kind,
       billingClosure:isBillingClosureKind(kind),
       billingResetGroup:isBillingClosureKind(kind) ? "facturacion" : "",
