@@ -1715,3 +1715,116 @@ body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon{
   width:100%;
   max-width:100%;
 }
+
+
+/* v4034 · Cierres compactos: modal arriba del menú, sin scroll innecesario */
+body.pay-closure-modal-open .pay-bottom-nav,
+body.pay-closure-modal-open .pay-floating-spark{
+  display:none!important;
+}
+body.pay-closure-modal-open{
+  overflow:hidden!important;
+}
+.pay-closure-backdrop.is-open{
+  z-index:20000!important;
+  align-items:flex-start!important;
+  padding:calc(max(12px, env(safe-area-inset-top))) 10px calc(max(12px, env(safe-area-inset-bottom)))!important;
+}
+.pay-closure-modal{
+  width:min(430px, calc(100vw - 20px))!important;
+  max-width:calc(100vw - 20px)!important;
+  max-height:calc(100dvh - max(24px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)))!important;
+  overflow-y:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+  border-radius:24px!important;
+  padding:14px 16px 12px!important;
+  overscroll-behavior:contain!important;
+}
+.pay-closure-modal header{
+  margin-bottom:8px!important;
+  gap:8px!important;
+}
+.pay-closure-modal h2{
+  font-size:clamp(22px, 6.5vw, 31px)!important;
+  line-height:1.02!important;
+  letter-spacing:-.045em!important;
+}
+.pay-closure-modal p{
+  margin-top:5px!important;
+  font-size:clamp(12.4px,3.55vw,14px)!important;
+  line-height:1.18!important;
+}
+.pay-closure-close{
+  width:42px!important;
+  height:42px!important;
+  border-radius:16px!important;
+  flex:0 0 42px!important;
+}
+.pay-closure-summary{
+  gap:7px!important;
+  margin:10px 0!important;
+}
+.pay-closure-summary article{
+  min-height:0!important;
+  padding:8px 11px!important;
+  border-radius:15px!important;
+  grid-template-columns:minmax(90px,1fr) auto!important;
+}
+.pay-closure-summary span{
+  font-size:clamp(11.4px,3.12vw,12.6px)!important;
+  line-height:1.12!important;
+}
+.pay-closure-summary strong{
+  font-size:clamp(13px,3.75vw,15.5px)!important;
+  line-height:1.12!important;
+}
+.pay-closure-summary article.closure-payment-result,
+.pay-closure-summary article.settlement-result-green{
+  padding:9px 11px!important;
+}
+.pay-closure-summary article.closure-payment-result strong,
+.pay-closure-summary article.settlement-result-green strong{
+  font-size:clamp(15px,4.2vw,18px)!important;
+}
+.pay-closure-field{
+  gap:5px!important;
+  margin:9px 0!important;
+}
+.pay-closure-field label{
+  font-size:11px!important;
+  line-height:1.1!important;
+}
+.pay-closure-field select,
+.pay-closure-field input{
+  border-radius:15px!important;
+  padding:10px 12px!important;
+  font-size:15px!important;
+  min-height:44px!important;
+}
+.pay-closure-message{
+  min-height:16px!important;
+  margin-top:6px!important;
+  font-size:12px!important;
+  line-height:1.15!important;
+}
+.pay-closure-actions{
+  position:static!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  margin-top:8px!important;
+  padding:0!important;
+}
+.pay-closure-actions button{
+  min-height:44px!important;
+  padding:10px 10px!important;
+  border-radius:15px!important;
+  font-size:14px!important;
+  line-height:1.08!important;
+}
+@media (max-width:390px){
+  .pay-closure-modal{padding:13px 14px 11px!important;border-radius:22px!important;}
+  .pay-closure-summary{gap:6px!important;margin:8px 0!important;}
+  .pay-closure-summary article{padding:7px 10px!important;}
+  .pay-closure-field{margin:8px 0!important;}
+  .pay-closure-actions button{min-height:42px!important;}
+}
