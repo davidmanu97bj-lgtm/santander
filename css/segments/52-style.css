@@ -1172,7 +1172,7 @@ body.pay-admin-closures-open{
   .pay-admin-closure-action-wrap{margin-top:auto;padding-top:8px;}
 }
 
-/* v4026 · Corrección tablero admin cierres: una pantalla real por chofer + botones táctiles */
+/* v4027 · Corrección tablero admin cierres: no pedir KM al admin + compactación real */
 body.pay-admin-closures-open{
   overflow:hidden!important;
   height:100svh!important;
@@ -1307,4 +1307,65 @@ body.pay-admin-closures-open .pay-bottom-nav{
   body.pay-admin-closures-open .pay-admin-closure-module{padding:5px 6px!important;border-radius:15px!important;}
   body.pay-admin-closures-open .pay-admin-closure-metric{height:clamp(30px,6.2svh,39px)!important;}
   body.pay-admin-closures-open .pay-admin-closure-action{min-height:clamp(26px,5.2svh,34px)!important;}
+}
+
+
+/* v4027 · Ajuste final iPhone: evitar títulos cortados y mantener una pantalla por chofer */
+body.pay-admin-closures-open .pay-admin-driver-closure-head{
+  padding:4px 3px 5px!important;
+  margin-bottom:4px!important;
+}
+body.pay-admin-closures-open .pay-admin-driver-closure-grid{
+  gap:4px!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-module{
+  padding:5px 6px!important;
+  border-radius:15px!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-module header{
+  margin-bottom:3px!important;
+  min-height:12px!important;
+  line-height:1!important;
+  flex:0 0 auto!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-module header span{
+  display:block!important;
+  font-size:clamp(9px,2.8vw,11px)!important;
+  line-height:1!important;
+  letter-spacing:.045em!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-metrics{
+  gap:4px!important;
+  flex:0 0 auto!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-metric{
+  height:clamp(28px,5.4svh,34px)!important;
+  min-height:0!important;
+  border-radius:11px!important;
+  padding:3px 4px!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-metric span{
+  font-size:clamp(7.8px,2.45vw,9.5px)!important;
+  line-height:1!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-metric strong{
+  font-size:clamp(10px,3.25vw,13px)!important;
+  line-height:1!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-action-wrap{
+  margin-top:4px!important;
+  flex:0 0 auto!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-action{
+  min-height:clamp(25px,4.8svh,31px)!important;
+  border-radius:12px!important;
+  font-size:clamp(8px,2.5vw,10px)!important;
+  padding:3px 6px!important;
+}
+@media (max-height:760px){
+  body.pay-admin-closures-open .pay-admin-driver-closure-head h2{font-size:clamp(18px,5.5vw,22px)!important;}
+  body.pay-admin-closures-open .pay-admin-driver-closure-head strong{font-size:clamp(10px,3.2vw,13px)!important;padding:6px 9px!important;}
+  body.pay-admin-closures-open .pay-admin-closure-module{padding:4px 5px!important;border-radius:14px!important;}
+  body.pay-admin-closures-open .pay-admin-closure-metric{height:clamp(25px,5svh,30px)!important;}
+  body.pay-admin-closures-open .pay-admin-closure-action{min-height:clamp(23px,4.6svh,28px)!important;}
 }
