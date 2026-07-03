@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-admin-closures-snap-fix";
+  const VERSION = "explora-pago-home-v52-admin-closures-snap-km-admin-fix";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -4345,17 +4345,22 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     // El comprobante lo sube quien tiene que pagar DESPUÉS de que se crea el cierre.
     // Regla: el solicitante nunca sube comprobante al pedir —el cierre queda ABIERTO para la otra parte.
     fileField.hidden = true;
-    const requestShowsKm = isBillingClosureKind(kind);
+    // El KM de facturación lo declara solamente el chofer.
+    // Si el admin pide cierre desde el tablero, no se le pide KM al admin:
+    // el cierre queda pendiente para que el chofer declare el KM al abrir su menú o resolver el cierre.
+    const requestShowsKm = !isAdmin() && isBillingClosureKind(kind);
     const requestNeedsKm = requestShowsKm;
     if (kmField) kmField.hidden = !requestShowsKm;
     if (kmInput) {
       kmInput.required = requestNeedsKm;
-      kmInput.value = "";
+      kmInput.value = requestShowsKm ? "" : kmInput.value;
       if (requestShowsKm) {
-        const kmMin = kmInitialForOpenPeriod(getDriverUid(), state.closures, isAdmin() ? driverProfileForEfficiency(getDriverUid()) : state.profile);
+        const kmMin = kmInitialForOpenPeriod(getDriverUid(), state.closures, state.profile);
         if (kmMin > 0) kmInput.min = String(Math.floor(kmMin));
         else kmInput.removeAttribute("min");
         if (kmHint) kmHint.textContent = kmMin > 0 ? `Debe ser mayor o igual al último KM declarado ${Math.round(kmMin)}.` : "Primero cargá KM inicial desde Eficiencia Operativa.";
+      } else {
+        kmInput.removeAttribute("min");
       }
     }
     if (kind === "caja_chica") {
@@ -4528,8 +4533,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     let billingKmPending = false;
     if (isBillingRequest) {
       kmInitial = kmInitialForOpenPeriod(targetUid, state.closures, isAdmin() ? driverProfileForEfficiency(targetUid) : state.profile);
-      if (!(kmInitial > 0)) throw new Error("Primero cargá KM inicial del auto desde Eficiencia Operativa.");
-      kmActual = readClosureKmInput({ initialKm:kmInitial, required:true });
+      if (isAdmin()) {
+        // El admin solo solicita el cierre. El KM queda pendiente para que lo declare el chofer.
+        billingKmPending = true;
+        kmActual = 0;
+      } else {
+        if (!(kmInitial > 0)) throw new Error("Primero cargá KM inicial del auto desde Eficiencia Operativa.");
+        kmActual = readClosureKmInput({ initialKm:kmInitial, required:true });
+      }
     }
     const recordIds = (summary.records || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
     const expenseIds = (summary.expenses || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
@@ -4569,8 +4580,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       ...paymentPayload,
       whatsappNoticeTo:EXPLORA_WHATSAPP_DISPLAY,
       whatsappNoticeText:whatsappText,
-      ...(isBillingRequest ? efficiencyPayloadFromKm({ kmActual, kmInicial:kmInitial, summary, pending:billingKmPending, uid:targetUid, beforeMs:cutoffAtMs }) : {}),
-      ...(isBillingRequest && isAdmin() && billingKmPending ? { kmPendienteChofer:true, kmTaskStatus:"pending_driver_km" } : {}),
+      ...(isBillingRequest && !isAdmin() ? efficiencyPayloadFromKm({ kmActual, kmInicial:kmInitial, summary, pending:billingKmPending, uid:targetUid, beforeMs:cutoffAtMs }) : {}),
+      ...(isBillingRequest && isAdmin() && billingKmPending ? { kmPendienteChofer:true, eficienciaPendienteDatos:true, kmTaskStatus:"pending_driver_km", statusLabel:`${closureTitle(kind)} solicitado · KM pendiente del chofer` } : {}),
       gross:Number(summary.gross || 0),
       expenseTotal:Number(summary.expenseTotal || 0),
       cashInDriver:Number(summary.cashInDriver || 0),
@@ -4599,7 +4610,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const created = await addDoc(collection(state.db, "cierres_semanales"), payload);
     state.closures = [{ ...payload, id:created.id, createdAtMs:cutoffAtMs, updatedAtMs:cutoffAtMs }, ...state.closures.filter(row => row.id !== created.id)];
     if (!isAdmin()) openWhatsappToExplora(whatsappText);
-    if (isBillingRequest && kmActual > 0) {
+    if (isBillingRequest && !isAdmin() && kmActual > 0) {
       updateDriverEfficiencyState(targetUid, {
         lastKnownKm:Number(kmActual || 0),
         currentEfficiencyPeriodStartKm:Number(kmActual || 0),
