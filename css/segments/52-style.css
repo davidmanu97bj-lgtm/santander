@@ -2150,7 +2150,7 @@ body.explora-admin-activity-home .pay-bottom-nav .pay-nav-main .pay-nav-finance-
   }
 }
 
-/* v4038 · Deudas admin blanco, sin cuotas fijas y selector compacto */
+/* v4040 · Deudas admin blanco, sin cuotas fijas y selector compacto */
 body.explora-admin-debts-white .admin-shared-screen{
   background:var(--pay-bg)!important;
   color:var(--pay-ink)!important;
@@ -2393,4 +2393,12 @@ body.explora-pay-mode .pay-more-logout-zone{
     padding-right:14px!important;
     padding-bottom:calc(148px + env(safe-area-inset-bottom))!important;
   }
+}
+
+/* v4040 · Defensa visual: si un HTML viejo queda mezclado por caché, no mostrar campos de cuotas en Deudas. */
+body.explora-admin-debts-white label[for="adminDebtInstallmentCount"],
+body.explora-admin-debts-white label[for="adminDebtWeeklyAmount"],
+body.explora-admin-debts-white #adminDebtInstallmentCount:not([type="hidden"]),
+body.explora-admin-debts-white #adminDebtWeeklyAmount:not([type="hidden"]){
+  display:none!important;
 }
