@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4042-deudas-responsive-whatsapp-directo";
+  const VERSION = "explora-pago-home-v52-v4043-android-whatsapp-profile-country";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -2150,6 +2150,62 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return "";
   }
 
+  const WHATSAPP_COUNTRY_OPTIONS = [
+    { value:"549", label:"🇦🇷 Argentina +54 9", placeholder:"3757461564" },
+    { value:"595", label:"🇵🇾 Paraguay +595", placeholder:"991123456" },
+    { value:"55", label:"🇧🇷 Brasil +55", placeholder:"45912345678" },
+    { value:"598", label:"🇺🇾 Uruguay +598", placeholder:"99123456" }
+  ];
+
+  function whatsappCountryOptionsHtml(selected = "549") {
+    const current = safe(selected) || "549";
+    return WHATSAPP_COUNTRY_OPTIONS.map(option => `<option value="${esc(option.value)}" ${option.value === current ? "selected" : ""}>${esc(option.label)}</option>`).join("");
+  }
+
+  function whatsappCountryPlaceholder(country = "549") {
+    return WHATSAPP_COUNTRY_OPTIONS.find(option => option.value === safe(country))?.placeholder || "3757461564";
+  }
+
+  function rawWhatsappDigits(value = "") {
+    let digits = safe(value).replace(/\D+/g, "");
+    if (digits.startsWith("00")) digits = digits.slice(2);
+    return digits.replace(/^0+/, "");
+  }
+
+  function splitWhatsappPhone(value = "", profile = {}) {
+    const storedCountry = rawWhatsappDigits(profile?.whatsappCountryCode || profile?.codigoPaisWhatsapp || profile?.telefonoPais || profile?.phoneCountryCode || "");
+    const storedLocal = rawWhatsappDigits(profile?.whatsappLocalNumber || profile?.telefonoLocal || profile?.phoneLocal || "");
+    if (storedCountry && storedLocal) return { country:storedCountry, local:storedLocal, full:`${storedCountry}${storedLocal}` };
+    let digits = rawWhatsappDigits(value);
+    if (/^(2|3)\d{9}$/.test(digits)) return { country:"549", local:digits, full:`549${digits}` };
+    if (/^54(2|3)\d{9}$/.test(digits)) return { country:"549", local:digits.slice(2), full:`549${digits.slice(2)}` };
+    if (/^549(2|3)\d{9}$/.test(digits)) return { country:"549", local:digits.slice(3), full:digits };
+    for (const option of WHATSAPP_COUNTRY_OPTIONS) {
+      if (digits.startsWith(option.value) && digits.length > option.value.length) {
+        return { country:option.value, local:digits.slice(option.value.length), full:digits };
+      }
+    }
+    return { country:"549", local:digits, full:digits ? `549${digits}` : "" };
+  }
+
+  function composeWhatsappPhone(country = "549", local = "") {
+    const prefix = rawWhatsappDigits(country) || "549";
+    const digits = rawWhatsappDigits(local);
+    if (!digits) return "";
+    if (prefix === "549") {
+      if (/^549(2|3)\d{9}$/.test(digits)) return digits;
+      if (/^54(2|3)\d{9}$/.test(digits)) return `549${digits.slice(2)}`;
+      if (/^(2|3)\d{9}$/.test(digits)) return `549${digits}`;
+    }
+    if (digits.startsWith(prefix) && digits.length > prefix.length) return digits;
+    return `${prefix}${digits.replace(/^0+/, "")}`;
+  }
+
+  function profileWhatsappParts(profile = {}) {
+    const raw = firstProfileValue(profile, ["whatsappNormalized", "whatsappFull", "telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]);
+    return splitWhatsappPhone(raw, profile);
+  }
+
   function driverFullNameFromProfile(profile = state.profile) {
     return firstProfileValue(profile, ["nombreCompleto", "fullName", "nombre", "displayName", "name", "email"]) || displayName();
   }
@@ -2164,10 +2220,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function driverPaymentProfile(profile = state.profile) {
+    const phoneParts = profileWhatsappParts(profile);
     return {
       fullName:driverFullNameFromProfile(profile),
       car:driverCarLabel(profile),
-      phone:firstProfileValue(profile, ["telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]),
+      phone:phoneParts.full || firstProfileValue(profile, ["telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]),
+      phoneCountry:phoneParts.country || "549",
+      phoneLocal:phoneParts.local || "",
       cuit:firstProfileValue(profile, ["cuit", "CUIT", "cuil", "taxId", "dniFiscal"]),
       alias:firstProfileValue(profile, ["aliasCobro", "paymentAlias", "aliasParaCobrar", "alias", "mercadoPagoAlias", "aliasMp", "mpAlias"])
     };
@@ -2183,7 +2242,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function paymentProfileMissingFields(data = driverPaymentProfile()) {
     const missing = [];
-    if (!safe(data.phone)) missing.push("número de teléfono");
+    if (!normalizeWhatsappPhone(data.phone)) missing.push("número de WhatsApp");
     if (!safe(data.cuit)) missing.push("CUIT");
     if (!safe(data.alias)) missing.push("alias para cobrar");
     return missing;
@@ -2292,9 +2351,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function normalizeWhatsappPhone(value = "") {
-    let digits = safe(value).replace(/\D+/g, "");
-    if (digits.startsWith("00")) digits = digits.slice(2);
-    digits = digits.replace(/^0+/, "");
+    const digits = rawWhatsappDigits(value);
+    if (!digits) return "";
     if (/^(2|3)\d{9}$/.test(digits)) return `549${digits}`;
     if (/^54(2|3)\d{9}$/.test(digits)) return `549${digits.slice(2)}`;
     return digits;
@@ -2305,19 +2363,22 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const platform = safe(navigator?.platform || "");
     const ios = /iPad|iPhone|iPod/i.test(ua) || (platform === "MacIntel" && Number(navigator?.maxTouchPoints || 0) > 1);
     const android = /Android/i.test(ua);
+    const webview = /; wv\)|Version\/\d+.*Chrome\/\d+.*Mobile Safari/i.test(ua);
     const standalone = Boolean(window.matchMedia?.("(display-mode: standalone)")?.matches || navigator?.standalone);
-    return { ios, android, standalone };
+    return { ios, android, webview, standalone };
   }
 
-  function openWhatsappNativeUrl(url = "") {
+  function openNativeWhatsappUrl(url = "", { android = false } = {}) {
     const target = safe(url);
     if (!target) return false;
     try {
       const anchor = document.createElement("a");
       anchor.href = target;
-      anchor.target = "_self";
-      anchor.rel = "noopener";
-      anchor.style.display = "none";
+      anchor.target = android ? "_blank" : "_self";
+      anchor.rel = "noopener noreferrer";
+      anchor.style.position = "fixed";
+      anchor.style.left = "-9999px";
+      anchor.style.top = "-9999px";
       document.body?.appendChild(anchor);
       anchor.click();
       setTimeout(() => anchor.remove(), 1200);
@@ -2327,7 +2388,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       window.location.href = target;
       return true;
     } catch (_) {
-      try { window.location.assign(target); return true; } catch (__) { return false; }
+      return false;
     }
   }
 
@@ -2335,16 +2396,17 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const normalizedPhone = normalizeWhatsappPhone(phone);
     if (!normalizedPhone) return false;
     const encodedText = encodeURIComponent(text || "");
-    const nativeQuery = `phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
-    const nativeUrl = `whatsapp://send?${nativeQuery}`;
-    const { android } = whatsappPlatform();
+    const nativeUrl = `whatsapp://send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
+    const platform = whatsappPlatform();
 
-    // Cierres Explora: abrir app nativa directamente para evitar
-    // la pantalla intermedia "WhatsApp Web" en iOS/Android/PWA.
-    if (android) {
-      return openWhatsappNativeUrl(`intent://send?${nativeQuery}#Intent;scheme=whatsapp;end`);
-    }
-    return openWhatsappNativeUrl(nativeUrl);
+    // Android PWA/WebView no debe navegar a intent:// porque puede dejar a Explora
+    // en net::ERR_UNKNOWN_URL_SCHEME. Se usa el esquema nativo de WhatsApp directo.
+    if (platform.android || platform.ios) return openNativeWhatsappUrl(nativeUrl, { android:platform.android });
+
+    // Escritorio/tablet sin plataforma móvil: último recurso oficial. No se usa en Android/iOS.
+    const webUrl = `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`;
+    try { window.open(webUrl, "_blank", "noopener,noreferrer"); return true; } catch (_) {}
+    try { window.location.href = webUrl; return true; } catch (_) { return false; }
   }
 
   function openWhatsappToExplora(text = "") {
@@ -2451,10 +2513,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     body.innerHTML = `
       <div class="pay-profile-readonly"><span>Nombre completo</span><strong>${esc(data.fullName || "Chofer")}</strong></div>
       <div class="pay-profile-readonly"><span>Auto modelo y patente</span><strong>${esc(data.car || "Sin auto asignado")}</strong></div>
-      <label class="pay-profile-field" for="payProfilePhone"><span>Número de teléfono</span><input id="payProfilePhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: 3757461564" value="${esc(data.phone)}" required /></label>
-      <label class="pay-profile-field" for="payProfileCuit"><span>CUIT</span><input id="payProfileCuit" type="text" inputmode="numeric" autocomplete="off" placeholder="Ej: 20-00000000-0" value="${esc(data.cuit)}" required /></label>
-      <label class="pay-profile-field" for="payProfileAlias"><span>Alias para cobrar</span><input id="payProfileAlias" type="text" autocomplete="off" placeholder="Ej: alias.mercadopago" value="${esc(data.alias)}" required /></label>
-      <div class="pay-profile-note">Estos tres datos los carga el chofer y se adjuntan al pedir cierre para que Explora pueda liquidar más rápido.</div>`;
+      <label class="pay-profile-field pay-profile-phone-field" for="payProfilePhone"><span>WhatsApp obligatorio</span><div class="pay-profile-phone-row"><select id="payProfileCountry" aria-label="Código de país" required>${whatsappCountryOptionsHtml(data.phoneCountry || "549")}</select><input id="payProfilePhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: ${esc(whatsappCountryPlaceholder(data.phoneCountry || "549"))}" value="${esc(data.phoneLocal || "")}" required /></div><small>Elegí país y cargá el número sin 0 ni +. Se guarda normalizado para WhatsApp.</small></label>
+      <label class="pay-profile-field" for="payProfileCuit"><span>CUIT</span><input id="payProfileCuit" type="text" inputmode="numeric" autocomplete="off" placeholder="Ej: 20-00000000-0" value="${esc(data.cuit)}" ${isAdmin() ? "" : "required"} /></label>
+      <label class="pay-profile-field" for="payProfileAlias"><span>Alias para cobrar</span><input id="payProfileAlias" type="text" autocomplete="off" placeholder="Ej: alias.mercadopago" value="${esc(data.alias)}" ${isAdmin() ? "" : "required"} /></label>
+      <div class="pay-profile-note">${isAdmin() ? "Este WhatsApp queda guardado en el perfil admin. Los cierres de Explora al chofer usan el número que cada chofer haya seleccionado acá." : "El chofer elige su país y número. Explora usará exactamente ese WhatsApp para pedir cierres y enviar comprobantes."}</div>`;
+    const country = $("payProfileCountry");
+    const phone = $("payProfilePhone");
+    country?.addEventListener("change", () => {
+      if (phone) phone.placeholder = `Ej: ${whatsappCountryPlaceholder(country.value || "549")}`;
+    });
     const msg = $("payProfileMessage");
     if (msg) { msg.textContent = ""; msg.className = "pay-profile-message"; }
   }
@@ -2484,16 +2551,25 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   async function saveDriverProfileModal() {
-    if (isAdmin()) return;
-    const phone = safe($("payProfilePhone")?.value || "");
+    const phoneCountry = safe($("payProfileCountry")?.value || "549");
+    const phoneLocal = safe($("payProfilePhone")?.value || "");
+    const phone = composeWhatsappPhone(phoneCountry, phoneLocal);
     const cuit = safe($("payProfileCuit")?.value || "");
     const alias = safe($("payProfileAlias")?.value || "");
-    const missing = paymentProfileMissingFields({ phone, cuit, alias });
+    const missing = isAdmin()
+      ? (normalizeWhatsappPhone(phone) ? [] : ["número de WhatsApp"])
+      : paymentProfileMissingFields({ phone, cuit, alias });
     if (missing.length) { setProfileMessage(`Completá: ${missing.join(", ")}.`, "error"); return; }
     const fields = {
       telefono:phone,
       numeroTelefono:phone,
       whatsapp:phone,
+      whatsappFull:phone,
+      whatsappNormalized:normalizeWhatsappPhone(phone),
+      whatsappCountryCode:phoneCountry,
+      whatsappLocalNumber:rawWhatsappDigits(phoneLocal),
+      codigoPaisWhatsapp:phoneCountry,
+      telefonoLocal:rawWhatsappDigits(phoneLocal),
       cuit,
       aliasCobro:alias,
       aliasParaCobrar:alias,
@@ -5036,4 +5112,4 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen });
 })();
 
-/* v4042: WhatsApp nativo directo y Deudas admin responsive. */
+/* v4043: Android usa whatsapp:// directo; perfil admin/chofer con selector obligatorio de país. */
