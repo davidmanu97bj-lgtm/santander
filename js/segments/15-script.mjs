@@ -184,4 +184,4 @@ document.addEventListener("input",event=>{if(!state.opened)return;if(event.targe
 document.addEventListener("change",event=>{if(!state.opened)return;if(event.target?.id==="adminDebtDriver")syncSelectedVehicle();if(event.target?.id==="adminDebtVehicleSelect")setSelectedVehicleById(event.target.value);if(event.target?.id==="driverDebtReceiptInput")selectReceipt(event.target.files?.[0]);});
 document.addEventListener("submit",event=>{if(event.target?.id==="adminDebtForm")submitDriverDebt(event);});
 
-/* v4040: Deudas reemplaza Pendientes en UI; cuotas semanales ocultas; selector compacto activo. */
+/* v4042: Deudas responsive iOS/Android; cuotas semanales ocultas; selector compacto activo. */

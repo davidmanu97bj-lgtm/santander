@@ -5360,6 +5360,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       window.unlockPageScroll?.("admin-shared");
       window.unlockPageScroll?.("admin-debt");
       document.body.classList.remove("explora-admin-drivers-white");
+      document.body.classList.remove("explora-admin-debts-white");
       adminSharedState.mode = "home";
       adminSharedState.selectedDriverKey = "";
       clearAdminReceiptSelection();
