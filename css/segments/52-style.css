@@ -2664,3 +2664,216 @@ body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon
     font-size:10.8px!important;
   }
 }
+
+/* v4049 · Dock inferior realineado + icono premium de agregar cobro
+   Objetivo: barra más baja, botón central integrado, iconos/textos simétricos como dock móvil. */
+:root{
+  --explora-dock-h:66px!important;
+  --explora-dock-center:60px!important;
+  --explora-dock-center-bottom:32px!important;
+}
+body.explora-pay-mode .dashboard-shell-real,
+body.explora-pay-mode .pay-shell,
+body.pay-more-open .pay-shell{
+  padding-bottom:calc(88px + env(safe-area-inset-bottom))!important;
+}
+body.pay-admin-closures-open .explora-pay-admin-closures,
+body.explora-admin-drivers-white .admin-shared-shell,
+body.explora-admin-debts-white .admin-shared-shell{
+  padding-bottom:calc(88px + env(safe-area-inset-bottom))!important;
+}
+body.explora-pay-mode .pay-bottom-nav,
+body.pay-admin-closures-open .pay-bottom-nav,
+.pay-bottom-nav{
+  left:50%!important;
+  right:auto!important;
+  bottom:0!important;
+  transform:translateX(-50%)!important;
+  width:min(100vw,520px)!important;
+  height:calc(var(--explora-dock-h) + env(safe-area-inset-bottom))!important;
+  min-height:calc(var(--explora-dock-h) + env(safe-area-inset-bottom))!important;
+  padding:7px 18px calc(6px + env(safe-area-inset-bottom))!important;
+  border-radius:28px 28px 0 0!important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) 64px minmax(0,1fr) minmax(0,1fr)!important;
+  align-items:start!important;
+  justify-items:center!important;
+  background:rgba(255,255,255,.965)!important;
+  box-shadow:0 -8px 24px rgba(15,23,42,.105)!important;
+  backdrop-filter:blur(16px)!important;
+  -webkit-backdrop-filter:blur(16px)!important;
+  overflow:visible!important;
+}
+body.explora-pay-mode .pay-bottom-nav .pay-nav-btn:not(.pay-nav-main),
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-btn:not(.pay-nav-main),
+.pay-bottom-nav .pay-nav-btn:not(.pay-nav-main){
+  width:100%!important;
+  height:50px!important;
+  min-height:50px!important;
+  padding:0 1px!important;
+  margin:0!important;
+  gap:3px!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:center!important;
+  text-align:center!important;
+  font-size:11px!important;
+  line-height:1!important;
+  font-weight:850!important;
+  letter-spacing:-.015em!important;
+}
+body.explora-pay-mode .pay-bottom-nav .pay-nav-btn:not(.pay-nav-main) svg,
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-btn:not(.pay-nav-main) svg,
+.pay-bottom-nav .pay-nav-btn:not(.pay-nav-main) svg{
+  width:23px!important;
+  height:23px!important;
+  flex:0 0 23px!important;
+  stroke-width:2.28!important;
+}
+body.explora-pay-mode .pay-bottom-nav .pay-nav-btn:not(.pay-nav-main) span,
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-btn:not(.pay-nav-main) span,
+.pay-bottom-nav .pay-nav-btn:not(.pay-nav-main) span{
+  display:block!important;
+  max-width:100%!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+body.explora-pay-mode .pay-bottom-nav .pay-nav-main,
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main,
+.pay-bottom-nav .pay-nav-main{
+  position:absolute!important;
+  left:50%!important;
+  bottom:calc(var(--explora-dock-center-bottom) + env(safe-area-inset-bottom))!important;
+  transform:translateX(-50%)!important;
+  width:var(--explora-dock-center)!important;
+  height:var(--explora-dock-center)!important;
+  min-width:var(--explora-dock-center)!important;
+  min-height:var(--explora-dock-center)!important;
+  border-radius:999px!important;
+  display:grid!important;
+  place-items:center!important;
+  padding:0!important;
+  margin:0!important;
+  overflow:visible!important;
+  z-index:6!important;
+  background:linear-gradient(145deg,#5b5df6 0%,#4547de 100%)!important;
+  color:#fff!important;
+  box-shadow:0 10px 24px rgba(77,79,229,.30)!important;
+}
+/* Label central alineado con los textos laterales, como dock móvil premium */
+body.explora-pay-mode .pay-bottom-nav .pay-nav-main > span:last-child,
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main > span:last-child,
+.pay-bottom-nav .pay-nav-main > span:last-child{
+  position:absolute!important;
+  top:62px!important;
+  left:50%!important;
+  transform:translateX(-50%)!important;
+  display:block!important;
+  width:76px!important;
+  max-width:76px!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+  text-align:center!important;
+  color:var(--pay-blue)!important;
+  font-size:10.6px!important;
+  font-weight:850!important;
+  line-height:1!important;
+  letter-spacing:-.02em!important;
+  pointer-events:none!important;
+}
+/* Chofer: reemplaza el + por icono premium de agregar cobro */
+body.explora-pay-mode:not(.explora-admin-activity-home):not(.pay-admin-closures-open) .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon,
+.pay-bottom-nav .pay-nav-main .pay-nav-plus-icon{
+  width:32px!important;
+  height:32px!important;
+  display:grid!important;
+  place-items:center!important;
+  font-size:0!important;
+  line-height:0!important;
+  color:transparent!important;
+  filter:none!important;
+}
+body.explora-pay-mode:not(.explora-admin-activity-home):not(.pay-admin-closures-open) .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon::before,
+.pay-bottom-nav .pay-nav-main .pay-nav-plus-icon::before{
+  content:""!important;
+  width:32px!important;
+  height:32px!important;
+  display:block!important;
+  background-repeat:no-repeat!important;
+  background-position:center!important;
+  background-size:contain!important;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Crect x='5' y='8' width='22' height='16' rx='5' stroke='white' stroke-width='2.4'/%3E%3Cpath d='M8 13h16M10 18h7' stroke='white' stroke-width='2.4' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='22' r='5.2' fill='white'/%3E%3Cpath d='M23 19.3v5.4M20.3 22h5.4' stroke='%234d4fe5' stroke-width='2.1' stroke-linecap='round'/%3E%3Cpath d='M23.7 4.7l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6.6-1.6Z' fill='white' opacity='.95'/%3E%3C/svg%3E")!important;
+}
+/* Admin mantiene icono financiero/contable, no el cobro */
+body.explora-admin-activity-home .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon,
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon{
+  display:none!important;
+  visibility:hidden!important;
+  opacity:0!important;
+}
+body.explora-admin-activity-home .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon,
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon{
+  display:block!important;
+  visibility:visible!important;
+  opacity:1!important;
+  width:31px!important;
+  height:31px!important;
+}
+body.explora-pay-mode:not(.explora-admin-activity-home):not(.pay-admin-closures-open) .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon{
+  display:none!important;
+  visibility:hidden!important;
+  opacity:0!important;
+}
+.main-bottom-nav,
+.main-bottom-nav.performance-bottom-nav{
+  height:calc(var(--explora-dock-h) + env(safe-area-inset-bottom))!important;
+  min-height:calc(var(--explora-dock-h) + env(safe-area-inset-bottom))!important;
+  padding:7px 18px calc(6px + env(safe-area-inset-bottom))!important;
+  border-radius:28px 28px 0 0!important;
+  box-shadow:0 -8px 24px rgba(15,23,42,.105)!important;
+}
+.main-nav-item{
+  height:50px!important;
+  min-height:50px!important;
+  padding:0 1px!important;
+  gap:3px!important;
+  justify-content:center!important;
+  font-size:11px!important;
+  line-height:1!important;
+  font-weight:850!important;
+}
+.main-nav-item svg{
+  width:23px!important;
+  height:23px!important;
+  flex:0 0 23px!important;
+}
+@media(max-width:390px){
+  :root{
+    --explora-dock-h:64px!important;
+    --explora-dock-center:58px!important;
+    --explora-dock-center-bottom:31px!important;
+  }
+  body.explora-pay-mode .pay-bottom-nav,
+  body.pay-admin-closures-open .pay-bottom-nav,
+  .pay-bottom-nav,
+  .main-bottom-nav,
+  .main-bottom-nav.performance-bottom-nav{
+    padding-left:14px!important;
+    padding-right:14px!important;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr) 60px minmax(0,1fr) minmax(0,1fr)!important;
+  }
+  body.explora-pay-mode .pay-bottom-nav .pay-nav-btn:not(.pay-nav-main),
+  body.pay-admin-closures-open .pay-bottom-nav .pay-nav-btn:not(.pay-nav-main),
+  .pay-bottom-nav .pay-nav-btn:not(.pay-nav-main),
+  .main-nav-item{
+    font-size:10.4px!important;
+  }
+  body.explora-pay-mode .pay-bottom-nav .pay-nav-main > span:last-child,
+  body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main > span:last-child,
+  .pay-bottom-nav .pay-nav-main > span:last-child{
+    top:60px!important;
+    font-size:10.2px!important;
+  }
+}
