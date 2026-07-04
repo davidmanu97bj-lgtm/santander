@@ -2368,45 +2368,64 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return { ios, android, webview, standalone };
   }
 
-  function openNativeWhatsappUrl(url = "", { android = false } = {}) {
-    const target = safe(url);
-    if (!target) return false;
+  function openNativeWhatsappUrl(url = "", { target = "_self" } = {}) {
+    const href = safe(url);
+    if (!href) return false;
     try {
       const anchor = document.createElement("a");
-      anchor.href = target;
-      anchor.target = android ? "_blank" : "_self";
-      anchor.rel = "noopener noreferrer";
+      anchor.href = href;
+      anchor.target = target;
+      anchor.rel = target === "_blank" ? "noopener noreferrer" : "noopener";
       anchor.style.position = "fixed";
       anchor.style.left = "-9999px";
       anchor.style.top = "-9999px";
+      anchor.style.width = "1px";
+      anchor.style.height = "1px";
       document.body?.appendChild(anchor);
       anchor.click();
       setTimeout(() => anchor.remove(), 1200);
       return true;
     } catch (_) {}
     try {
-      window.location.href = target;
+      window.location.href = href;
       return true;
     } catch (_) {
       return false;
     }
   }
 
+  function whatsappAndroidIntentUrl({ normalizedPhone = "", encodedText = "", packageName = "com.whatsapp", fallbackUrl = "" } = {}) {
+    const query = `phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
+    const fallback = safe(fallbackUrl) ? `;S.browser_fallback_url=${encodeURIComponent(fallbackUrl)}` : "";
+    return `intent://send?${query}#Intent;scheme=whatsapp;package=${packageName}${fallback};end`;
+  }
+
   function openWhatsappToPhone(phone = "", text = "") {
     const normalizedPhone = normalizeWhatsappPhone(phone);
     if (!normalizedPhone) return false;
     const encodedText = encodeURIComponent(text || "");
-    const nativeUrl = `whatsapp://send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
     const platform = whatsappPlatform();
+    const mobileFallbackUrl = `https://api.whatsapp.com/send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
 
-    // Android PWA/WebView no debe navegar a intent:// porque puede dejar a Explora
-    // en net::ERR_UNKNOWN_URL_SCHEME. Se usa el esquema nativo de WhatsApp directo.
-    if (platform.android || platform.ios) return openNativeWhatsappUrl(nativeUrl, { android:platform.android });
+    if (platform.android) {
+      // Android/Chrome/PWA: usar Intent explícito con paquete. No navegar a whatsapp://,
+      // porque algunos WebView lo cargan como página y muestran net::ERR_UNKNOWN_URL_SCHEME.
+      const intentUrl = whatsappAndroidIntentUrl({
+        normalizedPhone,
+        encodedText,
+        packageName:"com.whatsapp",
+        fallbackUrl:mobileFallbackUrl
+      });
+      return openNativeWhatsappUrl(intentUrl, { target:"_self" });
+    }
 
-    // Escritorio/tablet sin plataforma móvil: último recurso oficial. No se usa en Android/iOS.
-    const webUrl = `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`;
-    try { window.open(webUrl, "_blank", "noopener,noreferrer"); return true; } catch (_) {}
-    try { window.location.href = webUrl; return true; } catch (_) { return false; }
+    if (platform.ios) {
+      return openNativeWhatsappUrl(`whatsapp://send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`, { target:"_self" });
+    }
+
+    // Escritorio/tablet sin plataforma móvil: último recurso oficial.
+    try { window.open(mobileFallbackUrl, "_blank", "noopener,noreferrer"); return true; } catch (_) {}
+    try { window.location.href = mobileFallbackUrl; return true; } catch (_) { return false; }
   }
 
   function openWhatsappToExplora(text = "") {
@@ -5112,4 +5131,4 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen });
 })();
 
-/* v4043: Android usa whatsapp:// directo; perfil admin/chofer con selector obligatorio de país. */
+/* v4044: Android usa Intent explícito con paquete WhatsApp para evitar ERR_UNKNOWN_URL_SCHEME. */
