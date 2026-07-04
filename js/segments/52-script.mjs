@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4052-historico-rangos-mes-selector";
+  const VERSION = "explora-pago-home-v52-v4053-modal-datos-perfil-centrado";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -2254,6 +2254,42 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return missing;
   }
 
+  function displayPaymentPhone(value = "") {
+    const raw = safe(value);
+    if (!raw) return "Sin cargar";
+    if (raw.startsWith("+")) return raw;
+    const digits = normalizeWhatsappPhone(raw);
+    return digits ? `+${digits}` : raw;
+  }
+
+  function driverPaymentFromClosure(closure = {}) {
+    const uid = safe(closure.driverUid || closure.choferUid || closure.uid || getDriverUid());
+    const fallback = driverPaymentProfileForUid(uid);
+    return {
+      alias:safe(closure.driverPaymentAlias || closure.choferAlias || closure.aliasChofer || fallback.alias),
+      cuit:safe(closure.driverPaymentCuit || closure.choferCuit || closure.cuitChofer || fallback.cuit),
+      phone:safe(closure.driverPaymentPhoneDisplay || closure.driverPaymentPhone || closure.choferTelefono || closure.telefonoChofer || fallback.phone)
+    };
+  }
+
+  function exploraPaymentFromClosure(closure = {}) {
+    return {
+      alias:safe(closure.exploraPaymentAlias || EXPLORA_ALIAS),
+      cuit:safe(closure.exploraPaymentCuit || EXPLORA_CUIT),
+      phone:safe(closure.exploraPaymentPhone || closure.exploraPaymentWhatsapp || EXPLORA_WHATSAPP_DISPLAY)
+    };
+  }
+
+  function closureContactCardHtml(title = "Datos", contact = {}) {
+    return `<section class="pay-closure-contact-card"><h3>${esc(title)}</h3><div><span>Alias</span><strong>${esc(contact.alias || "Sin cargar")}</strong></div><div><span>CUIT</span><strong>${esc(contact.cuit || "Sin cargar")}</strong></div><div><span>Celular</span><strong>${esc(displayPaymentPhone(contact.phone || ""))}</strong></div></section>`;
+  }
+
+  function closureContactCardByDirection(direction = "balanced", { closure = {}, driverPayment = null } = {}) {
+    if (direction === "explora_to_driver") return closureContactCardHtml("Datos del chofer", driverPayment || driverPaymentFromClosure(closure));
+    if (direction === "driver_to_explora") return closureContactCardHtml("Datos de Explora", exploraPaymentFromClosure(closure));
+    return "";
+  }
+
   function requireOwnPaymentProfileComplete() {
     if (isAdmin()) return;
     const payment = driverPaymentProfile(state.profile || {});
@@ -2269,22 +2305,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return { direction:"balanced", label:"Nadie debe liquidar", amount:0 };
   }
 
-  function closurePaymentRowsHtml({ driverPayment = {}, direction = "balanced" } = {}) {
-    if (direction === "explora_to_driver") {
-      return [
-        ["Alias chofer", driverPayment.alias || "Sin cargar"],
-        ["CUIT chofer", driverPayment.cuit || "Sin cargar"],
-        ["Teléfono chofer", driverPayment.phone || "Sin cargar"]
-      ].map(([label,value]) => `<article class="pay-payment-info-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
-    }
-    if (direction === "driver_to_explora") {
-      return [
-        ["Alias Explora", EXPLORA_ALIAS],
-        ["CUIT David", EXPLORA_CUIT],
-        ["WhatsApp Explora", EXPLORA_WHATSAPP_DISPLAY]
-      ].map(([label,value]) => `<article class="pay-payment-info-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
-    }
-    return "";
+  function closurePaymentRowsHtml({ driverPayment = {}, direction = "balanced", closure = {} } = {}) {
+    return closureContactCardByDirection(direction, { closure, driverPayment });
   }
 
   function closurePaymentDataForPayload(targetUid = getDriverUid(), summary = {}) {
@@ -2292,10 +2314,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const result = closureAmountLine(summary);
     return {
       driverPaymentPhone:safe(driverPayment.phone),
+      driverPaymentPhoneDisplay:displayPaymentPhone(driverPayment.phone),
       driverPaymentCuit:safe(driverPayment.cuit),
       driverPaymentAlias:safe(driverPayment.alias),
       exploraPaymentAlias:EXPLORA_ALIAS,
       exploraPaymentCuit:EXPLORA_CUIT,
+      exploraPaymentPhone:EXPLORA_WHATSAPP,
       exploraPaymentWhatsapp:EXPLORA_WHATSAPP_DISPLAY,
       paymentDirection:result.direction,
       paymentResultLabel:result.label,
@@ -2308,7 +2332,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return {
       direction,
       driverPayment:{
-        phone:safe(closure.driverPaymentPhone || closure.choferTelefono || closure.telefonoChofer),
+        phone:safe(closure.driverPaymentPhoneDisplay || closure.driverPaymentPhone || closure.choferTelefono || closure.telefonoChofer),
         cuit:safe(closure.driverPaymentCuit || closure.choferCuit || closure.cuitChofer),
         alias:safe(closure.driverPaymentAlias || closure.choferAlias || closure.aliasChofer)
       }
@@ -2343,13 +2367,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       lines.push("*Datos para pagar al chofer:* ");
       lines.push(`Alias: ${driverPayment.alias || "sin cargar"}`);
       lines.push(`CUIT: ${driverPayment.cuit || "sin cargar"}`);
-      lines.push(`Teléfono: ${driverPayment.phone || "sin cargar"}`);
+      lines.push(`Celular: ${displayPaymentPhone(driverPayment.phone || "")}`);
     } else if (result.direction === "driver_to_explora") {
       lines.push("");
       lines.push("*Datos de Explora para recibir:* ");
       lines.push(`Alias: ${EXPLORA_ALIAS}`);
       lines.push(`CUIT David: ${EXPLORA_CUIT}`);
-      lines.push(`WhatsApp: ${EXPLORA_WHATSAPP_DISPLAY}`);
+      lines.push(`Celular: ${displayPaymentPhone(EXPLORA_WHATSAPP_DISPLAY)}`);
     }
     lines.push("");
     lines.push("El comprobante se cargará por la app.");
@@ -4672,7 +4696,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       .map(([label,value,className]) => `<article${className ? ` class="${esc(className)}"` : ""}><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
     const receiptLink = receiptUrl ? `<a class="pay-closure-receipt-link" href="${esc(receiptUrl)}" target="_blank" rel="noopener">Ver foto del comprobante</a>` : "";
     const alert = due > 0 && !receiptUrl && !adminView ? `<div class="pay-closure-alert">Cargá el comprobante de transferencia para cerrar.</div>` : "";
-    return rows + receiptLink + alert;
+    const direction = toDriver > 0 ? "explora_to_driver" : due > 0 ? "driver_to_explora" : "balanced";
+    const contact = closureContactCardByDirection(direction, { closure });
+    return rows + contact + receiptLink + alert;
   }
 
   function renderClosureModal() {
