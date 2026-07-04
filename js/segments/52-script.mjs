@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4043-android-whatsapp-profile-country";
+  const VERSION = "explora-pago-home-v52-v4045-admin-more-minimal-whatsapp-fix";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -1210,6 +1210,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function moreItems() {
+    if (isAdmin()) {
+      return [
+        { title:"Mi perfil", detail:"Datos de cuenta y WhatsApp", action:"abrir-perfil", icon:"user" },
+        { title:"Deudas", detail:"Multas, choques, préstamos y adelantos", action:"admin-multas", icon:"alert" }
+      ];
+    }
     return [
       { title:"Mi perfil", detail:"Datos de cuenta y preferencias", action:"abrir-perfil", icon:"user" },
       { title:"Mi auto", detail:"Vencimientos, patente y documentación", action:"mi-auto", icon:"car" },
@@ -1220,13 +1226,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function adminMoreItems() {
-    return [
-      { title:"Chofer", detail:"Crear o eliminar", action:"admin-choferes", icon:"users" },
-      { title:"Borrar movimientos", detail:"Cobros, caja chica y gastos", action:"admin-delete-movements", icon:"trash" },
-      { title:"Cierres", detail:"Comprobantes y pagos pendientes", action:"admin-cierres", icon:"receipt" },
-      { title:"Gastos", detail:"Gastos cargados por choferes", action:"admin-gastos", icon:"wallet" },
-      { title:"Deudas", detail:"Multas, choques, préstamos y adelantos", action:"admin-multas", icon:"alert" }
-    ];
+    return [];
   }
 
   function moreIcon(name = "user") {
@@ -1575,14 +1575,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     `).join("");
     const adminList = $("payMoreAdminList");
     if (adminList) {
-      adminList.hidden = !isAdmin();
-      adminList.innerHTML = !isAdmin() ? "" : `<div class="pay-more-card-title">Administración</div>` + adminMoreItems().map(item => `
-        <button class="pay-more-row" data-pay-more-action="${esc(item.action)}" type="button">
-          <span class="pay-more-row-icon">${moreIcon(item.icon)}</span>
-          <span class="pay-more-row-copy"><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></span>
-          <span class="pay-more-chevron">›</span>
-        </button>
-      `).join("");
+      adminList.hidden = true;
+      adminList.innerHTML = "";
     }
   }
 
@@ -2408,8 +2402,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const mobileFallbackUrl = `https://api.whatsapp.com/send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
 
     if (platform.android) {
-      // Android/Chrome/PWA: usar Intent explícito con paquete. No navegar a whatsapp://,
-      // porque algunos WebView lo cargan como página y muestran net::ERR_UNKNOWN_URL_SCHEME.
       const intentUrl = whatsappAndroidIntentUrl({
         normalizedPhone,
         encodedText,
@@ -2423,7 +2415,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       return openNativeWhatsappUrl(`whatsapp://send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`, { target:"_self" });
     }
 
-    // Escritorio/tablet sin plataforma móvil: último recurso oficial.
     try { window.open(mobileFallbackUrl, "_blank", "noopener,noreferrer"); return true; } catch (_) {}
     try { window.location.href = mobileFallbackUrl; return true; } catch (_) { return false; }
   }
@@ -5131,4 +5122,4 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen });
 })();
 
-/* v4044: Android usa Intent explícito con paquete WhatsApp para evitar ERR_UNKNOWN_URL_SCHEME. */
+/* v4045: Admin Más minimal; Android WhatsApp Intent explícito; perfil con país obligatorio. */
