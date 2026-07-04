@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4046-profile-data-in-whatsapp-compact";
+  const VERSION = "explora-pago-home-v52-v4050-closure-status-colors-cobro-icon";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -1210,14 +1210,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function moreItems() {
-    if (isAdmin()) {
-      return [
-        { title:"Mi perfil", detail:"Alias, CUIT y celular de Explora", action:"abrir-perfil", icon:"user" },
-        { title:"Deudas", detail:"Multas, choques, préstamos y adelantos", action:"admin-multas", icon:"alert" }
-      ];
-    }
     return [
-      { title:"Mi perfil", detail:"Alias, CUIT y celular del chofer", action:"abrir-perfil", icon:"user" },
+      { title:"Mi perfil", detail:"Datos de cuenta y preferencias", action:"abrir-perfil", icon:"user" },
       { title:"Mi auto", detail:"Vencimientos, patente y documentación", action:"mi-auto", icon:"car" },
       { title:"Deudas", detail:"Multas, choques, préstamos y adelantos", action:"multas-choques", icon:"alert" },
       { title:"Préstamo Explora", detail:"Solicitud y estado del préstamo", action:"prestamo-explora", icon:"loan" },
@@ -1226,7 +1220,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function adminMoreItems() {
-    return [];
+    return [
+      { title:"Chofer", detail:"Crear o eliminar", action:"admin-choferes", icon:"users" },
+      { title:"Borrar movimientos", detail:"Cobros, caja chica y gastos", action:"admin-delete-movements", icon:"trash" },
+      { title:"Cierres", detail:"Comprobantes y pagos pendientes", action:"admin-cierres", icon:"receipt" },
+      { title:"Gastos", detail:"Gastos cargados por choferes", action:"admin-gastos", icon:"wallet" },
+      { title:"Deudas", detail:"Multas, choques, préstamos y adelantos", action:"admin-multas", icon:"alert" }
+    ];
   }
 
   function moreIcon(name = "user") {
@@ -1575,8 +1575,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     `).join("");
     const adminList = $("payMoreAdminList");
     if (adminList) {
-      adminList.hidden = true;
-      adminList.innerHTML = "";
+      adminList.hidden = !isAdmin();
+      adminList.innerHTML = !isAdmin() ? "" : `<div class="pay-more-card-title">Administración</div>` + adminMoreItems().map(item => `
+        <button class="pay-more-row" data-pay-more-action="${esc(item.action)}" type="button">
+          <span class="pay-more-row-icon">${moreIcon(item.icon)}</span>
+          <span class="pay-more-row-copy"><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></span>
+          <span class="pay-more-chevron">›</span>
+        </button>
+      `).join("");
     }
   }
 
@@ -1915,11 +1921,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function closurePayerClass(closure = {}) {
-    const due = number(closure.amountDueFromDriver || closure.amountFromDriver || 0);
-    const toDriver = number(closure.amountDueToDriver || closure.amountToDriver || 0);
-    if (due > 0) return "is-paid-by-driver";
-    if (toDriver > 0) return "is-paid-by-explora";
-    return "is-balanced-closure";
+    // v4050: en Última actividad todos los cierres se pintan por estado, no por quién paga.
+    // Abierto = rojo. Cerrado = verde. Aplica para chofer y admin.
+    return closureIsCompleted(closure) ? "is-closure-closed" : "is-closure-open";
   }
 
   function closureActionForViewer(closure = {}) {
@@ -2144,91 +2148,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return "";
   }
 
-  const WHATSAPP_COUNTRY_OPTIONS = [
-    { value:"549", label:"🇦🇷 Argentina +54 9", placeholder:"3757461564" },
-    { value:"595", label:"🇵🇾 Paraguay +595", placeholder:"991123456" },
-    { value:"55", label:"🇧🇷 Brasil +55", placeholder:"45912345678" },
-    { value:"598", label:"🇺🇾 Uruguay +598", placeholder:"99123456" }
-  ];
-
-  function whatsappCountryOptionsHtml(selected = "549") {
-    const current = safe(selected) || "549";
-    return WHATSAPP_COUNTRY_OPTIONS.map(option => `<option value="${esc(option.value)}" ${option.value === current ? "selected" : ""}>${esc(option.label)}</option>`).join("");
-  }
-
-  function whatsappCountryPlaceholder(country = "549") {
-    return WHATSAPP_COUNTRY_OPTIONS.find(option => option.value === safe(country))?.placeholder || "3757461564";
-  }
-
-  function rawWhatsappDigits(value = "") {
-    let digits = safe(value).replace(/\D+/g, "");
-    if (digits.startsWith("00")) digits = digits.slice(2);
-    return digits.replace(/^0+/, "");
-  }
-
-  function splitWhatsappPhone(value = "", profile = {}) {
-    const storedCountry = rawWhatsappDigits(profile?.whatsappCountryCode || profile?.codigoPaisWhatsapp || profile?.telefonoPais || profile?.phoneCountryCode || "");
-    const storedLocal = rawWhatsappDigits(profile?.whatsappLocalNumber || profile?.telefonoLocal || profile?.phoneLocal || "");
-    if (storedCountry && storedLocal) return { country:storedCountry, local:storedLocal, full:`${storedCountry}${storedLocal}` };
-    let digits = rawWhatsappDigits(value);
-    if (/^(2|3)\d{9}$/.test(digits)) return { country:"549", local:digits, full:`549${digits}` };
-    if (/^54(2|3)\d{9}$/.test(digits)) return { country:"549", local:digits.slice(2), full:`549${digits.slice(2)}` };
-    if (/^549(2|3)\d{9}$/.test(digits)) return { country:"549", local:digits.slice(3), full:digits };
-    for (const option of WHATSAPP_COUNTRY_OPTIONS) {
-      if (digits.startsWith(option.value) && digits.length > option.value.length) {
-        return { country:option.value, local:digits.slice(option.value.length), full:digits };
-      }
-    }
-    return { country:"549", local:digits, full:digits ? `549${digits}` : "" };
-  }
-
-  function composeWhatsappPhone(country = "549", local = "") {
-    const prefix = rawWhatsappDigits(country) || "549";
-    const digits = rawWhatsappDigits(local);
-    if (!digits) return "";
-    if (prefix === "549") {
-      if (/^549(2|3)\d{9}$/.test(digits)) return digits;
-      if (/^54(2|3)\d{9}$/.test(digits)) return `549${digits.slice(2)}`;
-      if (/^(2|3)\d{9}$/.test(digits)) return `549${digits}`;
-    }
-    if (digits.startsWith(prefix) && digits.length > prefix.length) return digits;
-    return `${prefix}${digits.replace(/^0+/, "")}`;
-  }
-
-  function profileWhatsappParts(profile = {}) {
-    const raw = firstProfileValue(profile, ["whatsappNormalized", "whatsappFull", "telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]);
-    return splitWhatsappPhone(raw, profile);
-  }
-
-  function displayWhatsappPhone(value = "", fallback = "Sin cargar") {
-    const original = safe(value);
-    if (!original) return fallback;
-    if (original.trim().startsWith("+")) return original.trim();
-    const normalized = normalizeWhatsappPhone(original);
-    return normalized ? `+${normalized}` : fallback;
-  }
-
-  function exploraPaymentProfile(profile = state.profile || {}) {
-    const source = isAdmin() ? (profile || {}) : {};
-    const phoneParts = profileWhatsappParts(source);
-    const phone = phoneParts.full || EXPLORA_WHATSAPP;
-    return {
-      alias:firstProfileValue(source, ["aliasCobro", "paymentAlias", "aliasParaCobrar", "alias", "mercadoPagoAlias", "aliasMp", "mpAlias"]) || EXPLORA_ALIAS,
-      cuit:firstProfileValue(source, ["cuit", "CUIT", "cuil", "taxId", "dniFiscal"]) || EXPLORA_CUIT,
-      phone,
-      phoneDisplay:displayWhatsappPhone(phone, EXPLORA_WHATSAPP_DISPLAY)
-    };
-  }
-
-  function appendWhatsappContactBlock(lines = [], title = "Datos", payment = {}) {
-    lines.push("");
-    lines.push(`*${title}*`);
-    lines.push(`Alias: ${safe(payment.alias) || "sin cargar"}`);
-    lines.push(`CUIT: ${safe(payment.cuit) || "sin cargar"}`);
-    lines.push(`Celular: ${displayWhatsappPhone(payment.phone || payment.phoneDisplay || "")}`);
-    return lines;
-  }
-
   function driverFullNameFromProfile(profile = state.profile) {
     return firstProfileValue(profile, ["nombreCompleto", "fullName", "nombre", "displayName", "name", "email"]) || displayName();
   }
@@ -2243,14 +2162,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function driverPaymentProfile(profile = state.profile) {
-    const phoneParts = profileWhatsappParts(profile);
     return {
       fullName:driverFullNameFromProfile(profile),
       car:driverCarLabel(profile),
-      phone:phoneParts.full || firstProfileValue(profile, ["telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]),
-      phoneCountry:phoneParts.country || "549",
-      phoneLocal:phoneParts.local || "",
-      phoneDisplay:displayWhatsappPhone(phoneParts.full || firstProfileValue(profile, ["telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"])),
+      phone:firstProfileValue(profile, ["telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]),
       cuit:firstProfileValue(profile, ["cuit", "CUIT", "cuil", "taxId", "dniFiscal"]),
       alias:firstProfileValue(profile, ["aliasCobro", "paymentAlias", "aliasParaCobrar", "alias", "mercadoPagoAlias", "aliasMp", "mpAlias"])
     };
@@ -2266,13 +2181,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function paymentProfileMissingFields(data = driverPaymentProfile()) {
     const missing = [];
-    if (!normalizeWhatsappPhone(data.phone)) missing.push("número de WhatsApp");
+    if (!safe(data.phone)) missing.push("número de teléfono");
     if (!safe(data.cuit)) missing.push("CUIT");
     if (!safe(data.alias)) missing.push("alias para cobrar");
     return missing;
   }
 
   function requireOwnPaymentProfileComplete() {
+    if (isAdmin()) return;
     const payment = driverPaymentProfile(state.profile || {});
     const missing = paymentProfileMissingFields(payment);
     if (missing.length) throw new Error(`Completá Mi perfil antes de pedir el cierre: ${missing.join(", ")}.`);
@@ -2286,44 +2202,34 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return { direction:"balanced", label:"Nadie debe liquidar", amount:0 };
   }
 
-  function compactPaymentInfoCardHtml(title = "Datos", rows = []) {
-    const cleanRows = (rows || []).map(([label, value]) => [safe(label), safe(value) || "Sin cargar"]).filter(([label]) => label);
-    if (!cleanRows.length) return "";
-    return `<section class="pay-payment-info-card"><h3>${esc(title)}</h3>${cleanRows.map(([label,value]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join("")}</section>`;
-  }
-
-  function closurePaymentRowsHtml({ driverPayment = {}, exploraPayment = {}, direction = "balanced" } = {}) {
+  function closurePaymentRowsHtml({ driverPayment = {}, direction = "balanced" } = {}) {
     if (direction === "explora_to_driver") {
-      return compactPaymentInfoCardHtml("Datos del chofer", [
-        ["Alias", driverPayment.alias || "Sin cargar"],
-        ["CUIT", driverPayment.cuit || "Sin cargar"],
-        ["Celular", driverPayment.phoneDisplay || displayWhatsappPhone(driverPayment.phone || "")]
-      ]);
+      return [
+        ["Alias chofer", driverPayment.alias || "Sin cargar"],
+        ["CUIT chofer", driverPayment.cuit || "Sin cargar"],
+        ["Teléfono chofer", driverPayment.phone || "Sin cargar"]
+      ].map(([label,value]) => `<article class="pay-payment-info-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
     }
     if (direction === "driver_to_explora") {
-      const explora = Object.keys(exploraPayment || {}).length ? exploraPayment : exploraPaymentProfile();
-      return compactPaymentInfoCardHtml("Datos de Explora", [
-        ["Alias", explora.alias || "Sin cargar"],
-        ["CUIT", explora.cuit || "Sin cargar"],
-        ["Celular", explora.phoneDisplay || displayWhatsappPhone(explora.phone || "")]
-      ]);
+      return [
+        ["Alias Explora", EXPLORA_ALIAS],
+        ["CUIT David", EXPLORA_CUIT],
+        ["WhatsApp Explora", EXPLORA_WHATSAPP_DISPLAY]
+      ].map(([label,value]) => `<article class="pay-payment-info-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
     }
     return "";
   }
 
   function closurePaymentDataForPayload(targetUid = getDriverUid(), summary = {}) {
     const driverPayment = driverPaymentProfileForUid(targetUid);
-    const exploraPayment = exploraPaymentProfile();
     const result = closureAmountLine(summary);
     return {
       driverPaymentPhone:safe(driverPayment.phone),
-      driverPaymentPhoneDisplay:displayWhatsappPhone(driverPayment.phone || driverPayment.phoneDisplay || ""),
       driverPaymentCuit:safe(driverPayment.cuit),
       driverPaymentAlias:safe(driverPayment.alias),
-      exploraPaymentAlias:safe(exploraPayment.alias),
-      exploraPaymentCuit:safe(exploraPayment.cuit),
-      exploraPaymentWhatsapp:safe(exploraPayment.phoneDisplay),
-      exploraPaymentPhone:safe(exploraPayment.phone),
+      exploraPaymentAlias:EXPLORA_ALIAS,
+      exploraPaymentCuit:EXPLORA_CUIT,
+      exploraPaymentWhatsapp:EXPLORA_WHATSAPP_DISPLAY,
       paymentDirection:result.direction,
       paymentResultLabel:result.label,
       paymentResultAmount:Number(result.amount || 0)
@@ -2332,24 +2238,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function paymentDataFromClosure(closure = {}) {
     const direction = safe(closure.paymentDirection) || (number(closure.amountDueToDriver || 0) > 0 ? "explora_to_driver" : number(closure.amountDueFromDriver || 0) > 0 ? "driver_to_explora" : "balanced");
-    const uid = safe(closure.driverUid || closure.choferUid || closure.uid || getDriverUid());
-    const liveDriver = driverPaymentProfileForUid(uid);
-    const liveExplora = exploraPaymentProfile();
-    const driverPhone = safe(closure.driverPaymentPhone || closure.driverPaymentPhoneDisplay || closure.choferTelefono || closure.telefonoChofer || liveDriver.phone || liveDriver.phoneDisplay);
-    const exploraPhone = safe(closure.exploraPaymentPhone || closure.exploraPaymentWhatsapp || closure.exploraWhatsapp || liveExplora.phone || liveExplora.phoneDisplay);
     return {
       direction,
       driverPayment:{
-        phone:driverPhone,
-        phoneDisplay:displayWhatsappPhone(driverPhone || liveDriver.phoneDisplay || ""),
-        cuit:safe(closure.driverPaymentCuit || closure.choferCuit || closure.cuitChofer || liveDriver.cuit),
-        alias:safe(closure.driverPaymentAlias || closure.choferAlias || closure.aliasChofer || liveDriver.alias)
-      },
-      exploraPayment:{
-        phone:exploraPhone,
-        phoneDisplay:displayWhatsappPhone(exploraPhone || liveExplora.phoneDisplay || ""),
-        cuit:safe(closure.exploraPaymentCuit || closure.exploraCuit || liveExplora.cuit || EXPLORA_CUIT),
-        alias:safe(closure.exploraPaymentAlias || closure.exploraAlias || liveExplora.alias || EXPLORA_ALIAS)
+        phone:safe(closure.driverPaymentPhone || closure.choferTelefono || closure.telefonoChofer),
+        cuit:safe(closure.driverPaymentCuit || closure.choferCuit || closure.cuitChofer),
+        alias:safe(closure.driverPaymentAlias || closure.choferAlias || closure.aliasChofer)
       }
     };
   }
@@ -2377,10 +2271,18 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       lines.push(`Total facturado: ${currency(summary.gross || 0)}`);
       lines.push(`Parte de cada uno: ${currency(summary.billingShareEach || 0)}`);
     }
-    if (isAdmin()) {
-      appendWhatsappContactBlock(lines, "Datos de Explora", exploraPaymentProfile());
-    } else {
-      appendWhatsappContactBlock(lines, "Datos del chofer", driverPayment);
+    if (result.direction === "explora_to_driver") {
+      lines.push("");
+      lines.push("*Datos para pagar al chofer:* ");
+      lines.push(`Alias: ${driverPayment.alias || "sin cargar"}`);
+      lines.push(`CUIT: ${driverPayment.cuit || "sin cargar"}`);
+      lines.push(`Teléfono: ${driverPayment.phone || "sin cargar"}`);
+    } else if (result.direction === "driver_to_explora") {
+      lines.push("");
+      lines.push("*Datos de Explora para recibir:* ");
+      lines.push(`Alias: ${EXPLORA_ALIAS}`);
+      lines.push(`CUIT David: ${EXPLORA_CUIT}`);
+      lines.push(`WhatsApp: ${EXPLORA_WHATSAPP_DISPLAY}`);
     }
     lines.push("");
     lines.push("El comprobante se cargará por la app.");
@@ -2388,78 +2290,35 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function normalizeWhatsappPhone(value = "") {
-    const digits = rawWhatsappDigits(value);
-    if (!digits) return "";
+    let digits = safe(value).replace(/\D+/g, "");
+    if (digits.startsWith("00")) digits = digits.slice(2);
+    digits = digits.replace(/^0+/, "");
     if (/^(2|3)\d{9}$/.test(digits)) return `549${digits}`;
     if (/^54(2|3)\d{9}$/.test(digits)) return `549${digits.slice(2)}`;
     return digits;
-  }
-
-  function whatsappPlatform() {
-    const ua = safe(navigator?.userAgent || navigator?.vendor || "");
-    const platform = safe(navigator?.platform || "");
-    const ios = /iPad|iPhone|iPod/i.test(ua) || (platform === "MacIntel" && Number(navigator?.maxTouchPoints || 0) > 1);
-    const android = /Android/i.test(ua);
-    const webview = /; wv\)|Version\/\d+.*Chrome\/\d+.*Mobile Safari/i.test(ua);
-    const standalone = Boolean(window.matchMedia?.("(display-mode: standalone)")?.matches || navigator?.standalone);
-    return { ios, android, webview, standalone };
-  }
-
-  function openNativeWhatsappUrl(url = "", { target = "_self" } = {}) {
-    const href = safe(url);
-    if (!href) return false;
-    try {
-      const anchor = document.createElement("a");
-      anchor.href = href;
-      anchor.target = target;
-      anchor.rel = target === "_blank" ? "noopener noreferrer" : "noopener";
-      anchor.style.position = "fixed";
-      anchor.style.left = "-9999px";
-      anchor.style.top = "-9999px";
-      anchor.style.width = "1px";
-      anchor.style.height = "1px";
-      document.body?.appendChild(anchor);
-      anchor.click();
-      setTimeout(() => anchor.remove(), 1200);
-      return true;
-    } catch (_) {}
-    try {
-      window.location.href = href;
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function whatsappAndroidIntentUrl({ normalizedPhone = "", encodedText = "", packageName = "com.whatsapp", fallbackUrl = "" } = {}) {
-    const query = `phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
-    const fallback = safe(fallbackUrl) ? `;S.browser_fallback_url=${encodeURIComponent(fallbackUrl)}` : "";
-    return `intent://send?${query}#Intent;scheme=whatsapp;package=${packageName}${fallback};end`;
   }
 
   function openWhatsappToPhone(phone = "", text = "") {
     const normalizedPhone = normalizeWhatsappPhone(phone);
     if (!normalizedPhone) return false;
     const encodedText = encodeURIComponent(text || "");
-    const platform = whatsappPlatform();
-    const mobileFallbackUrl = `https://api.whatsapp.com/send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
+    const webUrl = `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`;
 
-    if (platform.android) {
-      const intentUrl = whatsappAndroidIntentUrl({
-        normalizedPhone,
-        encodedText,
-        packageName:"com.whatsapp",
-        fallbackUrl:mobileFallbackUrl
-      });
-      return openNativeWhatsappUrl(intentUrl, { target:"_self" });
+    // Compatibilidad iOS + Android + PWA:
+    // usar siempre enlace universal HTTPS. Evita esquemas nativos que en Android WebView/PWA
+    // puede terminar como página interna con net::ERR_UNKNOWN_URL_SCHEME.
+    // En iOS/Android, wa.me delega a la app instalada; si no existe, queda el fallback web.
+    try {
+      const opened = window.open(webUrl, "_blank", "noopener,noreferrer");
+      if (opened) return true;
+    } catch (_) {}
+
+    try {
+      window.location.assign(webUrl);
+      return true;
+    } catch (_) {
+      try { window.location.href = webUrl; return true; } catch (__) { return false; }
     }
-
-    if (platform.ios) {
-      return openNativeWhatsappUrl(`whatsapp://send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`, { target:"_self" });
-    }
-
-    try { window.open(mobileFallbackUrl, "_blank", "noopener,noreferrer"); return true; } catch (_) {}
-    try { window.location.href = mobileFallbackUrl; return true; } catch (_) { return false; }
   }
 
   function openWhatsappToExplora(text = "") {
@@ -2519,12 +2378,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       lines.push(link);
       lines.push("");
     }
-    appendWhatsappContactBlock(lines, "Datos de Explora", {
-      alias:closure.exploraPaymentAlias || EXPLORA_ALIAS,
-      cuit:closure.exploraPaymentCuit || EXPLORA_CUIT,
-      phone:closure.exploraPaymentPhone || closure.exploraPaymentWhatsapp || EXPLORA_WHATSAPP
-    });
-    lines.push("");
     lines.push("Por favor consultá tu cuenta.");
     lines.push("Muchas gracias por usar Explora.");
     return lines.join("\n");
@@ -2544,12 +2397,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       lines.push(link);
       lines.push("");
     }
-    appendWhatsappContactBlock(lines, "Datos del chofer", {
-      alias:closure.driverPaymentAlias || closure.choferAlias || "",
-      cuit:closure.driverPaymentCuit || closure.choferCuit || "",
-      phone:closure.driverPaymentPhone || closure.driverPaymentPhoneDisplay || closure.telefonoChofer || ""
-    });
-    lines.push("");
     lines.push("Por favor chequeá tu cuenta en Explora.");
     lines.push("Muchas gracias por usar Explora.");
     return lines.join("\n");
@@ -2578,15 +2425,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     body.innerHTML = `
       <div class="pay-profile-readonly"><span>Nombre completo</span><strong>${esc(data.fullName || "Chofer")}</strong></div>
       <div class="pay-profile-readonly"><span>Auto modelo y patente</span><strong>${esc(data.car || "Sin auto asignado")}</strong></div>
-      <label class="pay-profile-field pay-profile-phone-field" for="payProfilePhone"><span>WhatsApp obligatorio</span><div class="pay-profile-phone-row"><select id="payProfileCountry" aria-label="Código de país" required>${whatsappCountryOptionsHtml(data.phoneCountry || "549")}</select><input id="payProfilePhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: ${esc(whatsappCountryPlaceholder(data.phoneCountry || "549"))}" value="${esc(data.phoneLocal || "")}" required /></div><small>Elegí país y cargá el número sin 0 ni +. Se guarda normalizado para WhatsApp.</small></label>
-      <label class="pay-profile-field" for="payProfileCuit"><span>CUIT</span><input id="payProfileCuit" type="text" inputmode="numeric" autocomplete="off" placeholder="Ej: 20-00000000-0" value="${esc(data.cuit)}" ${isAdmin() ? "" : "required"} /></label>
-      <label class="pay-profile-field" for="payProfileAlias"><span>Alias para cobrar</span><input id="payProfileAlias" type="text" autocomplete="off" placeholder="Ej: alias.mercadopago" value="${esc(data.alias)}" ${isAdmin() ? "" : "required"} /></label>
-      <div class="pay-profile-note">${isAdmin() ? "Estos datos de Explora se envían al chofer cuando pedís un cierre o enviás un comprobante." : "Estos datos del chofer se envían a Explora cuando pedís un cierre o cargás un comprobante."}</div>`;
-    const country = $("payProfileCountry");
-    const phone = $("payProfilePhone");
-    country?.addEventListener("change", () => {
-      if (phone) phone.placeholder = `Ej: ${whatsappCountryPlaceholder(country.value || "549")}`;
-    });
+      <label class="pay-profile-field" for="payProfilePhone"><span>Número de teléfono</span><input id="payProfilePhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: 3757461564" value="${esc(data.phone)}" required /></label>
+      <label class="pay-profile-field" for="payProfileCuit"><span>CUIT</span><input id="payProfileCuit" type="text" inputmode="numeric" autocomplete="off" placeholder="Ej: 20-00000000-0" value="${esc(data.cuit)}" required /></label>
+      <label class="pay-profile-field" for="payProfileAlias"><span>Alias para cobrar</span><input id="payProfileAlias" type="text" autocomplete="off" placeholder="Ej: alias.mercadopago" value="${esc(data.alias)}" required /></label>
+      <div class="pay-profile-note">Estos tres datos los carga el chofer y se adjuntan al pedir cierre para que Explora pueda liquidar más rápido.</div>`;
     const msg = $("payProfileMessage");
     if (msg) { msg.textContent = ""; msg.className = "pay-profile-message"; }
   }
@@ -2616,25 +2458,16 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   async function saveDriverProfileModal() {
-    const phoneCountry = safe($("payProfileCountry")?.value || "549");
-    const phoneLocal = safe($("payProfilePhone")?.value || "");
-    const phone = composeWhatsappPhone(phoneCountry, phoneLocal);
+    if (isAdmin()) return;
+    const phone = safe($("payProfilePhone")?.value || "");
     const cuit = safe($("payProfileCuit")?.value || "");
     const alias = safe($("payProfileAlias")?.value || "");
-    const missing = isAdmin()
-      ? paymentProfileMissingFields({ phone, cuit, alias })
-      : paymentProfileMissingFields({ phone, cuit, alias });
+    const missing = paymentProfileMissingFields({ phone, cuit, alias });
     if (missing.length) { setProfileMessage(`Completá: ${missing.join(", ")}.`, "error"); return; }
     const fields = {
       telefono:phone,
       numeroTelefono:phone,
       whatsapp:phone,
-      whatsappFull:phone,
-      whatsappNormalized:normalizeWhatsappPhone(phone),
-      whatsappCountryCode:phoneCountry,
-      whatsappLocalNumber:rawWhatsappDigits(phoneLocal),
-      codigoPaisWhatsapp:phoneCountry,
-      telefonoLocal:rawWhatsappDigits(phoneLocal),
       cuit,
       aliasCobro:alias,
       aliasParaCobrar:alias,
@@ -4591,7 +4424,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         if (kmHint) kmHint.textContent = kmMin > 0 ? `Debe ser mayor o igual al KM inicial ${Math.round(kmMin)}.` : "Este KM cierra el período de eficiencia y será el inicio del próximo.";
       }
       summary.innerHTML = closureDetailSummary(closure, kind, isAdmin());
-      summary.innerHTML += closurePaymentRowsHtml(paymentDataFromClosure(closure));
       const noSubmitNeeded = (completed || proof) && !["admin_review", "driver_review"].includes(action);
       if (noSubmitNeeded) {
         submit.hidden = true;
@@ -4693,8 +4525,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
     const payData = closureAmountLine(latest);
     const driverPayment = driverPaymentProfileForUid(getDriverUid());
-    const exploraPayment = exploraPaymentProfile();
-    summary.innerHTML += closurePaymentRowsHtml({ driverPayment, exploraPayment, direction:payData.direction });
+    summary.innerHTML += closurePaymentRowsHtml({ driverPayment, direction:payData.direction });
   }
 
   async function submitClosureModal() {
@@ -4834,15 +4665,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       targetUid = safe($("payClosureDriverSelect")?.value || state.selectedDriverUid);
       const driver = state.drivers.find(d => d.uid === targetUid);
       if (!targetUid || !driver) throw new Error("Elegí un chofer para pedir el cierre.");
-      const targetPayment = driverPaymentProfileForUid(targetUid);
-      if (!normalizeWhatsappPhone(targetPayment.phone)) throw new Error(`El chofer ${driver.name} no tiene WhatsApp cargado en Mi perfil.`);
       state.selectedDriverUid = targetUid;
       state.selectedDriverName = driver.name;
       targetName = driver.name;
     }
     // Puede existir un cierre anterior pendiente; eso no debe impedir cortar un nuevo período
     // si ya hay movimientos nuevos después del último corte.
-    requireOwnPaymentProfileComplete();
+    if (!isAdmin()) requireOwnPaymentProfileComplete();
     const fullSummary = isAdmin() ? await computeDriverSummary(targetUid) : (state.latestSummary || computeSummary());
     requireClosureAllowed(kind, fullSummary);
     const summary = tabSummary(fullSummary, kind);
@@ -5181,4 +5010,4 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen });
 })();
 
-/* v4046: Datos de perfil en WhatsApp de cierres; admin Más minimal; Android Intent explícito. */
+/* v4050: Cierres abiertos rojo, cerrados verde; dock con icono agregar cobro sin brillo. */
