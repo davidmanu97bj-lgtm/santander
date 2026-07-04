@@ -2404,15 +2404,21 @@ body.explora-admin-debts-white #adminDebtWeeklyAmount:not([type="hidden"]){
 }
 
 
-/* v4045 · Perfil WhatsApp obligatorio con selector de país */
+/* v4046 · Perfil compacto con datos enviados por WhatsApp */
 .pay-profile-phone-field small{font-size:12px;font-weight:800;color:#747b91;line-height:1.25;}
 .pay-profile-phone-row{display:grid;grid-template-columns:minmax(118px,.42fr) minmax(0,1fr);gap:8px;width:100%;align-items:center;}
 .pay-profile-phone-row select,.pay-profile-phone-row input{width:100%;min-width:0;border:0;outline:0;background:#f8f9fd;border-radius:14px;padding:13px 12px;font-size:16px;font-weight:850;color:#25293a;min-height:48px;}
 .pay-profile-phone-row select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,#7b8297 50%),linear-gradient(135deg,#7b8297 50%,transparent 50%);background-position:calc(100% - 16px) 21px,calc(100% - 11px) 21px;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:28px;}
+.pay-profile-sheet{max-height:calc(100svh - 28px);overflow:auto;-webkit-overflow-scrolling:touch;}
+.pay-profile-body{display:grid;gap:10px;}
+.pay-profile-field{gap:6px;}
+.pay-profile-note{font-size:12px!important;line-height:1.28!important;padding:10px 12px!important;}
+.pay-more-open .pay-shell{padding-bottom:calc(118px + env(safe-area-inset-bottom));}
+.pay-more-open .pay-more-list{gap:0;}
+.pay-more-open #payMoreAdminList{display:none!important;}
 @media(max-width:360px){.pay-profile-phone-row{grid-template-columns:1fr;}.pay-profile-phone-row select,.pay-profile-phone-row input{font-size:15px;}}
 
-
-/* v4045 · Deudas admin: refuerzo responsive iOS/Android sin desborde lateral */
+/* v4046 · Deudas admin: refuerzo responsive iOS/Android sin desborde lateral */
 body.explora-admin-debts-white{width:100%!important;min-width:0!important;overflow-x:hidden!important;background:var(--pay-bg)!important;}
 body.explora-admin-debts-white .admin-shared-screen{left:0!important;right:0!important;width:100vw!important;max-width:100vw!important;overflow-x:hidden!important;overscroll-behavior-x:none!important;}
 body.explora-admin-debts-white .admin-shared-screen *,body.explora-admin-debts-white .admin-shared-screen *::before,body.explora-admin-debts-white .admin-shared-screen *::after{box-sizing:border-box!important;min-width:0;}
