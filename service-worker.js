@@ -29,15 +29,15 @@ const APP_SHELL = [
   './js/segments/01-script.js?v2442-weekly-payment-production',
   './js/segments/19-script.mjs?v2442-weekly-payment-production',
   './js/segments/39-script.mjs?v=4016-card-alerts',
-  './js/segments/11-script.mjs?v4045-admin-more-minimal-whatsapp-fix',
+  './js/segments/11-script.mjs?v4046-profile-data-whatsapp-compact',
   './js/core/weekly-core.mjs?v2442-weekly-payment-production',
   './css/segments/45-style.css?v=2440-weekly-closure-cash-record-recovery',
   './css/segments/44-style.css?v=2503-more-white-exit',
   './css/segments/50-style.css?v=4016-card-alerts',
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
-  './css/segments/52-style.css?v4045-admin-more-minimal-whatsapp-fix',
-  './js/segments/52-script.mjs?v4045-admin-more-minimal-whatsapp-fix',
+  './css/segments/52-style.css?v4046-profile-data-whatsapp-compact',
+  './js/segments/52-script.mjs?v4046-profile-data-whatsapp-compact',
   './assets/icono_eficiencia_km.png',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
@@ -128,4 +128,4 @@ self.addEventListener('message', (event) => {
 
 /* cache bump: v4015 role guard */
 
-/* cache bump: v4045 admin más minimal + WhatsApp Android fix */
+/* cache bump: v4046 datos perfil en WhatsApp + menús compactos */
