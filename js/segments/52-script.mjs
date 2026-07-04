@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4050-closure-status-colors-cobro-icon";
+  const VERSION = "explora-pago-home-v52-v4051-historico-explora-cobro-icon";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -29,6 +29,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ["pendientes", "Deudas"],
     ["cierres", "Cierres"]
   ]);
+  const HISTORY_SCOPES = Object.freeze([
+    ["total", "Histórico total"],
+    ["monthly", "Histórico mensual"],
+    ["weekly", "Histórico semanal"],
+    ["daily", "Histórico diario"]
+  ]);
   const state = {
     tab:"chofer",
     view:"inicio",
@@ -38,6 +44,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     selectedDriverUid:"",
     selectedDriverName:"",
     adminActivityType:"",
+    historyDriverUid:"",
+    historyDriverName:"",
+    historyScope:"total",
+    historyLoading:false,
+    historyError:"",
+    historyData:{ uid:"", records:[], expenses:[], debtPayments:[] },
     db:null,
     auth:null,
     storage:null,
@@ -792,6 +804,21 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           <div class="pay-admin-closures-empty">Cargando choferes…</div>
         </div>
       </section>
+      <section class="explora-pay-history" id="payHistoryScreen" hidden aria-label="Histórico Explora por chofer">
+        <header class="pay-history-head">
+          <button class="pay-history-back" id="payHistoryBack" type="button" aria-label="Volver al inicio"><svg viewBox="0 0 24 24"><path d="M15 6 9 12l6 6"></path></svg></button>
+          <div>
+            <span>HISTÓRICO</span>
+            <h1>Histórico Explora</h1>
+            <p>Ganancia real de Explora por chofer y período, sin depender de cierres.</p>
+          </div>
+        </header>
+        <section class="pay-history-controls">
+          <label for="payHistoryDriverSelect"><span>Chofer</span><select id="payHistoryDriverSelect"><option value="">Cargando choferes…</option></select></label>
+          <label for="payHistoryScopeSelect"><span>Vista</span><select id="payHistoryScopeSelect"><option value="total">Histórico total</option><option value="monthly">Histórico mensual</option><option value="weekly">Histórico semanal</option><option value="daily">Histórico diario</option></select></label>
+        </section>
+        <div class="pay-history-content" id="payHistoryContent"><div class="pay-history-empty">Seleccioná un chofer para ver el histórico.</div></div>
+      </section>
       <button class="pay-floating-spark pay-efficiency-btn" id="payEfficiencyBtn" type="button" aria-label="Eficiencia Operativa"><span class="pay-efficiency-icon" aria-hidden="true"></span><span class="pay-efficiency-asterisk" aria-hidden="true">*</span></button>
       <nav class="pay-bottom-nav" id="payBottomNav" aria-label="Navegación principal Explora">
         <button class="pay-nav-btn is-active" data-pay-nav="inicio" type="button"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 10v10h14V10"></path></svg><span>Inicio</span></button>
@@ -971,7 +998,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     $("payEfficiencyBtn")?.addEventListener("click", openEfficiencyModal);
     $("payNavClosure")?.addEventListener("click", () => {
       if (isAdmin()) {
-        showPayView("mas");
+        openHistoryScreen();
         return;
       }
       // Botón inferior "Cierre" = ver/resolver cierres existentes abiertos o historial.
@@ -1037,18 +1064,23 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     });
     document.querySelector('[data-pay-nav="actividad"]')?.addEventListener("click", () => {
       if (isAdmin()) {
+        state.adminActivityType = "";
         showPayView("inicio");
-        runExistingAction("admin-choferes");
+        render();
+        setTimeout(() => resetPayViewScroll("inicio"), 40);
         return;
       }
       showPayView("inicio");
-      setTimeout(() => $("payActivityTitle")?.scrollIntoView({ behavior:"smooth", block:"start" }), 40);
+      setTimeout(() => resetPayViewScroll("inicio"), 40);
     });
     document.querySelector('[data-pay-nav="mas"]')?.addEventListener("click", () => showPayView("mas"));
     $("payMoreBack")?.addEventListener("click", () => showPayView("inicio"));
     $("payNotificationsBack")?.addEventListener("click", () => showPayView("inicio"));
     $("payNotificationsSettings")?.addEventListener("click", () => showPayView("mas"));
     $("payAdminClosuresBack")?.addEventListener("click", () => showPayView("inicio"));
+    $("payHistoryBack")?.addEventListener("click", () => showPayView("inicio"));
+    $("payHistoryDriverSelect")?.addEventListener("change", event => selectHistoryDriver(event.target?.value || ""));
+    $("payHistoryScopeSelect")?.addEventListener("change", event => { state.historyScope = event.target?.value || "total"; renderHistoryScreen(); });
     $("payAdminClosuresList")?.addEventListener("click", event => {
       const button = event.target?.closest?.("[data-pay-admin-closure-action]");
       if (!button) return;
@@ -1122,7 +1154,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function setBottomNavActive(target = "inicio") {
     document.querySelectorAll("#payBottomNav .pay-nav-btn").forEach(button => {
-      const nav = button.dataset.payNav || (isAdmin() && button.dataset.payRun ? "admin-cierres" : "") || (button.id === "payNavClosure" ? "cierre" : "");
+      const nav = button.dataset.payNav || (isAdmin() && button.dataset.payRun ? "admin-cierres" : "") || (button.id === "payNavClosure" ? (isAdmin() ? "historico" : "cierre") : "");
       button.classList.toggle("is-active", nav === target);
     });
   }
@@ -1134,7 +1166,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         ? $("payNotificationsScreen")
         : target === "admin-cierres"
           ? $("payAdminClosuresList")
-          : document.scrollingElement;
+          : target === "historico"
+            ? $("payHistoryScreen")
+            : document.scrollingElement;
     const reset = () => {
       try {
         if (screen?.scrollTo) screen.scrollTo({ top:0, left:0, behavior:"auto" });
@@ -1150,16 +1184,18 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function showPayView(view = "inicio") {
-    const target = view === "mas" ? "mas" : view === "notificaciones" ? "notificaciones" : view === "admin-cierres" ? "admin-cierres" : "inicio";
+    const target = view === "mas" ? "mas" : view === "notificaciones" ? "notificaciones" : view === "admin-cierres" ? "admin-cierres" : view === "historico" ? "historico" : "inicio";
     state.view = target;
     const dashboard = $("exploraPagoDashboard");
     const more = $("payMoreScreen");
     const notifications = $("payNotificationsScreen");
     const adminClosures = $("payAdminClosuresScreen");
+    const history = $("payHistoryScreen");
     const isMore = target === "mas";
     const isNotifications = target === "notificaciones";
     const isAdminClosures = target === "admin-cierres";
-    const hideHome = isMore || isNotifications || isAdminClosures;
+    const isHistory = target === "historico";
+    const hideHome = isMore || isNotifications || isAdminClosures || isHistory;
     if (dashboard) {
       dashboard.hidden = hideHome;
       dashboard.style.display = hideHome ? "none" : "";
@@ -1180,14 +1216,21 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       adminClosures.style.display = isAdminClosures ? "block" : "none";
       adminClosures.setAttribute("aria-hidden", isAdminClosures ? "false" : "true");
     }
+    if (history) {
+      history.hidden = !isHistory;
+      history.style.display = isHistory ? "block" : "none";
+      history.setAttribute("aria-hidden", isHistory ? "false" : "true");
+    }
     document.body.classList.toggle("pay-more-open", isMore);
     document.body.classList.toggle("pay-notifications-open", isNotifications);
     document.body.classList.toggle("pay-admin-closures-open", isAdminClosures);
-    setBottomNavActive(isAdminClosures ? "admin-cierres" : isNotifications ? "" : target);
+    document.body.classList.toggle("pay-history-open", isHistory);
+    setBottomNavActive(isAdminClosures ? "admin-cierres" : isHistory ? "historico" : isNotifications ? "" : target);
     if (isMore) renderMoreScreen();
     if (isNotifications) renderNotificationsScreen();
     if (isAdminClosures) renderAdminClosuresScreen();
-    if (isMore || isNotifications || isAdminClosures) resetPayViewScroll(target);
+    if (isHistory) renderHistoryScreen();
+    if (isMore || isNotifications || isAdminClosures || isHistory) resetPayViewScroll(target);
   }
 
   function payOverlayIsOpen() {
@@ -1197,15 +1240,17 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function forceHomeLanding() {
     state.view = "inicio";
     state.tab = "chofer";
-    document.body.classList.remove("pay-more-open", "pay-notifications-open", "pay-admin-closures-open");
+    document.body.classList.remove("pay-more-open", "pay-notifications-open", "pay-admin-closures-open", "pay-history-open");
     const dashboard = $("exploraPagoDashboard");
     const more = $("payMoreScreen");
     const notifications = $("payNotificationsScreen");
     const adminClosures = $("payAdminClosuresScreen");
+    const history = $("payHistoryScreen");
     if (dashboard) { dashboard.hidden = false; dashboard.style.display = ""; dashboard.setAttribute("aria-hidden", "false"); }
     if (more) { more.hidden = true; more.style.display = "none"; more.setAttribute("aria-hidden", "true"); }
     if (notifications) { notifications.hidden = true; notifications.style.display = "none"; notifications.setAttribute("aria-hidden", "true"); }
     if (adminClosures) { adminClosures.hidden = true; adminClosures.style.display = "none"; adminClosures.setAttribute("aria-hidden", "true"); }
+    if (history) { history.hidden = true; history.style.display = "none"; history.setAttribute("aria-hidden", "true"); }
     setBottomNavActive("inicio");
   }
 
@@ -3289,7 +3334,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       if (button.dataset.payNav === "inicio") span.textContent = admin ? "Actividades" : "Inicio";
       else if (button.dataset.payNav === "actividad") span.textContent = admin ? "+ Chofer" : "Actividad";
       else if (button.dataset.payRun === "nuevo-servicio") span.textContent = admin ? "Cierre contable" : "Cobrar";
-      else if (button.id === "payNavClosure") span.textContent = admin ? "Futuro" : "Cierre";
+      else if (button.id === "payNavClosure") span.textContent = admin ? "Histórico" : "Cierre";
     });
     const navInicioIcon = document.querySelector('#payBottomNav [data-pay-nav="inicio"] svg');
     if (navInicioIcon) navInicioIcon.innerHTML = admin
@@ -3299,6 +3344,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (navChoferIcon) navChoferIcon.innerHTML = admin
       ? '<circle cx="9" cy="8" r="3"></circle><path d="M3 20c.5-4 2.6-6 6-6s5.5 2 6 6"></path><path d="M18 8v6M15 11h6"></path>'
       : '<path d="M4 6h16M4 12h16M4 18h10"></path>';
+    const navClosureIcon = document.querySelector('#payBottomNav #payNavClosure svg');
+    if (navClosureIcon) navClosureIcon.innerHTML = admin
+      ? '<path d="M4 19V5"></path><path d="M4 19h16"></path><path d="M7 15l3-4 3 2 4-6"></path><path d="M16 7h3v3"></path>'
+      : '<path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path><path d="M9 14h6M9 17h4"></path>';
     const navMain = document.querySelector('#payBottomNav .pay-nav-main');
     if (navMain) navMain.setAttribute('aria-label', admin ? 'Cierre contable' : 'Cobrar');
     const title = $("payActivityTitle");
@@ -3713,6 +3762,177 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return rows.filter(adminActivityMatches).sort((a,b)=>b.at-a.at).slice(0, adminMode ? 60 : 12);
   }
 
+  function historyScopeLabel(scope = state.historyScope) {
+    return HISTORY_SCOPES.find(([value]) => value === scope)?.[1] || "Histórico total";
+  }
+
+  function historyDefaultDriverUid() {
+    if (!isAdmin()) return getOwnDriverUid();
+    return safe(state.historyDriverUid || state.selectedDriverUid || state.drivers[0]?.uid || "");
+  }
+
+  function openHistoryScreen() {
+    showPayView("historico");
+    if (!isAdmin()) {
+      const own = getOwnDriverUid();
+      if (own && state.historyDriverUid !== own) {
+        state.historyDriverUid = own;
+        state.historyDriverName = displayName();
+      }
+      loadHistoryDataForDriver(own);
+      return;
+    }
+    fetchDrivers().then(() => {
+      const uid = historyDefaultDriverUid();
+      if (uid && state.historyDriverUid !== uid) {
+        const driver = state.drivers.find(item => item.uid === uid);
+        state.historyDriverUid = uid;
+        state.historyDriverName = driver?.name || state.selectedDriverName || "";
+      }
+      renderHistoryScreen();
+      if (uid) loadHistoryDataForDriver(uid);
+    }).catch(error => {
+      state.historyError = error?.message || "No se pudieron cargar los choferes.";
+      renderHistoryScreen();
+    });
+  }
+
+  function selectHistoryDriver(uid = "") {
+    const next = safe(uid);
+    const driver = state.drivers.find(item => item.uid === next);
+    state.historyDriverUid = next;
+    state.historyDriverName = driver?.name || "";
+    state.historyData = { uid:"", records:[], expenses:[], debtPayments:[] };
+    renderHistoryScreen();
+    if (next) loadHistoryDataForDriver(next);
+  }
+
+  async function loadHistoryDataForDriver(uid = state.historyDriverUid) {
+    const targetUid = safe(uid || historyDefaultDriverUid());
+    if (!targetUid || !state.db) return;
+    state.historyLoading = true;
+    state.historyError = "";
+    renderHistoryScreen();
+    try {
+      const [records, expenses, debtPayments] = await Promise.all([
+        getScopedDocs("billing_records", targetUid),
+        getScopedDocs("gastos", targetUid),
+        getScopedDocs("deuda_pagos", targetUid)
+      ]);
+      state.historyData = {
+        uid:targetUid,
+        records:records.sort((a,b)=>rowMs(b)-rowMs(a)),
+        expenses:expenses.sort((a,b)=>rowMs(b)-rowMs(a)),
+        debtPayments:debtPayments.sort((a,b)=>rowMs(b)-rowMs(a))
+      };
+    } catch (error) {
+      state.historyError = error?.message || "No se pudo cargar el histórico.";
+    } finally {
+      state.historyLoading = false;
+      renderHistoryScreen();
+    }
+  }
+
+  function historyRange(scope = state.historyScope) {
+    const now = new Date();
+    const endMs = now.getTime();
+    if (scope === "daily") return { startMs:new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(), endMs, label:"Hoy" };
+    if (scope === "weekly") {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const daysSinceSaturday = (start.getDay() + 1) % 7;
+      start.setDate(start.getDate() - daysSinceSaturday);
+      start.setHours(0,0,0,0);
+      return { startMs:start.getTime(), endMs, label:"Semana operativa" };
+    }
+    if (scope === "monthly") return { startMs:new Date(now.getFullYear(), now.getMonth(), 1).getTime(), endMs, label:"Mes actual" };
+    return { startMs:0, endMs, label:"Total acumulado" };
+  }
+
+  function historyInRange(row = {}, range = historyRange()) {
+    const at = rowMs(row) || debtCreatedMs(row);
+    return at > 0 && at >= range.startMs && at <= range.endMs;
+  }
+
+  function computeHistoryReport(scope = state.historyScope) {
+    const range = historyRange(scope);
+    const data = state.historyData || {};
+    const records = (data.records || []).filter(row => !movementIsDeleted(row) && historyInRange(row, range));
+    const expenses = (data.expenses || []).filter(row => !movementIsDeleted(row) && historyInRange(row, range));
+    const debtPayments = (data.debtPayments || []).filter(row => !movementIsDeleted(row) && historyInRange(row, range));
+    const totalFacturado = records.reduce((sum,row)=>sum + amountOf(row), 0);
+    const chofer = totalFacturado * .5;
+    const exploraBase = totalFacturado - chofer;
+    const cajaChica = records.filter(row => methodOf(row) === "cash" && !cashboxIsExcluded(row)).reduce((sum,row)=>sum + amountOf(row), 0) * .05;
+    const deudaCobrada = debtPayments.reduce((sum,row)=>sum + amountOf(row), 0);
+    const gastos = expenses.reduce((sum,row)=>sum + expenseParts(row).amount, 0);
+    const ganaExplora = exploraBase + cajaChica + deudaCobrada - gastos;
+    return { scope, range, records, expenses, debtPayments, totalFacturado, chofer, exploraBase, cajaChica, deudaCobrada, gastos, ganaExplora };
+  }
+
+  function historyBarHtml(label = "", value = 0, max = 1, tone = "plus") {
+    const amount = Math.abs(number(value || 0));
+    const pct = Math.max(5, Math.min(100, Math.round((amount / Math.max(1, max)) * 100)));
+    return `<article class="pay-history-bar is-${tone}"><div><span>${esc(label)}</span><strong>${currency(value)}</strong></div><i style="--w:${pct}%"></i></article>`;
+  }
+
+  function renderHistoryScreen() {
+    const driverSelect = $("payHistoryDriverSelect");
+    const scopeSelect = $("payHistoryScopeSelect");
+    const content = $("payHistoryContent");
+    if (!content) return;
+    if (scopeSelect) scopeSelect.value = state.historyScope || "total";
+    if (driverSelect) {
+      if (isAdmin()) {
+        const selected = safe(state.historyDriverUid || historyDefaultDriverUid());
+        driverSelect.disabled = state.historyLoading;
+        driverSelect.innerHTML = state.drivers.length
+          ? state.drivers.map(driver => `<option value="${esc(driver.uid)}" ${driver.uid === selected ? "selected" : ""}>${esc(driver.name)}</option>`).join("")
+          : '<option value="">Sin choferes cargados</option>';
+      } else {
+        driverSelect.disabled = true;
+        driverSelect.innerHTML = `<option value="${esc(getOwnDriverUid())}">${esc(displayName())}</option>`;
+      }
+    }
+    if (state.historyLoading) {
+      content.innerHTML = '<div class="pay-history-empty">Calculando histórico…</div>';
+      return;
+    }
+    if (state.historyError) {
+      content.innerHTML = `<div class="pay-history-empty is-error">${esc(state.historyError)}</div>`;
+      return;
+    }
+    const uid = safe(state.historyDriverUid || historyDefaultDriverUid());
+    if (!uid) {
+      content.innerHTML = '<div class="pay-history-empty">Seleccioná un chofer para ver el histórico.</div>';
+      return;
+    }
+    const report = computeHistoryReport(state.historyScope || "total");
+    const max = Math.max(Math.abs(report.exploraBase), Math.abs(report.cajaChica), Math.abs(report.deudaCobrada), Math.abs(report.gastos), 1);
+    const driverName = state.historyDriverName || state.drivers.find(item => item.uid === uid)?.name || displayName();
+    content.innerHTML = `
+      <section class="pay-history-result ${report.ganaExplora < 0 ? "is-negative" : "is-positive"}">
+        <div class="pay-history-result-head">
+          <span>${esc(driverName)}</span>
+          <small>${esc(historyScopeLabel(report.scope))} · ${esc(report.range.label)}</small>
+        </div>
+        <strong>${currency(report.ganaExplora)}</strong>
+        <p>Gana Explora hasta este momento</p>
+      </section>
+      <section class="pay-history-chart" aria-label="Gráfico histórico Explora">
+        ${historyBarHtml("Facturación Explora", report.exploraBase, max, "plus")}
+        ${historyBarHtml("Caja chica", report.cajaChica, max, "plus")}
+        ${historyBarHtml("Deuda cobrada", report.deudaCobrada, max, "plus")}
+        ${historyBarHtml("Gastos", -report.gastos, max, "minus")}
+      </section>
+      <section class="pay-history-metrics">
+        <div><span>Total facturado</span><strong>${currency(report.totalFacturado)}</strong></div>
+        <div><span>Parte chofer 50%</span><strong>-${currency(report.chofer)}</strong></div>
+        <div><span>Caja chica</span><strong>${currency(report.cajaChica)}</strong></div>
+        <div><span>Deuda cobrada</span><strong>${currency(report.deudaCobrada)}</strong></div>
+        <div><span>Gastos</span><strong>-${currency(report.gastos)}</strong></div>
+      </section>`;
+  }
+
   function render() {
     installShell();
     renderAdminShellState();
@@ -3741,6 +3961,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       showPayView("notificaciones");
     } else if (state.view === "admin-cierres") {
       showPayView("admin-cierres");
+    } else if (state.view === "historico") {
+      showPayView("historico");
     } else {
       setBottomNavActive("inicio");
     }
@@ -5010,4 +5232,4 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen });
 })();
 
-/* v4050: Cierres abiertos rojo, cerrados verde; dock con icono agregar cobro sin brillo. */
+/* v4051: Histórico Explora por chofer/período, actividad scroll top, icono cobro y futuro->histórico. */
