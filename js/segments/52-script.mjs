@@ -18,7 +18,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   const EXPLORA_ADMIN_UIDS = new Set(["2LziyTTdFcZzSOhK3hLbAKs2U4s2"]);
   const $ = id => document.getElementById(id);
   const PAY_TAB_ORDER = Object.freeze(["chofer", "explora", "gastos", "caja_chica", "pendientes"]);
-  const PAY_TAB_LABELS = Object.freeze({ chofer:"Chofer", explora:"Explora", gastos:"Gastos", caja_chica:"Caja chica", pendientes:"Pendientes" });
+  const PAY_TAB_LABELS = Object.freeze({ chofer:"Chofer", explora:"Explora", gastos:"Gastos", caja_chica:"Caja chica", pendientes:"Deudas" });
   const PAY_TAB_ALERT_ZERO = Object.freeze({ chofer:0, explora:0, gastos:0, caja_chica:0, pendientes:0 });
   const ADMIN_ACTIVITY_TYPES = Object.freeze([
     ["", "Todos los tipos"],
@@ -26,7 +26,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ["chofer", "Comprobante chofer"],
     ["gastos", "Gastos"],
     ["caja_chica", "Caja chica"],
-    ["pendientes", "Pendientes"],
+    ["pendientes", "Deudas"],
     ["cierres", "Cierres"]
   ]);
   const state = {
@@ -434,7 +434,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const totalPenalty = normalized.reduce((sum,row)=>sum + debtPenaltyAmount(row), 0);
     const remaining = normalized.reduce((sum,row)=>sum + debtRemainingAmount(row), 0);
     const byType = normalized.reduce((acc,row)=>{ const type = debtTypeOf(row); acc[type] = (acc[type] || 0) + debtRemainingAmount(row); return acc; }, {});
-    return { kind:"pendientes", debts:normalized, activeDebts:normalized, records:[], expenses:[], gross:remaining, mainTotal:remaining, totalOriginal, totalPaid, totalPenalty, remainingAmount:remaining, pendingTotal:remaining, byType, amountToDriver:0, amountFromDriver:remaining, netSettlementToDriver:-remaining, summaryLabel:"Deuda pendiente independiente" };
+    return { kind:"pendientes", debts:normalized, activeDebts:normalized, records:[], expenses:[], gross:remaining, mainTotal:remaining, totalOriginal, totalPaid, totalPenalty, remainingAmount:remaining, pendingTotal:remaining, byType, amountToDriver:0, amountFromDriver:remaining, netSettlementToDriver:-remaining, summaryLabel:"Deuda independiente" };
   }
 
   function debtPaymentRows(rows = state.debtPayments) {
@@ -705,7 +705,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           <button class="pay-tab" data-pay-tab="explora" type="button" role="tab" aria-selected="false"><span class="pay-tab-label">Explora</span><span class="pay-tab-alert-badge" hidden>🛎️ 0</span></button>
           <button class="pay-tab" data-pay-tab="gastos" type="button" role="tab" aria-selected="false"><span class="pay-tab-label">Gastos</span><span class="pay-tab-alert-badge" hidden>🛎️ 0</span></button>
           <button class="pay-tab" data-pay-tab="caja_chica" type="button" role="tab" aria-selected="false"><span class="pay-tab-label">Caja chica</span><span class="pay-tab-alert-badge" hidden>🛎️ 0</span></button>
-          <button class="pay-tab" data-pay-tab="pendientes" type="button" role="tab" aria-selected="false"><span class="pay-tab-label">Pendientes</span><span class="pay-tab-alert-badge" hidden>🛎️ 0</span></button>
+          <button class="pay-tab" data-pay-tab="pendientes" type="button" role="tab" aria-selected="false"><span class="pay-tab-label">Deudas</span><span class="pay-tab-alert-badge" hidden>🛎️ 0</span></button>
         </nav>
         <section class="pay-admin-driver-picker pay-admin-activity-filters" id="payAdminDriverPicker" hidden>
           <div class="pay-admin-filter-field">
@@ -786,7 +786,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         </header>
         <div class="pay-admin-closures-legend">
           <strong>Liquidaciones activas</strong>
-          <small>Chofer, Explora, gastos, caja chica y pendientes en una vista contable simple.</small>
+          <small>Chofer, Explora, gastos, caja chica y deudas en una vista contable simple.</small>
         </div>
         <div class="pay-admin-closures-list" id="payAdminClosuresList">
           <div class="pay-admin-closures-empty">Cargando choferes…</div>
@@ -1127,6 +1127,28 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     });
   }
 
+  function resetPayViewScroll(target = "inicio") {
+    const screen = target === "mas"
+      ? $("payMoreScreen")
+      : target === "notificaciones"
+        ? $("payNotificationsScreen")
+        : target === "admin-cierres"
+          ? $("payAdminClosuresList")
+          : document.scrollingElement;
+    const reset = () => {
+      try {
+        if (screen?.scrollTo) screen.scrollTo({ top:0, left:0, behavior:"auto" });
+        else if (screen) screen.scrollTop = 0;
+      } catch (_) {
+        if (screen) screen.scrollTop = 0;
+      }
+      try { window.scrollTo({ top:0, left:0, behavior:"auto" }); } catch (_) { window.scrollTo(0, 0); }
+    };
+    reset();
+    requestAnimationFrame(reset);
+    setTimeout(reset, 80);
+  }
+
   function showPayView(view = "inicio") {
     const target = view === "mas" ? "mas" : view === "notificaciones" ? "notificaciones" : view === "admin-cierres" ? "admin-cierres" : "inicio";
     state.view = target;
@@ -1165,7 +1187,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (isMore) renderMoreScreen();
     if (isNotifications) renderNotificationsScreen();
     if (isAdminClosures) renderAdminClosuresScreen();
-    if (isMore || isNotifications || isAdminClosures) window.scrollTo({ top: 0, behavior: "auto" });
+    if (isMore || isNotifications || isAdminClosures) resetPayViewScroll(target);
   }
 
   function payOverlayIsOpen() {
@@ -1191,7 +1213,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return [
       { title:"Mi perfil", detail:"Datos de cuenta y preferencias", action:"abrir-perfil", icon:"user" },
       { title:"Mi auto", detail:"Vencimientos, patente y documentación", action:"mi-auto", icon:"car" },
-      { title:"Multas y choques", detail:"Deudas y novedades del vehículo", action:"multas-choques", icon:"alert" },
+      { title:"Deudas", detail:"Multas, choques, préstamos y adelantos", action:"multas-choques", icon:"alert" },
       { title:"Préstamo Explora", detail:"Solicitud y estado del préstamo", action:"prestamo-explora", icon:"loan" },
       { title:"Comprobantes", detail:"Cobros, gastos y cierres cargados", action:"comprobantes", icon:"receipt" }
     ];
@@ -1203,7 +1225,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       { title:"Borrar movimientos", detail:"Cobros, caja chica y gastos", action:"admin-delete-movements", icon:"trash" },
       { title:"Cierres", detail:"Comprobantes y pagos pendientes", action:"admin-cierres", icon:"receipt" },
       { title:"Gastos", detail:"Gastos cargados por choferes", action:"admin-gastos", icon:"wallet" },
-      { title:"Multas", detail:"Multas, choques y deudas", action:"admin-multas", icon:"alert" }
+      { title:"Deudas", detail:"Multas, choques, préstamos y adelantos", action:"admin-multas", icon:"alert" }
     ];
   }
 
@@ -1617,6 +1639,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (oldLogout) oldLogout.click();
   }
 
+  function isPlaceholderDriverProfile(data = {}, id = "") {
+    const tokens = new Set(["usuario", "user", "chofer usuario", "usuario chofer", "chofer-usuario"]);
+    return [id, data.id, data.uid, data.authUid, data.firebaseUid, data.userId, data.usuario, data.username, data.nombre, data.nombreCompleto, data.displayName, data.name]
+      .some(value => tokens.has(safe(value).toLowerCase()));
+  }
+
   async function fetchDrivers() {
     if (!state.db) return [];
     const collections = ["choferes", "usuarios"];
@@ -1631,6 +1659,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           const driverName = safe(data.nombre || data.nombreCompleto || data.displayName || data.name);
           if (!uid || EXPLORA_ADMIN_UIDS.has(uid) || EXPLORA_ADMIN_UIDS.has(item.id)) return;
           if (role !== "chofer") return;
+          if (isPlaceholderDriverProfile(data, item.id)) return;
           if (!driverIsActive(data)) return;
           if (!driverName) return;
           map.set(uid, { uid, id:item.id, collection:name, name:driverName, role, profile:data });
@@ -2275,44 +2304,17 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const normalizedPhone = normalizeWhatsappPhone(phone);
     if (!normalizedPhone) return false;
     const encodedText = encodeURIComponent(text || "");
-    const webUrl = `https://wa.me/${normalizedPhone}?text=${encodedText}`;
-    const nativeUrl = `whatsapp://send?phone=${normalizedPhone}&text=${encodedText}`;
-    const ua = safe(navigator?.userAgent || "");
-    const mobile = /Android|iPhone|iPad|iPod/i.test(ua);
+    const webUrl = `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`;
 
-    if (mobile) {
-      let appOpened = false;
-      let fallbackTimer = null;
-      const markOpened = () => { appOpened = true; };
-      const onVisibility = () => {
-        if (document.visibilityState === "hidden") markOpened();
-      };
-      const cleanup = () => {
-        window.removeEventListener("pagehide", markOpened);
-        window.removeEventListener("blur", markOpened);
-        document.removeEventListener("visibilitychange", onVisibility);
-        if (fallbackTimer) clearTimeout(fallbackTimer);
-      };
-
-      try {
-        window.addEventListener("pagehide", markOpened, { once:true });
-        window.addEventListener("blur", markOpened, { once:true });
-        document.addEventListener("visibilitychange", onVisibility);
-        window.location.href = nativeUrl;
-        fallbackTimer = window.setTimeout(() => {
-          cleanup();
-          if (!appOpened && document.visibilityState !== "hidden") window.location.href = webUrl;
-        }, 1600);
-        return true;
-      } catch (_) {
-        cleanup();
-        try { window.location.href = webUrl; return true; } catch (__) { return false; }
-      }
-    }
-
+    // Android/PWA: no usar whatsapp:// porque algunos WebView lo cargan como página interna
+    // y muestran net::ERR_UNKNOWN_URL_SCHEME. wa.me delega correctamente a WhatsApp.
     try {
       const opened = window.open(webUrl, "_blank", "noopener");
-      if (!opened) window.location.href = webUrl;
+      if (opened) return true;
+    } catch (_) {}
+
+    try {
+      window.location.assign(webUrl);
       return true;
     } catch (_) {
       try { window.location.href = webUrl; return true; } catch (__) { return false; }
@@ -3423,7 +3425,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function adminDebtAction(uid = "") {
     const payment = adminDebtReductionForDriver(uid);
-    if (!payment) return adminClosureActionHtml({ uid, kind:"pendientes", action:"none", label:"Sin reducción pendiente", tone:"locked", disabled:true });
+    if (!payment) return adminClosureActionHtml({ uid, kind:"pendientes", action:"none", label:"Sin reducción de deuda", tone:"locked", disabled:true });
     const amount = amountOf(payment);
     return adminClosureActionHtml({ uid, kind:"pendientes", action:"accept-debt", id:safe(payment.id || payment.paymentId), label:`Chofer redujo deuda · aceptar${amount > 0 ? ` ${currency(amount)}` : ""}`, tone:"red" });
   }
@@ -3485,7 +3487,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         actionHtml:adminBillingRequestAction(uid, "caja_chica", summary)
       }),
       adminClosureModuleHtml({
-        kind:"pendientes", title:"Pendientes", subtitle:"100% a cargo del chofer",
+        kind:"pendientes", title:"Deudas", subtitle:"100% a cargo del chofer",
         metrics:[
           adminClosureMetricHtml("Deuda actual", pendientes.remainingAmount || 0),
           adminClosureMetricHtml("Pagado", pendientes.totalPaid || 0),
