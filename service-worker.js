@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4040-deudas-whatsapp-ios-android */
+/* Compatibilidad validada: v4041-whatsapp-nativo-directo */
 /* EXPLORA PWA service worker · v2.5.4 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4040-deudas-whatsapp-ios-android`;
+const CACHE_NAME = `${CACHE_PREFIX}v4041-whatsapp-nativo-directo`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -20,10 +20,10 @@ const APP_SHELL = [
   './css/segments/07-style.css?v=3921-billing-visual-fix',
   './js/segments/09-script.js',
   './js/segments/07-script.js?v=3921-billing-visual-fix',
-  './js/segments/13-script.mjs?v=4040-deudas-whatsapp-ios-android',
+  './js/segments/13-script.mjs?v=4041-whatsapp-nativo-directo',
   './css/segments/14-style.css?v=4023-activity-photo-viewer',
   './js/segments/14-script.mjs?v=4023-activity-photo-viewer',
-  './js/segments/15-script.mjs?v=4040-deudas-whatsapp-ios-android',
+  './js/segments/15-script.mjs?v=4041-whatsapp-nativo-directo',
   './css/segments/32-style.css?v=2445-finance-nav-fix',
   './css/segments/38-style.css?v=2445-finance-nav-fix',
   './js/segments/01-script.js?v2442-weekly-payment-production',
@@ -36,8 +36,8 @@ const APP_SHELL = [
   './css/segments/50-style.css?v=4016-card-alerts',
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
-  './css/segments/52-style.css?v=4040-deudas-whatsapp-ios-android',
-  './js/segments/52-script.mjs?v=4040-deudas-whatsapp-ios-android',
+  './css/segments/52-style.css?v=4041-whatsapp-nativo-directo',
+  './js/segments/52-script.mjs?v=4041-whatsapp-nativo-directo',
   './assets/icono_eficiencia_km.png',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
@@ -128,4 +128,4 @@ self.addEventListener('message', (event) => {
 
 /* cache bump: v4015 role guard */
 
-/* cache bump: v4040 deudas blanco + WhatsApp iOS/Android */
+/* cache bump: v4041 WhatsApp nativo directo sin pantalla web */
