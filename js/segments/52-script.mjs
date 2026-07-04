@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-closure-compact-modal-fix";
+  const VERSION = "explora-pago-home-v52-v4036-admin-clean-closures";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -780,13 +780,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           <button class="pay-admin-closures-back" id="payAdminClosuresBack" type="button" aria-label="Volver al inicio"><svg viewBox="0 0 24 24"><path d="M15 6 9 12l6 6"></path></svg></button>
           <div>
             <span>ADMIN</span>
-            <h1>Cierres</h1>
-            <p>Una pantalla por chofer · deslizá para resolver rápido.</p>
+            <h1>Cierre contable</h1>
+            <p>Vista limpia por chofer, con tarjetas estilo últimas actividades.</p>
           </div>
         </header>
         <div class="pay-admin-closures-legend">
-          <strong>Vista rápida</strong>
-          <small>Scroll vertical con salto por chofer. Cada botón trabaja solo sobre su tarjeta.</small>
+          <strong>Liquidaciones activas</strong>
+          <small>Chofer, Explora, gastos, caja chica y pendientes en una vista contable simple.</small>
         </div>
         <div class="pay-admin-closures-list" id="payAdminClosuresList">
           <div class="pay-admin-closures-empty">Cargando choferes…</div>
@@ -3286,7 +3286,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       if (!span) return;
       if (button.dataset.payNav === "inicio") span.textContent = admin ? "Actividades" : "Inicio";
       else if (button.dataset.payNav === "actividad") span.textContent = admin ? "+ Chofer" : "Actividad";
-      else if (button.dataset.payRun === "nuevo-servicio") span.textContent = admin ? "Cierre financiero" : "Cobrar";
+      else if (button.dataset.payRun === "nuevo-servicio") span.textContent = admin ? "Cierre contable" : "Cobrar";
       else if (button.id === "payNavClosure") span.textContent = admin ? "Futuro" : "Cierre";
     });
     const navInicioIcon = document.querySelector('#payBottomNav [data-pay-nav="inicio"] svg');
@@ -3298,7 +3298,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       ? '<circle cx="9" cy="8" r="3"></circle><path d="M3 20c.5-4 2.6-6 6-6s5.5 2 6 6"></path><path d="M18 8v6M15 11h6"></path>'
       : '<path d="M4 6h16M4 12h16M4 18h10"></path>';
     const navMain = document.querySelector('#payBottomNav .pay-nav-main');
-    if (navMain) navMain.setAttribute('aria-label', admin ? 'Cierre financiero' : 'Cobrar');
+    if (navMain) navMain.setAttribute('aria-label', admin ? 'Cierre contable' : 'Cobrar');
     const title = $("payActivityTitle");
     if (title) title.textContent = admin ? "Últimas actividades" : "Última actividad";
   }

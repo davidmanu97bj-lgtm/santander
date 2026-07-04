@@ -5267,8 +5267,12 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       if (!content) return;
       const mode = adminSharedState.mode;
       document.body.classList.toggle("explora-admin-drivers-white", mode === "drivers-management");
-      periodTabs.hidden = !["billing","expenses","receipts"].includes(mode);
-      receiptTabs.hidden = mode !== "receipts";
+      // v4036: los selectores Semana / Mes / Año y Pagos / Gastos se retiran visualmente.
+      // Se conserva el estado interno para compatibilidad con módulos viejos, pero ya no se muestran tabs.
+      if (periodTabs) periodTabs.hidden = true;
+      if (receiptTabs) receiptTabs.hidden = true;
+      const refreshButton = $("adminSharedRefreshBtn");
+      if (refreshButton) refreshButton.hidden = mode === "drivers-management";
       document.querySelectorAll("[data-admin-period]").forEach(btn => btn.classList.toggle("is-active", btn.dataset.adminPeriod === adminSharedState.periodMode));
       document.querySelectorAll("[data-admin-receipt-tab]").forEach(btn => btn.classList.toggle("is-active", btn.dataset.adminReceiptTab === adminSharedState.receiptTab));
       setAdminSharedLoading("Cargando datos…");
