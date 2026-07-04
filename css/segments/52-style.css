@@ -2149,3 +2149,248 @@ body.explora-admin-activity-home .pay-bottom-nav .pay-nav-main .pay-nav-finance-
     height:39px!important;
   }
 }
+
+/* v4038 · Deudas admin blanco, sin cuotas fijas y selector compacto */
+body.explora-admin-debts-white .admin-shared-screen{
+  background:var(--pay-bg)!important;
+  color:var(--pay-ink)!important;
+  font-family:var(--pay-font)!important;
+}
+body.explora-admin-debts-white .admin-shared-shell{
+  width:min(100%,520px)!important;
+  padding:calc(env(safe-area-inset-top) + 16px) 16px calc(112px + env(safe-area-inset-bottom))!important;
+}
+body.explora-admin-debts-white .admin-shared-header{
+  background:linear-gradient(180deg,rgba(248,248,251,.98),rgba(248,248,251,.92) 78%,rgba(248,248,251,0))!important;
+  color:var(--pay-ink)!important;
+}
+body.explora-admin-debts-white .admin-shared-back,
+body.explora-admin-debts-white .admin-shared-refresh{
+  border:1px solid rgba(216,221,238,.92)!important;
+  background:rgba(255,255,255,.88)!important;
+  color:var(--pay-ink)!important;
+  box-shadow:0 8px 18px rgba(25,28,40,.06)!important;
+}
+body.explora-admin-debts-white .admin-shared-refresh{display:none!important;}
+body.explora-admin-debts-white .admin-shared-heading h1{
+  color:var(--pay-ink)!important;
+  letter-spacing:-.035em!important;
+  text-transform:none!important;
+  font-size:30px!important;
+  font-weight:950!important;
+}
+body.explora-admin-debts-white .admin-shared-heading p,
+body.explora-admin-debts-white .admin-shared-status{
+  color:var(--pay-muted)!important;
+  font-weight:700!important;
+}
+body.explora-admin-debts-white .debt-form,
+body.explora-admin-debts-white .admin-debt-existing{
+  border:1px solid rgba(210,215,232,.92)!important;
+  border-radius:28px!important;
+  background:#fff!important;
+  color:var(--pay-ink)!important;
+  box-shadow:0 12px 28px rgba(28,31,45,.07)!important;
+}
+body.explora-admin-debts-white .debt-form{padding:18px!important;}
+body.explora-admin-debts-white .admin-debt-existing{padding:16px!important;margin-top:14px!important;}
+body.explora-admin-debts-white .debt-field label,
+body.explora-admin-debts-white .admin-debt-existing-head h3,
+body.explora-admin-debts-white .admin-debt-existing-selector label,
+body.explora-admin-debts-white .receipt-upload-heading{
+  color:#7b8193!important;
+  font-size:11px!important;
+  font-weight:900!important;
+  letter-spacing:.08em!important;
+  text-transform:uppercase!important;
+}
+body.explora-admin-debts-white .debt-field input,
+body.explora-admin-debts-white .debt-field select,
+body.explora-admin-debts-white .debt-field textarea,
+body.explora-admin-debts-white .admin-debt-existing-selector select{
+  border:1px solid rgba(202,209,228,.95)!important;
+  border-radius:18px!important;
+  background:#fff!important;
+  color:var(--pay-ink)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9)!important;
+  font-weight:780!important;
+}
+body.explora-admin-debts-white .debt-field input:focus,
+body.explora-admin-debts-white .debt-field select:focus,
+body.explora-admin-debts-white .debt-field textarea:focus,
+body.explora-admin-debts-white .admin-debt-existing-selector select:focus{
+  outline:0!important;
+  border-color:rgba(77,79,229,.55)!important;
+  box-shadow:0 0 0 4px rgba(77,79,229,.10)!important;
+}
+body.explora-admin-debts-white .debt-reason-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:10px!important;
+}
+body.explora-admin-debts-white .debt-choice{
+  min-height:54px!important;
+  border:1px solid rgba(202,209,228,.95)!important;
+  border-radius:18px!important;
+  background:#f7f8fc!important;
+  color:var(--pay-ink)!important;
+  font-weight:950!important;
+}
+body.explora-admin-debts-white .debt-choice.is-selected{
+  border-color:rgba(77,79,229,.42)!important;
+  background:#eef3ff!important;
+  color:var(--pay-blue)!important;
+  box-shadow:0 10px 22px rgba(77,79,229,.12)!important;
+}
+body.explora-admin-debts-white .debt-vehicle-readonly,
+body.explora-admin-debts-white .debt-info-note,
+body.explora-admin-debts-white .debt-summary{
+  border:1px solid rgba(216,221,238,.95)!important;
+  border-radius:18px!important;
+  background:#f7f8fc!important;
+  color:var(--pay-ink)!important;
+}
+body.explora-admin-debts-white .debt-info-note{
+  display:grid!important;
+  gap:4px!important;
+  padding:13px 14px!important;
+}
+body.explora-admin-debts-white .debt-info-note strong{
+  color:var(--pay-ink)!important;
+  font-size:15px!important;
+  font-weight:950!important;
+}
+body.explora-admin-debts-white .debt-info-note span{
+  color:#6d7285!important;
+  font-size:13px!important;
+  line-height:1.32!important;
+  font-weight:700!important;
+}
+body.explora-admin-debts-white .debt-summary strong{
+  color:var(--pay-ink)!important;
+  text-align:right!important;
+}
+body.explora-admin-debts-white .debt-summary span{
+  color:#7b8193!important;
+  font-weight:850!important;
+}
+body.explora-admin-debts-white .admin-debt-submit,
+body.explora-admin-debts-white .admin-debt-existing-selector button{
+  min-height:52px!important;
+  border:0!important;
+  border-radius:18px!important;
+  background:var(--pay-blue)!important;
+  color:#fff!important;
+  font-weight:950!important;
+  box-shadow:0 12px 24px rgba(77,79,229,.22)!important;
+}
+body.explora-admin-debts-white .admin-debt-submit:disabled,
+body.explora-admin-debts-white .admin-debt-existing-selector button:disabled{
+  opacity:.48!important;
+}
+body.explora-admin-debts-white .admin-debt-existing-head{
+  margin-bottom:12px!important;
+}
+body.explora-admin-debts-white .admin-debt-existing-head h3{
+  margin:0!important;
+}
+body.explora-admin-debts-white .admin-debt-existing-head span{
+  min-width:32px!important;
+  min-height:28px!important;
+  display:grid!important;
+  place-items:center!important;
+  border-radius:999px!important;
+  background:#eef3ff!important;
+  color:var(--pay-blue)!important;
+  font-weight:950!important;
+}
+body.explora-admin-debts-white .admin-debt-existing-selector{
+  display:grid!important;
+  gap:10px!important;
+}
+body.explora-admin-debts-white .admin-debt-edit-banner{
+  border-color:rgba(77,79,229,.20)!important;
+  background:#eef3ff!important;
+  color:var(--pay-blue)!important;
+}
+body.explora-admin-debts-white .admin-debt-edit-banner button{
+  color:var(--pay-blue)!important;
+}
+body.explora-admin-debts-white .driver-debt-history-empty{
+  color:#7b8193!important;
+  font-weight:760!important;
+}
+body.explora-admin-debts-white .debt-attachment-optional{
+  color:#9aa0b3!important;
+}
+body.explora-admin-debts-white .receipt-upload-trigger,
+body.explora-admin-debts-white .receipt-preview{
+  border-color:rgba(202,209,228,.95)!important;
+  background:#f7f8fc!important;
+  color:var(--pay-ink)!important;
+}
+body.explora-admin-debts-white .receipt-preview-info strong{
+  color:var(--pay-ink)!important;
+}
+body.explora-admin-debts-white .receipt-preview-info small,
+body.explora-admin-debts-white .receipt-formats{
+  color:#7b8193!important;
+}
+@media(max-width:390px){
+  body.explora-admin-debts-white .admin-shared-heading h1{font-size:27px!important;}
+  body.explora-admin-debts-white .debt-reason-grid{grid-template-columns:1fr!important;}
+}
+
+
+/* v4039 · Android: Más usa su propio scroller y no depende del body.
+   Corrige el caso admin donde el overflow oculto impedía llegar a “Salir”. */
+body.explora-pay-mode.pay-more-open{
+  height:100dvh!important;
+  overflow:hidden!important;
+  overscroll-behavior:none!important;
+}
+body.explora-pay-mode.pay-more-open #app.driver-dashboard{
+  height:100dvh!important;
+  min-height:100dvh!important;
+  overflow:hidden!important;
+}
+body.explora-pay-mode.pay-more-open .dashboard-shell-real{
+  padding-bottom:0!important;
+}
+body.explora-pay-mode .explora-pay-more{
+  position:fixed!important;
+  top:0!important;
+  bottom:0!important;
+  left:50%!important;
+  right:auto!important;
+  transform:translateX(-50%)!important;
+  width:min(100vw,520px)!important;
+  max-width:520px!important;
+  height:100dvh!important;
+  min-height:100dvh!important;
+  max-height:100dvh!important;
+  box-sizing:border-box!important;
+  padding:calc(18px + env(safe-area-inset-top)) 18px calc(154px + env(safe-area-inset-bottom))!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  -webkit-overflow-scrolling:touch!important;
+  overscroll-behavior-y:contain!important;
+  touch-action:pan-y!important;
+  z-index:120!important;
+}
+body.explora-pay-mode.pay-more-open #payBottomNav{
+  z-index:180!important;
+}
+body.explora-pay-mode .pay-more-spacer{
+  height:18px!important;
+}
+body.explora-pay-mode .pay-more-logout-zone{
+  margin-top:18px!important;
+  padding-bottom:12px!important;
+}
+@media (max-width:390px){
+  body.explora-pay-mode .explora-pay-more{
+    padding-left:14px!important;
+    padding-right:14px!important;
+    padding-bottom:calc(148px + env(safe-area-inset-bottom))!important;
+  }
+}
