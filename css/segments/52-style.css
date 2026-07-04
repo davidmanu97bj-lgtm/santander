@@ -2108,216 +2108,44 @@ body.explora-pay-mode #adminCreateDriverModal .admin-form-save{
   box-shadow:0 10px 22px rgba(77,79,229,.20)!important;
 }
 
-body.pay-admin-closures-open{
-  background:var(--pay-bg)!important;
-  overflow:auto!important;
-  color:var(--pay-ink)!important;
-}
-body.pay-admin-closures-open .explora-pay-admin-closures{
-  width:100%!important;
-  max-width:520px!important;
-  min-height:100dvh!important;
-  height:auto!important;
-  margin:0 auto!important;
-  padding:calc(env(safe-area-inset-top) + 18px) 18px calc(112px + env(safe-area-inset-bottom))!important;
-  background:linear-gradient(180deg,var(--pay-gold-2) 0 156px,var(--pay-bg) 156px 100%)!important;
-  color:var(--pay-ink)!important;
-  display:block!important;
-  overflow:visible!important;
-  font-family:var(--pay-font)!important;
-}
-body.pay-admin-closures-open .pay-admin-closures-head{
-  display:grid!important;
-  grid-template-columns:52px minmax(0,1fr)!important;
-  align-items:center!important;
-  gap:12px!important;
-  margin:0 0 18px!important;
-  padding:0!important;
-}
-body.pay-admin-closures-open .pay-admin-closures-back{
-  width:52px!important;
-  height:52px!important;
-  border:0!important;
-  border-radius:18px!important;
-  background:rgba(255,255,255,.76)!important;
-  color:#26283a!important;
-  box-shadow:0 1px 0 rgba(255,255,255,.42) inset!important;
-}
-body.pay-admin-closures-open .pay-admin-closures-head span{
-  color:#69520f!important;
-  font-size:11px!important;
-  font-weight:950!important;
-  letter-spacing:.12em!important;
-}
-body.pay-admin-closures-open .pay-admin-closures-head h1{
-  margin:0!important;
-  color:#252634!important;
-  font-size:30px!important;
-  line-height:1!important;
-  letter-spacing:-.045em!important;
-  font-weight:900!important;
-  text-transform:none!important;
-}
-body.pay-admin-closures-open .pay-admin-closures-head p{
-  margin:5px 0 0!important;
-  color:#4b5064!important;
-  font-size:13px!important;
-  line-height:1.25!important;
-  font-weight:750!important;
-}
-body.pay-admin-closures-open .pay-admin-closures-legend{
+
+/* v4037 · Cierre contable: volver al diseño anterior + mismo icono central que Últimas actividades */
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon,
+body.explora-admin-activity-home .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon{
   display:none!important;
+  visibility:hidden!important;
+  opacity:0!important;
 }
-body.pay-admin-closures-open .pay-admin-closures-list{
-  display:grid!important;
-  gap:12px!important;
-  height:auto!important;
-  min-height:0!important;
-  max-height:none!important;
-  overflow:visible!important;
-  scroll-snap-type:none!important;
-  padding:0!important;
-}
-body.pay-admin-closures-open .pay-admin-driver-closure-card{
-  width:100%!important;
-  min-height:0!important;
-  height:auto!important;
-  max-height:none!important;
-  scroll-snap-align:none!important;
-  border:1px solid rgba(210,215,232,.88)!important;
-  border-radius:24px!important;
-  background:#fff!important;
-  padding:14px!important;
-  box-shadow:0 8px 18px rgba(28,31,45,.04)!important;
-  overflow:visible!important;
-}
-body.pay-admin-closures-open .pay-admin-driver-closure-card::before{
-  display:none!important;
-}
-body.pay-admin-closures-open .pay-admin-driver-closure-head{
-  padding:0 0 12px!important;
-  margin:0 0 12px!important;
-  border-bottom:1px solid rgba(226,232,240,.95)!important;
-  display:flex!important;
-  align-items:flex-start!important;
-  justify-content:space-between!important;
-  gap:12px!important;
-}
-body.pay-admin-closures-open .pay-admin-driver-closure-head span{
-  color:var(--pay-blue)!important;
-  font-size:10px!important;
-  letter-spacing:.10em!important;
-  font-weight:950!important;
-}
-body.pay-admin-closures-open .pay-admin-driver-closure-head h2{
-  max-width:100%!important;
-  margin:3px 0 0!important;
-  color:var(--pay-ink)!important;
-  font-size:22px!important;
-  line-height:1.05!important;
-  letter-spacing:-.035em!important;
-  font-weight:900!important;
-  white-space:normal!important;
-  overflow:visible!important;
-  text-overflow:clip!important;
-}
-body.pay-admin-closures-open .pay-admin-driver-closure-head strong{
-  flex:0 0 auto!important;
-  border-radius:999px!important;
-  background:#f4f5fa!important;
-  color:var(--pay-ink)!important;
-  padding:8px 10px!important;
-  font-size:13px!important;
-  font-weight:900!important;
-}
-body.pay-admin-closures-open .pay-admin-driver-closure-grid{
-  display:grid!important;
-  grid-template-rows:none!important;
-  grid-template-columns:1fr!important;
-  gap:10px!important;
-  height:auto!important;
-  min-height:0!important;
-}
-body.pay-admin-closures-open .pay-admin-closure-module{
-  min-height:0!important;
-  height:auto!important;
-  border:1px solid rgba(210,215,232,.86)!important;
-  border-radius:20px!important;
-  background:#f8f9fc!important;
-  padding:12px!important;
-  overflow:visible!important;
-}
-body.pay-admin-closures-open .pay-admin-closure-module header{
-  display:flex!important;
-  margin:0 0 9px!important;
-  min-height:0!important;
-}
-body.pay-admin-closures-open .pay-admin-closure-module header span{
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon,
+body.explora-admin-activity-home .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon{
   display:block!important;
-  color:var(--pay-ink)!important;
-  font-size:15px!important;
-  line-height:1.1!important;
-  font-weight:900!important;
-  letter-spacing:-.02em!important;
+  visibility:visible!important;
+  opacity:1!important;
+  width:42px!important;
+  height:42px!important;
+  color:#fff!important;
+  stroke:currentColor!important;
+  fill:none!important;
+  stroke-width:2.1!important;
+  stroke-linecap:round!important;
+  stroke-linejoin:round!important;
+  position:relative!important;
+  z-index:5!important;
+  pointer-events:none!important;
 }
-body.pay-admin-closures-open .pay-admin-closure-module header small{
-  display:block!important;
-  margin-top:3px!important;
-  color:var(--pay-muted)!important;
-  font-size:12px!important;
-  line-height:1.25!important;
-  font-weight:700!important;
-}
-body.pay-admin-closures-open .pay-admin-closure-metrics{
-  display:grid!important;
-  grid-template-columns:repeat(3,minmax(0,1fr))!important;
-  gap:7px!important;
-}
-body.pay-admin-closures-open .pay-admin-closure-metric{
-  min-height:48px!important;
-  height:auto!important;
-  border:1px solid rgba(216,221,238,.86)!important;
-  border-radius:15px!important;
-  background:#fff!important;
-  padding:7px 6px!important;
-  display:grid!important;
-  align-content:center!important;
-  gap:2px!important;
-}
-body.pay-admin-closures-open .pay-admin-closure-metric span{
-  color:#73798c!important;
-  font-size:10px!important;
-  line-height:1.08!important;
-  font-weight:850!important;
-}
-body.pay-admin-closures-open .pay-admin-closure-metric strong{
-  color:var(--pay-ink)!important;
-  font-size:13px!important;
-  line-height:1.05!important;
-  font-weight:900!important;
-}
-body.pay-admin-closures-open .pay-admin-closure-action-wrap{
-  margin-top:9px!important;
-}
-body.pay-admin-closures-open .pay-admin-closure-action{
-  width:100%!important;
-  min-height:42px!important;
-  border-radius:15px!important;
-  padding:9px 10px!important;
-  font-size:12px!important;
-  line-height:1.1!important;
-  font-weight:950!important;
-  letter-spacing:-.01em!important;
-}
-body.pay-admin-closures-open .pay-admin-closures-empty{
-  border:1px solid rgba(210,215,232,.88)!important;
-  border-radius:24px!important;
-  background:#fff!important;
-  color:var(--pay-muted)!important;
-  box-shadow:0 8px 18px rgba(28,31,45,.04)!important;
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon path,
+body.explora-admin-activity-home .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon path{
+  stroke:currentColor!important;
+  fill:none!important;
+  stroke-width:2.1!important;
+  stroke-linecap:round!important;
+  stroke-linejoin:round!important;
+  vector-effect:non-scaling-stroke;
 }
 @media(max-width:390px){
-  body.pay-admin-closures-open .explora-pay-admin-closures{padding-left:14px!important;padding-right:14px!important;}
-  body.pay-admin-closures-open .pay-admin-closures-head h1{font-size:27px!important;}
-  body.pay-admin-closures-open .pay-admin-closure-metrics{grid-template-columns:1fr!important;}
+  body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon,
+  body.explora-admin-activity-home .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon{
+    width:39px!important;
+    height:39px!important;
+  }
 }
