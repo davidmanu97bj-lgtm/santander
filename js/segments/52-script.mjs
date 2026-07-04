@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4051-historico-explora-cobro-icon";
+  const VERSION = "explora-pago-home-v52-v4052-historico-rangos-mes-selector";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -47,6 +47,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     historyDriverUid:"",
     historyDriverName:"",
     historyScope:"total",
+    historyMonthId:"",
     historyLoading:false,
     historyError:"",
     historyData:{ uid:"", records:[], expenses:[], debtPayments:[] },
@@ -816,6 +817,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         <section class="pay-history-controls">
           <label for="payHistoryDriverSelect"><span>Chofer</span><select id="payHistoryDriverSelect"><option value="">Cargando choferes…</option></select></label>
           <label for="payHistoryScopeSelect"><span>Vista</span><select id="payHistoryScopeSelect"><option value="total">Histórico total</option><option value="monthly">Histórico mensual</option><option value="weekly">Histórico semanal</option><option value="daily">Histórico diario</option></select></label>
+          <label class="pay-history-month-field" for="payHistoryMonthSelect" id="payHistoryMonthField" hidden><span>Mes</span><select id="payHistoryMonthSelect"><option value="">Mes actual</option></select></label>
         </section>
         <div class="pay-history-content" id="payHistoryContent"><div class="pay-history-empty">Seleccioná un chofer para ver el histórico.</div></div>
       </section>
@@ -1080,7 +1082,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     $("payAdminClosuresBack")?.addEventListener("click", () => showPayView("inicio"));
     $("payHistoryBack")?.addEventListener("click", () => showPayView("inicio"));
     $("payHistoryDriverSelect")?.addEventListener("change", event => selectHistoryDriver(event.target?.value || ""));
-    $("payHistoryScopeSelect")?.addEventListener("change", event => { state.historyScope = event.target?.value || "total"; renderHistoryScreen(); });
+    $("payHistoryScopeSelect")?.addEventListener("change", event => {
+      state.historyScope = event.target?.value || "total";
+      if (state.historyScope === "monthly") ensureHistoryMonthId();
+      renderHistoryScreen();
+    });
+    $("payHistoryMonthSelect")?.addEventListener("change", event => {
+      state.historyMonthId = event.target?.value || currentMonthId();
+      renderHistoryScreen();
+    });
     $("payAdminClosuresList")?.addEventListener("click", event => {
       const button = event.target?.closest?.("[data-pay-admin-closure-action]");
       if (!button) return;
@@ -1731,15 +1741,27 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
   }
 
+  function promiseTimeout(promise, timeoutMs = 9000, label = "consulta") {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} demoró demasiado`)), timeoutMs))
+    ]);
+  }
+
   async function getScopedDocs(collectionName, uid) {
+    const targetUid = safe(uid);
+    if (!targetUid || !state.db) return [];
     const fields = ["driverUid", "choferUid", "uid", "ownerUid", "driverId", "choferId", "driver_id", "chofer_id", "userUid", "userId", "createdByUid", "ownerId", "conductorUid", "conductorId", "assignedDriverUid"];
     const map = new Map();
-    for (const field of fields) {
+    const tasks = fields.map(async field => {
       try {
-        const snap = await getDocs(query(collection(state.db, collectionName), where(field, "==", uid), limit(250)));
+        const snap = await promiseTimeout(getDocs(query(collection(state.db, collectionName), where(field, "==", targetUid), limit(900))), 9000, `${collectionName}.${field}`);
         snap.forEach(docSnap => map.set(docSnap.id, { id:docSnap.id, ...docSnap.data() }));
-      } catch (_) {}
-    }
+      } catch (error) {
+        console.warn("EXPLORA_PAY_HISTORY_QUERY", collectionName, field, error?.code || error?.message || error);
+      }
+    });
+    await Promise.allSettled(tasks);
     return Array.from(map.values());
   }
 
@@ -3803,6 +3825,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     state.historyDriverUid = next;
     state.historyDriverName = driver?.name || "";
     state.historyData = { uid:"", records:[], expenses:[], debtPayments:[] };
+    state.historyMonthId = "";
     renderHistoryScreen();
     if (next) loadHistoryDataForDriver(next);
   }
@@ -3833,19 +3856,75 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
   }
 
-  function historyRange(scope = state.historyScope) {
-    const now = new Date();
-    const endMs = now.getTime();
-    if (scope === "daily") return { startMs:new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(), endMs, label:"Hoy" };
-    if (scope === "weekly") {
-      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const daysSinceSaturday = (start.getDay() + 1) % 7;
-      start.setDate(start.getDate() - daysSinceSaturday);
-      start.setHours(0,0,0,0);
-      return { startMs:start.getTime(), endMs, label:"Semana operativa" };
+  function currentMonthId(date = new Date()) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function monthIdFromMs(value = Date.now()) {
+    const d = new Date(value || Date.now());
+    return currentMonthId(d);
+  }
+
+  function monthLabel(monthId = currentMonthId()) {
+    const [year, month] = safe(monthId).split("-").map(Number);
+    if (!year || !month) return "Mes actual";
+    return new Intl.DateTimeFormat("es-AR", { month:"long", year:"numeric" }).format(new Date(year, month - 1, 1));
+  }
+
+  function monthRange(monthId = currentMonthId()) {
+    const [year, month] = safe(monthId || currentMonthId()).split("-").map(Number);
+    const y = year || new Date().getFullYear();
+    const m = (month || (new Date().getMonth() + 1)) - 1;
+    const start = new Date(y, m, 1, 0, 0, 0, 0);
+    const end = new Date(y, m + 1, 0, 23, 59, 59, 999);
+    return { startMs:start.getTime(), endMs:Math.min(end.getTime(), Date.now()), label:monthLabel(`${y}-${String(m + 1).padStart(2,"0")}`) };
+  }
+
+  function driverCreatedMs(driver = null) {
+    const item = driver || state.drivers.find(row => row.uid === safe(state.historyDriverUid || historyDefaultDriverUid())) || {};
+    const profile = item.profile || item || {};
+    const candidates = [
+      profile.createdAt, profile.altaAt, profile.created, profile.fechaAlta, profile.createdDate, profile.creationDate, profile.registeredAt,
+      profile.createdAtMs, profile.altaAtMs, profile.creationMs, profile.registeredAtMs,
+      item.createdAt, item.createdAtMs
+    ];
+    const values = candidates.map(ms).filter(value => value > 0);
+    const data = state.historyData || {};
+    for (const row of [...(data.records || []), ...(data.expenses || []), ...(data.debtPayments || [])]) {
+      const at = rowMs(row) || debtCreatedMs(row);
+      if (at > 0) values.push(at);
     }
-    if (scope === "monthly") return { startMs:new Date(now.getFullYear(), now.getMonth(), 1).getTime(), endMs, label:"Mes actual" };
-    return { startMs:0, endMs, label:"Total acumulado" };
+    return values.length ? Math.min(...values) : 0;
+  }
+
+  function historyAvailableMonths() {
+    const now = new Date();
+    const created = driverCreatedMs();
+    const start = created > 0 ? new Date(created) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    const last = new Date(now.getFullYear(), now.getMonth(), 1);
+    const months = [];
+    while (cursor.getTime() <= last.getTime()) {
+      months.push(currentMonthId(cursor));
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    return months.length ? months : [currentMonthId(now)];
+  }
+
+  function ensureHistoryMonthId() {
+    const months = historyAvailableMonths();
+    const current = safe(state.historyMonthId || currentMonthId());
+    state.historyMonthId = months.includes(current) ? current : months[months.length - 1];
+    return state.historyMonthId;
+  }
+
+  function historyRange(scope = state.historyScope) {
+    const nowMs = Date.now();
+    if (scope === "daily") return { startMs:nowMs - 24 * 60 * 60 * 1000, endMs:nowMs, label:"Últimas 24 horas" };
+    if (scope === "weekly") return { startMs:nowMs - 7 * 24 * 60 * 60 * 1000, endMs:nowMs, label:"Últimos 7 días" };
+    if (scope === "monthly") return monthRange(ensureHistoryMonthId());
+    const created = driverCreatedMs();
+    return { startMs:created || 0, endMs:nowMs, label:created ? `Desde ${dateShort(created)}` : "Desde la creación" };
   }
 
   function historyInRange(row = {}, range = historyRange()) {
@@ -3878,9 +3957,19 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function renderHistoryScreen() {
     const driverSelect = $("payHistoryDriverSelect");
     const scopeSelect = $("payHistoryScopeSelect");
+    const monthField = $("payHistoryMonthField");
+    const monthSelect = $("payHistoryMonthSelect");
     const content = $("payHistoryContent");
     if (!content) return;
     if (scopeSelect) scopeSelect.value = state.historyScope || "total";
+    const isMonthlyScope = (state.historyScope || "total") === "monthly";
+    if (monthField) monthField.hidden = !isMonthlyScope;
+    if (monthSelect) {
+      const months = historyAvailableMonths();
+      const selectedMonth = isMonthlyScope ? ensureHistoryMonthId() : safe(state.historyMonthId || currentMonthId());
+      monthSelect.disabled = state.historyLoading;
+      monthSelect.innerHTML = months.map(month => `<option value="${esc(month)}" ${month === selectedMonth ? "selected" : ""}>${esc(monthLabel(month))}</option>`).join("");
+    }
     if (driverSelect) {
       if (isAdmin()) {
         const selected = safe(state.historyDriverUid || historyDefaultDriverUid());
@@ -3894,7 +3983,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       }
     }
     if (state.historyLoading) {
-      content.innerHTML = '<div class="pay-history-empty">Calculando histórico…</div>';
+      content.innerHTML = '<div class="pay-history-empty">Cargando datos del histórico…</div>';
       return;
     }
     if (state.historyError) {
@@ -5232,4 +5321,4 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen });
 })();
 
-/* v4051: Histórico Explora por chofer/período, actividad scroll top, icono cobro y futuro->histórico. */
+/* v4052: Histórico con rangos correctos, selector mensual, consultas paralelas con timeout. */
