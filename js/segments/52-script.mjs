@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4053-modal-datos-perfil-centrado";
+  const VERSION = "explora-pago-home-v52-v4054-menu-perfil-minimo-compacto";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -1265,23 +1265,19 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function moreItems() {
+    if (isAdmin()) {
+      return [
+        { title:"Mi perfil", detail:"Alias, CUIT y celular", action:"abrir-perfil", icon:"user" },
+        { title:"Deudas", detail:"Multas, choques y adelantos", action:"admin-multas", icon:"alert" }
+      ];
+    }
     return [
-      { title:"Mi perfil", detail:"Datos de cuenta y preferencias", action:"abrir-perfil", icon:"user" },
-      { title:"Mi auto", detail:"Vencimientos, patente y documentación", action:"mi-auto", icon:"car" },
-      { title:"Deudas", detail:"Multas, choques, préstamos y adelantos", action:"multas-choques", icon:"alert" },
-      { title:"Préstamo Explora", detail:"Solicitud y estado del préstamo", action:"prestamo-explora", icon:"loan" },
-      { title:"Comprobantes", detail:"Cobros, gastos y cierres cargados", action:"comprobantes", icon:"receipt" }
+      { title:"Mi perfil", detail:"Alias, CUIT y celular", action:"abrir-perfil", icon:"user" }
     ];
   }
 
   function adminMoreItems() {
-    return [
-      { title:"Chofer", detail:"Crear o eliminar", action:"admin-choferes", icon:"users" },
-      { title:"Borrar movimientos", detail:"Cobros, caja chica y gastos", action:"admin-delete-movements", icon:"trash" },
-      { title:"Cierres", detail:"Comprobantes y pagos pendientes", action:"admin-cierres", icon:"receipt" },
-      { title:"Gastos", detail:"Gastos cargados por choferes", action:"admin-gastos", icon:"wallet" },
-      { title:"Deudas", detail:"Multas, choques, préstamos y adelantos", action:"admin-multas", icon:"alert" }
-    ];
+    return [];
   }
 
   function moreIcon(name = "user") {
@@ -1630,14 +1626,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     `).join("");
     const adminList = $("payMoreAdminList");
     if (adminList) {
-      adminList.hidden = !isAdmin();
-      adminList.innerHTML = !isAdmin() ? "" : `<div class="pay-more-card-title">Administración</div>` + adminMoreItems().map(item => `
-        <button class="pay-more-row" data-pay-more-action="${esc(item.action)}" type="button">
-          <span class="pay-more-row-icon">${moreIcon(item.icon)}</span>
-          <span class="pay-more-row-copy"><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></span>
-          <span class="pay-more-chevron">›</span>
-        </button>
-      `).join("");
+      adminList.hidden = true;
+      adminList.innerHTML = "";
     }
   }
 
@@ -2215,6 +2205,62 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return "";
   }
 
+  const WHATSAPP_COUNTRY_OPTIONS = [
+    { value:"549", label:"🇦🇷 +549", placeholder:"3757461564" },
+    { value:"595", label:"🇵🇾 +595", placeholder:"991123456" },
+    { value:"55", label:"🇧🇷 +55", placeholder:"45912345678" },
+    { value:"598", label:"🇺🇾 +598", placeholder:"99123456" }
+  ];
+
+  function rawWhatsappDigits(value = "") {
+    let digits = safe(value).replace(/\D+/g, "");
+    if (digits.startsWith("00")) digits = digits.slice(2);
+    return digits.replace(/^0+/, "");
+  }
+
+  function whatsappCountryOptionsHtml(selected = "549") {
+    const current = safe(selected) || "549";
+    return WHATSAPP_COUNTRY_OPTIONS.map(option => `<option value="${esc(option.value)}" ${option.value === current ? "selected" : ""}>${esc(option.label)}</option>`).join("");
+  }
+
+  function whatsappCountryPlaceholder(country = "549") {
+    return WHATSAPP_COUNTRY_OPTIONS.find(option => option.value === safe(country))?.placeholder || "3757461564";
+  }
+
+  function splitWhatsappPhone(value = "", profile = {}) {
+    const storedCountry = rawWhatsappDigits(profile?.whatsappCountryCode || profile?.codigoPaisWhatsapp || profile?.telefonoPais || profile?.phoneCountryCode || "");
+    const storedLocal = rawWhatsappDigits(profile?.whatsappLocalNumber || profile?.telefonoLocal || profile?.phoneLocal || "");
+    if (storedCountry && storedLocal) return { country:storedCountry, local:storedLocal, full:`${storedCountry}${storedLocal}` };
+    const digits = rawWhatsappDigits(value);
+    if (/^(2|3)\d{9}$/.test(digits)) return { country:"549", local:digits, full:`549${digits}` };
+    if (/^54(2|3)\d{9}$/.test(digits)) return { country:"549", local:digits.slice(2), full:`549${digits.slice(2)}` };
+    if (/^549(2|3)\d{9}$/.test(digits)) return { country:"549", local:digits.slice(3), full:digits };
+    for (const option of WHATSAPP_COUNTRY_OPTIONS) {
+      if (digits.startsWith(option.value) && digits.length > option.value.length) {
+        return { country:option.value, local:digits.slice(option.value.length), full:digits };
+      }
+    }
+    return { country:"549", local:digits, full:digits ? `549${digits}` : "" };
+  }
+
+  function composeWhatsappPhone(country = "549", local = "") {
+    const prefix = rawWhatsappDigits(country) || "549";
+    const digits = rawWhatsappDigits(local);
+    if (!digits) return "";
+    if (prefix === "549") {
+      if (/^549(2|3)\d{9}$/.test(digits)) return digits;
+      if (/^54(2|3)\d{9}$/.test(digits)) return `549${digits.slice(2)}`;
+      if (/^(2|3)\d{9}$/.test(digits)) return `549${digits}`;
+    }
+    if (digits.startsWith(prefix) && digits.length > prefix.length) return digits;
+    return `${prefix}${digits.replace(/^0+/, "")}`;
+  }
+
+  function profileWhatsappParts(profile = {}) {
+    const raw = firstProfileValue(profile, ["whatsappNormalized", "whatsappFull", "telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]);
+    return splitWhatsappPhone(raw, profile);
+  }
+
   function driverFullNameFromProfile(profile = state.profile) {
     return firstProfileValue(profile, ["nombreCompleto", "fullName", "nombre", "displayName", "name", "email"]) || displayName();
   }
@@ -2229,10 +2275,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function driverPaymentProfile(profile = state.profile) {
+    const phoneParts = profileWhatsappParts(profile);
     return {
       fullName:driverFullNameFromProfile(profile),
       car:driverCarLabel(profile),
-      phone:firstProfileValue(profile, ["telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]),
+      phone:phoneParts.full || firstProfileValue(profile, ["telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]),
+      phoneCountry:phoneParts.country || "549",
+      phoneLocal:phoneParts.local || "",
       cuit:firstProfileValue(profile, ["cuit", "CUIT", "cuil", "taxId", "dniFiscal"]),
       alias:firstProfileValue(profile, ["aliasCobro", "paymentAlias", "aliasParaCobrar", "alias", "mercadoPagoAlias", "aliasMp", "mpAlias"])
     };
@@ -2248,7 +2297,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function paymentProfileMissingFields(data = driverPaymentProfile()) {
     const missing = [];
-    if (!safe(data.phone)) missing.push("número de teléfono");
+    if (!normalizeWhatsappPhone(data.phone)) missing.push("número de WhatsApp");
     if (!safe(data.cuit)) missing.push("CUIT");
     if (!safe(data.alias)) missing.push("alias para cobrar");
     return missing;
@@ -2381,9 +2430,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function normalizeWhatsappPhone(value = "") {
-    let digits = safe(value).replace(/\D+/g, "");
-    if (digits.startsWith("00")) digits = digits.slice(2);
-    digits = digits.replace(/^0+/, "");
+    const digits = rawWhatsappDigits(value);
+    if (!digits) return "";
     if (/^(2|3)\d{9}$/.test(digits)) return `549${digits}`;
     if (/^54(2|3)\d{9}$/.test(digits)) return `549${digits.slice(2)}`;
     return digits;
@@ -2514,12 +2562,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (!body) return;
     const data = driverPaymentProfile(state.profile || {});
     body.innerHTML = `
-      <div class="pay-profile-readonly"><span>Nombre completo</span><strong>${esc(data.fullName || "Chofer")}</strong></div>
-      <div class="pay-profile-readonly"><span>Auto modelo y patente</span><strong>${esc(data.car || "Sin auto asignado")}</strong></div>
-      <label class="pay-profile-field" for="payProfilePhone"><span>Número de teléfono</span><input id="payProfilePhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: 3757461564" value="${esc(data.phone)}" required /></label>
-      <label class="pay-profile-field" for="payProfileCuit"><span>CUIT</span><input id="payProfileCuit" type="text" inputmode="numeric" autocomplete="off" placeholder="Ej: 20-00000000-0" value="${esc(data.cuit)}" required /></label>
-      <label class="pay-profile-field" for="payProfileAlias"><span>Alias para cobrar</span><input id="payProfileAlias" type="text" autocomplete="off" placeholder="Ej: alias.mercadopago" value="${esc(data.alias)}" required /></label>
-      <div class="pay-profile-note">Estos tres datos los carga el chofer y se adjuntan al pedir cierre para que Explora pueda liquidar más rápido.</div>`;
+      <label class="pay-profile-field pay-profile-phone-field" for="payProfilePhone"><span>Celular WhatsApp</span><div class="pay-profile-phone-row"><select id="payProfileCountry" aria-label="Código de país" required>${whatsappCountryOptionsHtml(data.phoneCountry || "549")}</select><input id="payProfilePhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${esc(whatsappCountryPlaceholder(data.phoneCountry || "549"))}" value="${esc(data.phoneLocal || "")}" required /></div></label>
+      <label class="pay-profile-field" for="payProfileCuit"><span>CUIT</span><input id="payProfileCuit" type="text" inputmode="numeric" autocomplete="off" placeholder="20-00000000-0" value="${esc(data.cuit)}" required /></label>
+      <label class="pay-profile-field" for="payProfileAlias"><span>Alias</span><input id="payProfileAlias" type="text" autocomplete="off" placeholder="alias.mercadopago" value="${esc(data.alias)}" required /></label>
+      <div class="pay-profile-note">Alias, CUIT y celular se usan en cierres y comprobantes.</div>`;
+    const country = $("payProfileCountry");
+    const phone = $("payProfilePhone");
+    country?.addEventListener("change", () => {
+      if (phone) phone.placeholder = whatsappCountryPlaceholder(country.value || "549");
+    });
     const msg = $("payProfileMessage");
     if (msg) { msg.textContent = ""; msg.className = "pay-profile-message"; }
   }
@@ -2549,8 +2600,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   async function saveDriverProfileModal() {
-    if (isAdmin()) return;
-    const phone = safe($("payProfilePhone")?.value || "");
+    const phoneCountry = safe($("payProfileCountry")?.value || "549");
+    const phoneLocal = safe($("payProfilePhone")?.value || "");
+    const phone = composeWhatsappPhone(phoneCountry, phoneLocal);
     const cuit = safe($("payProfileCuit")?.value || "");
     const alias = safe($("payProfileAlias")?.value || "");
     const missing = paymentProfileMissingFields({ phone, cuit, alias });
@@ -2559,6 +2611,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       telefono:phone,
       numeroTelefono:phone,
       whatsapp:phone,
+      whatsappFull:phone,
+      whatsappNormalized:normalizeWhatsappPhone(phone),
+      whatsappCountryCode:phoneCountry,
+      whatsappLocalNumber:rawWhatsappDigits(phoneLocal),
+      codigoPaisWhatsapp:phoneCountry,
+      telefonoLocal:rawWhatsappDigits(phoneLocal),
       cuit,
       aliasCobro:alias,
       aliasParaCobrar:alias,
