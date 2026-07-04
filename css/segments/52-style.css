@@ -1828,3 +1828,124 @@ body.pay-closure-modal-open{
   .pay-closure-field{margin:8px 0!important;}
   .pay-closure-actions button{min-height:42px!important;}
 }
+
+/* v4035 · Admin bottom nav + menú chofer simplificado */
+body.explora-pay-mode .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon,
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon{
+  width:42px!important;
+  height:42px!important;
+  display:none!important;
+  stroke:currentColor!important;
+  fill:none!important;
+  stroke-width:2.1!important;
+  stroke-linecap:round!important;
+  stroke-linejoin:round!important;
+  opacity:1!important;
+  visibility:visible!important;
+}
+body.explora-admin-activity-home .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon,
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon{
+  display:block!important;
+}
+body.explora-admin-activity-home .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon,
+body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon{
+  display:none!important;
+}
+body.explora-admin-drivers-white .admin-shared-screen{
+  background:var(--pay-bg)!important;
+  color:var(--pay-ink)!important;
+  font-family:var(--pay-font)!important;
+}
+body.explora-admin-drivers-white .admin-shared-shell{
+  width:min(100%,520px)!important;
+  padding:calc(env(safe-area-inset-top) + 16px) 16px calc(112px + env(safe-area-inset-bottom))!important;
+}
+body.explora-admin-drivers-white .admin-shared-header{
+  background:linear-gradient(180deg,rgba(248,248,251,.98),rgba(248,248,251,.92) 78%,rgba(248,248,251,0))!important;
+  color:var(--pay-ink)!important;
+}
+body.explora-admin-drivers-white .admin-shared-back,
+body.explora-admin-drivers-white .admin-shared-refresh{
+  border:1px solid rgba(216,221,238,.92)!important;
+  background:rgba(255,255,255,.86)!important;
+  color:var(--pay-ink)!important;
+  box-shadow:0 8px 18px rgba(25,28,40,.06)!important;
+}
+body.explora-admin-drivers-white .admin-shared-heading h1{
+  color:var(--pay-ink)!important;
+  letter-spacing:-.03em!important;
+  text-transform:none!important;
+  font-size:28px!important;
+  font-weight:900!important;
+}
+body.explora-admin-drivers-white .admin-shared-heading p{
+  color:var(--pay-muted)!important;
+  font-size:13px!important;
+  font-weight:700!important;
+}
+body.explora-admin-drivers-white .admin-shared-status{
+  color:var(--pay-muted)!important;
+}
+body.explora-admin-drivers-white .admin-management-toolbar,
+body.explora-admin-drivers-white .admin-management-card,
+body.explora-admin-drivers-white .admin-management-empty{
+  border:1px solid rgba(210,215,232,.92)!important;
+  background:#fff!important;
+  color:var(--pay-ink)!important;
+  border-radius:24px!important;
+  box-shadow:0 10px 24px rgba(28,31,45,.06)!important;
+}
+body.explora-admin-drivers-white .admin-management-toolbar{
+  padding:16px!important;
+}
+body.explora-admin-drivers-white .admin-management-toolbar-copy strong,
+body.explora-admin-drivers-white .admin-management-card-title strong{
+  color:var(--pay-ink)!important;
+  font-size:20px!important;
+  font-weight:900!important;
+  letter-spacing:-.025em!important;
+}
+body.explora-admin-drivers-white .admin-management-toolbar-copy small,
+body.explora-admin-drivers-white .admin-management-card-title span,
+body.explora-admin-drivers-white .admin-management-card-title small,
+body.explora-admin-drivers-white .admin-management-empty{
+  color:#6d7285!important;
+  font-weight:700!important;
+}
+body.explora-admin-drivers-white .admin-management-add{
+  min-height:48px!important;
+  border-radius:16px!important;
+  background:var(--pay-blue)!important;
+  color:#fff!important;
+  box-shadow:0 10px 22px rgba(77,79,229,.20)!important;
+}
+body.explora-admin-drivers-white .admin-management-status.is-driver-only{
+  border-color:rgba(77,79,229,.20)!important;
+  background:#eef3ff!important;
+  color:var(--pay-blue)!important;
+}
+body.explora-admin-drivers-white .admin-driver-only-actions{
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  margin-top:14px!important;
+}
+body.explora-admin-drivers-white .admin-management-hard-delete{
+  min-height:48px!important;
+  border:1px solid rgba(202,58,58,.28)!important;
+  border-radius:16px!important;
+  background:#fff4f4!important;
+  color:#c03636!important;
+  font-weight:900!important;
+  box-shadow:none!important;
+}
+body.explora-admin-drivers-white .admin-management-list{
+  gap:12px!important;
+}
+@media(max-width:390px){
+  body.explora-pay-mode .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon,
+  body.pay-admin-closures-open .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon{
+    width:39px!important;
+    height:39px!important;
+  }
+  body.explora-admin-drivers-white .admin-shared-heading h1{font-size:25px!important;}
+}
