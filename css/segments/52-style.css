@@ -2647,7 +2647,7 @@ body.explora-pay-mode:not(.explora-admin-activity-home):not(.pay-admin-closures-
   }
 }
 
-/* v4051 · Histórico Explora + icono cobro claro */
+/* v4052 · Histórico Explora con rangos correctos + selector mensual */
 body.pay-history-open{
   background:var(--pay-bg)!important;
   overflow:hidden!important;
@@ -2728,4 +2728,43 @@ body.pay-history-open .pay-bottom-nav #payNavClosure svg{stroke:#4d4fe5!importan
 body.explora-pay-mode:not(.explora-admin-activity-home):not(.pay-admin-closures-open) .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon::before,
 .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon::before{
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Crect x='5' y='8' width='22' height='17' rx='5' stroke='white' stroke-width='2.35'/%3E%3Cpath d='M8 13h16' stroke='white' stroke-width='2.35' stroke-linecap='round'/%3E%3Cpath d='M11 19h5' stroke='white' stroke-width='2.15' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='22' r='5.2' fill='white'/%3E%3Cpath d='M23 19.4v5.2M20.4 22h5.2' stroke='%234d4fe5' stroke-width='2.05' stroke-linecap='round'/%3E%3Cpath d='M15.6 17.2c-1.25 0-2.15.55-2.15 1.45 0 1.95 4.3.8 4.3 2.8 0 .9-.82 1.45-2.15 1.45m0-5.7v-.95m0 7.6v-.95' stroke='white' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E")!important;
+}
+
+
+/* v4052 · Selector mensual e histórico en una pantalla */
+.pay-history-controls:has(.pay-history-month-field:not([hidden])){
+  grid-template-columns:1fr 1fr;
+}
+.pay-history-month-field:not([hidden]){
+  grid-column:1 / -1;
+}
+.pay-history-month-field[hidden]{display:none!important;}
+.pay-history-empty{
+  min-height:72px;
+  display:grid;
+  place-items:center;
+}
+.pay-history-result-head small{
+  max-width:52%;
+}
+.pay-history-chart,.pay-history-metrics,.pay-history-result{
+  max-width:100%;
+  min-width:0;
+}
+@media(max-height:760px){
+  .explora-pay-history{padding-top:calc(10px + env(safe-area-inset-top));}
+  .pay-history-head{margin-bottom:10px;}
+  .pay-history-head h1{font-size:clamp(26px,6.2vw,32px);}
+  .pay-history-head p{font-size:12px;line-height:1.12;}
+  .pay-history-controls{padding:10px;margin-bottom:10px;gap:8px;}
+  .pay-history-controls select{height:42px;font-size:13px;border-radius:14px;}
+  .pay-history-result{padding:13px;border-radius:22px;}
+  .pay-history-result>strong{font-size:clamp(34px,9vw,46px);}
+  .pay-history-chart{padding:11px;border-radius:20px;gap:8px;}
+  .pay-history-metrics{padding:9px 11px;border-radius:20px;}
+  .pay-history-metrics div{padding:7px 2px;}
+}
+@media(max-width:390px){
+  .pay-history-controls:has(.pay-history-month-field:not([hidden])){grid-template-columns:1fr;}
+  .pay-history-month-field:not([hidden]){grid-column:auto;}
 }
