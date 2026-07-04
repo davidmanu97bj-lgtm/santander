@@ -2880,3 +2880,249 @@ body.explora-pay-mode:not(.explora-admin-activity-home):not(.pay-admin-closures-
   .pay-profile-actions button{min-height:40px!important;padding:10px 8px!important;font-size:14px!important;}
 }
 @media(max-width:350px){.pay-profile-phone-row{grid-template-columns:1fr!important;}}
+
+/* v4055 · Más chofer simétrico + botón central QR */
+body.explora-pay-mode.pay-more-open #payMoreScreen{
+  width:min(92vw,430px)!important;
+  min-height:calc(100svh - 90px - env(safe-area-inset-bottom))!important;
+  margin:0 auto!important;
+  padding:calc(18px + env(safe-area-inset-top)) 0 calc(92px + env(safe-area-inset-bottom))!important;
+  display:flex!important;
+  flex-direction:column!important;
+  justify-content:flex-start!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-head{
+  width:100%!important;
+  padding:4px 0 22px!important;
+  margin:0!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:14px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-back{
+  width:42px!important;
+  height:42px!important;
+  border-radius:15px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-title-wrap{
+  flex:1 1 auto!important;
+  min-width:0!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-kicker{
+  font-size:11px!important;
+  line-height:1!important;
+  letter-spacing:.15em!important;
+  margin-bottom:5px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-head h1{
+  font-size:clamp(34px,10vw,42px)!important;
+  line-height:.9!important;
+  letter-spacing:-.07em!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-head p{
+  margin-top:9px!important;
+  font-size:14px!important;
+  line-height:1.18!important;
+  max-width:100%!important;
+}
+/* El menú debe tener solo acciones reales: Mi perfil / Deudas si admin / Salir */
+body.explora-pay-mode.pay-more-open .pay-more-profile{
+  display:none!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-card{
+  width:100%!important;
+  margin:12px 0 0!important;
+  border-radius:24px!important;
+  overflow:hidden!important;
+  box-shadow:0 12px 28px rgba(25,28,40,.055)!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row{
+  min-height:74px!important;
+  padding:12px 18px!important;
+  grid-template-columns:52px minmax(0,1fr) 22px!important;
+  gap:14px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row-icon{
+  width:52px!important;
+  height:52px!important;
+  border-radius:18px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row-icon svg{
+  width:26px!important;
+  height:26px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row-copy strong{
+  font-size:19px!important;
+  line-height:1.05!important;
+  letter-spacing:-.035em!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row-copy small{
+  font-size:13.5px!important;
+  line-height:1.15!important;
+  margin-top:5px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-chevron{
+  justify-self:end!important;
+  font-size:32px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-spacer{
+  display:none!important;
+  height:0!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-logout-zone{
+  width:100%!important;
+  margin:18px 0 0!important;
+  padding:0!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-logout{
+  min-height:60px!important;
+  border-radius:22px!important;
+  font-size:18px!important;
+  gap:10px!important;
+}
+@media(max-height:740px){
+  body.explora-pay-mode.pay-more-open #payMoreScreen{
+    padding-top:calc(10px + env(safe-area-inset-top))!important;
+  }
+  body.explora-pay-mode.pay-more-open .pay-more-head{padding-bottom:16px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-head h1{font-size:34px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-head p{font-size:12.8px!important;margin-top:6px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-card{margin-top:8px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-row{min-height:66px!important;padding:10px 15px!important;grid-template-columns:46px minmax(0,1fr) 20px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-row-icon{width:46px!important;height:46px!important;border-radius:16px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-row-copy strong{font-size:17px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-row-copy small{font-size:12.5px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-logout-zone{margin-top:14px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-logout{min-height:54px!important;font-size:16.5px!important;border-radius:19px!important;}
+}
+/* Chofer: icono central QR claro. Admin conserva icono de cierre/histórico según corresponda. */
+body.explora-pay-mode:not(.explora-admin-activity-home):not(.pay-admin-closures-open) .pay-bottom-nav .pay-nav-main .pay-nav-finance-icon{
+  display:none!important;
+  opacity:0!important;
+  visibility:hidden!important;
+}
+body.explora-pay-mode:not(.explora-admin-activity-home):not(.pay-admin-closures-open) .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon{
+  width:34px!important;
+  height:34px!important;
+  display:block!important;
+  color:transparent!important;
+  font-size:0!important;
+  line-height:0!important;
+}
+body.explora-pay-mode:not(.explora-admin-activity-home):not(.pay-admin-closures-open) .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon::before{
+  content:""!important;
+  width:34px!important;
+  height:34px!important;
+  display:block!important;
+  background-repeat:no-repeat!important;
+  background-position:center!important;
+  background-size:contain!important;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34' fill='none'%3E%3Crect x='5.5' y='5.5' width='23' height='23' rx='6' stroke='white' stroke-width='2.4'/%3E%3Cpath d='M11 11h4v4h-4v-4Zm8 0h4v4h-4v-4ZM11 19h4v4h-4v-4Z' stroke='white' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M19 20h2.2v-2.4H24M19 24h5v-4.1' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='24.8' cy='25' r='4.6' fill='white'/%3E%3Cpath d='M24.8 22.8v4.4M22.6 25h4.4' stroke='%234d4fe5' stroke-width='1.95' stroke-linecap='round'/%3E%3C/svg%3E")!important;
+}
+
+/* v4056 · CUIT con guiones + menú Más admin/chofer más simétrico */
+#payMoreScreen .pay-more-profile{
+  display:none!important;
+  visibility:hidden!important;
+  height:0!important;
+  min-height:0!important;
+  margin:0!important;
+  padding:0!important;
+  border:0!important;
+  overflow:hidden!important;
+}
+body.explora-pay-mode.pay-more-open #payMoreScreen{
+  width:min(88vw,420px)!important;
+  min-height:calc(100svh - 86px - env(safe-area-inset-bottom))!important;
+  padding:calc(22px + env(safe-area-inset-top)) 0 calc(94px + env(safe-area-inset-bottom))!important;
+  display:flex!important;
+  flex-direction:column!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-head{
+  padding:0 0 24px!important;
+  margin:0!important;
+  align-items:center!important;
+  gap:14px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-head p{
+  display:none!important;
+  height:0!important;
+  margin:0!important;
+  overflow:hidden!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-kicker{
+  font-size:11px!important;
+  letter-spacing:.16em!important;
+  line-height:1!important;
+  margin:0 0 5px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-head h1{
+  font-size:clamp(36px,10.2vw,44px)!important;
+  line-height:.9!important;
+  letter-spacing:-.075em!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-card{
+  width:100%!important;
+  margin:0!important;
+  border-radius:26px!important;
+  overflow:hidden!important;
+  box-shadow:0 12px 30px rgba(24,28,40,.055)!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row{
+  min-height:72px!important;
+  padding:12px 22px!important;
+  grid-template-columns:50px minmax(0,1fr) 20px!important;
+  gap:16px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row-icon{
+  width:50px!important;
+  height:50px!important;
+  border-radius:18px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row-icon svg{
+  width:25px!important;
+  height:25px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row-copy strong{
+  font-size:19px!important;
+  line-height:1.04!important;
+  letter-spacing:-.04em!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row-copy small{
+  font-size:13px!important;
+  line-height:1.14!important;
+  margin-top:4px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-logout-zone{
+  width:100%!important;
+  margin:34px 0 0!important;
+  padding:0!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-logout{
+  width:100%!important;
+  min-height:58px!important;
+  border-radius:22px!important;
+  font-size:18px!important;
+  gap:10px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-spacer{
+  display:none!important;
+  height:0!important;
+}
+.pay-profile-field input#payProfileCuit{
+  letter-spacing:.015em!important;
+  font-variant-numeric:tabular-nums!important;
+}
+@media(max-height:740px){
+  body.explora-pay-mode.pay-more-open #payMoreScreen{
+    padding-top:calc(14px + env(safe-area-inset-top))!important;
+  }
+  body.explora-pay-mode.pay-more-open .pay-more-head{padding-bottom:18px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-head h1{font-size:36px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-row{min-height:66px!important;padding:10px 18px!important;grid-template-columns:46px minmax(0,1fr) 20px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-row-icon{width:46px!important;height:46px!important;border-radius:16px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-row-copy strong{font-size:17px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-row-copy small{font-size:12px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-logout-zone{margin-top:24px!important;}
+  body.explora-pay-mode.pay-more-open .pay-more-logout{min-height:54px!important;font-size:16.5px!important;}
+}
