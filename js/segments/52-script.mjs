@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4045-admin-more-minimal-whatsapp-fix";
+  const VERSION = "explora-pago-home-v52-v4046-profile-data-in-whatsapp-compact";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -1212,12 +1212,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function moreItems() {
     if (isAdmin()) {
       return [
-        { title:"Mi perfil", detail:"Datos de cuenta y WhatsApp", action:"abrir-perfil", icon:"user" },
+        { title:"Mi perfil", detail:"Alias, CUIT y celular de Explora", action:"abrir-perfil", icon:"user" },
         { title:"Deudas", detail:"Multas, choques, préstamos y adelantos", action:"admin-multas", icon:"alert" }
       ];
     }
     return [
-      { title:"Mi perfil", detail:"Datos de cuenta y preferencias", action:"abrir-perfil", icon:"user" },
+      { title:"Mi perfil", detail:"Alias, CUIT y celular del chofer", action:"abrir-perfil", icon:"user" },
       { title:"Mi auto", detail:"Vencimientos, patente y documentación", action:"mi-auto", icon:"car" },
       { title:"Deudas", detail:"Multas, choques, préstamos y adelantos", action:"multas-choques", icon:"alert" },
       { title:"Préstamo Explora", detail:"Solicitud y estado del préstamo", action:"prestamo-explora", icon:"loan" },
@@ -2200,6 +2200,35 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return splitWhatsappPhone(raw, profile);
   }
 
+  function displayWhatsappPhone(value = "", fallback = "Sin cargar") {
+    const original = safe(value);
+    if (!original) return fallback;
+    if (original.trim().startsWith("+")) return original.trim();
+    const normalized = normalizeWhatsappPhone(original);
+    return normalized ? `+${normalized}` : fallback;
+  }
+
+  function exploraPaymentProfile(profile = state.profile || {}) {
+    const source = isAdmin() ? (profile || {}) : {};
+    const phoneParts = profileWhatsappParts(source);
+    const phone = phoneParts.full || EXPLORA_WHATSAPP;
+    return {
+      alias:firstProfileValue(source, ["aliasCobro", "paymentAlias", "aliasParaCobrar", "alias", "mercadoPagoAlias", "aliasMp", "mpAlias"]) || EXPLORA_ALIAS,
+      cuit:firstProfileValue(source, ["cuit", "CUIT", "cuil", "taxId", "dniFiscal"]) || EXPLORA_CUIT,
+      phone,
+      phoneDisplay:displayWhatsappPhone(phone, EXPLORA_WHATSAPP_DISPLAY)
+    };
+  }
+
+  function appendWhatsappContactBlock(lines = [], title = "Datos", payment = {}) {
+    lines.push("");
+    lines.push(`*${title}*`);
+    lines.push(`Alias: ${safe(payment.alias) || "sin cargar"}`);
+    lines.push(`CUIT: ${safe(payment.cuit) || "sin cargar"}`);
+    lines.push(`Celular: ${displayWhatsappPhone(payment.phone || payment.phoneDisplay || "")}`);
+    return lines;
+  }
+
   function driverFullNameFromProfile(profile = state.profile) {
     return firstProfileValue(profile, ["nombreCompleto", "fullName", "nombre", "displayName", "name", "email"]) || displayName();
   }
@@ -2221,6 +2250,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       phone:phoneParts.full || firstProfileValue(profile, ["telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]),
       phoneCountry:phoneParts.country || "549",
       phoneLocal:phoneParts.local || "",
+      phoneDisplay:displayWhatsappPhone(phoneParts.full || firstProfileValue(profile, ["telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"])),
       cuit:firstProfileValue(profile, ["cuit", "CUIT", "cuil", "taxId", "dniFiscal"]),
       alias:firstProfileValue(profile, ["aliasCobro", "paymentAlias", "aliasParaCobrar", "alias", "mercadoPagoAlias", "aliasMp", "mpAlias"])
     };
@@ -2243,7 +2273,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function requireOwnPaymentProfileComplete() {
-    if (isAdmin()) return;
     const payment = driverPaymentProfile(state.profile || {});
     const missing = paymentProfileMissingFields(payment);
     if (missing.length) throw new Error(`Completá Mi perfil antes de pedir el cierre: ${missing.join(", ")}.`);
@@ -2266,10 +2295,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       ].map(([label,value]) => `<article class="pay-payment-info-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
     }
     if (direction === "driver_to_explora") {
+      const exploraPayment = exploraPaymentProfile();
       return [
-        ["Alias Explora", EXPLORA_ALIAS],
-        ["CUIT David", EXPLORA_CUIT],
-        ["WhatsApp Explora", EXPLORA_WHATSAPP_DISPLAY]
+        ["Alias Explora", exploraPayment.alias],
+        ["CUIT Explora", exploraPayment.cuit],
+        ["Celular Explora", exploraPayment.phoneDisplay]
       ].map(([label,value]) => `<article class="pay-payment-info-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
     }
     return "";
@@ -2277,14 +2307,17 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function closurePaymentDataForPayload(targetUid = getDriverUid(), summary = {}) {
     const driverPayment = driverPaymentProfileForUid(targetUid);
+    const exploraPayment = exploraPaymentProfile();
     const result = closureAmountLine(summary);
     return {
       driverPaymentPhone:safe(driverPayment.phone),
+      driverPaymentPhoneDisplay:displayWhatsappPhone(driverPayment.phone || driverPayment.phoneDisplay || ""),
       driverPaymentCuit:safe(driverPayment.cuit),
       driverPaymentAlias:safe(driverPayment.alias),
-      exploraPaymentAlias:EXPLORA_ALIAS,
-      exploraPaymentCuit:EXPLORA_CUIT,
-      exploraPaymentWhatsapp:EXPLORA_WHATSAPP_DISPLAY,
+      exploraPaymentAlias:safe(exploraPayment.alias),
+      exploraPaymentCuit:safe(exploraPayment.cuit),
+      exploraPaymentWhatsapp:safe(exploraPayment.phoneDisplay),
+      exploraPaymentPhone:safe(exploraPayment.phone),
       paymentDirection:result.direction,
       paymentResultLabel:result.label,
       paymentResultAmount:Number(result.amount || 0)
@@ -2296,7 +2329,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return {
       direction,
       driverPayment:{
-        phone:safe(closure.driverPaymentPhone || closure.choferTelefono || closure.telefonoChofer),
+        phone:safe(closure.driverPaymentPhone || closure.driverPaymentPhoneDisplay || closure.choferTelefono || closure.telefonoChofer),
         cuit:safe(closure.driverPaymentCuit || closure.choferCuit || closure.cuitChofer),
         alias:safe(closure.driverPaymentAlias || closure.choferAlias || closure.aliasChofer)
       }
@@ -2326,18 +2359,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       lines.push(`Total facturado: ${currency(summary.gross || 0)}`);
       lines.push(`Parte de cada uno: ${currency(summary.billingShareEach || 0)}`);
     }
-    if (result.direction === "explora_to_driver") {
-      lines.push("");
-      lines.push("*Datos para pagar al chofer:* ");
-      lines.push(`Alias: ${driverPayment.alias || "sin cargar"}`);
-      lines.push(`CUIT: ${driverPayment.cuit || "sin cargar"}`);
-      lines.push(`Teléfono: ${driverPayment.phone || "sin cargar"}`);
-    } else if (result.direction === "driver_to_explora") {
-      lines.push("");
-      lines.push("*Datos de Explora para recibir:* ");
-      lines.push(`Alias: ${EXPLORA_ALIAS}`);
-      lines.push(`CUIT David: ${EXPLORA_CUIT}`);
-      lines.push(`WhatsApp: ${EXPLORA_WHATSAPP_DISPLAY}`);
+    if (isAdmin()) {
+      appendWhatsappContactBlock(lines, "Datos de Explora", exploraPaymentProfile());
+    } else {
+      appendWhatsappContactBlock(lines, "Datos del chofer", driverPayment);
     }
     lines.push("");
     lines.push("El comprobante se cargará por la app.");
@@ -2476,6 +2501,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       lines.push(link);
       lines.push("");
     }
+    appendWhatsappContactBlock(lines, "Datos de Explora", {
+      alias:closure.exploraPaymentAlias || EXPLORA_ALIAS,
+      cuit:closure.exploraPaymentCuit || EXPLORA_CUIT,
+      phone:closure.exploraPaymentPhone || closure.exploraPaymentWhatsapp || EXPLORA_WHATSAPP
+    });
+    lines.push("");
     lines.push("Por favor consultá tu cuenta.");
     lines.push("Muchas gracias por usar Explora.");
     return lines.join("\n");
@@ -2495,6 +2526,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       lines.push(link);
       lines.push("");
     }
+    appendWhatsappContactBlock(lines, "Datos del chofer", {
+      alias:closure.driverPaymentAlias || closure.choferAlias || "",
+      cuit:closure.driverPaymentCuit || closure.choferCuit || "",
+      phone:closure.driverPaymentPhone || closure.driverPaymentPhoneDisplay || closure.telefonoChofer || ""
+    });
+    lines.push("");
     lines.push("Por favor chequeá tu cuenta en Explora.");
     lines.push("Muchas gracias por usar Explora.");
     return lines.join("\n");
@@ -2526,7 +2563,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       <label class="pay-profile-field pay-profile-phone-field" for="payProfilePhone"><span>WhatsApp obligatorio</span><div class="pay-profile-phone-row"><select id="payProfileCountry" aria-label="Código de país" required>${whatsappCountryOptionsHtml(data.phoneCountry || "549")}</select><input id="payProfilePhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: ${esc(whatsappCountryPlaceholder(data.phoneCountry || "549"))}" value="${esc(data.phoneLocal || "")}" required /></div><small>Elegí país y cargá el número sin 0 ni +. Se guarda normalizado para WhatsApp.</small></label>
       <label class="pay-profile-field" for="payProfileCuit"><span>CUIT</span><input id="payProfileCuit" type="text" inputmode="numeric" autocomplete="off" placeholder="Ej: 20-00000000-0" value="${esc(data.cuit)}" ${isAdmin() ? "" : "required"} /></label>
       <label class="pay-profile-field" for="payProfileAlias"><span>Alias para cobrar</span><input id="payProfileAlias" type="text" autocomplete="off" placeholder="Ej: alias.mercadopago" value="${esc(data.alias)}" ${isAdmin() ? "" : "required"} /></label>
-      <div class="pay-profile-note">${isAdmin() ? "Este WhatsApp queda guardado en el perfil admin. Los cierres de Explora al chofer usan el número que cada chofer haya seleccionado acá." : "El chofer elige su país y número. Explora usará exactamente ese WhatsApp para pedir cierres y enviar comprobantes."}</div>`;
+      <div class="pay-profile-note">${isAdmin() ? "Estos datos de Explora se envían al chofer cuando pedís un cierre o enviás un comprobante." : "Estos datos del chofer se envían a Explora cuando pedís un cierre o cargás un comprobante."}</div>`;
     const country = $("payProfileCountry");
     const phone = $("payProfilePhone");
     country?.addEventListener("change", () => {
@@ -2567,7 +2604,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const cuit = safe($("payProfileCuit")?.value || "");
     const alias = safe($("payProfileAlias")?.value || "");
     const missing = isAdmin()
-      ? (normalizeWhatsappPhone(phone) ? [] : ["número de WhatsApp"])
+      ? paymentProfileMissingFields({ phone, cuit, alias })
       : paymentProfileMissingFields({ phone, cuit, alias });
     if (missing.length) { setProfileMessage(`Completá: ${missing.join(", ")}.`, "error"); return; }
     const fields = {
@@ -4783,7 +4820,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
     // Puede existir un cierre anterior pendiente; eso no debe impedir cortar un nuevo período
     // si ya hay movimientos nuevos después del último corte.
-    if (!isAdmin()) requireOwnPaymentProfileComplete();
+    requireOwnPaymentProfileComplete();
     const fullSummary = isAdmin() ? await computeDriverSummary(targetUid) : (state.latestSummary || computeSummary());
     requireClosureAllowed(kind, fullSummary);
     const summary = tabSummary(fullSummary, kind);
@@ -5122,4 +5159,4 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen });
 })();
 
-/* v4045: Admin Más minimal; Android WhatsApp Intent explícito; perfil con país obligatorio. */
+/* v4046: Datos de perfil en WhatsApp de cierres; admin Más minimal; Android Intent explícito. */
