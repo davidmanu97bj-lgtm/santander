@@ -781,7 +781,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           <div>
             <span>ADMIN</span>
             <h1>Cierre contable</h1>
-            <p>Vista limpia por chofer, con tarjetas estilo últimas actividades.</p>
+            <p>Vista por chofer, con tarjetas contables compactas.</p>
           </div>
         </header>
         <div class="pay-admin-closures-legend">
