@@ -1949,3 +1949,375 @@ body.explora-admin-drivers-white .admin-management-list{
   }
   body.explora-admin-drivers-white .admin-shared-heading h1{font-size:25px!important;}
 }
+
+
+/* v4036 · Limpieza admin: sin Semana/Mes/Año, sin Pagos/Gastos, crear chofer blanco y cierre contable estilo actividades */
+#adminSharedPeriodTabs,
+#adminSharedReceiptTabs,
+.admin-shared-segment[data-removed="v4036-admin-clean"]{
+  display:none!important;
+  visibility:hidden!important;
+  height:0!important;
+  min-height:0!important;
+  margin:0!important;
+  padding:0!important;
+  border:0!important;
+  overflow:hidden!important;
+}
+body.explora-admin-drivers-white #adminSharedRefreshBtn,
+body.explora-admin-drivers-white .admin-shared-refresh{
+  display:none!important;
+}
+body.explora-admin-drivers-white .admin-shared-header{
+  grid-template-columns:48px minmax(0,1fr) 48px!important;
+}
+
+body.explora-pay-mode #adminCreateDriverModal.admin-modal{
+  background:rgba(248,248,251,.94)!important;
+  backdrop-filter:blur(18px)!important;
+  -webkit-backdrop-filter:blur(18px)!important;
+  padding:calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 18px)!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-modal-panel{
+  width:min(100%,520px)!important;
+  border:1px solid rgba(210,215,232,.92)!important;
+  border-radius:30px!important;
+  background:#fff!important;
+  color:var(--pay-ink)!important;
+  box-shadow:0 20px 54px rgba(28,31,45,.14)!important;
+  overflow:hidden!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-modal-header{
+  background:linear-gradient(180deg,#fff 0%,#f8f8fb 100%)!important;
+  border-bottom:1px solid rgba(217,221,238,.85)!important;
+  padding:17px 16px!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-modal-header button{
+  width:46px!important;
+  height:46px!important;
+  border:1px solid rgba(216,221,238,.92)!important;
+  border-radius:16px!important;
+  background:#fff!important;
+  color:var(--pay-ink)!important;
+  box-shadow:0 8px 18px rgba(25,28,40,.06)!important;
+  font-size:28px!important;
+  font-weight:800!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-modal-header h2{
+  margin:0!important;
+  color:var(--pay-ink)!important;
+  font-size:28px!important;
+  line-height:1!important;
+  letter-spacing:-.04em!important;
+  font-weight:900!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-modal-header p{
+  margin:5px 0 0!important;
+  color:var(--pay-muted)!important;
+  font-size:13px!important;
+  line-height:1.3!important;
+  font-weight:700!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-create-form{
+  background:#fff!important;
+  padding:16px!important;
+  gap:14px!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-create-form fieldset{
+  border:1px solid rgba(210,215,232,.92)!important;
+  border-radius:24px!important;
+  background:#fff!important;
+  padding:15px!important;
+  gap:12px!important;
+  box-shadow:0 10px 24px rgba(28,31,45,.05)!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-create-form legend{
+  color:var(--pay-blue)!important;
+  padding:0 7px!important;
+  font-size:12px!important;
+  font-weight:950!important;
+  letter-spacing:.08em!important;
+  text-transform:uppercase!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-create-form label{
+  color:#464b61!important;
+  font-size:13px!important;
+  font-weight:850!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-create-form input,
+body.explora-pay-mode #adminCreateDriverModal .admin-create-form select,
+body.explora-pay-mode #adminCreateDriverModal .admin-create-form textarea{
+  min-height:50px!important;
+  border:1px solid rgba(204,211,230,.95)!important;
+  border-radius:17px!important;
+  background:#f8f9fc!important;
+  color:var(--pay-ink)!important;
+  padding:12px 14px!important;
+  font-size:16px!important;
+  font-weight:720!important;
+  box-shadow:none!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-create-form input::placeholder,
+body.explora-pay-mode #adminCreateDriverModal .admin-create-form textarea::placeholder{
+  color:#9aa0b3!important;
+  font-weight:650!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-role-fixed,
+body.explora-pay-mode #adminCreateDriverModal .admin-create-help{
+  border:1px solid rgba(77,79,229,.16)!important;
+  border-radius:18px!important;
+  background:#eef3ff!important;
+  color:var(--pay-blue)!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-role-fixed strong{
+  color:var(--pay-blue)!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-role-fixed span,
+body.explora-pay-mode #adminCreateDriverModal .admin-create-help{
+  color:#59617a!important;
+  font-weight:750!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-create-msg{
+  color:var(--pay-muted)!important;
+  font-weight:750!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-create-msg.err{color:#c03636!important;}
+body.explora-pay-mode #adminCreateDriverModal .admin-create-msg.ok{color:#20883a!important;}
+body.explora-pay-mode #adminCreateDriverModal .admin-form-actions{
+  display:grid!important;
+  grid-template-columns:1fr 1.2fr!important;
+  gap:10px!important;
+  background:#fff!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-form-cancel,
+body.explora-pay-mode #adminCreateDriverModal .admin-form-save{
+  min-height:50px!important;
+  border-radius:17px!important;
+  font-weight:950!important;
+  letter-spacing:-.01em!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-form-cancel{
+  border:1px solid rgba(210,215,232,.92)!important;
+  background:#fff!important;
+  color:#59617a!important;
+}
+body.explora-pay-mode #adminCreateDriverModal .admin-form-save{
+  border:0!important;
+  background:var(--pay-blue)!important;
+  color:#fff!important;
+  box-shadow:0 10px 22px rgba(77,79,229,.20)!important;
+}
+
+body.pay-admin-closures-open{
+  background:var(--pay-bg)!important;
+  overflow:auto!important;
+  color:var(--pay-ink)!important;
+}
+body.pay-admin-closures-open .explora-pay-admin-closures{
+  width:100%!important;
+  max-width:520px!important;
+  min-height:100dvh!important;
+  height:auto!important;
+  margin:0 auto!important;
+  padding:calc(env(safe-area-inset-top) + 18px) 18px calc(112px + env(safe-area-inset-bottom))!important;
+  background:linear-gradient(180deg,var(--pay-gold-2) 0 156px,var(--pay-bg) 156px 100%)!important;
+  color:var(--pay-ink)!important;
+  display:block!important;
+  overflow:visible!important;
+  font-family:var(--pay-font)!important;
+}
+body.pay-admin-closures-open .pay-admin-closures-head{
+  display:grid!important;
+  grid-template-columns:52px minmax(0,1fr)!important;
+  align-items:center!important;
+  gap:12px!important;
+  margin:0 0 18px!important;
+  padding:0!important;
+}
+body.pay-admin-closures-open .pay-admin-closures-back{
+  width:52px!important;
+  height:52px!important;
+  border:0!important;
+  border-radius:18px!important;
+  background:rgba(255,255,255,.76)!important;
+  color:#26283a!important;
+  box-shadow:0 1px 0 rgba(255,255,255,.42) inset!important;
+}
+body.pay-admin-closures-open .pay-admin-closures-head span{
+  color:#69520f!important;
+  font-size:11px!important;
+  font-weight:950!important;
+  letter-spacing:.12em!important;
+}
+body.pay-admin-closures-open .pay-admin-closures-head h1{
+  margin:0!important;
+  color:#252634!important;
+  font-size:30px!important;
+  line-height:1!important;
+  letter-spacing:-.045em!important;
+  font-weight:900!important;
+  text-transform:none!important;
+}
+body.pay-admin-closures-open .pay-admin-closures-head p{
+  margin:5px 0 0!important;
+  color:#4b5064!important;
+  font-size:13px!important;
+  line-height:1.25!important;
+  font-weight:750!important;
+}
+body.pay-admin-closures-open .pay-admin-closures-legend{
+  display:none!important;
+}
+body.pay-admin-closures-open .pay-admin-closures-list{
+  display:grid!important;
+  gap:12px!important;
+  height:auto!important;
+  min-height:0!important;
+  max-height:none!important;
+  overflow:visible!important;
+  scroll-snap-type:none!important;
+  padding:0!important;
+}
+body.pay-admin-closures-open .pay-admin-driver-closure-card{
+  width:100%!important;
+  min-height:0!important;
+  height:auto!important;
+  max-height:none!important;
+  scroll-snap-align:none!important;
+  border:1px solid rgba(210,215,232,.88)!important;
+  border-radius:24px!important;
+  background:#fff!important;
+  padding:14px!important;
+  box-shadow:0 8px 18px rgba(28,31,45,.04)!important;
+  overflow:visible!important;
+}
+body.pay-admin-closures-open .pay-admin-driver-closure-card::before{
+  display:none!important;
+}
+body.pay-admin-closures-open .pay-admin-driver-closure-head{
+  padding:0 0 12px!important;
+  margin:0 0 12px!important;
+  border-bottom:1px solid rgba(226,232,240,.95)!important;
+  display:flex!important;
+  align-items:flex-start!important;
+  justify-content:space-between!important;
+  gap:12px!important;
+}
+body.pay-admin-closures-open .pay-admin-driver-closure-head span{
+  color:var(--pay-blue)!important;
+  font-size:10px!important;
+  letter-spacing:.10em!important;
+  font-weight:950!important;
+}
+body.pay-admin-closures-open .pay-admin-driver-closure-head h2{
+  max-width:100%!important;
+  margin:3px 0 0!important;
+  color:var(--pay-ink)!important;
+  font-size:22px!important;
+  line-height:1.05!important;
+  letter-spacing:-.035em!important;
+  font-weight:900!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+}
+body.pay-admin-closures-open .pay-admin-driver-closure-head strong{
+  flex:0 0 auto!important;
+  border-radius:999px!important;
+  background:#f4f5fa!important;
+  color:var(--pay-ink)!important;
+  padding:8px 10px!important;
+  font-size:13px!important;
+  font-weight:900!important;
+}
+body.pay-admin-closures-open .pay-admin-driver-closure-grid{
+  display:grid!important;
+  grid-template-rows:none!important;
+  grid-template-columns:1fr!important;
+  gap:10px!important;
+  height:auto!important;
+  min-height:0!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-module{
+  min-height:0!important;
+  height:auto!important;
+  border:1px solid rgba(210,215,232,.86)!important;
+  border-radius:20px!important;
+  background:#f8f9fc!important;
+  padding:12px!important;
+  overflow:visible!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-module header{
+  display:flex!important;
+  margin:0 0 9px!important;
+  min-height:0!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-module header span{
+  display:block!important;
+  color:var(--pay-ink)!important;
+  font-size:15px!important;
+  line-height:1.1!important;
+  font-weight:900!important;
+  letter-spacing:-.02em!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-module header small{
+  display:block!important;
+  margin-top:3px!important;
+  color:var(--pay-muted)!important;
+  font-size:12px!important;
+  line-height:1.25!important;
+  font-weight:700!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-metrics{
+  display:grid!important;
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:7px!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-metric{
+  min-height:48px!important;
+  height:auto!important;
+  border:1px solid rgba(216,221,238,.86)!important;
+  border-radius:15px!important;
+  background:#fff!important;
+  padding:7px 6px!important;
+  display:grid!important;
+  align-content:center!important;
+  gap:2px!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-metric span{
+  color:#73798c!important;
+  font-size:10px!important;
+  line-height:1.08!important;
+  font-weight:850!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-metric strong{
+  color:var(--pay-ink)!important;
+  font-size:13px!important;
+  line-height:1.05!important;
+  font-weight:900!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-action-wrap{
+  margin-top:9px!important;
+}
+body.pay-admin-closures-open .pay-admin-closure-action{
+  width:100%!important;
+  min-height:42px!important;
+  border-radius:15px!important;
+  padding:9px 10px!important;
+  font-size:12px!important;
+  line-height:1.1!important;
+  font-weight:950!important;
+  letter-spacing:-.01em!important;
+}
+body.pay-admin-closures-open .pay-admin-closures-empty{
+  border:1px solid rgba(210,215,232,.88)!important;
+  border-radius:24px!important;
+  background:#fff!important;
+  color:var(--pay-muted)!important;
+  box-shadow:0 8px 18px rgba(28,31,45,.04)!important;
+}
+@media(max-width:390px){
+  body.pay-admin-closures-open .explora-pay-admin-closures{padding-left:14px!important;padding-right:14px!important;}
+  body.pay-admin-closures-open .pay-admin-closures-head h1{font-size:27px!important;}
+  body.pay-admin-closures-open .pay-admin-closure-metrics{grid-template-columns:1fr!important;}
+}
