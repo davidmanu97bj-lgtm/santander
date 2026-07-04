@@ -2306,10 +2306,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const encodedText = encodeURIComponent(text || "");
     const webUrl = `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`;
 
-    // Android/PWA: no usar whatsapp:// porque algunos WebView lo cargan como página interna
-    // y muestran net::ERR_UNKNOWN_URL_SCHEME. wa.me delega correctamente a WhatsApp.
+    // Compatibilidad iOS + Android + PWA:
+    // usar siempre enlace universal HTTPS. Evita esquemas nativos que en Android WebView/PWA
+    // puede terminar como página interna con net::ERR_UNKNOWN_URL_SCHEME.
+    // En iOS/Android, wa.me delega a la app instalada; si no existe, queda el fallback web.
     try {
-      const opened = window.open(webUrl, "_blank", "noopener");
+      const opened = window.open(webUrl, "_blank", "noopener,noreferrer");
       if (opened) return true;
     } catch (_) {}
 
@@ -5009,3 +5011,5 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   window.ExploraActions["admin-cierres"] = () => showPayView("admin-cierres");
   window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen });
 })();
+
+/* v4040: WhatsApp universal https://wa.me para iOS/Android/PWA. */
