@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4054-menu-perfil-minimo-compacto";
+  const VERSION = "explora-pago-home-v52-v4056-cuit-guiones-more-admin-simetrico";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -1267,12 +1267,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function moreItems() {
     if (isAdmin()) {
       return [
-        { title:"Mi perfil", detail:"Alias, CUIT y celular", action:"abrir-perfil", icon:"user" },
-        { title:"Deudas", detail:"Multas, choques y adelantos", action:"admin-multas", icon:"alert" }
+        { title:"Mi perfil", detail:"Alias · CUIT · celular", action:"abrir-perfil", icon:"user" },
+        { title:"Deudas", detail:"Gestión de deudas", action:"admin-multas", icon:"alert" }
       ];
     }
     return [
-      { title:"Mi perfil", detail:"Alias, CUIT y celular", action:"abrir-perfil", icon:"user" }
+      { title:"Mi perfil", detail:"Alias · CUIT · celular", action:"abrir-perfil", icon:"user" }
     ];
   }
 
@@ -2261,6 +2261,22 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return splitWhatsappPhone(raw, profile);
   }
 
+  function cuitDigits(value = "") {
+    return safe(value).replace(/\D+/g, "").slice(0, 11);
+  }
+
+  function formatCuit(value = "") {
+    const digits = cuitDigits(value);
+    if (!digits) return "";
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 10) return `${digits.slice(0,2)}-${digits.slice(2)}`;
+    return `${digits.slice(0,2)}-${digits.slice(2,10)}-${digits.slice(10,11)}`;
+  }
+
+  function isValidCuit(value = "") {
+    return cuitDigits(value).length === 11;
+  }
+
   function driverFullNameFromProfile(profile = state.profile) {
     return firstProfileValue(profile, ["nombreCompleto", "fullName", "nombre", "displayName", "name", "email"]) || displayName();
   }
@@ -2282,7 +2298,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       phone:phoneParts.full || firstProfileValue(profile, ["telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]),
       phoneCountry:phoneParts.country || "549",
       phoneLocal:phoneParts.local || "",
-      cuit:firstProfileValue(profile, ["cuit", "CUIT", "cuil", "taxId", "dniFiscal"]),
+      cuit:formatCuit(firstProfileValue(profile, ["cuit", "CUIT", "cuil", "taxId", "dniFiscal", "cuitRaw"])),
       alias:firstProfileValue(profile, ["aliasCobro", "paymentAlias", "aliasParaCobrar", "alias", "mercadoPagoAlias", "aliasMp", "mpAlias"])
     };
   }
@@ -2298,7 +2314,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function paymentProfileMissingFields(data = driverPaymentProfile()) {
     const missing = [];
     if (!normalizeWhatsappPhone(data.phone)) missing.push("número de WhatsApp");
-    if (!safe(data.cuit)) missing.push("CUIT");
+    if (!isValidCuit(data.cuit)) missing.push("CUIT con 11 números");
     if (!safe(data.alias)) missing.push("alias para cobrar");
     return missing;
   }
@@ -2330,7 +2346,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function closureContactCardHtml(title = "Datos", contact = {}) {
-    return `<section class="pay-closure-contact-card"><h3>${esc(title)}</h3><div><span>Alias</span><strong>${esc(contact.alias || "Sin cargar")}</strong></div><div><span>CUIT</span><strong>${esc(contact.cuit || "Sin cargar")}</strong></div><div><span>Celular</span><strong>${esc(displayPaymentPhone(contact.phone || ""))}</strong></div></section>`;
+    return `<section class="pay-closure-contact-card"><h3>${esc(title)}</h3><div><span>Alias</span><strong>${esc(contact.alias || "Sin cargar")}</strong></div><div><span>CUIT</span><strong>${esc(formatCuit(contact.cuit) || "Sin cargar")}</strong></div><div><span>Celular</span><strong>${esc(displayPaymentPhone(contact.phone || ""))}</strong></div></section>`;
   }
 
   function closureContactCardByDirection(direction = "balanced", { closure = {}, driverPayment = null } = {}) {
@@ -2415,13 +2431,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       lines.push("");
       lines.push("*Datos para pagar al chofer:* ");
       lines.push(`Alias: ${driverPayment.alias || "sin cargar"}`);
-      lines.push(`CUIT: ${driverPayment.cuit || "sin cargar"}`);
+      lines.push(`CUIT: ${formatCuit(driverPayment.cuit) || "sin cargar"}`);
       lines.push(`Celular: ${displayPaymentPhone(driverPayment.phone || "")}`);
     } else if (result.direction === "driver_to_explora") {
       lines.push("");
       lines.push("*Datos de Explora para recibir:* ");
       lines.push(`Alias: ${EXPLORA_ALIAS}`);
-      lines.push(`CUIT David: ${EXPLORA_CUIT}`);
+      lines.push(`CUIT: ${formatCuit(EXPLORA_CUIT) || EXPLORA_CUIT}`);
       lines.push(`Celular: ${displayPaymentPhone(EXPLORA_WHATSAPP_DISPLAY)}`);
     }
     lines.push("");
@@ -2563,13 +2579,19 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const data = driverPaymentProfile(state.profile || {});
     body.innerHTML = `
       <label class="pay-profile-field pay-profile-phone-field" for="payProfilePhone"><span>Celular WhatsApp</span><div class="pay-profile-phone-row"><select id="payProfileCountry" aria-label="Código de país" required>${whatsappCountryOptionsHtml(data.phoneCountry || "549")}</select><input id="payProfilePhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${esc(whatsappCountryPlaceholder(data.phoneCountry || "549"))}" value="${esc(data.phoneLocal || "")}" required /></div></label>
-      <label class="pay-profile-field" for="payProfileCuit"><span>CUIT</span><input id="payProfileCuit" type="text" inputmode="numeric" autocomplete="off" placeholder="20-00000000-0" value="${esc(data.cuit)}" required /></label>
+      <label class="pay-profile-field" for="payProfileCuit"><span>CUIT</span><input id="payProfileCuit" type="text" inputmode="numeric" autocomplete="off" maxlength="13" placeholder="20-00000000-0" value="${esc(formatCuit(data.cuit))}" required /></label>
       <label class="pay-profile-field" for="payProfileAlias"><span>Alias</span><input id="payProfileAlias" type="text" autocomplete="off" placeholder="alias.mercadopago" value="${esc(data.alias)}" required /></label>
       <div class="pay-profile-note">Alias, CUIT y celular se usan en cierres y comprobantes.</div>`;
     const country = $("payProfileCountry");
     const phone = $("payProfilePhone");
     country?.addEventListener("change", () => {
       if (phone) phone.placeholder = whatsappCountryPlaceholder(country.value || "549");
+    });
+    const cuitInput = $("payProfileCuit");
+    cuitInput?.addEventListener("input", () => {
+      const cursorAtEnd = cuitInput.selectionStart === cuitInput.value.length;
+      cuitInput.value = formatCuit(cuitInput.value);
+      if (cursorAtEnd) cuitInput.setSelectionRange(cuitInput.value.length, cuitInput.value.length);
     });
     const msg = $("payProfileMessage");
     if (msg) { msg.textContent = ""; msg.className = "pay-profile-message"; }
@@ -2603,7 +2625,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const phoneCountry = safe($("payProfileCountry")?.value || "549");
     const phoneLocal = safe($("payProfilePhone")?.value || "");
     const phone = composeWhatsappPhone(phoneCountry, phoneLocal);
-    const cuit = safe($("payProfileCuit")?.value || "");
+    const cuit = formatCuit($("payProfileCuit")?.value || "");
     const alias = safe($("payProfileAlias")?.value || "");
     const missing = paymentProfileMissingFields({ phone, cuit, alias });
     if (missing.length) { setProfileMessage(`Completá: ${missing.join(", ")}.`, "error"); return; }
@@ -2618,6 +2640,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       codigoPaisWhatsapp:phoneCountry,
       telefonoLocal:rawWhatsappDigits(phoneLocal),
       cuit,
+      cuitRaw:cuitDigits(cuit),
       aliasCobro:alias,
       aliasParaCobrar:alias,
       paymentAlias:alias,
