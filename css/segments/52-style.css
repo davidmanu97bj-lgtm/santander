@@ -2646,3 +2646,86 @@ body.explora-pay-mode:not(.explora-admin-activity-home):not(.pay-admin-closures-
     font-size:10.2px!important;
   }
 }
+
+/* v4051 · Histórico Explora + icono cobro claro */
+body.pay-history-open{
+  background:var(--pay-bg)!important;
+  overflow:hidden!important;
+}
+.explora-pay-history[hidden]{display:none!important;}
+.explora-pay-history{
+  position:fixed;
+  inset:0;
+  z-index:72;
+  width:min(100vw,520px);
+  margin:0 auto;
+  left:50%;
+  transform:translateX(-50%);
+  background:var(--pay-bg);
+  padding:calc(18px + env(safe-area-inset-top)) 18px calc(92px + env(safe-area-inset-bottom));
+  overflow-y:auto;
+  overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+}
+.pay-history-head{
+  display:grid;
+  grid-template-columns:48px minmax(0,1fr);
+  gap:10px;
+  align-items:center;
+  margin-bottom:14px;
+}
+.pay-history-back{
+  width:48px;height:48px;border:1px solid rgba(203,213,225,.9);border-radius:18px;background:#fff;color:#1f2435;display:grid;place-items:center;box-shadow:0 10px 22px rgba(15,23,42,.06);
+}
+.pay-history-back svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;}
+.pay-history-head span{display:block;font-size:11px;font-weight:950;letter-spacing:.18em;color:#7f879b;text-transform:uppercase;}
+.pay-history-head h1{margin:1px 0 0;font-size:clamp(28px,7vw,36px);line-height:.98;letter-spacing:-.055em;color:#252738;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pay-history-head p{margin:4px 0 0;color:#7d8498;font-size:13px;font-weight:760;line-height:1.18;}
+.pay-history-controls{
+  background:rgba(255,255,255,.94);border:1px solid rgba(203,213,225,.86);border-radius:24px;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;box-shadow:0 14px 30px rgba(15,23,42,.07);margin-bottom:12px;
+}
+.pay-history-controls label{display:grid;gap:6px;min-width:0;}
+.pay-history-controls label span{font-size:10px;font-weight:950;letter-spacing:.13em;text-transform:uppercase;color:#7c8497;}
+.pay-history-controls select{width:100%;min-width:0;height:46px;border:1px solid #d5dced;border-radius:16px;background:#fff;color:#252738;font-size:14px;font-weight:890;padding:0 34px 0 12px;appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,#252738 50%),linear-gradient(135deg,#252738 50%,transparent 50%);background-position:calc(100% - 17px) 18px,calc(100% - 12px) 18px;background-size:5px 5px,5px 5px;background-repeat:no-repeat;}
+.pay-history-content{display:grid;gap:10px;}
+.pay-history-empty{border:1px dashed rgba(148,163,184,.9);border-radius:22px;background:#fff;padding:20px 14px;text-align:center;color:#70798f;font-size:14px;font-weight:850;}
+.pay-history-empty.is-error{border-color:#f4b5b5;background:#fff1f1;color:#9b2424;}
+.pay-history-result{border-radius:26px;padding:16px;background:#fff;border:1px solid rgba(203,213,225,.9);box-shadow:0 16px 34px rgba(15,23,42,.08);position:relative;overflow:hidden;}
+.pay-history-result::before{content:"";position:absolute;inset:0 0 auto;height:5px;background:#1f8f43;}
+.pay-history-result.is-negative::before{background:#d93025;}
+.pay-history-result-head{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;margin-bottom:8px;}
+.pay-history-result-head span{font-size:12px;font-weight:950;letter-spacing:.12em;text-transform:uppercase;color:#111827;background:#eef3ff;border-radius:999px;padding:7px 10px;max-width:50%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pay-history-result-head small{color:#7b8397;font-size:11px;font-weight:850;text-align:right;line-height:1.15;}
+.pay-history-result>strong{display:block;color:#1f8f43;font-size:clamp(38px,11vw,54px);line-height:.95;letter-spacing:-.07em;font-weight:960;}
+.pay-history-result.is-negative>strong{color:#d93025;}
+.pay-history-result>p{margin:6px 0 0;color:#6d7589;font-size:14px;font-weight:800;}
+.pay-history-chart{background:#fff;border:1px solid rgba(203,213,225,.9);border-radius:24px;padding:13px;display:grid;gap:10px;}
+.pay-history-bar{display:grid;gap:5px;}
+.pay-history-bar div{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.pay-history-bar span{font-size:12px;font-weight:850;color:#5c6478;}
+.pay-history-bar strong{font-size:13px;font-weight:950;color:#252738;white-space:nowrap;}
+.pay-history-bar i{height:10px;width:100%;display:block;border-radius:999px;background:#edf1f7;position:relative;overflow:hidden;}
+.pay-history-bar i::after{content:"";position:absolute;inset:0 auto 0 0;width:var(--w);border-radius:999px;background:#1f8f43;}
+.pay-history-bar.is-minus i::after{background:#d93025;}
+.pay-history-metrics{background:#fff;border:1px solid rgba(203,213,225,.9);border-radius:24px;padding:12px;display:grid;gap:0;}
+.pay-history-metrics div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 2px;border-bottom:1px solid #edf0f6;}
+.pay-history-metrics div:last-child{border-bottom:0;}
+.pay-history-metrics span{font-size:13px;color:#767e91;font-weight:760;}
+.pay-history-metrics strong{font-size:13px;color:#252738;font-weight:950;white-space:nowrap;}
+body.pay-history-open .pay-floating-spark{display:none!important;}
+body.pay-history-open .pay-bottom-nav #payNavClosure{color:#4d4fe5!important;}
+body.pay-history-open .pay-bottom-nav #payNavClosure svg{stroke:#4d4fe5!important;}
+@media(max-width:390px){
+  .explora-pay-history{padding-left:14px;padding-right:14px;}
+  .pay-history-controls{grid-template-columns:1fr;gap:8px;padding:11px;}
+  .pay-history-controls select{height:44px;font-size:13.5px;}
+  .pay-history-result{padding:14px;}
+  .pay-history-result-head{align-items:flex-start;}
+  .pay-history-result-head span{max-width:56%;font-size:11px;}
+  .pay-history-result-head small{font-size:10.5px;}
+}
+/* v4051 · icono central para registrar cobro: tarjeta + peso, sin brillo ni estrella */
+body.explora-pay-mode:not(.explora-admin-activity-home):not(.pay-admin-closures-open) .pay-bottom-nav .pay-nav-main .pay-nav-plus-icon::before,
+.pay-bottom-nav .pay-nav-main .pay-nav-plus-icon::before{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Crect x='5' y='8' width='22' height='17' rx='5' stroke='white' stroke-width='2.35'/%3E%3Cpath d='M8 13h16' stroke='white' stroke-width='2.35' stroke-linecap='round'/%3E%3Cpath d='M11 19h5' stroke='white' stroke-width='2.15' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='22' r='5.2' fill='white'/%3E%3Cpath d='M23 19.4v5.2M20.4 22h5.2' stroke='%234d4fe5' stroke-width='2.05' stroke-linecap='round'/%3E%3Cpath d='M15.6 17.2c-1.25 0-2.15.55-2.15 1.45 0 1.95 4.3.8 4.3 2.8 0 .9-.82 1.45-2.15 1.45m0-5.7v-.95m0 7.6v-.95' stroke='white' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E")!important;
+}
