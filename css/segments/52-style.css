@@ -2441,3 +2441,13 @@ body.explora-admin-debts-white .admin-debt-existing{padding:clamp(14px,4vw,16px)
 body.explora-admin-debts-white .admin-debt-existing-selector,body.explora-admin-debts-white .admin-debt-existing-selector button,body.explora-admin-debts-white .admin-debt-submit{width:100%!important;max-width:100%!important;min-width:0!important;}
 @media(max-width:430px){body.explora-admin-debts-white .admin-shared-shell{padding-left:14px!important;padding-right:14px!important;}body.explora-admin-debts-white .debt-form{padding:14px!important;border-radius:24px!important;}body.explora-admin-debts-white .debt-reason-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important;}body.explora-admin-debts-white .debt-choice{min-height:50px!important;border-radius:16px!important;font-size:12px!important;letter-spacing:.02em!important;}}
 @media(max-width:340px){body.explora-admin-debts-white .debt-reason-grid{grid-template-columns:1fr!important;}}
+
+
+/* v4047 · Datos de perfil visibles y compactos dentro del modal de cierre */
+.pay-payment-info-card{width:100%;border:1px solid #dfe4ff;background:#f6f8ff;border-radius:18px;padding:10px 12px;display:grid;gap:7px;box-sizing:border-box;overflow:hidden;}
+.pay-payment-info-card h3{margin:0;color:#3338cc;font-size:12px;line-height:1.05;font-weight:950;letter-spacing:.08em;text-transform:uppercase;}
+.pay-payment-info-card div{display:grid;grid-template-columns:minmax(72px,.34fr) minmax(0,1fr);gap:8px;align-items:center;min-width:0;}
+.pay-payment-info-card span{font-size:12px!important;line-height:1.1!important;color:#777e92!important;font-weight:900!important;text-transform:uppercase;letter-spacing:.03em;}
+.pay-payment-info-card strong{font-size:14px!important;line-height:1.15!important;color:#25293a!important;font-weight:950!important;overflow-wrap:anywhere!important;word-break:break-word!important;text-align:right;min-width:0;}
+.pay-closure-summary .pay-payment-info-card{margin-top:2px;}
+@media(max-width:390px){.pay-payment-info-card{padding:9px 10px;border-radius:16px;gap:6px;}.pay-payment-info-card div{grid-template-columns:minmax(62px,.32fr) minmax(0,1fr);gap:6px;}.pay-payment-info-card span{font-size:11px!important;}.pay-payment-info-card strong{font-size:13px!important;}}
