@@ -2286,21 +2286,27 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return { direction:"balanced", label:"Nadie debe liquidar", amount:0 };
   }
 
-  function closurePaymentRowsHtml({ driverPayment = {}, direction = "balanced" } = {}) {
+  function compactPaymentInfoCardHtml(title = "Datos", rows = []) {
+    const cleanRows = (rows || []).map(([label, value]) => [safe(label), safe(value) || "Sin cargar"]).filter(([label]) => label);
+    if (!cleanRows.length) return "";
+    return `<section class="pay-payment-info-card"><h3>${esc(title)}</h3>${cleanRows.map(([label,value]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join("")}</section>`;
+  }
+
+  function closurePaymentRowsHtml({ driverPayment = {}, exploraPayment = {}, direction = "balanced" } = {}) {
     if (direction === "explora_to_driver") {
-      return [
-        ["Alias chofer", driverPayment.alias || "Sin cargar"],
-        ["CUIT chofer", driverPayment.cuit || "Sin cargar"],
-        ["Teléfono chofer", driverPayment.phone || "Sin cargar"]
-      ].map(([label,value]) => `<article class="pay-payment-info-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
+      return compactPaymentInfoCardHtml("Datos del chofer", [
+        ["Alias", driverPayment.alias || "Sin cargar"],
+        ["CUIT", driverPayment.cuit || "Sin cargar"],
+        ["Celular", driverPayment.phoneDisplay || displayWhatsappPhone(driverPayment.phone || "")]
+      ]);
     }
     if (direction === "driver_to_explora") {
-      const exploraPayment = exploraPaymentProfile();
-      return [
-        ["Alias Explora", exploraPayment.alias],
-        ["CUIT Explora", exploraPayment.cuit],
-        ["Celular Explora", exploraPayment.phoneDisplay]
-      ].map(([label,value]) => `<article class="pay-payment-info-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
+      const explora = Object.keys(exploraPayment || {}).length ? exploraPayment : exploraPaymentProfile();
+      return compactPaymentInfoCardHtml("Datos de Explora", [
+        ["Alias", explora.alias || "Sin cargar"],
+        ["CUIT", explora.cuit || "Sin cargar"],
+        ["Celular", explora.phoneDisplay || displayWhatsappPhone(explora.phone || "")]
+      ]);
     }
     return "";
   }
@@ -2326,12 +2332,24 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function paymentDataFromClosure(closure = {}) {
     const direction = safe(closure.paymentDirection) || (number(closure.amountDueToDriver || 0) > 0 ? "explora_to_driver" : number(closure.amountDueFromDriver || 0) > 0 ? "driver_to_explora" : "balanced");
+    const uid = safe(closure.driverUid || closure.choferUid || closure.uid || getDriverUid());
+    const liveDriver = driverPaymentProfileForUid(uid);
+    const liveExplora = exploraPaymentProfile();
+    const driverPhone = safe(closure.driverPaymentPhone || closure.driverPaymentPhoneDisplay || closure.choferTelefono || closure.telefonoChofer || liveDriver.phone || liveDriver.phoneDisplay);
+    const exploraPhone = safe(closure.exploraPaymentPhone || closure.exploraPaymentWhatsapp || closure.exploraWhatsapp || liveExplora.phone || liveExplora.phoneDisplay);
     return {
       direction,
       driverPayment:{
-        phone:safe(closure.driverPaymentPhone || closure.driverPaymentPhoneDisplay || closure.choferTelefono || closure.telefonoChofer),
-        cuit:safe(closure.driverPaymentCuit || closure.choferCuit || closure.cuitChofer),
-        alias:safe(closure.driverPaymentAlias || closure.choferAlias || closure.aliasChofer)
+        phone:driverPhone,
+        phoneDisplay:displayWhatsappPhone(driverPhone || liveDriver.phoneDisplay || ""),
+        cuit:safe(closure.driverPaymentCuit || closure.choferCuit || closure.cuitChofer || liveDriver.cuit),
+        alias:safe(closure.driverPaymentAlias || closure.choferAlias || closure.aliasChofer || liveDriver.alias)
+      },
+      exploraPayment:{
+        phone:exploraPhone,
+        phoneDisplay:displayWhatsappPhone(exploraPhone || liveExplora.phoneDisplay || ""),
+        cuit:safe(closure.exploraPaymentCuit || closure.exploraCuit || liveExplora.cuit || EXPLORA_CUIT),
+        alias:safe(closure.exploraPaymentAlias || closure.exploraAlias || liveExplora.alias || EXPLORA_ALIAS)
       }
     };
   }
@@ -4573,6 +4591,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         if (kmHint) kmHint.textContent = kmMin > 0 ? `Debe ser mayor o igual al KM inicial ${Math.round(kmMin)}.` : "Este KM cierra el período de eficiencia y será el inicio del próximo.";
       }
       summary.innerHTML = closureDetailSummary(closure, kind, isAdmin());
+      summary.innerHTML += closurePaymentRowsHtml(paymentDataFromClosure(closure));
       const noSubmitNeeded = (completed || proof) && !["admin_review", "driver_review"].includes(action);
       if (noSubmitNeeded) {
         submit.hidden = true;
@@ -4674,7 +4693,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
     const payData = closureAmountLine(latest);
     const driverPayment = driverPaymentProfileForUid(getDriverUid());
-    summary.innerHTML += closurePaymentRowsHtml({ driverPayment, direction:payData.direction });
+    const exploraPayment = exploraPaymentProfile();
+    summary.innerHTML += closurePaymentRowsHtml({ driverPayment, exploraPayment, direction:payData.direction });
   }
 
   async function submitClosureModal() {
@@ -4814,6 +4834,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       targetUid = safe($("payClosureDriverSelect")?.value || state.selectedDriverUid);
       const driver = state.drivers.find(d => d.uid === targetUid);
       if (!targetUid || !driver) throw new Error("Elegí un chofer para pedir el cierre.");
+      const targetPayment = driverPaymentProfileForUid(targetUid);
+      if (!normalizeWhatsappPhone(targetPayment.phone)) throw new Error(`El chofer ${driver.name} no tiene WhatsApp cargado en Mi perfil.`);
       state.selectedDriverUid = targetUid;
       state.selectedDriverName = driver.name;
       targetName = driver.name;
