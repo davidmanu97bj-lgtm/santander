@@ -5170,17 +5170,15 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     }
 
     async function renderAdminDriversManagement() {
-      const [drivers, vehicles] = await Promise.all([loadAdminDrivers({ includeInactive:false, includeDeleted:false, includeOrphans:false }), loadAdminVehicles()]);
+      const drivers = await loadAdminDrivers({ includeInactive:false, includeDeleted:false, includeOrphans:false });
       adminManagementState.drivers = drivers;
-      adminManagementState.vehicles = vehicles;
+      adminManagementState.vehicles = [];
       const rows = drivers.map(driver => {
         const uid = adminDriverKey(driver) || driver.id;
         const username = String(driver.usuario || driver.username || driver.usuarioNormalizado || "").trim();
-        const vehicleId = driverVehicleId(driver);
-        const resolved = adminResolveVehicle(driver, new Map(vehicles.map(vehicle => [String(vehicle.id), vehicle])));
-        return `<article class="admin-management-card" data-admin-driver-card="${escapeAdminHtml(driver.id)}"><div class="admin-management-card-head"><div class="admin-management-card-title"><strong>${escapeAdminHtml(getProfileName(driver))}</strong><span>ID ${escapeAdminHtml(username || shortAdminUid(uid))} · Rol chofer</span><small>${escapeAdminHtml(driver.email || driver.contactEmail || driver.correo || "Correo opcional pendiente")} · ${escapeAdminHtml(driver.telefono || driver.phone || "Teléfono opcional pendiente")}</small></div><span class="admin-management-status${vehicleId ? " is-assigned" : ""}">${vehicleId ? "Con vehículo" : "Sin vehículo"}</span></div><div class="admin-management-field"><label for="driverVehicle_${escapeAdminHtml(driver.id)}">Asignar vehículo por patente</label><select id="driverVehicle_${escapeAdminHtml(driver.id)}" data-admin-driver-vehicle="${escapeAdminHtml(driver.id)}">${managementVehicleOptions(vehicleId, driver)}</select></div><div class="admin-management-actions"><button class="admin-management-save" type="button" data-admin-save-driver-vehicle="${escapeAdminHtml(driver.id)}">GUARDAR ASIGNACIÓN</button><button class="admin-management-hard-delete" type="button" data-admin-hard-delete-driver="${escapeAdminHtml(driver.id)}">ELIMINAR CHOFER</button></div></article>`;
+        return `<article class="admin-management-card admin-driver-only-card" data-admin-driver-card="${escapeAdminHtml(driver.id)}"><div class="admin-management-card-head"><div class="admin-management-card-title"><strong>${escapeAdminHtml(getProfileName(driver))}</strong><span>ID ${escapeAdminHtml(username || shortAdminUid(uid))} · Rol chofer</span><small>${escapeAdminHtml(driver.telefono || driver.phone || "Teléfono opcional pendiente")}</small></div><span class="admin-management-status is-driver-only">Chofer</span></div><div class="admin-management-actions admin-driver-only-actions"><button class="admin-management-hard-delete" type="button" data-admin-hard-delete-driver="${escapeAdminHtml(driver.id)}">ELIMINAR CHOFER</button></div></article>`;
       }).join("");
-      return `<section class="admin-management-toolbar"><div class="admin-management-toolbar-copy"><strong>Chofer</strong><small>Rol fijo: chofer. Crear chofer o eliminarlo por completo.</small></div><button class="admin-management-add" type="button" data-admin-add-driver>CREAR CHOFER</button></section><section class="admin-management-list">${rows || '<div class="admin-management-empty">No hay choferes activos.</div>'}</section>`;
+      return `<section class="admin-management-toolbar admin-driver-only-toolbar"><div class="admin-management-toolbar-copy"><strong>Choferes</strong><small>Menú simplificado: crear chofer o eliminar chofer. La gestión de vehículos queda fuera de esta pantalla.</small></div><button class="admin-management-add" type="button" data-admin-add-driver>CREAR CHOFER</button></section><section class="admin-management-list admin-driver-only-list">${rows || '<div class="admin-management-empty">No hay choferes activos.</div>'}</section>`;
     }
 
     async function refreshDriversManagement() {
@@ -5268,6 +5266,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       const receiptTabs = $("adminSharedReceiptTabs");
       if (!content) return;
       const mode = adminSharedState.mode;
+      document.body.classList.toggle("explora-admin-drivers-white", mode === "drivers-management");
       periodTabs.hidden = !["billing","expenses","receipts"].includes(mode);
       receiptTabs.hidden = mode !== "receipts";
       document.querySelectorAll("[data-admin-period]").forEach(btn => btn.classList.toggle("is-active", btn.dataset.adminPeriod === adminSharedState.periodMode));
@@ -5278,7 +5277,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         if (needsOverview && !adminSharedState.overview) adminSharedState.overview = await getAdminWeeklyOverview();
         let html = "";
         if (mode === "drivers-management") {
-          setAdminSharedHeader("CHOFERES", "Agregar, borrar y asignar vehículos por patente.");
+          setAdminSharedHeader("CHOFERES", "Crear y eliminar choferes.");
           html = await renderAdminDriversManagement();
         } else
         if (mode === "closures") {
@@ -5356,6 +5355,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       screen.setAttribute("aria-hidden", "true");
       window.unlockPageScroll?.("admin-shared");
       window.unlockPageScroll?.("admin-debt");
+      document.body.classList.remove("explora-admin-drivers-white");
       adminSharedState.mode = "home";
       adminSharedState.selectedDriverKey = "";
       clearAdminReceiptSelection();

@@ -796,7 +796,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       <nav class="pay-bottom-nav" id="payBottomNav" aria-label="Navegación principal Explora">
         <button class="pay-nav-btn is-active" data-pay-nav="inicio" type="button"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 10v10h14V10"></path></svg><span>Inicio</span></button>
         <button class="pay-nav-btn" data-pay-nav="actividad" type="button"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"></path></svg><span>Actividad</span></button>
-        <button class="pay-nav-btn pay-nav-main" data-pay-run="nuevo-servicio" type="button"><span class="pay-nav-plus-icon" aria-hidden="true">+</span><span>Cobrar</span></button>
+        <button class="pay-nav-btn pay-nav-main" data-pay-run="nuevo-servicio" type="button" aria-label="Cobrar"><span class="pay-nav-plus-icon" aria-hidden="true">+</span><svg class="pay-nav-finance-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path><path d="M9 13h6M9 16h3"></path><path d="M16.5 15.5 18 17l3-3"></path></svg><span>Cobrar</span></button>
         <button class="pay-nav-btn" id="payNavClosure" type="button"><svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path><path d="M9 14h6M9 17h4"></path></svg><span>Cierre</span></button>
         <button class="pay-nav-btn" data-pay-nav="mas" type="button"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"></path><path d="M18 17h2M19 16v2"></path></svg><span>Más</span></button>
       </nav>
@@ -1026,7 +1026,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     $("payProfileSave")?.addEventListener("click", saveDriverProfileModal);
     document.querySelector('[data-pay-nav="inicio"]')?.addEventListener("click", () => {
       if (isAdmin()) {
-        state.adminActivityType = "pendientes";
+        // Admin: este acceso ya no filtra pendientes. Lleva a Últimas actividades globales.
+        state.adminActivityType = "";
         showPayView("inicio");
         render();
         setTimeout(() => $("payActivityTitle")?.scrollIntoView({ behavior:"smooth", block:"start" }), 40);
@@ -3283,11 +3284,21 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     document.querySelectorAll("#payBottomNav .pay-nav-btn").forEach(button => {
       const span = button.querySelector("span:last-child");
       if (!span) return;
-      if (button.dataset.payNav === "inicio") span.textContent = admin ? "Pendientes" : "Inicio";
+      if (button.dataset.payNav === "inicio") span.textContent = admin ? "Actividades" : "Inicio";
       else if (button.dataset.payNav === "actividad") span.textContent = admin ? "+ Chofer" : "Actividad";
-      else if (button.dataset.payRun === "nuevo-servicio") span.textContent = admin ? "Cierres" : "Cobrar";
+      else if (button.dataset.payRun === "nuevo-servicio") span.textContent = admin ? "Cierre financiero" : "Cobrar";
       else if (button.id === "payNavClosure") span.textContent = admin ? "Futuro" : "Cierre";
     });
+    const navInicioIcon = document.querySelector('#payBottomNav [data-pay-nav="inicio"] svg');
+    if (navInicioIcon) navInicioIcon.innerHTML = admin
+      ? '<path d="M7 3h10v18l-2-1-2 1-2-1-2 1-2-1Z"></path><path d="M9 8h6M9 12h6M9 16h4"></path>'
+      : '<path d="M3 10.5 12 3l9 7.5"></path><path d="M5 10v10h14V10"></path>';
+    const navChoferIcon = document.querySelector('#payBottomNav [data-pay-nav="actividad"] svg');
+    if (navChoferIcon) navChoferIcon.innerHTML = admin
+      ? '<circle cx="9" cy="8" r="3"></circle><path d="M3 20c.5-4 2.6-6 6-6s5.5 2 6 6"></path><path d="M18 8v6M15 11h6"></path>'
+      : '<path d="M4 6h16M4 12h16M4 18h10"></path>';
+    const navMain = document.querySelector('#payBottomNav .pay-nav-main');
+    if (navMain) navMain.setAttribute('aria-label', admin ? 'Cierre financiero' : 'Cobrar');
     const title = $("payActivityTitle");
     if (title) title.textContent = admin ? "Últimas actividades" : "Última actividad";
   }
