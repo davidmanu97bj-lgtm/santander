@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4036-admin-clean-closures";
+  const VERSION = "explora-pago-home-v52-v4041-whatsapp-nativo-directo";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -2300,27 +2300,51 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return digits;
   }
 
+  function whatsappPlatform() {
+    const ua = safe(navigator?.userAgent || navigator?.vendor || "");
+    const platform = safe(navigator?.platform || "");
+    const ios = /iPad|iPhone|iPod/i.test(ua) || (platform === "MacIntel" && Number(navigator?.maxTouchPoints || 0) > 1);
+    const android = /Android/i.test(ua);
+    const standalone = Boolean(window.matchMedia?.("(display-mode: standalone)")?.matches || navigator?.standalone);
+    return { ios, android, standalone };
+  }
+
+  function openWhatsappNativeUrl(url = "") {
+    const target = safe(url);
+    if (!target) return false;
+    try {
+      const anchor = document.createElement("a");
+      anchor.href = target;
+      anchor.target = "_self";
+      anchor.rel = "noopener";
+      anchor.style.display = "none";
+      document.body?.appendChild(anchor);
+      anchor.click();
+      setTimeout(() => anchor.remove(), 1200);
+      return true;
+    } catch (_) {}
+    try {
+      window.location.href = target;
+      return true;
+    } catch (_) {
+      try { window.location.assign(target); return true; } catch (__) { return false; }
+    }
+  }
+
   function openWhatsappToPhone(phone = "", text = "") {
     const normalizedPhone = normalizeWhatsappPhone(phone);
     if (!normalizedPhone) return false;
     const encodedText = encodeURIComponent(text || "");
-    const webUrl = `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`;
+    const nativeQuery = `phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
+    const nativeUrl = `whatsapp://send?${nativeQuery}`;
+    const { android } = whatsappPlatform();
 
-    // Compatibilidad iOS + Android + PWA:
-    // usar siempre enlace universal HTTPS. Evita esquemas nativos que en Android WebView/PWA
-    // puede terminar como página interna con net::ERR_UNKNOWN_URL_SCHEME.
-    // En iOS/Android, wa.me delega a la app instalada; si no existe, queda el fallback web.
-    try {
-      const opened = window.open(webUrl, "_blank", "noopener,noreferrer");
-      if (opened) return true;
-    } catch (_) {}
-
-    try {
-      window.location.assign(webUrl);
-      return true;
-    } catch (_) {
-      try { window.location.href = webUrl; return true; } catch (__) { return false; }
+    // Cierres Explora: abrir app nativa directamente para evitar
+    // la pantalla intermedia "WhatsApp Web" en iOS/Android/PWA.
+    if (android) {
+      return openWhatsappNativeUrl(`intent://send?${nativeQuery}#Intent;scheme=whatsapp;end`);
     }
+    return openWhatsappNativeUrl(nativeUrl);
   }
 
   function openWhatsappToExplora(text = "") {
@@ -5012,4 +5036,4 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen });
 })();
 
-/* v4040: WhatsApp universal https://wa.me para iOS/Android/PWA. */
+/* v4041: WhatsApp nativo directo por plataforma, sin pantalla WhatsApp Web intermedia. */
