@@ -1099,21 +1099,21 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     $("payProfileSave")?.addEventListener("click", saveDriverProfileModal);
     document.querySelector('[data-pay-nav="inicio"]')?.addEventListener("click", () => {
       if (isAdmin()) {
-        // Admin: este acceso ya no filtra pendientes. Lleva a Últimas actividades globales.
+        // Admin: botón inferior "Actividades" = últimas actividades globales desde el inicio de la tabla.
         state.adminActivityType = "";
         showPayView("inicio");
         render();
-        setTimeout(() => $("payActivityTitle")?.scrollIntoView({ behavior:"smooth", block:"start" }), 40);
+        scrollAdminActivitiesToTop();
         return;
       }
       showPayView("inicio");
     });
     document.querySelector('[data-pay-nav="actividad"]')?.addEventListener("click", () => {
       if (isAdmin()) {
-        state.adminActivityType = "";
+        // Admin: botón inferior "+ Chofer" = abrir directamente Crear chofer.
         showPayView("inicio");
-        render();
-        setTimeout(() => resetPayViewScroll("inicio"), 40);
+        setBottomNavActive("actividad");
+        runExistingAction("admin-agregar-chofer");
         return;
       }
       showPayView("inicio");
@@ -1239,6 +1239,36 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     reset();
     requestAnimationFrame(reset);
     setTimeout(reset, 80);
+  }
+
+  function scrollAdminActivitiesToTop() {
+    const section = $("payActivityTitle")?.closest?.(".pay-section") || $("payActivityTitle") || $("payActivityList");
+    const root = document.scrollingElement || document.documentElement || document.body;
+    const apply = () => {
+      try {
+        showPayView("inicio");
+        if (!section) {
+          root?.scrollTo?.({ top:0, left:0, behavior:"auto" });
+          window.scrollTo({ top:0, left:0, behavior:"auto" });
+          return;
+        }
+        const dock = $("payBottomNav")?.getBoundingClientRect?.().height || 0;
+        const topbar = document.querySelector(".pay-topbar")?.getBoundingClientRect?.().height || 0;
+        const targetTop = Math.max(0, section.getBoundingClientRect().top + window.pageYOffset - Math.max(8, Math.round(topbar * 0.15)));
+        root?.scrollTo?.({ top:targetTop, left:0, behavior:"auto" });
+        window.scrollTo({ top:targetTop, left:0, behavior:"auto" });
+        const list = $("payActivityList");
+        if (list?.scrollTo) list.scrollTo({ top:0, left:0, behavior:"auto" });
+        else if (list) list.scrollTop = 0;
+        void dock;
+      } catch (_) {
+        try { section?.scrollIntoView?.({ behavior:"auto", block:"start" }); } catch (__) {}
+      }
+    };
+    apply();
+    requestAnimationFrame(apply);
+    setTimeout(apply, 60);
+    setTimeout(apply, 180);
   }
 
   function showPayView(view = "inicio") {
