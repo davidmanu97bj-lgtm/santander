@@ -1624,13 +1624,18 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (moreName) moreName.textContent = name;
     if (moreRole) moreRole.textContent = roleLabel;
     const list = $("payMoreList");
-    if (list) list.innerHTML = moreItems().map(item => `
-      <button class="pay-more-row ${item.tone === "danger" ? "pay-more-row--danger" : ""}" data-pay-more-action="${esc(item.action)}" type="button">
-        <span class="pay-more-row-icon">${moreIcon(item.icon)}</span>
-        <span class="pay-more-row-copy"><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></span>
-        <span class="pay-more-chevron">›</span>
-      </button>
-    `).join("");
+    const items = moreItems();
+    if (list) {
+      list.dataset.moreRole = isAdmin() ? "admin" : "driver";
+      list.dataset.moreCount = String(items.length);
+      list.innerHTML = items.map(item => `
+        <button class="pay-more-row ${item.tone === "danger" ? "pay-more-row--danger" : ""}" data-pay-more-action="${esc(item.action)}" type="button">
+          <span class="pay-more-row-icon">${moreIcon(item.icon)}</span>
+          <span class="pay-more-row-copy"><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></span>
+          <span class="pay-more-chevron">›</span>
+        </button>
+      `).join("");
+    }
     const adminList = $("payMoreAdminList");
     if (adminList) {
       adminList.hidden = true;
