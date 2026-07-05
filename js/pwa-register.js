@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v2.4.1 · persistencia de sesión iOS Android */
+/* EXPLORA PWA registration · v2.4.1 · sincronización previa dashboard iOS Android */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4064-session-persist-ios-android';
+  const BUILD = 'v4065-sync-before-dashboard';
   const reloadOnceKey = `explora-sw-reload-${BUILD}`;
 
   const clearLegacyCaches = async () => {
@@ -21,7 +21,7 @@
   const register = async () => {
     try {
       await clearLegacyCaches();
-      const registration = await navigator.serviceWorker.register('./service-worker.js?build=v4064-session-persist-ios-android', {
+      const registration = await navigator.serviceWorker.register('./service-worker.js?build=v4065-sync-before-dashboard', {
         scope: './',
         updateViaCache: 'none'
       });
