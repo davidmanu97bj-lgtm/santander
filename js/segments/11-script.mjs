@@ -163,7 +163,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     const EXPLORA_ALLOWED_SCREENS = new Set(["dashboard","operaciones","nuevo-servicio","derivaciones","cargar-gasto","comprobantes","perfil"]);
     const MIN_SPLASH_MS = 420;
     const MAX_SPLASH_MS = 1000;
-    const AUTH_RESTORE_GRACE_MS = 4500;
+    const AUTH_RESTORE_GRACE_MS = 12000;
     const splashStartedAt = Date.now();
     let splashHidden = false;
     let authHandledOnce = false;
@@ -634,6 +634,93 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         };
         localStorage.setItem(EXPLORA_SESSION_PREFIX + "last", JSON.stringify(data));
       } catch (_) {}
+    }
+
+    function readVisualSessionCache() {
+      try {
+        const cached = JSON.parse(localStorage.getItem(EXPLORA_SESSION_PREFIX + "last") || "{}");
+        const age = Date.now() - Number(cached?.ts || 0);
+        if (!cached?.uid || age < 0 || age > 1000 * 60 * 60 * 24 * 45) return null;
+        return cached;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function cachedSessionMatchesUser(cached, user) {
+      return Boolean(cached?.uid && user?.uid && String(cached.uid) === String(user.uid));
+    }
+
+    function isCriticalAccessError(error) {
+      const code = String(error && (error.message || error.code) || "").toUpperCase();
+      return [
+        "PROFILE_DISABLED",
+        "PROFILE_ROLE_INVALID",
+        "ACCESS_ADMIN_NOT_ALLOWED",
+        "ACCESS_INVALID_ROLE",
+        "ACCESS_NO_USER",
+        "UID_MISMATCH",
+        "PROFILE_DUPLICATE"
+      ].some(token => code.includes(token));
+    }
+
+    function isRecoverableSessionError(error) {
+      const code = String(error && (error.message || error.code) || "").toLowerCase();
+      if (!code) return true;
+      return !isCriticalAccessError(error) || [
+        "profile_timeout",
+        "login_timeout",
+        "auth_timeout",
+        "auth_session_timeout",
+        "network",
+        "unavailable",
+        "deadline-exceeded",
+        "internal",
+        "offline",
+        "failed-precondition"
+      ].some(token => code.includes(token));
+    }
+
+    function openCachedAuthenticatedShell(user, reason = "") {
+      const cached = readVisualSessionCache();
+      if (!cachedSessionMatchesUser(cached, user)) return false;
+      const role = String(cached.role || "chofer").toLowerCase().includes("admin") ? "admin" : "chofer";
+      if (role === "admin" && !EXPLORA_ADMIN_UIDS.has(user.uid)) return false;
+      const profile = {
+        nombre: cached.name || (role === "admin" ? "David" : "Chofer"),
+        displayName: cached.name || "",
+        email: cached.email || user.email || "",
+        role: role === "admin" ? "admin" : "driver",
+        rol: role === "admin" ? "admin" : "chofer"
+      };
+      exploraSession.authUser = user;
+      exploraSession.driverId = cached.driverId || user.uid || "";
+      exploraSession.profileDocumentId = cached.driverId || user.uid || "";
+      exploraSession.profileCollection = exploraSession.profileCollection || (role === "admin" ? "administradores" : "choferes");
+      exploraSession.profile = profile;
+      exploraSession.role = role;
+      exploraSession.initialized = false;
+      exploraSession.authReady = true;
+      exploraSession.openedAt = Date.now();
+      authSessionState.authenticatedUser = user;
+      authSessionState.profile = profile;
+      authSessionState.profileDocumentId = exploraSession.profileDocumentId;
+      authSessionState.profileCollection = exploraSession.profileCollection;
+      authSessionState.role = role;
+      exploraAccessState.user = user;
+      exploraAccessState.uid = user.uid;
+      exploraAccessState.profile = profile;
+      exploraAccessState.role = role;
+      exploraAccessState.isAdmin = role === "admin";
+      loginDevDiagnostic("SESSION_CACHED_SHELL_OPEN", { reason, role });
+      try {
+        if (role === "admin") showAdminApp();
+        else showDriverApp();
+        return true;
+      } catch (error) {
+        loginDevDiagnostic("SESSION_CACHED_SHELL_FAILED", { code: error && (error.message || error.code) || "unknown" });
+        return false;
+      }
     }
 
     function saveLastScreen(screen) {
@@ -3422,25 +3509,47 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       };
     }
 
-    const PROFILE_REF_CACHE_PREFIX = "explora_profile_ref_v4015_driver_admin_";
+    const PROFILE_REF_CACHE_PREFIX = "explora_profile_ref_v4064_persistent_";
+    const PROFILE_REF_LEGACY_CACHE_PREFIX = "explora_profile_ref_v4015_driver_admin_";
+    const PROFILE_REF_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 45;
 
     function cacheResolvedProfileReference(authUser, result) {
       try {
         if (!authUser?.uid || !result?.profileDocumentId) return;
-        sessionStorage.setItem(PROFILE_REF_CACHE_PREFIX + authUser.uid, JSON.stringify({
+        const payload = JSON.stringify({
+          uid: authUser.uid,
           collectionName: result.collectionName || EXPLORA_LEGACY_PROFILE_COLLECTION,
           profileDocumentId: result.profileDocumentId,
           savedAt: Date.now()
-        }));
+        });
+        localStorage.setItem(PROFILE_REF_CACHE_PREFIX + authUser.uid, payload);
+        sessionStorage.setItem(PROFILE_REF_CACHE_PREFIX + authUser.uid, payload);
       } catch (_) {}
+    }
+
+    function readCachedProfileReferencePayload(authUser) {
+      if (!authUser?.uid) return null;
+      const keys = [PROFILE_REF_CACHE_PREFIX + authUser.uid, PROFILE_REF_LEGACY_CACHE_PREFIX + authUser.uid];
+      for (const key of keys) {
+        for (const store of [localStorage, sessionStorage]) {
+          try {
+            const raw = store.getItem(key);
+            if (!raw) continue;
+            const cached = JSON.parse(raw);
+            const age = Date.now() - Number(cached?.savedAt || 0);
+            if (!cached?.profileDocumentId || !cached?.collectionName || age < 0 || age > PROFILE_REF_CACHE_TTL_MS) continue;
+            if (cached.uid && String(cached.uid) !== String(authUser.uid)) continue;
+            return cached;
+          } catch (_) {}
+        }
+      }
+      return null;
     }
 
     async function readCachedProfileReference(authUser) {
       try {
-        const raw = sessionStorage.getItem(PROFILE_REF_CACHE_PREFIX + authUser.uid);
-        if (!raw) return null;
-        const cached = JSON.parse(raw);
-        if (!cached?.profileDocumentId || !cached?.collectionName) return null;
+        const cached = readCachedProfileReferencePayload(authUser);
+        if (!cached) return null;
         const ref = doc(db, cached.collectionName, cached.profileDocumentId);
         const snap = await getDoc(ref);
         if (!snap.exists()) return null;
@@ -5611,6 +5720,50 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       }
     }
 
+    let sessionRecoveryRetryTimer = null;
+    let sessionRecoveryRetryCount = 0;
+
+    function clearSessionRecoveryRetry() {
+      if (sessionRecoveryRetryTimer) clearTimeout(sessionRecoveryRetryTimer);
+      sessionRecoveryRetryTimer = null;
+      sessionRecoveryRetryCount = 0;
+    }
+
+    function scheduleSessionProfileRecovery(user, error) {
+      if (!user?.uid || authSessionState.logoutInProgress) return;
+      if (auth.currentUser?.uid && auth.currentUser.uid !== user.uid) return;
+      if (sessionRecoveryRetryTimer) return;
+      authSessionState.authenticatedUser = user;
+      exploraSession.authUser = user;
+      exploraSession.authReady = true;
+      const cachedShellOpened = authSessionState.uiOpened || openCachedAuthenticatedShell(user, error && (error.message || error.code) || "profile-retry");
+      if (!cachedShellOpened) setBodyMode("explora-auth-checking");
+      const delayMs = Math.min(15000, 1800 + (sessionRecoveryRetryCount * 1700));
+      sessionRecoveryRetryCount += 1;
+      loginDevDiagnostic("SESSION_PROFILE_RECOVERY_SCHEDULED", {
+        attempt: sessionRecoveryRetryCount,
+        delayMs,
+        cachedShellOpened,
+        code: error && (error.message || error.code) || "unknown"
+      });
+      sessionRecoveryRetryTimer = setTimeout(async () => {
+        sessionRecoveryRetryTimer = null;
+        if (!auth.currentUser?.uid || auth.currentUser.uid !== user.uid || authSessionState.logoutInProgress) return;
+        try {
+          await openAuthenticatedExploraSession(user);
+          clearSessionRecoveryRetry();
+        } catch (retryError) {
+          if (isCriticalAccessError(retryError)) {
+            resetCurrentSessionUI();
+            await signOut(auth).catch(() => {});
+            showLogin(legacyAccessErrorMessage(retryError), "SESSION_RECOVERY_CRITICAL");
+            return;
+          }
+          scheduleSessionProfileRecovery(user, retryError);
+        }
+      }, delayMs);
+    }
+
     async function handleAuthStateChanged(user) {
       authHandledOnce = true;
       loginDevDiagnostic("AUTH_STATE_USER", { hasUser: Boolean(user) });
@@ -5621,6 +5774,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       }
 
       if (!user) {
+        clearSessionRecoveryRetry();
         authSessionState.authenticatedUser = null;
         authSessionState.profile = null;
         authSessionState.role = null;
@@ -5644,14 +5798,18 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
 
       try {
         await openAuthenticatedExploraSession(user);
+        clearSessionRecoveryRetry();
         authSessionState.authenticatedUser = user;
       } catch (error) {
         console.warn("[EXPLORA legacy] ACCESS_ERROR", error);
         loginDevDiagnostic("ACCESS_ERROR", { code: error && (error.message || error.code) || "unknown" });
-        resetCurrentSessionUI();
-        // La restauración solo cierra la sesión ante fallos críticos de identidad/perfil.
-        await signOut(auth).catch(() => {});
-        showLogin(legacyAccessErrorMessage(error), "SESSION_RESTORE_ERROR");
+        if (isCriticalAccessError(error) || !isRecoverableSessionError(error)) {
+          resetCurrentSessionUI();
+          await signOut(auth).catch(() => {});
+          showLogin(legacyAccessErrorMessage(error), "SESSION_RESTORE_CRITICAL");
+        } else {
+          scheduleSessionProfileRecovery(user, error);
+        }
       } finally {
         loginDevDiagnostic("PROFILE_LOAD_FINALLY", {});
         exploraSession.authReady = true;
@@ -5677,8 +5835,9 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       unsubscribeAuth = onAuthStateChanged(auth, handleAuthStateChanged);
       setTimeout(() => {
         if (!authHandledOnce && !auth.currentUser && !authSessionState.logoutInProgress) {
-          loginDevDiagnostic("AUTH_RESTORE_GRACE_TIMEOUT", { cachedSession: hasRecentCachedExploraSession() });
-          showLogin("", "AUTH_RESTORE_GRACE_TIMEOUT");
+          const cachedSession = hasRecentCachedExploraSession();
+          loginDevDiagnostic("AUTH_RESTORE_GRACE_TIMEOUT", { cachedSession });
+          if (!cachedSession) showLogin("", "AUTH_RESTORE_GRACE_TIMEOUT");
         }
       }, AUTH_RESTORE_GRACE_MS);
     });
@@ -6011,7 +6170,11 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
           passwordInput.focus();
         }
         if (auth.currentUser && !authSessionState.uiOpened) {
-          await signOut(auth).catch(() => {});
+          if (isCriticalAccessError(error) || !isRecoverableSessionError(error)) {
+            await signOut(auth).catch(() => {});
+          } else {
+            scheduleSessionProfileRecovery(auth.currentUser, error);
+          }
         }
       } finally {
         loginDevDiagnostic("LOGIN_FINALLY", {});
@@ -6053,9 +6216,10 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
           const remembered = localStorage.getItem(EXPLORA_SESSION_PREFIX + "last_username");
           Object.keys(localStorage).forEach((key) => {
             if (key.startsWith(EXPLORA_SESSION_PREFIX) && !key.endsWith("last_username")) localStorage.removeItem(key);
+            if (key.startsWith(PROFILE_REF_CACHE_PREFIX) || key.startsWith(PROFILE_REF_LEGACY_CACHE_PREFIX)) localStorage.removeItem(key);
           });
           Object.keys(sessionStorage).forEach((key) => {
-            if (key.startsWith("explora_")) sessionStorage.removeItem(key);
+            if (key.startsWith("explora_") || key.startsWith(PROFILE_REF_CACHE_PREFIX) || key.startsWith(PROFILE_REF_LEGACY_CACHE_PREFIX)) sessionStorage.removeItem(key);
           });
           if (remembered) localStorage.setItem(EXPLORA_SESSION_PREFIX + "last_username", remembered);
         } catch (_) {}
