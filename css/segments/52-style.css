@@ -122,6 +122,15 @@ body.explora-pay-mode #mainBottomNav.performance-bottom-nav{
 .pay-action:disabled{pointer-events:none;}
 .pay-action[hidden]{display:none!important;}
 .pay-actions.is-pending-mode .pay-action{min-height:96px;}
+.pay-debt-alias-hint{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;margin:-2px 0 14px;padding:12px 13px;border-radius:20px;background:linear-gradient(180deg,#fffaf0 0%,#ffffff 100%);border:1px solid rgba(226,190,64,.32);box-shadow:0 10px 22px rgba(210,167,42,.10);}
+.pay-debt-alias-hint[hidden]{display:none!important;}
+.pay-debt-alias-copy{color:#51566d;font-size:13px;font-weight:740;line-height:1.28;letter-spacing:-.018em;}
+.pay-debt-alias-btn{appearance:none;-webkit-appearance:none;border:0;border-radius:16px;background:#26293a;color:#fff;display:grid;gap:1px;min-width:112px;padding:10px 12px;text-align:left;box-shadow:0 10px 20px rgba(35,38,53,.18);cursor:pointer;}
+.pay-debt-alias-btn span{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.07em;color:rgba(255,255,255,.66);}
+.pay-debt-alias-btn strong{font-size:15px;font-weight:920;line-height:1;color:#fff;letter-spacing:-.02em;}
+.pay-debt-alias-btn em{font-style:normal;font-size:11px;font-weight:900;color:#f5d85b;line-height:1.05;margin-top:2px;}
+.pay-debt-alias-btn.is-copied{background:#1f8a43;}
+.pay-debt-alias-btn.is-copied em{color:#fff;}
 .pay-liquid-pill{background:#f4f5fa;border-radius:999px;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;color:#282a3a;font-size:18px;line-height:1.22;}
 .pay-liquid-pill strong{font-size:18px;font-weight:850;white-space:nowrap;}
 .pay-liquid-pill span{font-weight:520;}
@@ -184,7 +193,7 @@ body.explora-pay-mode #mainBottomNav.performance-bottom-nav{
 .pay-closure-message{min-height:20px;margin-top:10px;font-size:13px;font-weight:700;color:#596073;}
 .pay-closure-message.is-error{color:#be2e2e}.pay-closure-message.is-ok{color:#25823a}
 @media (max-width:390px){
-  .pay-title{font-size:22px}.pay-icon-btn{width:48px;height:48px}.pay-tab{font-size:16px}.pay-amount{font-size:39px}.pay-main-card{padding:24px 18px 18px}.pay-actions{gap:9px}.pay-action{min-height:102px;font-size:14px;border-radius:22px}.pay-liquid-pill{font-size:16px}.pay-liquid-pill strong{font-size:16px}.pay-bottom-nav{height:84px}.pay-nav-main{width:68px;height:68px}.pay-floating-spark{width:58px;height:58px;bottom:110px;}
+  .pay-title{font-size:22px}.pay-icon-btn{width:48px;height:48px}.pay-tab{font-size:16px}.pay-amount{font-size:39px}.pay-main-card{padding:24px 18px 18px}.pay-actions{gap:9px}.pay-action{min-height:102px;font-size:14px;border-radius:22px}.pay-debt-alias-hint{grid-template-columns:1fr;gap:10px;margin:-4px 0 12px}.pay-debt-alias-btn{width:100%;grid-template-columns:auto 1fr auto;align-items:center;text-align:left;min-width:0}.pay-liquid-pill{font-size:16px}.pay-liquid-pill strong{font-size:16px}.pay-bottom-nav{height:84px}.pay-nav-main{width:68px;height:68px}.pay-floating-spark{width:58px;height:58px;bottom:110px;}
 }
 
 /* EXPLORA · Más blanco integrado al home */
