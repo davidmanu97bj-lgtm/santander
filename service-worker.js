@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4064-session-persist-ios-android */
+/* Compatibilidad validada: v4065-sync-before-dashboard */
 /* EXPLORA PWA service worker · v2.5.4 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4064-session-persist-ios-android`;
+const CACHE_NAME = `${CACHE_PREFIX}v4065-sync-before-dashboard`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -17,7 +17,7 @@ const APP_SHELL = [
   './index.html',
   './css/segments/01-style.css?v=4062-login-sin-autofill-session-restore',
   './css/segments/46-style.css',
-  './css/segments/47-style.css?v=2411-logo',
+  './css/segments/47-style.css?v=4065-sync-before-dashboard',
   './css/segments/07-style.css?v=3921-billing-visual-fix',
   './js/segments/09-script.js',
   './js/segments/07-script.js?v=3921-billing-visual-fix',
@@ -30,8 +30,8 @@ const APP_SHELL = [
   './js/segments/01-script.js?v2442-weekly-payment-production',
   './js/segments/19-script.mjs?v2442-weekly-payment-production',
   './js/segments/39-script.mjs?v=4016-card-alerts',
-  './js/segments/11-script.mjs?v4064-session-persist-ios-android',
-  './js/segments/12-script.js?v=4064-session-persist-ios-android',
+  './js/segments/11-script.mjs?v4065-sync-before-dashboard',
+  './js/segments/12-script.js?v=4065-sync-before-dashboard',
   './js/core/weekly-core.mjs?v2442-weekly-payment-production',
   './css/segments/45-style.css?v=2440-weekly-closure-cash-record-recovery',
   './css/segments/44-style.css?v=2503-more-white-exit',

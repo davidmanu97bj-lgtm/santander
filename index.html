@@ -5,7 +5,7 @@
   Ranking diario/semanal, cierre semanal automático y control semanal de KM
   quedan desactivados. La app usa el Home de pagos y cierres a demanda.
 -->
-<html data-explora-build="v4064-session-persist-ios-android" lang="es" data-performance-nav-mode="disabled">
+<html data-explora-build="v4065-sync-before-dashboard" lang="es" data-performance-nav-mode="disabled">
 <head>
 <meta charset="utf-8"/>
 <meta content="v2.5.8-logo-real-header" name="explora-version"/>
@@ -108,10 +108,17 @@
 <link href="css/segments/31-style.css" rel="stylesheet"/>
 </meta></meta><meta content="modular-compatibility-layer-v1" name="explora-architecture"/><meta content="v2.5.4-pay-home-card-alerts" name="explora-project-version"/></head>
 <body class="explora-auth-checking">
-<div aria-live="polite" class="explora-splash" id="exploraSplash" role="status">
+<div aria-live="polite" aria-atomic="true" class="explora-splash" id="exploraSplash" role="status">
 <div class="explora-splash-logo">
 <img alt="EXPLORA" class="explora-splash-brand-image" decoding="async" src="icons/explora-logo-real-horizontal-v3911.png"/>
 <div class="explora-splash-sub">VIAJES Y SERVICIOS</div>
+<div class="explora-sync-panel" id="exploraSyncPanel">
+<div class="explora-sync-spinner" aria-hidden="true"></div>
+<strong id="exploraSyncTitle">Sincronizando información</strong>
+<small id="exploraSyncDetail">Estamos actualizando tu perfil antes de abrir el menú.</small>
+<div class="explora-sync-progress" aria-hidden="true"><span id="exploraSyncProgressBar"></span></div>
+<div class="explora-sync-percent" id="exploraSyncPercent">0%</div>
+</div>
 </div>
 </div>
 <section aria-hidden="true" aria-label="Ingresar a EXPLORA" class="explora-login" id="exploraLogin">
@@ -1285,10 +1292,10 @@
 <script id="exploraPerformanceNavigationV210" src="js/segments/08-script.js"></script>
 <script id="exploraReceiptsV247" src="js/segments/09-script.js?v=247"></script>
 <script id="exploraProductionPolicyV251" src="js/segments/10-script.js"></script>
-<script src="js/segments/11-script.mjs?v4064-session-persist-ios-android" type="module"></script>
+<script src="js/segments/11-script.mjs?v4065-sync-before-dashboard" type="module"></script>
 <!-- EXPLORA v160: motor semanal unificado + splash seguro + históricos financieros -->
 <link href="css/segments/32-style.css?v=2445-finance-nav-fix" rel="stylesheet"/>
-<script id="exploraSplashEmergencyPatch" src="js/segments/12-script.js?v=4064-session-persist-ios-android"></script>
+<script id="exploraSplashEmergencyPatch" src="js/segments/12-script.js?v=4065-sync-before-dashboard"></script>
 <script id="exploraUnifiedWeeklyFinanceModule" src="js/segments/13-script.mjs?v=4054-menu-perfil-minimo-compacto" type="module"></script>
 <script id="exploraDebtNotificationsV189" src="js/segments/14-script.mjs?v=4023-activity-photo-viewer" type="module"></script>
 <script id="exploraAdminDebtLaunchV190" src="js/segments/15-script.mjs?v=4061-chequeo-deudas-mas-chofer" type="module"></script>
@@ -1364,10 +1371,10 @@
 <script id="explora-v290-admin-date-simulator" src="js/segments/41-script.js"></script>
 <link href="css/segments/42-style.css" rel="stylesheet"/>
 <script id="exploraGlobalClockAppWideSync" src="js/segments/42-script.js"></script>
-<link href="css/segments/47-style.css?v=2411-logo" rel="stylesheet"/>
+<link href="css/segments/47-style.css?v=4065-sync-before-dashboard" rel="stylesheet"/>
 <link href="css/segments/48-style.css?v=2412-ranking-mobile" rel="stylesheet"/>
 <link href="css/segments/52-style.css?v=4061-chequeo-deudas-mas-chofer" rel="stylesheet"/>
 <script id="exploraPagoHomeOnDemandClosure" src="js/segments/52-script.mjs?v=4061-chequeo-deudas-mas-chofer" type="module"></script>
-<script defer="" id="explora-pwa-registration" src="js/pwa-register.js?v4064-session-persist-ios-android"></script>
+<script defer="" id="explora-pwa-registration" src="js/pwa-register.js?v4065-sync-before-dashboard"></script>
 </body>
 </html>
