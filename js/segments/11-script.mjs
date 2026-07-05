@@ -163,6 +163,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     const EXPLORA_ALLOWED_SCREENS = new Set(["dashboard","operaciones","nuevo-servicio","derivaciones","cargar-gasto","comprobantes","perfil"]);
     const MIN_SPLASH_MS = 420;
     const MAX_SPLASH_MS = 1000;
+    const AUTH_RESTORE_GRACE_MS = 4500;
     const splashStartedAt = Date.now();
     let splashHidden = false;
     let authHandledOnce = false;
@@ -5659,11 +5660,28 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       }
     }
 
-    const unsubscribeAuth = onAuthStateChanged(auth, handleAuthStateChanged);
+    function hasRecentCachedExploraSession() {
+      try {
+        const raw = localStorage.getItem(EXPLORA_SESSION_PREFIX + "last");
+        if (!raw) return false;
+        const cached = JSON.parse(raw);
+        const age = Date.now() - Number(cached?.ts || 0);
+        return Boolean(cached?.uid && age >= 0 && age < 1000 * 60 * 60 * 24 * 45);
+      } catch (_) {
+        return false;
+      }
+    }
 
-    setTimeout(() => {
-      if (!authHandledOnce && !auth.currentUser) showLogin("");
-    }, MAX_SPLASH_MS);
+    let unsubscribeAuth = null;
+    persistenceReadyPromise.finally(() => {
+      unsubscribeAuth = onAuthStateChanged(auth, handleAuthStateChanged);
+      setTimeout(() => {
+        if (!authHandledOnce && !auth.currentUser && !authSessionState.logoutInProgress) {
+          loginDevDiagnostic("AUTH_RESTORE_GRACE_TIMEOUT", { cachedSession: hasRecentCachedExploraSession() });
+          showLogin("", "AUTH_RESTORE_GRACE_TIMEOUT");
+        }
+      }, AUTH_RESTORE_GRACE_MS);
+    });
 
 
     let loginInProgress = false;
@@ -5841,6 +5859,49 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       setLoginLoading(false);
     }
 
+    function hardenManualAccessFields() {
+      const stamp = Date.now().toString(36);
+      const fields = [
+        { el: $("exploraLoginAccessId"), name: "explora_id_manual_" + stamp, mask: false },
+        { el: $("exploraLoginKey"), name: "explora_key_manual_" + stamp, mask: true },
+        { el: $("newDriverPassword"), name: "explora_new_key_manual_" + stamp, mask: true }
+      ];
+      const card = $("exploraLoginForm");
+      if (card) {
+        card.setAttribute("autocomplete", "off");
+        card.setAttribute("data-form-type", "other");
+      }
+      fields.forEach(({ el, name, mask }) => {
+        if (!el) return;
+        try {
+          el.setAttribute("type", "text");
+          el.setAttribute("autocomplete", "off");
+          el.setAttribute("autocorrect", "off");
+          el.setAttribute("autocapitalize", "none");
+          el.setAttribute("spellcheck", "false");
+          el.setAttribute("data-lpignore", "true");
+          el.setAttribute("data-1p-ignore", "true");
+          el.setAttribute("data-bwignore", "true");
+          el.setAttribute("data-form-type", "other");
+          el.setAttribute("aria-autocomplete", "none");
+          if (!el.dataset.exploraManualName) el.dataset.exploraManualName = name;
+          el.setAttribute("name", el.dataset.exploraManualName);
+          if (mask) el.classList.add("explora-password-masked");
+        } catch (_) {}
+      });
+    }
+
+    hardenManualAccessFields();
+    ["focusin", "pointerdown", "touchstart"].forEach((eventName) => {
+      document.addEventListener(eventName, (event) => {
+        if (event?.target?.id === "exploraLoginAccessId" || event?.target?.id === "exploraLoginKey" || event?.target?.id === "newDriverPassword") {
+          hardenManualAccessFields();
+        }
+      }, { passive: true });
+    });
+    window.addEventListener("pageshow", hardenManualAccessFields);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) hardenManualAccessFields(); });
+
     async function loginWithUsernameAndPassword(username, password) {
       loginDevDiagnostic("LOGIN_START", { alias: maskAliasDebugValue(username) });
       await withTimeout(persistenceReadyPromise, 2000, "PERSISTENCE_TIMEOUT").catch(() => {});
@@ -5893,14 +5954,14 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       authSessionState.profile = exploraSession.profile || null;
       authSessionState.role = exploraSession.role || null;
       loginDevDiagnostic("UI_OPENED", { role: exploraSession.role || "" });
-      try { const passwordInput = $("exploraLoginPassword"); if (passwordInput) passwordInput.value = ""; } catch (_) {}
+      try { const passwordInput = $("exploraLoginKey"); if (passwordInput) passwordInput.value = ""; hardenManualAccessFields(); } catch (_) {}
       return credential;
     }
 
     const loginForm = $("exploraLoginForm");
     const passwordToggle = $("exploraPasswordToggle");
     passwordToggle?.addEventListener("click", () => {
-      const input = $("exploraLoginPassword");
+      const input = $("exploraLoginKey");
       if (!input) return;
       const hidden = input.classList.contains("explora-password-masked");
       input.classList.toggle("explora-password-masked", !hidden);
@@ -5909,9 +5970,10 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
 
     try {
       const lastUser = localStorage.getItem(EXPLORA_SESSION_PREFIX + "last_username");
-      if (lastUser && $("exploraLoginUsername")) $("exploraLoginUsername").value = lastUser;
-      const pass = $("exploraLoginPassword");
+      if (lastUser && $("exploraLoginAccessId")) $("exploraLoginAccessId").value = lastUser;
+      const pass = $("exploraLoginKey");
       if (pass) pass.value = "";
+      hardenManualAccessFields();
     } catch (_) {}
 
     async function submitExploraManualLogin(event = null) {
@@ -5919,8 +5981,8 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       loginDevDiagnostic("LOGIN_SUBMIT", {});
       if (authSessionState.loginInProgress || loginInProgress) return;
 
-      const usernameInput = $("exploraLoginUsername");
-      const passwordInput = $("exploraLoginPassword");
+      const usernameInput = $("exploraLoginAccessId");
+      const passwordInput = $("exploraLoginKey");
       const rawUsername = String(usernameInput?.value || "").trim();
       const normalizedUser = rawUsername.includes("@") ? rawUsername.toLowerCase() : normalizeUsername(rawUsername);
       const password = String(passwordInput?.value || "");
@@ -5939,6 +6001,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         loginMsg("");
         if (usernameInput) usernameInput.value = "";
         if (passwordInput) passwordInput.value = "";
+        hardenManualAccessFields();
       } catch (error) {
         loginDevDiagnostic("LOGIN_ERROR", { code: error && (error.message || error.code) || "unknown" });
         showLoginErrorForCode(error);
@@ -6001,8 +6064,9 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         authSessionState.profile = null;
         authSessionState.role = null;
         authSessionState.uiOpened = false;
-        const passwordInput = $("exploraLoginPassword");
+        const passwordInput = $("exploraLoginKey");
         if (passwordInput) passwordInput.value = "";
+        hardenManualAccessFields();
         showLogin("", "USER_LOGOUT");
         await Promise.race([signOutPromise, delay(2500)]);
       } finally {
