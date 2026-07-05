@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4065-sync-before-dashboard */
+/* Compatibilidad validada: v4066-admin-chofer-actividad-nav */
 /* EXPLORA PWA service worker · v2.5.4 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4065-sync-before-dashboard`;
+const CACHE_NAME = `${CACHE_PREFIX}v4066-admin-chofer-actividad-nav`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -39,7 +39,7 @@ const APP_SHELL = [
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
   './css/segments/52-style.css?v=4054-menu-perfil-minimo-compacto',
-  './js/segments/52-script.mjs?v=4054-menu-perfil-minimo-compacto',
+  './js/segments/52-script.mjs?v=4066-admin-chofer-actividad-nav',
   './assets/icono_eficiencia_km.png',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
