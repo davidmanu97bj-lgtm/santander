@@ -3101,3 +3101,108 @@ body.explora-admin-debts-white .admin-debt-existing-selector button{
     grid-template-columns:1fr!important;
   }
 }
+
+/* v4061 · ajuste fino: Más chofer simétrico + Deudas admin balanceado */
+body.explora-pay-mode.pay-more-open #payMoreList[data-more-role="driver"]{
+  margin-top:4px!important;
+  border-radius:30px!important;
+}
+body.explora-pay-mode.pay-more-open #payMoreList[data-more-role="driver"] .pay-more-row{
+  min-height:92px!important;
+  grid-template-columns:58px minmax(0,1fr) 22px!important;
+  padding:15px 19px!important;
+}
+body.explora-pay-mode.pay-more-open #payMoreList[data-more-role="driver"] .pay-more-row-icon{
+  width:56px!important;
+  height:56px!important;
+  border-radius:20px!important;
+}
+body.explora-pay-mode.pay-more-open #payMoreList[data-more-role="driver"] .pay-more-row-copy strong{
+  font-size:19px!important;
+}
+body.explora-pay-mode.pay-more-open #payMoreList[data-more-role="driver"] .pay-more-row-copy small{
+  font-size:13px!important;
+}
+body.explora-pay-mode.pay-more-open #payMoreList[data-more-count="2"] .pay-more-row:first-child,
+body.explora-pay-mode.pay-more-open #payMoreList[data-more-count="2"] .pay-more-row:last-child{
+  border-radius:0!important;
+}
+body.explora-pay-mode.pay-more-open #payMoreList[data-more-count="2"] .pay-more-row:last-child{
+  border-bottom:0!important;
+}
+
+body.explora-admin-debts-white .debt-form{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  align-items:start!important;
+}
+body.explora-admin-debts-white .debt-field--driver,
+body.explora-admin-debts-white .debt-field--vehicle,
+body.explora-admin-debts-white .debt-field--type,
+body.explora-admin-debts-white .debt-field--description,
+body.explora-admin-debts-white .debt-field--attachment,
+body.explora-admin-debts-white .debt-field--notes,
+body.explora-admin-debts-white .debt-info-note,
+body.explora-admin-debts-white .admin-debt-edit-banner,
+body.explora-admin-debts-white .debt-summary,
+body.explora-admin-debts-white #adminDebtMessage,
+body.explora-admin-debts-white #adminDebtDiagnostic,
+body.explora-admin-debts-white .admin-debt-submit{
+  grid-column:1/-1!important;
+}
+body.explora-admin-debts-white .debt-field--date,
+body.explora-admin-debts-white .debt-field--amount{
+  grid-column:auto!important;
+}
+body.explora-admin-debts-white .debt-field--amount{order:5!important;}
+body.explora-admin-debts-white .debt-field--description{order:6!important;}
+body.explora-admin-debts-white .debt-info-note{order:7!important;}
+body.explora-admin-debts-white .debt-field--attachment{order:8!important;}
+body.explora-admin-debts-white .debt-field--notes{order:9!important;}
+body.explora-admin-debts-white .admin-debt-edit-banner{order:10!important;}
+body.explora-admin-debts-white .debt-summary{order:11!important;}
+body.explora-admin-debts-white #adminDebtMessage{order:12!important;}
+body.explora-admin-debts-white #adminDebtDiagnostic{order:13!important;}
+body.explora-admin-debts-white .admin-debt-submit{order:14!important;}
+body.explora-admin-debts-white .debt-field--date input,
+body.explora-admin-debts-white .debt-field--amount input{
+  min-height:52px!important;
+}
+body.explora-admin-debts-white .admin-debt-existing-head{
+  padding:0 2px 2px!important;
+}
+body.explora-admin-debts-white .admin-debt-existing-control{
+  grid-template-columns:minmax(0,1fr) 96px!important;
+}
+body.explora-admin-debts-white .admin-debt-existing-selector select{
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+@media(max-width:390px){
+  body.explora-pay-mode.pay-more-open #payMoreList[data-more-role="driver"] .pay-more-row{
+    min-height:88px!important;
+    grid-template-columns:54px minmax(0,1fr) 20px!important;
+    padding:14px 16px!important;
+  }
+  body.explora-pay-mode.pay-more-open #payMoreList[data-more-role="driver"] .pay-more-row-icon{
+    width:52px!important;
+    height:52px!important;
+    border-radius:19px!important;
+  }
+  body.explora-admin-debts-white .debt-form{
+    gap:10px!important;
+  }
+  body.explora-admin-debts-white .debt-field--date input,
+  body.explora-admin-debts-white .debt-field--amount input{
+    padding-left:11px!important;
+    padding-right:11px!important;
+    font-size:15px!important;
+  }
+}
+@media(max-width:350px){
+  body.explora-admin-debts-white .debt-field--date,
+  body.explora-admin-debts-white .debt-field--amount{
+    grid-column:1/-1!important;
+  }
+}
+
