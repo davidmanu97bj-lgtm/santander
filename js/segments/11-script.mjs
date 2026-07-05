@@ -292,9 +292,55 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       document.body.classList.add("explora-splash-hidden");
     }
 
-    setTimeout(() => hideSplashSafely(), MAX_SPLASH_MS);
+    const splashSyncState = { progress: 0, timer: null, active: false, detail: "" };
 
-    function finishSplash() { return hideSplashSafely(); }
+    function setSplashSyncProgress(progress = 0, title = "Sincronizando información", detail = "Estamos actualizando tu perfil antes de abrir el menú.") {
+      const safeProgress = Math.max(0, Math.min(100, Math.round(Number(progress || 0))));
+      splashSyncState.progress = Math.max(splashSyncState.progress || 0, safeProgress);
+      const titleElement = $("exploraSyncTitle");
+      const detailElement = $("exploraSyncDetail");
+      const barElement = $("exploraSyncProgressBar");
+      const percentElement = $("exploraSyncPercent");
+      if (titleElement) titleElement.textContent = title || "Sincronizando información";
+      if (detailElement) detailElement.textContent = detail || "Actualizando datos…";
+      if (barElement) barElement.style.width = `${splashSyncState.progress}%`;
+      if (percentElement) percentElement.textContent = `${splashSyncState.progress}%`;
+    }
+
+    function beginSplashSync(detail = "Estamos actualizando tu perfil antes de abrir el menú.") {
+      splashHidden = false;
+      splashSyncState.active = true;
+      splashSyncState.progress = 0;
+      if (splashSyncState.timer) clearInterval(splashSyncState.timer);
+      document.body.classList.remove("explora-splash-hidden");
+      const splash = $("exploraSplash");
+      if (splash) { splash.removeAttribute("aria-hidden"); splash.style.display = "grid"; splash.style.pointerEvents = "auto"; }
+      setSplashSyncProgress(3, "Sincronizando información", detail);
+      splashSyncState.timer = setInterval(() => {
+        if (!splashSyncState.active) return;
+        const current = Number(splashSyncState.progress || 0);
+        if (current >= 92) return;
+        const step = current < 35 ? 5 : current < 70 ? 3 : 1;
+        setSplashSyncProgress(Math.min(92, current + step), "Sincronizando información", splashSyncState.detail || detail);
+      }, 180);
+    }
+
+    async function finishSplashSync() {
+      splashSyncState.active = false;
+      if (splashSyncState.timer) clearInterval(splashSyncState.timer);
+      splashSyncState.timer = null;
+      setSplashSyncProgress(100, "Información actualizada", "Abriendo EXPLORA…");
+      await delay(180);
+      return hideSplashSafely();
+    }
+
+    function updateSplashSync(progress, detail, title = "Sincronizando información") {
+      splashSyncState.detail = detail || splashSyncState.detail || "Actualizando datos…";
+      if (!splashSyncState.active && !splashHidden) splashSyncState.active = true;
+      setSplashSyncProgress(progress, title, splashSyncState.detail);
+    }
+
+    function finishSplash() { return finishSplashSync(); }
 
     function setBodyMode(mode) {
       document.body.classList.remove("explora-auth-checking","explora-login-visible","explora-authenticated","explora-role-blocked","explora-admin-authenticated");
@@ -585,6 +631,8 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         loginDevDiagnostic("SHOW_LOGIN_BLOCKED", { reason: reason || "authenticated-ui-open" });
         return;
       }
+      splashSyncState.active = false;
+      if (splashSyncState.timer) { clearInterval(splashSyncState.timer); splashSyncState.timer = null; }
       clearDriverVisuals();
       setBodyMode("explora-login-visible");
       loginMsg(message);
@@ -601,7 +649,9 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       setBodyMode("explora-authenticated");
       document.body.classList.remove("explora-shared-admin");
       renderDashboardByRole?.({ role: "chofer", profile: exploraSession.profile || {} });
-      hideSplashSafely();
+      const weeklySnapshot = window.ExploraWeeklyEngine?.getState?.();
+      if (weeklySnapshot?.loaded && !weeklySnapshot?.loading) window.ExploraFastCache?.renderWeeklySnapshot?.(weeklySnapshot);
+      finishSplashSync();
       if (window.ExploraMainNav) window.ExploraMainNav.setActive("inicio");
       restoreLastDriverScreen();
       window.ExploraWeeklyEngine?.restoreCache?.();
@@ -618,7 +668,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
 
     function showRoleBlocked() {
       setBodyMode("explora-role-blocked");
-      hideSplashSafely();
+      finishSplashSync();
     }
 
     function saveVisualSession() {
@@ -3672,15 +3722,61 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       return result;
     }
 
+    async function preloadFreshDashboardDataBeforeOpen(role, authUser, profile, loaded) {
+      if (!authUser?.uid) return;
+      if (role === "chofer") {
+        updateSplashSync(58, "Actualizando vehículo asignado y datos del chofer…");
+        try {
+          const vehicle = await profileWithTimeout(loadDriverVehicle(profile, loaded.profileDocumentId), 4200, "VEHICLE_PREFLIGHT_TIMEOUT");
+          if (auth.currentUser?.uid === authUser.uid) {
+            exploraSession.vehicle = vehicle;
+            exploraSession.vehicleId = vehicle?.id || "";
+            exploraAccessState.vehicle = vehicle;
+            renderDriverHeader(profile, vehicle);
+            renderProfileVehicleAssignment(profile, vehicle);
+          }
+        } catch (vehicleError) {
+          loginDevDiagnostic("VEHICLE_PREFLIGHT_SKIPPED", { code: vehicleError && (vehicleError.message || vehicleError.code) || "unknown" });
+        }
+
+        updateSplashSync(76, "Actualizando saldos, actividades y cierre semanal…");
+        try { window.ExploraFastCache?.invalidate?.("dashboard_weekly_billing", { uid:authUser.uid, role:"chofer", weeklyPeriodId:getActiveWeeklyPeriod().id }); } catch (_) {}
+        try { window.ExploraFastCache?.invalidate?.("dashboard_weekly_expenses", { uid:authUser.uid, role:"chofer", weeklyPeriodId:getActiveWeeklyPeriod().id }); } catch (_) {}
+        try {
+          const weeklyPromise = window.ExploraWeeklyEngine?.loadOnce?.({ force:true, reason:"session-preopen-sync" }) || loadWeeklyEngine({ force:true, reason:"session-preopen-sync" });
+          const closurePromise = Promise.resolve(refreshDriverPaymentStatus({ force:true })).catch(() => null);
+          await profileWithTimeout(Promise.allSettled([weeklyPromise, closurePromise]), 7200, "DASHBOARD_PREFLIGHT_TIMEOUT");
+        } catch (weeklyError) {
+          loginDevDiagnostic("DASHBOARD_PREFLIGHT_SKIPPED", { code: weeklyError && (weeklyError.message || weeklyError.code) || "unknown" });
+        }
+        updateSplashSync(94, "Datos del chofer listos. Preparando menú…");
+        return;
+      }
+
+      if (role === "admin") {
+        updateSplashSync(66, "Actualizando panel administrativo…");
+        try {
+          const overview = await profileWithTimeout(getAdminWeeklyOverview("", { force:true }), 9000, "ADMIN_PREFLIGHT_TIMEOUT");
+          if (overview) adminSharedState.overview = overview;
+        } catch (adminError) {
+          loginDevDiagnostic("ADMIN_PREFLIGHT_SKIPPED", { code: adminError && (adminError.message || adminError.code) || "unknown" });
+        }
+        updateSplashSync(94, "Panel administrativo listo. Preparando menú…");
+      }
+    }
+
     async function performAuthenticatedExploraSessionOpen(authUser) {
+      beginSplashSync("Restaurando sesión y verificando datos actuales…");
       resetCurrentSessionUI();
       const sessionGeneration = Number(exploraSession.generation || 0) + 1;
       exploraSession.generation = sessionGeneration;
       exploraSession.closing = false;
       exploraSession.authReady = false;
       authSessionState.profileLoading = true;
+      updateSplashSync(18, "Verificando usuario autenticado…");
 
-      const loaded = await withTimeout(loadLegacyExploraProfile(authUser), 8000, "PROFILE_TIMEOUT");
+      const loaded = await withTimeout(loadLegacyExploraProfile(authUser), 10000, "PROFILE_TIMEOUT");
+      updateSplashSync(44, "Perfil actualizado desde EXPLORA…");
       const rawProfile = loaded.profile || {};
       const role = secureLegacyRoleForAuth(rawProfile, authUser, loaded.role || "");
       if (!loaded.active) throw new Error("PROFILE_DISABLED");
@@ -3716,32 +3812,18 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       loginDevDiagnostic("LEGACY_ROLE_RESOLVED", { role });
       applyDriverDataToUI();
       saveVisualSession();
+      await preloadFreshDashboardDataBeforeOpen(role, authUser, profile, loaded);
 
-      // Abrir la interfaz apenas el perfil crítico está listo. Vehículo y módulos semanales son secundarios.
+      if (auth.currentUser?.uid !== authUser.uid || exploraSession.generation !== sessionGeneration || exploraSession.closing) {
+        throw new Error("SESSION_OPEN_REPLACED");
+      }
+
       if (role === "admin") {
         loginDevDiagnostic("ACCESS_ADMIN", {});
         showAdminApp();
       } else {
         loginDevDiagnostic("ACCESS_DRIVER", {});
         showDriverApp();
-      }
-
-      queueMicrotask(async () => {
-        try {
-          const vehicle = await loadDriverVehicle(profile, loaded.profileDocumentId);
-          if (auth.currentUser?.uid !== authUser.uid) return;
-          exploraSession.vehicle = vehicle;
-          exploraSession.vehicleId = vehicle?.id || "";
-          exploraAccessState.vehicle = vehicle;
-          renderDriverHeader(profile, vehicle);
-          renderProfileVehicleAssignment(profile, vehicle);
-        } catch (vehicleError) {
-          console.warn("[EXPLORA legacy] VEHICLE_LOAD_FAILED", vehicleError?.code || vehicleError?.message);
-        }
-      });
-
-      if (auth.currentUser?.uid !== authUser.uid || exploraSession.generation !== sessionGeneration || exploraSession.closing) {
-        throw new Error("SESSION_OPEN_REPLACED");
       }
       exploraSession.authReady = true;
       const sessionDetail = { uid: authUser.uid, role, generation: sessionGeneration, profileResolved: true, sessionInitialized: true };
@@ -4680,17 +4762,19 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       const goalsCard=document.querySelector(".summary-grid-real .summary-card-benefit");
       if(goalsCard)goalsCard.remove();
       document.querySelector("#mainBottomNav")?.classList.remove("admin-bottom-nav");
-      const hydratedWeekly=window.ExploraFastCache?.hydrateDashboard?.({uid:auth.currentUser?.uid||"",role:"chofer",weeklyPeriodId:getActiveWeeklyPeriod().id});
+      const weeklyCtx={uid:auth.currentUser?.uid||"",role:"chofer",weeklyPeriodId:getActiveWeeklyPeriod().id};
+      const weeklyFresh=Boolean(window.ExploraFastCache?.isFresh?.("dashboard_weekly_billing",weeklyCtx)||window.ExploraFastCache?.isFresh?.("dashboard_weekly_expenses",weeklyCtx));
+      const hydratedWeekly=weeklyFresh&&window.ExploraFastCache?.hydrateDashboard?.(weeklyCtx);
       if(!hydratedWeekly){
-        $("dashboardWeeklyRevenue") && ($("dashboardWeeklyRevenue").textContent = "$0");
-        $("dashboardWeeklyRevenueMeta") && ($("dashboardWeeklyRevenueMeta").textContent = "Sin datos cargados todavía");
-        $("dashboardWeeklyExpenses") && ($("dashboardWeeklyExpenses").textContent = "$0");
-        $("dashboardWeeklyExpensesMeta") && ($("dashboardWeeklyExpensesMeta").textContent = "Sin datos cargados todavía");
+        $("dashboardWeeklyRevenue") && ($("dashboardWeeklyRevenue").textContent = "Actualizando…");
+        $("dashboardWeeklyRevenueMeta") && ($("dashboardWeeklyRevenueMeta").textContent = "Sincronizando datos actuales");
+        $("dashboardWeeklyExpenses") && ($("dashboardWeeklyExpenses").textContent = "Actualizando…");
+        $("dashboardWeeklyExpensesMeta") && ($("dashboardWeeklyExpensesMeta").textContent = "Sincronizando datos actuales");
       }
       $("dashboardReceiptsMeta") && ($("dashboardReceiptsMeta").textContent = "Ver y gestionar comprobantes");
-      $("dashboardTripsCount") && ($("dashboardTripsCount").textContent = "0");
-      $("dashboardReceiptsCount") && ($("dashboardReceiptsCount").textContent = "0");
-      $("dashboardExpenseCount") && ($("dashboardExpenseCount").textContent = "0");
+      $("dashboardTripsCount") && ($("dashboardTripsCount").textContent = hydratedWeekly ? $("dashboardTripsCount").textContent : "…");
+      $("dashboardReceiptsCount") && ($("dashboardReceiptsCount").textContent = hydratedWeekly ? $("dashboardReceiptsCount").textContent : "…");
+      $("dashboardExpenseCount") && ($("dashboardExpenseCount").textContent = hydratedWeekly ? $("dashboardExpenseCount").textContent : "…");
       $("dashboardWeeklyGoal") && ($("dashboardWeeklyGoal").textContent = "—");
       renderDriverHeader(exploraSession.profile || {}, exploraSession.vehicle);
     }
@@ -4795,7 +4879,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       document.querySelector("#mainBottomNav")?.classList.add("admin-bottom-nav");
       renderAdminStatusCard({ pendingDriverReceipts:0, pendingAdminReceipts:0, balancedClosures:0 });
       const adminCtx={uid:auth.currentUser?.uid||"",role:"admin",weeklyPeriodId:getActiveWeeklyPeriod().id};
-      const cachedAdmin=window.ExploraFastCache?.get?.("admin_summary",adminCtx,{allowStale:true});
+      const cachedAdmin=window.ExploraFastCache?.get?.("admin_summary",adminCtx,{allowStale:false});
       if(cachedAdmin?.data){adminSharedState.overview=cachedAdmin.data;renderAdminStatusCard(cachedAdmin.data);renderAdminDashboardMetrics(cachedAdmin.data);}
       else{
         $("dashboardWeeklyRevenue") && ($("dashboardWeeklyRevenue").textContent = "$0");
@@ -4842,8 +4926,8 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       authSessionState.uiOpened = true;
       setBodyMode("explora-authenticated");
       document.body.classList.add("explora-shared-admin");
-      hideSplashSafely();
       renderDashboardByRole({ role:"admin", profile:exploraSession.profile || {} });
+      finishSplashSync();
       window.ExploraMainNav?.setActive("inicio");
     }
 
@@ -5736,8 +5820,11 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       authSessionState.authenticatedUser = user;
       exploraSession.authUser = user;
       exploraSession.authReady = true;
-      const cachedShellOpened = authSessionState.uiOpened || openCachedAuthenticatedShell(user, error && (error.message || error.code) || "profile-retry");
-      if (!cachedShellOpened) setBodyMode("explora-auth-checking");
+      const cachedShellOpened = authSessionState.uiOpened;
+      if (!cachedShellOpened) {
+        beginSplashSync("Reintentando sincronizar tu perfil. No abrimos el menú hasta tener datos actuales.");
+        setBodyMode("explora-auth-checking");
+      }
       const delayMs = Math.min(15000, 1800 + (sessionRecoveryRetryCount * 1700));
       sessionRecoveryRetryCount += 1;
       loginDevDiagnostic("SESSION_PROFILE_RECOVERY_SCHEDULED", {
@@ -5796,6 +5883,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         return;
       }
 
+      let keepSyncVisible = false;
       try {
         await openAuthenticatedExploraSession(user);
         clearSessionRecoveryRetry();
@@ -5808,13 +5896,14 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
           await signOut(auth).catch(() => {});
           showLogin(legacyAccessErrorMessage(error), "SESSION_RESTORE_CRITICAL");
         } else {
+          keepSyncVisible = !authSessionState.uiOpened;
           scheduleSessionProfileRecovery(user, error);
         }
       } finally {
         loginDevDiagnostic("PROFILE_LOAD_FINALLY", {});
         exploraSession.authReady = true;
         authSessionState.bootCompleted = true;
-        finishSplash();
+        if (!keepSyncVisible) finishSplash();
       }
     }
 
@@ -6107,8 +6196,10 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       const user = credential.user;
       loginDevDiagnostic("AUTH_SUCCESS", { hasUser: true });
       try { localStorage.setItem(EXPLORA_SESSION_PREFIX + "last_username", normalizedUser); } catch (_) {}
+      beginSplashSync("Validando perfil y actualizando datos de EXPLORA…");
+      setBodyMode("explora-auth-checking");
 
-      await withTimeout(openAuthenticatedExploraSession(user), 10000, "LOGIN_TIMEOUT");
+      await withTimeout(openAuthenticatedExploraSession(user), 28000, "LOGIN_TIMEOUT");
       authSessionState.authenticatedUser = user;
       authSessionState.profile = exploraSession.profile || null;
       authSessionState.role = exploraSession.role || null;
@@ -6155,7 +6246,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       loginMsg("");
 
       try {
-        await withTimeout(loginWithUsernameAndPassword(normalizedUser, password), 22000, "LOGIN_TIMEOUT");
+        await withTimeout(loginWithUsernameAndPassword(normalizedUser, password), 40000, "LOGIN_TIMEOUT");
         if (!authSessionState.uiOpened) throw new Error("SESSION_OPEN_FAILED");
         loginMsg("");
         if (usernameInput) usernameInput.value = "";
