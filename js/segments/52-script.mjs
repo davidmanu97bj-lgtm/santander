@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4056-cuit-guiones-more-admin-simetrico";
+  const VERSION = "explora-pago-home-v52-v4059-whatsapp-app-direct-no-api";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -29,12 +29,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ["pendientes", "Deudas"],
     ["cierres", "Cierres"]
   ]);
-  const HISTORY_SCOPES = Object.freeze([
-    ["total", "Histórico total"],
-    ["monthly", "Histórico mensual"],
-    ["weekly", "Histórico semanal"],
-    ["daily", "Histórico diario"]
-  ]);
   const state = {
     tab:"chofer",
     view:"inicio",
@@ -44,13 +38,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     selectedDriverUid:"",
     selectedDriverName:"",
     adminActivityType:"",
-    historyDriverUid:"",
-    historyDriverName:"",
-    historyScope:"total",
-    historyMonthId:"",
-    historyLoading:false,
-    historyError:"",
-    historyData:{ uid:"", records:[], expenses:[], debtPayments:[] },
     db:null,
     auth:null,
     storage:null,
@@ -805,22 +792,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           <div class="pay-admin-closures-empty">Cargando choferes…</div>
         </div>
       </section>
-      <section class="explora-pay-history" id="payHistoryScreen" hidden aria-label="Histórico Explora por chofer">
-        <header class="pay-history-head">
-          <button class="pay-history-back" id="payHistoryBack" type="button" aria-label="Volver al inicio"><svg viewBox="0 0 24 24"><path d="M15 6 9 12l6 6"></path></svg></button>
-          <div>
-            <span>HISTÓRICO</span>
-            <h1>Histórico Explora</h1>
-            <p>Ganancia real de Explora por chofer y período, sin depender de cierres.</p>
-          </div>
-        </header>
-        <section class="pay-history-controls">
-          <label for="payHistoryDriverSelect"><span>Chofer</span><select id="payHistoryDriverSelect"><option value="">Cargando choferes…</option></select></label>
-          <label for="payHistoryScopeSelect"><span>Vista</span><select id="payHistoryScopeSelect"><option value="total">Histórico total</option><option value="monthly">Histórico mensual</option><option value="weekly">Histórico semanal</option><option value="daily">Histórico diario</option></select></label>
-          <label class="pay-history-month-field" for="payHistoryMonthSelect" id="payHistoryMonthField" hidden><span>Mes</span><select id="payHistoryMonthSelect"><option value="">Mes actual</option></select></label>
-        </section>
-        <div class="pay-history-content" id="payHistoryContent"><div class="pay-history-empty">Seleccioná un chofer para ver el histórico.</div></div>
-      </section>
       <button class="pay-floating-spark pay-efficiency-btn" id="payEfficiencyBtn" type="button" aria-label="Eficiencia Operativa"><span class="pay-efficiency-icon" aria-hidden="true"></span><span class="pay-efficiency-asterisk" aria-hidden="true">*</span></button>
       <nav class="pay-bottom-nav" id="payBottomNav" aria-label="Navegación principal Explora">
         <button class="pay-nav-btn is-active" data-pay-nav="inicio" type="button"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 10v10h14V10"></path></svg><span>Inicio</span></button>
@@ -1000,7 +971,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     $("payEfficiencyBtn")?.addEventListener("click", openEfficiencyModal);
     $("payNavClosure")?.addEventListener("click", () => {
       if (isAdmin()) {
-        openHistoryScreen();
+        showPayView("mas");
         return;
       }
       // Botón inferior "Cierre" = ver/resolver cierres existentes abiertos o historial.
@@ -1066,31 +1037,18 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     });
     document.querySelector('[data-pay-nav="actividad"]')?.addEventListener("click", () => {
       if (isAdmin()) {
-        state.adminActivityType = "";
         showPayView("inicio");
-        render();
-        setTimeout(() => resetPayViewScroll("inicio"), 40);
+        runExistingAction("admin-choferes");
         return;
       }
       showPayView("inicio");
-      setTimeout(() => resetPayViewScroll("inicio"), 40);
+      setTimeout(() => $("payActivityTitle")?.scrollIntoView({ behavior:"smooth", block:"start" }), 40);
     });
     document.querySelector('[data-pay-nav="mas"]')?.addEventListener("click", () => showPayView("mas"));
     $("payMoreBack")?.addEventListener("click", () => showPayView("inicio"));
     $("payNotificationsBack")?.addEventListener("click", () => showPayView("inicio"));
     $("payNotificationsSettings")?.addEventListener("click", () => showPayView("mas"));
     $("payAdminClosuresBack")?.addEventListener("click", () => showPayView("inicio"));
-    $("payHistoryBack")?.addEventListener("click", () => showPayView("inicio"));
-    $("payHistoryDriverSelect")?.addEventListener("change", event => selectHistoryDriver(event.target?.value || ""));
-    $("payHistoryScopeSelect")?.addEventListener("change", event => {
-      state.historyScope = event.target?.value || "total";
-      if (state.historyScope === "monthly") ensureHistoryMonthId();
-      renderHistoryScreen();
-    });
-    $("payHistoryMonthSelect")?.addEventListener("change", event => {
-      state.historyMonthId = event.target?.value || currentMonthId();
-      renderHistoryScreen();
-    });
     $("payAdminClosuresList")?.addEventListener("click", event => {
       const button = event.target?.closest?.("[data-pay-admin-closure-action]");
       if (!button) return;
@@ -1164,7 +1122,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function setBottomNavActive(target = "inicio") {
     document.querySelectorAll("#payBottomNav .pay-nav-btn").forEach(button => {
-      const nav = button.dataset.payNav || (isAdmin() && button.dataset.payRun ? "admin-cierres" : "") || (button.id === "payNavClosure" ? (isAdmin() ? "historico" : "cierre") : "");
+      const nav = button.dataset.payNav || (isAdmin() && button.dataset.payRun ? "admin-cierres" : "") || (button.id === "payNavClosure" ? "cierre" : "");
       button.classList.toggle("is-active", nav === target);
     });
   }
@@ -1176,9 +1134,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         ? $("payNotificationsScreen")
         : target === "admin-cierres"
           ? $("payAdminClosuresList")
-          : target === "historico"
-            ? $("payHistoryScreen")
-            : document.scrollingElement;
+          : document.scrollingElement;
     const reset = () => {
       try {
         if (screen?.scrollTo) screen.scrollTo({ top:0, left:0, behavior:"auto" });
@@ -1194,18 +1150,16 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function showPayView(view = "inicio") {
-    const target = view === "mas" ? "mas" : view === "notificaciones" ? "notificaciones" : view === "admin-cierres" ? "admin-cierres" : view === "historico" ? "historico" : "inicio";
+    const target = view === "mas" ? "mas" : view === "notificaciones" ? "notificaciones" : view === "admin-cierres" ? "admin-cierres" : "inicio";
     state.view = target;
     const dashboard = $("exploraPagoDashboard");
     const more = $("payMoreScreen");
     const notifications = $("payNotificationsScreen");
     const adminClosures = $("payAdminClosuresScreen");
-    const history = $("payHistoryScreen");
     const isMore = target === "mas";
     const isNotifications = target === "notificaciones";
     const isAdminClosures = target === "admin-cierres";
-    const isHistory = target === "historico";
-    const hideHome = isMore || isNotifications || isAdminClosures || isHistory;
+    const hideHome = isMore || isNotifications || isAdminClosures;
     if (dashboard) {
       dashboard.hidden = hideHome;
       dashboard.style.display = hideHome ? "none" : "";
@@ -1226,21 +1180,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       adminClosures.style.display = isAdminClosures ? "block" : "none";
       adminClosures.setAttribute("aria-hidden", isAdminClosures ? "false" : "true");
     }
-    if (history) {
-      history.hidden = !isHistory;
-      history.style.display = isHistory ? "block" : "none";
-      history.setAttribute("aria-hidden", isHistory ? "false" : "true");
-    }
     document.body.classList.toggle("pay-more-open", isMore);
     document.body.classList.toggle("pay-notifications-open", isNotifications);
     document.body.classList.toggle("pay-admin-closures-open", isAdminClosures);
-    document.body.classList.toggle("pay-history-open", isHistory);
-    setBottomNavActive(isAdminClosures ? "admin-cierres" : isHistory ? "historico" : isNotifications ? "" : target);
+    setBottomNavActive(isAdminClosures ? "admin-cierres" : isNotifications ? "" : target);
     if (isMore) renderMoreScreen();
     if (isNotifications) renderNotificationsScreen();
     if (isAdminClosures) renderAdminClosuresScreen();
-    if (isHistory) renderHistoryScreen();
-    if (isMore || isNotifications || isAdminClosures || isHistory) resetPayViewScroll(target);
+    if (isMore || isNotifications || isAdminClosures) resetPayViewScroll(target);
   }
 
   function payOverlayIsOpen() {
@@ -1250,34 +1197,36 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function forceHomeLanding() {
     state.view = "inicio";
     state.tab = "chofer";
-    document.body.classList.remove("pay-more-open", "pay-notifications-open", "pay-admin-closures-open", "pay-history-open");
+    document.body.classList.remove("pay-more-open", "pay-notifications-open", "pay-admin-closures-open");
     const dashboard = $("exploraPagoDashboard");
     const more = $("payMoreScreen");
     const notifications = $("payNotificationsScreen");
     const adminClosures = $("payAdminClosuresScreen");
-    const history = $("payHistoryScreen");
     if (dashboard) { dashboard.hidden = false; dashboard.style.display = ""; dashboard.setAttribute("aria-hidden", "false"); }
     if (more) { more.hidden = true; more.style.display = "none"; more.setAttribute("aria-hidden", "true"); }
     if (notifications) { notifications.hidden = true; notifications.style.display = "none"; notifications.setAttribute("aria-hidden", "true"); }
     if (adminClosures) { adminClosures.hidden = true; adminClosures.style.display = "none"; adminClosures.setAttribute("aria-hidden", "true"); }
-    if (history) { history.hidden = true; history.style.display = "none"; history.setAttribute("aria-hidden", "true"); }
     setBottomNavActive("inicio");
   }
 
   function moreItems() {
-    if (isAdmin()) {
-      return [
-        { title:"Mi perfil", detail:"Alias · CUIT · celular", action:"abrir-perfil", icon:"user" },
-        { title:"Deudas", detail:"Gestión de deudas", action:"admin-multas", icon:"alert" }
-      ];
-    }
     return [
-      { title:"Mi perfil", detail:"Alias · CUIT · celular", action:"abrir-perfil", icon:"user" }
+      { title:"Mi perfil", detail:"Datos de cuenta y preferencias", action:"abrir-perfil", icon:"user" },
+      { title:"Mi auto", detail:"Vencimientos, patente y documentación", action:"mi-auto", icon:"car" },
+      { title:"Deudas", detail:"Multas, choques, préstamos y adelantos", action:"multas-choques", icon:"alert" },
+      { title:"Préstamo Explora", detail:"Solicitud y estado del préstamo", action:"prestamo-explora", icon:"loan" },
+      { title:"Comprobantes", detail:"Cobros, gastos y cierres cargados", action:"comprobantes", icon:"receipt" }
     ];
   }
 
   function adminMoreItems() {
-    return [];
+    return [
+      { title:"Chofer", detail:"Crear o eliminar", action:"admin-choferes", icon:"users" },
+      { title:"Borrar movimientos", detail:"Cobros, caja chica y gastos", action:"admin-delete-movements", icon:"trash" },
+      { title:"Cierres", detail:"Comprobantes y pagos pendientes", action:"admin-cierres", icon:"receipt" },
+      { title:"Gastos", detail:"Gastos cargados por choferes", action:"admin-gastos", icon:"wallet" },
+      { title:"Deudas", detail:"Multas, choques, préstamos y adelantos", action:"admin-multas", icon:"alert" }
+    ];
   }
 
   function moreIcon(name = "user") {
@@ -1626,8 +1575,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     `).join("");
     const adminList = $("payMoreAdminList");
     if (adminList) {
-      adminList.hidden = true;
-      adminList.innerHTML = "";
+      adminList.hidden = !isAdmin();
+      adminList.innerHTML = !isAdmin() ? "" : `<div class="pay-more-card-title">Administración</div>` + adminMoreItems().map(item => `
+        <button class="pay-more-row" data-pay-more-action="${esc(item.action)}" type="button">
+          <span class="pay-more-row-icon">${moreIcon(item.icon)}</span>
+          <span class="pay-more-row-copy"><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></span>
+          <span class="pay-more-chevron">›</span>
+        </button>
+      `).join("");
     }
   }
 
@@ -1731,27 +1686,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
   }
 
-  function promiseTimeout(promise, timeoutMs = 9000, label = "consulta") {
-    return Promise.race([
-      promise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} demoró demasiado`)), timeoutMs))
-    ]);
-  }
-
   async function getScopedDocs(collectionName, uid) {
-    const targetUid = safe(uid);
-    if (!targetUid || !state.db) return [];
     const fields = ["driverUid", "choferUid", "uid", "ownerUid", "driverId", "choferId", "driver_id", "chofer_id", "userUid", "userId", "createdByUid", "ownerId", "conductorUid", "conductorId", "assignedDriverUid"];
     const map = new Map();
-    const tasks = fields.map(async field => {
+    for (const field of fields) {
       try {
-        const snap = await promiseTimeout(getDocs(query(collection(state.db, collectionName), where(field, "==", targetUid), limit(900))), 9000, `${collectionName}.${field}`);
+        const snap = await getDocs(query(collection(state.db, collectionName), where(field, "==", uid), limit(250)));
         snap.forEach(docSnap => map.set(docSnap.id, { id:docSnap.id, ...docSnap.data() }));
-      } catch (error) {
-        console.warn("EXPLORA_PAY_HISTORY_QUERY", collectionName, field, error?.code || error?.message || error);
-      }
-    });
-    await Promise.allSettled(tasks);
+      } catch (_) {}
+    }
     return Array.from(map.values());
   }
 
@@ -1978,9 +1921,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function closurePayerClass(closure = {}) {
-    // v4050: en Última actividad todos los cierres se pintan por estado, no por quién paga.
-    // Abierto = rojo. Cerrado = verde. Aplica para chofer y admin.
-    return closureIsCompleted(closure) ? "is-closure-closed" : "is-closure-open";
+    const due = number(closure.amountDueFromDriver || closure.amountFromDriver || 0);
+    const toDriver = number(closure.amountDueToDriver || closure.amountToDriver || 0);
+    if (due > 0) return "is-paid-by-driver";
+    if (toDriver > 0) return "is-paid-by-explora";
+    return "is-balanced-closure";
   }
 
   function closureActionForViewer(closure = {}) {
@@ -2205,78 +2150,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return "";
   }
 
-  const WHATSAPP_COUNTRY_OPTIONS = [
-    { value:"549", label:"🇦🇷 +549", placeholder:"3757461564" },
-    { value:"595", label:"🇵🇾 +595", placeholder:"991123456" },
-    { value:"55", label:"🇧🇷 +55", placeholder:"45912345678" },
-    { value:"598", label:"🇺🇾 +598", placeholder:"99123456" }
-  ];
-
-  function rawWhatsappDigits(value = "") {
-    let digits = safe(value).replace(/\D+/g, "");
-    if (digits.startsWith("00")) digits = digits.slice(2);
-    return digits.replace(/^0+/, "");
-  }
-
-  function whatsappCountryOptionsHtml(selected = "549") {
-    const current = safe(selected) || "549";
-    return WHATSAPP_COUNTRY_OPTIONS.map(option => `<option value="${esc(option.value)}" ${option.value === current ? "selected" : ""}>${esc(option.label)}</option>`).join("");
-  }
-
-  function whatsappCountryPlaceholder(country = "549") {
-    return WHATSAPP_COUNTRY_OPTIONS.find(option => option.value === safe(country))?.placeholder || "3757461564";
-  }
-
-  function splitWhatsappPhone(value = "", profile = {}) {
-    const storedCountry = rawWhatsappDigits(profile?.whatsappCountryCode || profile?.codigoPaisWhatsapp || profile?.telefonoPais || profile?.phoneCountryCode || "");
-    const storedLocal = rawWhatsappDigits(profile?.whatsappLocalNumber || profile?.telefonoLocal || profile?.phoneLocal || "");
-    if (storedCountry && storedLocal) return { country:storedCountry, local:storedLocal, full:`${storedCountry}${storedLocal}` };
-    const digits = rawWhatsappDigits(value);
-    if (/^(2|3)\d{9}$/.test(digits)) return { country:"549", local:digits, full:`549${digits}` };
-    if (/^54(2|3)\d{9}$/.test(digits)) return { country:"549", local:digits.slice(2), full:`549${digits.slice(2)}` };
-    if (/^549(2|3)\d{9}$/.test(digits)) return { country:"549", local:digits.slice(3), full:digits };
-    for (const option of WHATSAPP_COUNTRY_OPTIONS) {
-      if (digits.startsWith(option.value) && digits.length > option.value.length) {
-        return { country:option.value, local:digits.slice(option.value.length), full:digits };
-      }
-    }
-    return { country:"549", local:digits, full:digits ? `549${digits}` : "" };
-  }
-
-  function composeWhatsappPhone(country = "549", local = "") {
-    const prefix = rawWhatsappDigits(country) || "549";
-    const digits = rawWhatsappDigits(local);
-    if (!digits) return "";
-    if (prefix === "549") {
-      if (/^549(2|3)\d{9}$/.test(digits)) return digits;
-      if (/^54(2|3)\d{9}$/.test(digits)) return `549${digits.slice(2)}`;
-      if (/^(2|3)\d{9}$/.test(digits)) return `549${digits}`;
-    }
-    if (digits.startsWith(prefix) && digits.length > prefix.length) return digits;
-    return `${prefix}${digits.replace(/^0+/, "")}`;
-  }
-
-  function profileWhatsappParts(profile = {}) {
-    const raw = firstProfileValue(profile, ["whatsappNormalized", "whatsappFull", "telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]);
-    return splitWhatsappPhone(raw, profile);
-  }
-
-  function cuitDigits(value = "") {
-    return safe(value).replace(/\D+/g, "").slice(0, 11);
-  }
-
-  function formatCuit(value = "") {
-    const digits = cuitDigits(value);
-    if (!digits) return "";
-    if (digits.length <= 2) return digits;
-    if (digits.length <= 10) return `${digits.slice(0,2)}-${digits.slice(2)}`;
-    return `${digits.slice(0,2)}-${digits.slice(2,10)}-${digits.slice(10,11)}`;
-  }
-
-  function isValidCuit(value = "") {
-    return cuitDigits(value).length === 11;
-  }
-
   function driverFullNameFromProfile(profile = state.profile) {
     return firstProfileValue(profile, ["nombreCompleto", "fullName", "nombre", "displayName", "name", "email"]) || displayName();
   }
@@ -2291,14 +2164,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function driverPaymentProfile(profile = state.profile) {
-    const phoneParts = profileWhatsappParts(profile);
     return {
       fullName:driverFullNameFromProfile(profile),
       car:driverCarLabel(profile),
-      phone:phoneParts.full || firstProfileValue(profile, ["telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]),
-      phoneCountry:phoneParts.country || "549",
-      phoneLocal:phoneParts.local || "",
-      cuit:formatCuit(firstProfileValue(profile, ["cuit", "CUIT", "cuil", "taxId", "dniFiscal", "cuitRaw"])),
+      phone:firstProfileValue(profile, ["telefono", "teléfono", "phone", "celular", "mobile", "whatsapp", "numeroTelefono", "numeroDeTelefono"]),
+      cuit:firstProfileValue(profile, ["cuit", "CUIT", "cuil", "taxId", "dniFiscal"]),
       alias:firstProfileValue(profile, ["aliasCobro", "paymentAlias", "aliasParaCobrar", "alias", "mercadoPagoAlias", "aliasMp", "mpAlias"])
     };
   }
@@ -2313,46 +2183,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function paymentProfileMissingFields(data = driverPaymentProfile()) {
     const missing = [];
-    if (!normalizeWhatsappPhone(data.phone)) missing.push("número de WhatsApp");
-    if (!isValidCuit(data.cuit)) missing.push("CUIT con 11 números");
+    if (!safe(data.phone)) missing.push("número de teléfono");
+    if (!safe(data.cuit)) missing.push("CUIT");
     if (!safe(data.alias)) missing.push("alias para cobrar");
     return missing;
-  }
-
-  function displayPaymentPhone(value = "") {
-    const raw = safe(value);
-    if (!raw) return "Sin cargar";
-    if (raw.startsWith("+")) return raw;
-    const digits = normalizeWhatsappPhone(raw);
-    return digits ? `+${digits}` : raw;
-  }
-
-  function driverPaymentFromClosure(closure = {}) {
-    const uid = safe(closure.driverUid || closure.choferUid || closure.uid || getDriverUid());
-    const fallback = driverPaymentProfileForUid(uid);
-    return {
-      alias:safe(closure.driverPaymentAlias || closure.choferAlias || closure.aliasChofer || fallback.alias),
-      cuit:safe(closure.driverPaymentCuit || closure.choferCuit || closure.cuitChofer || fallback.cuit),
-      phone:safe(closure.driverPaymentPhoneDisplay || closure.driverPaymentPhone || closure.choferTelefono || closure.telefonoChofer || fallback.phone)
-    };
-  }
-
-  function exploraPaymentFromClosure(closure = {}) {
-    return {
-      alias:safe(closure.exploraPaymentAlias || EXPLORA_ALIAS),
-      cuit:safe(closure.exploraPaymentCuit || EXPLORA_CUIT),
-      phone:safe(closure.exploraPaymentPhone || closure.exploraPaymentWhatsapp || EXPLORA_WHATSAPP_DISPLAY)
-    };
-  }
-
-  function closureContactCardHtml(title = "Datos", contact = {}) {
-    return `<section class="pay-closure-contact-card"><h3>${esc(title)}</h3><div><span>Alias</span><strong>${esc(contact.alias || "Sin cargar")}</strong></div><div><span>CUIT</span><strong>${esc(formatCuit(contact.cuit) || "Sin cargar")}</strong></div><div><span>Celular</span><strong>${esc(displayPaymentPhone(contact.phone || ""))}</strong></div></section>`;
-  }
-
-  function closureContactCardByDirection(direction = "balanced", { closure = {}, driverPayment = null } = {}) {
-    if (direction === "explora_to_driver") return closureContactCardHtml("Datos del chofer", driverPayment || driverPaymentFromClosure(closure));
-    if (direction === "driver_to_explora") return closureContactCardHtml("Datos de Explora", exploraPaymentFromClosure(closure));
-    return "";
   }
 
   function requireOwnPaymentProfileComplete() {
@@ -2370,8 +2204,22 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return { direction:"balanced", label:"Nadie debe liquidar", amount:0 };
   }
 
-  function closurePaymentRowsHtml({ driverPayment = {}, direction = "balanced", closure = {} } = {}) {
-    return closureContactCardByDirection(direction, { closure, driverPayment });
+  function closurePaymentRowsHtml({ driverPayment = {}, direction = "balanced" } = {}) {
+    if (direction === "explora_to_driver") {
+      return [
+        ["Alias chofer", driverPayment.alias || "Sin cargar"],
+        ["CUIT chofer", driverPayment.cuit || "Sin cargar"],
+        ["Teléfono chofer", driverPayment.phone || "Sin cargar"]
+      ].map(([label,value]) => `<article class="pay-payment-info-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
+    }
+    if (direction === "driver_to_explora") {
+      return [
+        ["Alias Explora", EXPLORA_ALIAS],
+        ["CUIT David", EXPLORA_CUIT],
+        ["WhatsApp Explora", EXPLORA_WHATSAPP_DISPLAY]
+      ].map(([label,value]) => `<article class="pay-payment-info-row"><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
+    }
+    return "";
   }
 
   function closurePaymentDataForPayload(targetUid = getDriverUid(), summary = {}) {
@@ -2379,12 +2227,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const result = closureAmountLine(summary);
     return {
       driverPaymentPhone:safe(driverPayment.phone),
-      driverPaymentPhoneDisplay:displayPaymentPhone(driverPayment.phone),
       driverPaymentCuit:safe(driverPayment.cuit),
       driverPaymentAlias:safe(driverPayment.alias),
       exploraPaymentAlias:EXPLORA_ALIAS,
       exploraPaymentCuit:EXPLORA_CUIT,
-      exploraPaymentPhone:EXPLORA_WHATSAPP,
       exploraPaymentWhatsapp:EXPLORA_WHATSAPP_DISPLAY,
       paymentDirection:result.direction,
       paymentResultLabel:result.label,
@@ -2397,7 +2243,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return {
       direction,
       driverPayment:{
-        phone:safe(closure.driverPaymentPhoneDisplay || closure.driverPaymentPhone || closure.choferTelefono || closure.telefonoChofer),
+        phone:safe(closure.driverPaymentPhone || closure.choferTelefono || closure.telefonoChofer),
         cuit:safe(closure.driverPaymentCuit || closure.choferCuit || closure.cuitChofer),
         alias:safe(closure.driverPaymentAlias || closure.choferAlias || closure.aliasChofer)
       }
@@ -2431,14 +2277,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       lines.push("");
       lines.push("*Datos para pagar al chofer:* ");
       lines.push(`Alias: ${driverPayment.alias || "sin cargar"}`);
-      lines.push(`CUIT: ${formatCuit(driverPayment.cuit) || "sin cargar"}`);
-      lines.push(`Celular: ${displayPaymentPhone(driverPayment.phone || "")}`);
+      lines.push(`CUIT: ${driverPayment.cuit || "sin cargar"}`);
+      lines.push(`Teléfono: ${driverPayment.phone || "sin cargar"}`);
     } else if (result.direction === "driver_to_explora") {
       lines.push("");
       lines.push("*Datos de Explora para recibir:* ");
       lines.push(`Alias: ${EXPLORA_ALIAS}`);
-      lines.push(`CUIT: ${formatCuit(EXPLORA_CUIT) || EXPLORA_CUIT}`);
-      lines.push(`Celular: ${displayPaymentPhone(EXPLORA_WHATSAPP_DISPLAY)}`);
+      lines.push(`CUIT David: ${EXPLORA_CUIT}`);
+      lines.push(`WhatsApp: ${EXPLORA_WHATSAPP_DISPLAY}`);
     }
     lines.push("");
     lines.push("El comprobante se cargará por la app.");
@@ -2446,34 +2292,74 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function normalizeWhatsappPhone(value = "") {
-    const digits = rawWhatsappDigits(value);
-    if (!digits) return "";
+    let digits = safe(value).replace(/\D+/g, "");
+    if (digits.startsWith("00")) digits = digits.slice(2);
+    digits = digits.replace(/^0+/, "");
     if (/^(2|3)\d{9}$/.test(digits)) return `549${digits}`;
     if (/^54(2|3)\d{9}$/.test(digits)) return `549${digits.slice(2)}`;
     return digits;
+  }
+
+  function whatsappPlatform() {
+    const ua = safe(navigator?.userAgent || navigator?.vendor || "");
+    const platform = safe(navigator?.platform || "");
+    const ios = /iPad|iPhone|iPod/i.test(ua) || (platform === "MacIntel" && Number(navigator?.maxTouchPoints || 0) > 1);
+    const android = /Android/i.test(ua);
+    return { ios, android };
+  }
+
+  function openNativeWhatsappUrl(url = "") {
+    const href = safe(url);
+    if (!href) return false;
+    try {
+      const a = document.createElement("a");
+      a.href = href;
+      a.target = "_self";
+      a.rel = "noopener";
+      a.style.position = "fixed";
+      a.style.left = "-9999px";
+      a.style.top = "-9999px";
+      a.style.width = "1px";
+      a.style.height = "1px";
+      document.body?.appendChild(a);
+      a.click();
+      setTimeout(() => a.remove(), 1200);
+      return true;
+    } catch (_) {}
+    try {
+      window.location.href = href;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function androidWhatsappIntentUrl(normalizedPhone = "", encodedText = "", packageName = "com.whatsapp") {
+    const query = `phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
+    // Sin S.browser_fallback_url para no abrir api.whatsapp.com como pantalla intermedia.
+    return `intent://send?${query}#Intent;scheme=whatsapp;package=${packageName};end`;
   }
 
   function openWhatsappToPhone(phone = "", text = "") {
     const normalizedPhone = normalizeWhatsappPhone(phone);
     if (!normalizedPhone) return false;
     const encodedText = encodeURIComponent(text || "");
-    const webUrl = `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`;
+    const platform = whatsappPlatform();
 
-    // Compatibilidad iOS + Android + PWA:
-    // usar siempre enlace universal HTTPS. Evita esquemas nativos que en Android WebView/PWA
-    // puede terminar como página interna con net::ERR_UNKNOWN_URL_SCHEME.
-    // En iOS/Android, wa.me delega a la app instalada; si no existe, queda el fallback web.
-    try {
-      const opened = window.open(webUrl, "_blank", "noopener,noreferrer");
-      if (opened) return true;
-    } catch (_) {}
-
-    try {
-      window.location.assign(webUrl);
-      return true;
-    } catch (_) {
-      try { window.location.href = webUrl; return true; } catch (__) { return false; }
+    // iOS: abrir la app nativa directamente. No usar wa.me ni api.whatsapp.com.
+    if (platform.ios) {
+      return openNativeWhatsappUrl(`whatsapp://send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`);
     }
+
+    // Android: usar Intent explícito a la app. No usar fallback web, así desaparece api.whatsapp.com.
+    if (platform.android) {
+      return openNativeWhatsappUrl(androidWhatsappIntentUrl(normalizedPhone, encodedText, "com.whatsapp"));
+    }
+
+    // Escritorio solamente: fallback web. En iOS/Android nunca se usa.
+    const desktopUrl = `https://web.whatsapp.com/send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
+    try { window.open(desktopUrl, "_blank", "noopener,noreferrer"); return true; } catch (_) {}
+    try { window.location.href = desktopUrl; return true; } catch (_) { return false; }
   }
 
   function openWhatsappToExplora(text = "") {
@@ -2578,21 +2464,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (!body) return;
     const data = driverPaymentProfile(state.profile || {});
     body.innerHTML = `
-      <label class="pay-profile-field pay-profile-phone-field" for="payProfilePhone"><span>Celular WhatsApp</span><div class="pay-profile-phone-row"><select id="payProfileCountry" aria-label="Código de país" required>${whatsappCountryOptionsHtml(data.phoneCountry || "549")}</select><input id="payProfilePhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="${esc(whatsappCountryPlaceholder(data.phoneCountry || "549"))}" value="${esc(data.phoneLocal || "")}" required /></div></label>
-      <label class="pay-profile-field" for="payProfileCuit"><span>CUIT</span><input id="payProfileCuit" type="text" inputmode="numeric" autocomplete="off" maxlength="13" placeholder="20-00000000-0" value="${esc(formatCuit(data.cuit))}" required /></label>
-      <label class="pay-profile-field" for="payProfileAlias"><span>Alias</span><input id="payProfileAlias" type="text" autocomplete="off" placeholder="alias.mercadopago" value="${esc(data.alias)}" required /></label>
-      <div class="pay-profile-note">Alias, CUIT y celular se usan en cierres y comprobantes.</div>`;
-    const country = $("payProfileCountry");
-    const phone = $("payProfilePhone");
-    country?.addEventListener("change", () => {
-      if (phone) phone.placeholder = whatsappCountryPlaceholder(country.value || "549");
-    });
-    const cuitInput = $("payProfileCuit");
-    cuitInput?.addEventListener("input", () => {
-      const cursorAtEnd = cuitInput.selectionStart === cuitInput.value.length;
-      cuitInput.value = formatCuit(cuitInput.value);
-      if (cursorAtEnd) cuitInput.setSelectionRange(cuitInput.value.length, cuitInput.value.length);
-    });
+      <div class="pay-profile-readonly"><span>Nombre completo</span><strong>${esc(data.fullName || "Chofer")}</strong></div>
+      <div class="pay-profile-readonly"><span>Auto modelo y patente</span><strong>${esc(data.car || "Sin auto asignado")}</strong></div>
+      <label class="pay-profile-field" for="payProfilePhone"><span>Número de teléfono</span><input id="payProfilePhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej: 3757461564" value="${esc(data.phone)}" required /></label>
+      <label class="pay-profile-field" for="payProfileCuit"><span>CUIT</span><input id="payProfileCuit" type="text" inputmode="numeric" autocomplete="off" placeholder="Ej: 20-00000000-0" value="${esc(data.cuit)}" required /></label>
+      <label class="pay-profile-field" for="payProfileAlias"><span>Alias para cobrar</span><input id="payProfileAlias" type="text" autocomplete="off" placeholder="Ej: alias.mercadopago" value="${esc(data.alias)}" required /></label>
+      <div class="pay-profile-note">Estos tres datos los carga el chofer y se adjuntan al pedir cierre para que Explora pueda liquidar más rápido.</div>`;
     const msg = $("payProfileMessage");
     if (msg) { msg.textContent = ""; msg.className = "pay-profile-message"; }
   }
@@ -2622,10 +2499,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   async function saveDriverProfileModal() {
-    const phoneCountry = safe($("payProfileCountry")?.value || "549");
-    const phoneLocal = safe($("payProfilePhone")?.value || "");
-    const phone = composeWhatsappPhone(phoneCountry, phoneLocal);
-    const cuit = formatCuit($("payProfileCuit")?.value || "");
+    if (isAdmin()) return;
+    const phone = safe($("payProfilePhone")?.value || "");
+    const cuit = safe($("payProfileCuit")?.value || "");
     const alias = safe($("payProfileAlias")?.value || "");
     const missing = paymentProfileMissingFields({ phone, cuit, alias });
     if (missing.length) { setProfileMessage(`Completá: ${missing.join(", ")}.`, "error"); return; }
@@ -2633,14 +2509,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       telefono:phone,
       numeroTelefono:phone,
       whatsapp:phone,
-      whatsappFull:phone,
-      whatsappNormalized:normalizeWhatsappPhone(phone),
-      whatsappCountryCode:phoneCountry,
-      whatsappLocalNumber:rawWhatsappDigits(phoneLocal),
-      codigoPaisWhatsapp:phoneCountry,
-      telefonoLocal:rawWhatsappDigits(phoneLocal),
       cuit,
-      cuitRaw:cuitDigits(cuit),
       aliasCobro:alias,
       aliasParaCobrar:alias,
       paymentAlias:alias,
@@ -3461,7 +3330,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       if (button.dataset.payNav === "inicio") span.textContent = admin ? "Actividades" : "Inicio";
       else if (button.dataset.payNav === "actividad") span.textContent = admin ? "+ Chofer" : "Actividad";
       else if (button.dataset.payRun === "nuevo-servicio") span.textContent = admin ? "Cierre contable" : "Cobrar";
-      else if (button.id === "payNavClosure") span.textContent = admin ? "Histórico" : "Cierre";
+      else if (button.id === "payNavClosure") span.textContent = admin ? "Futuro" : "Cierre";
     });
     const navInicioIcon = document.querySelector('#payBottomNav [data-pay-nav="inicio"] svg');
     if (navInicioIcon) navInicioIcon.innerHTML = admin
@@ -3471,10 +3340,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (navChoferIcon) navChoferIcon.innerHTML = admin
       ? '<circle cx="9" cy="8" r="3"></circle><path d="M3 20c.5-4 2.6-6 6-6s5.5 2 6 6"></path><path d="M18 8v6M15 11h6"></path>'
       : '<path d="M4 6h16M4 12h16M4 18h10"></path>';
-    const navClosureIcon = document.querySelector('#payBottomNav #payNavClosure svg');
-    if (navClosureIcon) navClosureIcon.innerHTML = admin
-      ? '<path d="M4 19V5"></path><path d="M4 19h16"></path><path d="M7 15l3-4 3 2 4-6"></path><path d="M16 7h3v3"></path>'
-      : '<path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path><path d="M9 14h6M9 17h4"></path>';
     const navMain = document.querySelector('#payBottomNav .pay-nav-main');
     if (navMain) navMain.setAttribute('aria-label', admin ? 'Cierre contable' : 'Cobrar');
     const title = $("payActivityTitle");
@@ -3889,244 +3754,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return rows.filter(adminActivityMatches).sort((a,b)=>b.at-a.at).slice(0, adminMode ? 60 : 12);
   }
 
-  function historyScopeLabel(scope = state.historyScope) {
-    return HISTORY_SCOPES.find(([value]) => value === scope)?.[1] || "Histórico total";
-  }
-
-  function historyDefaultDriverUid() {
-    if (!isAdmin()) return getOwnDriverUid();
-    return safe(state.historyDriverUid || state.selectedDriverUid || state.drivers[0]?.uid || "");
-  }
-
-  function openHistoryScreen() {
-    showPayView("historico");
-    if (!isAdmin()) {
-      const own = getOwnDriverUid();
-      if (own && state.historyDriverUid !== own) {
-        state.historyDriverUid = own;
-        state.historyDriverName = displayName();
-      }
-      loadHistoryDataForDriver(own);
-      return;
-    }
-    fetchDrivers().then(() => {
-      const uid = historyDefaultDriverUid();
-      if (uid && state.historyDriverUid !== uid) {
-        const driver = state.drivers.find(item => item.uid === uid);
-        state.historyDriverUid = uid;
-        state.historyDriverName = driver?.name || state.selectedDriverName || "";
-      }
-      renderHistoryScreen();
-      if (uid) loadHistoryDataForDriver(uid);
-    }).catch(error => {
-      state.historyError = error?.message || "No se pudieron cargar los choferes.";
-      renderHistoryScreen();
-    });
-  }
-
-  function selectHistoryDriver(uid = "") {
-    const next = safe(uid);
-    const driver = state.drivers.find(item => item.uid === next);
-    state.historyDriverUid = next;
-    state.historyDriverName = driver?.name || "";
-    state.historyData = { uid:"", records:[], expenses:[], debtPayments:[] };
-    state.historyMonthId = "";
-    renderHistoryScreen();
-    if (next) loadHistoryDataForDriver(next);
-  }
-
-  async function loadHistoryDataForDriver(uid = state.historyDriverUid) {
-    const targetUid = safe(uid || historyDefaultDriverUid());
-    if (!targetUid || !state.db) return;
-    state.historyLoading = true;
-    state.historyError = "";
-    renderHistoryScreen();
-    try {
-      const [records, expenses, debtPayments] = await Promise.all([
-        getScopedDocs("billing_records", targetUid),
-        getScopedDocs("gastos", targetUid),
-        getScopedDocs("deuda_pagos", targetUid)
-      ]);
-      state.historyData = {
-        uid:targetUid,
-        records:records.sort((a,b)=>rowMs(b)-rowMs(a)),
-        expenses:expenses.sort((a,b)=>rowMs(b)-rowMs(a)),
-        debtPayments:debtPayments.sort((a,b)=>rowMs(b)-rowMs(a))
-      };
-    } catch (error) {
-      state.historyError = error?.message || "No se pudo cargar el histórico.";
-    } finally {
-      state.historyLoading = false;
-      renderHistoryScreen();
-    }
-  }
-
-  function currentMonthId(date = new Date()) {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-  }
-
-  function monthIdFromMs(value = Date.now()) {
-    const d = new Date(value || Date.now());
-    return currentMonthId(d);
-  }
-
-  function monthLabel(monthId = currentMonthId()) {
-    const [year, month] = safe(monthId).split("-").map(Number);
-    if (!year || !month) return "Mes actual";
-    return new Intl.DateTimeFormat("es-AR", { month:"long", year:"numeric" }).format(new Date(year, month - 1, 1));
-  }
-
-  function monthRange(monthId = currentMonthId()) {
-    const [year, month] = safe(monthId || currentMonthId()).split("-").map(Number);
-    const y = year || new Date().getFullYear();
-    const m = (month || (new Date().getMonth() + 1)) - 1;
-    const start = new Date(y, m, 1, 0, 0, 0, 0);
-    const end = new Date(y, m + 1, 0, 23, 59, 59, 999);
-    return { startMs:start.getTime(), endMs:Math.min(end.getTime(), Date.now()), label:monthLabel(`${y}-${String(m + 1).padStart(2,"0")}`) };
-  }
-
-  function driverCreatedMs(driver = null) {
-    const item = driver || state.drivers.find(row => row.uid === safe(state.historyDriverUid || historyDefaultDriverUid())) || {};
-    const profile = item.profile || item || {};
-    const candidates = [
-      profile.createdAt, profile.altaAt, profile.created, profile.fechaAlta, profile.createdDate, profile.creationDate, profile.registeredAt,
-      profile.createdAtMs, profile.altaAtMs, profile.creationMs, profile.registeredAtMs,
-      item.createdAt, item.createdAtMs
-    ];
-    const values = candidates.map(ms).filter(value => value > 0);
-    const data = state.historyData || {};
-    for (const row of [...(data.records || []), ...(data.expenses || []), ...(data.debtPayments || [])]) {
-      const at = rowMs(row) || debtCreatedMs(row);
-      if (at > 0) values.push(at);
-    }
-    return values.length ? Math.min(...values) : 0;
-  }
-
-  function historyAvailableMonths() {
-    const now = new Date();
-    const created = driverCreatedMs();
-    const start = created > 0 ? new Date(created) : new Date(now.getFullYear(), now.getMonth(), 1);
-    const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
-    const last = new Date(now.getFullYear(), now.getMonth(), 1);
-    const months = [];
-    while (cursor.getTime() <= last.getTime()) {
-      months.push(currentMonthId(cursor));
-      cursor.setMonth(cursor.getMonth() + 1);
-    }
-    return months.length ? months : [currentMonthId(now)];
-  }
-
-  function ensureHistoryMonthId() {
-    const months = historyAvailableMonths();
-    const current = safe(state.historyMonthId || currentMonthId());
-    state.historyMonthId = months.includes(current) ? current : months[months.length - 1];
-    return state.historyMonthId;
-  }
-
-  function historyRange(scope = state.historyScope) {
-    const nowMs = Date.now();
-    if (scope === "daily") return { startMs:nowMs - 24 * 60 * 60 * 1000, endMs:nowMs, label:"Últimas 24 horas" };
-    if (scope === "weekly") return { startMs:nowMs - 7 * 24 * 60 * 60 * 1000, endMs:nowMs, label:"Últimos 7 días" };
-    if (scope === "monthly") return monthRange(ensureHistoryMonthId());
-    const created = driverCreatedMs();
-    return { startMs:created || 0, endMs:nowMs, label:created ? `Desde ${dateShort(created)}` : "Desde la creación" };
-  }
-
-  function historyInRange(row = {}, range = historyRange()) {
-    const at = rowMs(row) || debtCreatedMs(row);
-    return at > 0 && at >= range.startMs && at <= range.endMs;
-  }
-
-  function computeHistoryReport(scope = state.historyScope) {
-    const range = historyRange(scope);
-    const data = state.historyData || {};
-    const records = (data.records || []).filter(row => !movementIsDeleted(row) && historyInRange(row, range));
-    const expenses = (data.expenses || []).filter(row => !movementIsDeleted(row) && historyInRange(row, range));
-    const debtPayments = (data.debtPayments || []).filter(row => !movementIsDeleted(row) && historyInRange(row, range));
-    const totalFacturado = records.reduce((sum,row)=>sum + amountOf(row), 0);
-    const chofer = totalFacturado * .5;
-    const exploraBase = totalFacturado - chofer;
-    const cajaChica = records.filter(row => methodOf(row) === "cash" && !cashboxIsExcluded(row)).reduce((sum,row)=>sum + amountOf(row), 0) * .05;
-    const deudaCobrada = debtPayments.reduce((sum,row)=>sum + amountOf(row), 0);
-    const gastos = expenses.reduce((sum,row)=>sum + expenseParts(row).amount, 0);
-    const ganaExplora = exploraBase + cajaChica + deudaCobrada - gastos;
-    return { scope, range, records, expenses, debtPayments, totalFacturado, chofer, exploraBase, cajaChica, deudaCobrada, gastos, ganaExplora };
-  }
-
-  function historyBarHtml(label = "", value = 0, max = 1, tone = "plus") {
-    const amount = Math.abs(number(value || 0));
-    const pct = Math.max(5, Math.min(100, Math.round((amount / Math.max(1, max)) * 100)));
-    return `<article class="pay-history-bar is-${tone}"><div><span>${esc(label)}</span><strong>${currency(value)}</strong></div><i style="--w:${pct}%"></i></article>`;
-  }
-
-  function renderHistoryScreen() {
-    const driverSelect = $("payHistoryDriverSelect");
-    const scopeSelect = $("payHistoryScopeSelect");
-    const monthField = $("payHistoryMonthField");
-    const monthSelect = $("payHistoryMonthSelect");
-    const content = $("payHistoryContent");
-    if (!content) return;
-    if (scopeSelect) scopeSelect.value = state.historyScope || "total";
-    const isMonthlyScope = (state.historyScope || "total") === "monthly";
-    if (monthField) monthField.hidden = !isMonthlyScope;
-    if (monthSelect) {
-      const months = historyAvailableMonths();
-      const selectedMonth = isMonthlyScope ? ensureHistoryMonthId() : safe(state.historyMonthId || currentMonthId());
-      monthSelect.disabled = state.historyLoading;
-      monthSelect.innerHTML = months.map(month => `<option value="${esc(month)}" ${month === selectedMonth ? "selected" : ""}>${esc(monthLabel(month))}</option>`).join("");
-    }
-    if (driverSelect) {
-      if (isAdmin()) {
-        const selected = safe(state.historyDriverUid || historyDefaultDriverUid());
-        driverSelect.disabled = state.historyLoading;
-        driverSelect.innerHTML = state.drivers.length
-          ? state.drivers.map(driver => `<option value="${esc(driver.uid)}" ${driver.uid === selected ? "selected" : ""}>${esc(driver.name)}</option>`).join("")
-          : '<option value="">Sin choferes cargados</option>';
-      } else {
-        driverSelect.disabled = true;
-        driverSelect.innerHTML = `<option value="${esc(getOwnDriverUid())}">${esc(displayName())}</option>`;
-      }
-    }
-    if (state.historyLoading) {
-      content.innerHTML = '<div class="pay-history-empty">Cargando datos del histórico…</div>';
-      return;
-    }
-    if (state.historyError) {
-      content.innerHTML = `<div class="pay-history-empty is-error">${esc(state.historyError)}</div>`;
-      return;
-    }
-    const uid = safe(state.historyDriverUid || historyDefaultDriverUid());
-    if (!uid) {
-      content.innerHTML = '<div class="pay-history-empty">Seleccioná un chofer para ver el histórico.</div>';
-      return;
-    }
-    const report = computeHistoryReport(state.historyScope || "total");
-    const max = Math.max(Math.abs(report.exploraBase), Math.abs(report.cajaChica), Math.abs(report.deudaCobrada), Math.abs(report.gastos), 1);
-    const driverName = state.historyDriverName || state.drivers.find(item => item.uid === uid)?.name || displayName();
-    content.innerHTML = `
-      <section class="pay-history-result ${report.ganaExplora < 0 ? "is-negative" : "is-positive"}">
-        <div class="pay-history-result-head">
-          <span>${esc(driverName)}</span>
-          <small>${esc(historyScopeLabel(report.scope))} · ${esc(report.range.label)}</small>
-        </div>
-        <strong>${currency(report.ganaExplora)}</strong>
-        <p>Gana Explora hasta este momento</p>
-      </section>
-      <section class="pay-history-chart" aria-label="Gráfico histórico Explora">
-        ${historyBarHtml("Facturación Explora", report.exploraBase, max, "plus")}
-        ${historyBarHtml("Caja chica", report.cajaChica, max, "plus")}
-        ${historyBarHtml("Deuda cobrada", report.deudaCobrada, max, "plus")}
-        ${historyBarHtml("Gastos", -report.gastos, max, "minus")}
-      </section>
-      <section class="pay-history-metrics">
-        <div><span>Total facturado</span><strong>${currency(report.totalFacturado)}</strong></div>
-        <div><span>Parte chofer 50%</span><strong>-${currency(report.chofer)}</strong></div>
-        <div><span>Caja chica</span><strong>${currency(report.cajaChica)}</strong></div>
-        <div><span>Deuda cobrada</span><strong>${currency(report.deudaCobrada)}</strong></div>
-        <div><span>Gastos</span><strong>-${currency(report.gastos)}</strong></div>
-      </section>`;
-  }
-
   function render() {
     installShell();
     renderAdminShellState();
@@ -4155,8 +3782,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       showPayView("notificaciones");
     } else if (state.view === "admin-cierres") {
       showPayView("admin-cierres");
-    } else if (state.view === "historico") {
-      showPayView("historico");
     } else {
       setBottomNavActive("inicio");
     }
@@ -4777,9 +4402,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       .map(([label,value,className]) => `<article${className ? ` class="${esc(className)}"` : ""}><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`).join("");
     const receiptLink = receiptUrl ? `<a class="pay-closure-receipt-link" href="${esc(receiptUrl)}" target="_blank" rel="noopener">Ver foto del comprobante</a>` : "";
     const alert = due > 0 && !receiptUrl && !adminView ? `<div class="pay-closure-alert">Cargá el comprobante de transferencia para cerrar.</div>` : "";
-    const direction = toDriver > 0 ? "explora_to_driver" : due > 0 ? "driver_to_explora" : "balanced";
-    const contact = closureContactCardByDirection(direction, { closure });
-    return rows + contact + receiptLink + alert;
+    return rows + receiptLink + alert;
   }
 
   function renderClosureModal() {
@@ -5428,4 +5051,4 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen });
 })();
 
-/* v4052: Histórico con rangos correctos, selector mensual, consultas paralelas con timeout. */
+/* v4059: WhatsApp directo app nativa. Sin wa.me/api en iOS/Android. */
