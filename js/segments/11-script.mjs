@@ -5360,7 +5360,6 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       window.unlockPageScroll?.("admin-shared");
       window.unlockPageScroll?.("admin-debt");
       document.body.classList.remove("explora-admin-drivers-white");
-      document.body.classList.remove("explora-admin-debts-white");
       adminSharedState.mode = "home";
       adminSharedState.selectedDriverKey = "";
       clearAdminReceiptSelection();
@@ -5894,6 +5893,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       authSessionState.profile = exploraSession.profile || null;
       authSessionState.role = exploraSession.role || null;
       loginDevDiagnostic("UI_OPENED", { role: exploraSession.role || "" });
+      try { const passwordInput = $("exploraLoginPassword"); if (passwordInput) passwordInput.value = ""; } catch (_) {}
       return credential;
     }
 
@@ -5902,8 +5902,8 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     passwordToggle?.addEventListener("click", () => {
       const input = $("exploraLoginPassword");
       if (!input) return;
-      const hidden = input.type === "password";
-      input.type = hidden ? "text" : "password";
+      const hidden = input.classList.contains("explora-password-masked");
+      input.classList.toggle("explora-password-masked", !hidden);
       passwordToggle.textContent = hidden ? "Ocultar" : "Ver";
     });
 
