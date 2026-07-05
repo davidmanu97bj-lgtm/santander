@@ -3584,3 +3584,21 @@
     }
 
   
+
+/* v4057 · Login sin gestores de contraseñas del sistema */
+.explora-password-masked{
+  -webkit-text-security:disc;
+  text-security:disc;
+}
+#exploraLoginUsername,
+#exploraLoginPassword,
+#newDriverPassword{
+  -webkit-user-select:text;
+  user-select:text;
+}
+#exploraLoginPassword::-ms-reveal,
+#exploraLoginPassword::-ms-clear,
+#newDriverPassword::-ms-reveal,
+#newDriverPassword::-ms-clear{
+  display:none;
+}
