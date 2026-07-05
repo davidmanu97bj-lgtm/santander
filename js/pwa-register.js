@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v2.4.1 · activity time home start */
+/* EXPLORA PWA registration · v2.4.1 · login sin autofill session restore */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4019-activity-time-home';
+  const BUILD = 'v4062-login-sin-autofill-session-restore';
   const reloadOnceKey = `explora-sw-reload-${BUILD}`;
 
   const clearLegacyCaches = async () => {
@@ -21,7 +21,7 @@
   const register = async () => {
     try {
       await clearLegacyCaches();
-      const registration = await navigator.serviceWorker.register('./service-worker.js?build=v4019-activity-time-home', {
+      const registration = await navigator.serviceWorker.register('./service-worker.js?build=v4062-login-sin-autofill-session-restore', {
         scope: './',
         updateViaCache: 'none'
       });
