@@ -5914,52 +5914,56 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       if (pass) pass.value = "";
     } catch (_) {}
 
-    if (loginForm) {
-      loginForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        loginDevDiagnostic("LOGIN_SUBMIT", {});
-        if (authSessionState.loginInProgress || loginInProgress) return;
+    async function submitExploraManualLogin(event = null) {
+      event?.preventDefault?.();
+      loginDevDiagnostic("LOGIN_SUBMIT", {});
+      if (authSessionState.loginInProgress || loginInProgress) return;
 
-        const usernameInput = $("exploraLoginUsername");
-        const passwordInput = $("exploraLoginPassword");
-        const rawUsername = String(usernameInput?.value || "").trim();
-        const normalizedUser = rawUsername.includes("@") ? rawUsername.toLowerCase() : normalizeUsername(rawUsername);
-        const password = String(passwordInput?.value || "");
+      const usernameInput = $("exploraLoginUsername");
+      const passwordInput = $("exploraLoginPassword");
+      const rawUsername = String(usernameInput?.value || "").trim();
+      const normalizedUser = rawUsername.includes("@") ? rawUsername.toLowerCase() : normalizeUsername(rawUsername);
+      const password = String(passwordInput?.value || "");
 
-        if (!normalizedUser || !password) {
-          loginMsg("Ingresá usuario y contraseña.");
-          return;
-        }
+      if (!normalizedUser || !password) {
+        loginMsg("Ingresá usuario y clave.");
+        return;
+      }
 
-        setLoginLoading(true);
+      setLoginLoading(true);
+      loginMsg("");
+
+      try {
+        await withTimeout(loginWithUsernameAndPassword(normalizedUser, password), 22000, "LOGIN_TIMEOUT");
+        if (!authSessionState.uiOpened) throw new Error("SESSION_OPEN_FAILED");
         loginMsg("");
-
-        try {
-          await withTimeout(loginWithUsernameAndPassword(normalizedUser, password), 22000, "LOGIN_TIMEOUT");
-          if (!authSessionState.uiOpened) throw new Error("SESSION_OPEN_FAILED");
-          loginMsg("");
-          // Los campos se limpian únicamente después de que Admin o Chofer ya abrió.
-          if (usernameInput) usernameInput.value = "";
-          if (passwordInput) passwordInput.value = "";
-        } catch (error) {
-          loginDevDiagnostic("LOGIN_ERROR", { code: error && (error.message || error.code) || "unknown" });
-          showLoginErrorForCode(error);
-          // Mantener el usuario escrito. Vaciar solo la contraseña ante credenciales inválidas.
-          const code = String(error && (error.message || error.code) || "");
-          if ((code.includes("AUTH_INVALID_CREDENTIAL") || code.includes("invalid-credential") || code.includes("wrong-password")) && passwordInput) {
-            passwordInput.value = "";
-            passwordInput.focus();
-          }
-          // Si Authentication quedó activa pero la sesión principal no pudo abrirse, cerrar de forma controlada.
-          if (auth.currentUser && !authSessionState.uiOpened) {
-            await signOut(auth).catch(() => {});
-          }
-        } finally {
-          loginDevDiagnostic("LOGIN_FINALLY", {});
-          resetLoginState();
+        if (usernameInput) usernameInput.value = "";
+        if (passwordInput) passwordInput.value = "";
+      } catch (error) {
+        loginDevDiagnostic("LOGIN_ERROR", { code: error && (error.message || error.code) || "unknown" });
+        showLoginErrorForCode(error);
+        const code = String(error && (error.message || error.code) || "");
+        if ((code.includes("AUTH_INVALID_CREDENTIAL") || code.includes("invalid-credential") || code.includes("wrong-password")) && passwordInput) {
+          passwordInput.value = "";
+          passwordInput.focus();
         }
-      }, { passive: false });
+        if (auth.currentUser && !authSessionState.uiOpened) {
+          await signOut(auth).catch(() => {});
+        }
+      } finally {
+        loginDevDiagnostic("LOGIN_FINALLY", {});
+        resetLoginState();
+      }
     }
+
+    const loginSubmitBtn = $("exploraLoginSubmit");
+    loginSubmitBtn?.addEventListener("click", submitExploraManualLogin, { passive:false });
+    loginForm?.addEventListener("submit", submitExploraManualLogin, { passive:false });
+    loginForm?.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      submitExploraManualLogin(event);
+    }, { passive:false });
 
     async function logoutExplora() {
       if (authSessionState.logoutInProgress) return;
