@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4054-menu-perfil-minimo-compacto */
+/* Compatibilidad validada: v4062-login-sin-autofill-session-restore */
 /* EXPLORA PWA service worker · v2.5.4 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4054-menu-perfil-minimo-compacto`;
+const CACHE_NAME = `${CACHE_PREFIX}v4062-login-sin-autofill-session-restore`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -15,6 +15,7 @@ kill();if(document.readyState==='loading')document.addEventListener('DOMContentL
 const APP_SHELL = [
   './',
   './index.html',
+  './css/segments/01-style.css?v=4062-login-sin-autofill-session-restore',
   './css/segments/46-style.css',
   './css/segments/47-style.css?v=2411-logo',
   './css/segments/07-style.css?v=3921-billing-visual-fix',
@@ -29,7 +30,7 @@ const APP_SHELL = [
   './js/segments/01-script.js?v2442-weekly-payment-production',
   './js/segments/19-script.mjs?v2442-weekly-payment-production',
   './js/segments/39-script.mjs?v=4016-card-alerts',
-  './js/segments/11-script.mjs?v4019-activity-time-home',
+  './js/segments/11-script.mjs?v4062-login-sin-autofill-session-restore',
   './js/core/weekly-core.mjs?v2442-weekly-payment-production',
   './css/segments/45-style.css?v=2440-weekly-closure-cash-record-recovery',
   './css/segments/44-style.css?v=2503-more-white-exit',

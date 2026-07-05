@@ -5,7 +5,7 @@
   Ranking diario/semanal, cierre semanal automático y control semanal de KM
   quedan desactivados. La app usa el Home de pagos y cierres a demanda.
 -->
-<html data-explora-build="v4054-menu-perfil-minimo-compacto" lang="es" data-performance-nav-mode="disabled">
+<html data-explora-build="v4062-login-sin-autofill-session-restore" lang="es" data-performance-nav-mode="disabled">
 <head>
 <meta charset="utf-8"/>
 <meta content="v2.5.8-logo-real-header" name="explora-version"/>
@@ -75,7 +75,7 @@
   #mileageAdminAlertsCard{display:none!important;visibility:hidden!important;pointer-events:none!important;opacity:0!important;}
 </style>
 
-<link href="css/segments/01-style.css" rel="stylesheet"/>
+<link href="css/segments/01-style.css?v=4062-login-sin-autofill-session-restore" rel="stylesheet"/>
 <link href="css/segments/02-style.css?v=3911-logo-real-header" rel="stylesheet"/>
 <link href="css/segments/03-style.css" rel="stylesheet"/>
 <link href="css/segments/04-style.css" rel="stylesheet"/>
@@ -115,25 +115,25 @@
 </div>
 </div>
 <section aria-hidden="true" aria-label="Ingresar a EXPLORA" class="explora-login" id="exploraLogin">
-<form class="explora-login-card" id="exploraLoginForm" novalidate="">
+<div aria-label="Acceso manual EXPLORA" class="explora-login-card" data-form-type="other" id="exploraLoginForm" role="group">
 <div class="explora-login-brand">
 <img alt="EXPLORA" class="explora-login-brand-image" decoding="async" src="icons/explora-logo-real-horizontal-v3911.png"/>
 <p>VIAJES Y SERVICIOS</p>
 </div>
 <div class="explora-login-field">
-<label for="exploraLoginUsername">Usuario</label>
-<input autocapitalize="none" autocomplete="username" id="exploraLoginUsername" inputmode="text" placeholder="marcelo" required="" spellcheck="false" type="text"/>
+<label for="exploraLoginAccessId">Usuario</label>
+<input autocapitalize="none" autocomplete="off" autocorrect="off" data-1p-ignore="true" data-bwignore="true" data-form-type="other" data-lpignore="true" id="exploraLoginAccessId" inputmode="text" name="explora_usuario_manual" placeholder="marcelo" required="" spellcheck="false" type="text"/>
 </div>
 <div class="explora-login-field">
-<label for="exploraLoginPassword">Contraseña</label>
+<label for="exploraLoginKey">Clave de acceso</label>
 <div class="explora-password-wrap">
-<input autocomplete="current-password" id="exploraLoginPassword" placeholder="••••••••" required="" type="password"/>
-<button aria-label="Mostrar u ocultar contraseña" class="explora-password-toggle" id="exploraPasswordToggle" type="button">Ver</button>
+<input aria-label="Clave de acceso" autocapitalize="none" autocomplete="off" autocorrect="off" class="explora-login-keyarea explora-password-masked" data-1p-ignore="true" data-bwignore="true" data-form-type="other" data-lpignore="true" enterkeyhint="done" id="exploraLoginKey" inputmode="text" name="explora_clave_manual" placeholder="••••••••" required="" spellcheck="false" type="text"/>
+<button aria-label="Mostrar u ocultar clave de acceso" class="explora-password-toggle" id="exploraPasswordToggle" type="button">Ver</button>
 </div>
 </div>
-<button class="explora-login-submit" id="exploraLoginSubmit" type="submit">Ingresar</button>
+<button class="explora-login-submit" id="exploraLoginSubmit" type="button">Ingresar</button>
 <div aria-live="polite" class="explora-login-msg" id="exploraLoginMsg"></div>
-</form>
+</div>
 </section>
 <div aria-hidden="true" class="explora-role-block" id="exploraRoleBlock">
 <div class="explora-role-card">
@@ -163,10 +163,10 @@
             <input autocomplete="name" id="newDriverName" maxlength="100" placeholder="Nombre y apellido" required=""/>
 </label>
 <label for="newDriverUsername">ID obligatorio
-            <input autocapitalize="none" autocomplete="username" id="newDriverUsername" maxlength="32" placeholder="ejemplo: david7" required="" spellcheck="false"/>
+            <input autocapitalize="none" autocomplete="off" autocorrect="off" data-form-type="other" data-lpignore="true" id="newDriverUsername" maxlength="32" placeholder="ejemplo: david7" required="" spellcheck="false"/>
 </label>
-<label for="newDriverPassword">Contraseña obligatoria
-            <input autocomplete="new-password" id="newDriverPassword" minlength="6" maxlength="72" placeholder="Mínimo 6 caracteres" required="" type="password"/>
+<label for="newDriverPassword">Clave obligatoria
+            <input autocapitalize="none" autocomplete="off" autocorrect="off" class="explora-password-masked" data-1p-ignore="true" data-bwignore="true" data-form-type="other" data-lpignore="true" id="newDriverPassword" inputmode="text" maxlength="72" minlength="6" placeholder="Mínimo 6 caracteres" required="" spellcheck="false" type="text"/>
 </label>
 </fieldset>
 <fieldset>
@@ -1285,7 +1285,7 @@
 <script id="exploraPerformanceNavigationV210" src="js/segments/08-script.js"></script>
 <script id="exploraReceiptsV247" src="js/segments/09-script.js?v=247"></script>
 <script id="exploraProductionPolicyV251" src="js/segments/10-script.js"></script>
-<script src="js/segments/11-script.mjs?v4038-deudas" type="module"></script>
+<script src="js/segments/11-script.mjs?v4062-login-sin-autofill-session-restore" type="module"></script>
 <!-- EXPLORA v160: motor semanal unificado + splash seguro + históricos financieros -->
 <link href="css/segments/32-style.css?v=2445-finance-nav-fix" rel="stylesheet"/>
 <script id="exploraSplashEmergencyPatch" src="js/segments/12-script.js"></script>
@@ -1368,6 +1368,6 @@
 <link href="css/segments/48-style.css?v=2412-ranking-mobile" rel="stylesheet"/>
 <link href="css/segments/52-style.css?v=4061-chequeo-deudas-mas-chofer" rel="stylesheet"/>
 <script id="exploraPagoHomeOnDemandClosure" src="js/segments/52-script.mjs?v=4061-chequeo-deudas-mas-chofer" type="module"></script>
-<script defer="" id="explora-pwa-registration" src="js/pwa-register.js?v4019-activity-time-home"></script>
+<script defer="" id="explora-pwa-registration" src="js/pwa-register.js?v4062-login-sin-autofill-session-restore"></script>
 </body>
 </html>
