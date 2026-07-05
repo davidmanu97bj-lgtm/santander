@@ -2108,7 +2108,8 @@
       margin-bottom: 8px;
     }
 
-    .explora-login-field input {
+    .explora-login-field input,
+    .explora-login-field textarea {
       width: 100%;
       min-height: 54px;
       border: 1px solid rgba(255,255,255,.10);
@@ -2126,7 +2127,8 @@
       align-items: center;
     }
 
-    .explora-password-wrap input {
+    .explora-password-wrap input,
+    .explora-password-wrap textarea {
       padding-right: 74px;
     }
 
@@ -3585,7 +3587,7 @@
 
   
 
-/* v4057 · Login sin gestores de contraseñas del sistema */
+/* v4058 · Login manual sin hoja iOS Keychain */
 .explora-password-masked{
   -webkit-text-security:disc;
   text-security:disc;
@@ -3600,5 +3602,36 @@
 #exploraLoginPassword::-ms-clear,
 #newDriverPassword::-ms-reveal,
 #newDriverPassword::-ms-clear{
+  display:none;
+}
+
+/* v4058 · Evitar heurística iOS de contraseñas guardadas */
+.explora-login-card{
+  -webkit-user-select:none;
+  user-select:none;
+}
+#exploraLoginUsername,
+#exploraLoginPassword{
+  -webkit-user-select:text;
+  user-select:text;
+}
+.explora-login-keyarea{
+  display:block;
+  width:100%;
+  min-height:54px;
+  height:54px;
+  max-height:54px;
+  resize:none;
+  overflow:hidden;
+  white-space:nowrap;
+  line-height:30px;
+  font-family:inherit;
+  appearance:none;
+  -webkit-appearance:none;
+}
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration{
   display:none;
 }
