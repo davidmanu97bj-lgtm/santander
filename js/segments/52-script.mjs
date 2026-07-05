@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4054-menu-perfil-minimo-compacto";
+  const VERSION = "explora-pago-home-v52-v4063-deudas-alias-copy";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -743,6 +743,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
             <button class="pay-action" data-pay-run="cargar-gastos" type="button"><svg viewBox="0 0 24 24"><path d="M4 7.5h14.5A1.5 1.5 0 0 1 20 9v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11"></path><path d="M16 12h5v4h-5a2 2 0 0 1 0-4Z"></path></svg><span>Cargar<br/>gasto</span></button>
             <button class="pay-action" id="payClosureActionBtn" type="button" hidden disabled><svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path><path d="M9 14h6M9 17h4"></path></svg><span>Pedir<br/>cierre</span></button>
           </div>
+          <div class="pay-debt-alias-hint" id="payDebtAliasHint" hidden>
+            <span class="pay-debt-alias-copy">Pagá a Explora en efectivo o enviá dinero por alias para reducir tu deuda.</span>
+            <button class="pay-debt-alias-btn" id="payDebtAliasCopyBtn" type="button" data-copy-alias="${esc(EXPLORA_ALIAS)}" aria-label="Copiar alias de Explora">
+              <span>Alias</span><strong>${esc(EXPLORA_ALIAS)}</strong><em>Copiar</em>
+            </button>
+          </div>
           <div class="pay-liquid-pill"><span id="payPillLabel" class="closure-liquidation-label">Dinero a liquidar</span><strong id="payPillAmount">—</strong></div>
           <div class="pay-extra-lines" id="payExtraLines"></div>
           <div class="pay-status-pill" id="payClosureStatus" hidden><span><b>—</b><br><small id="payClosureStatusText">—</small></span><button id="payClosureStatusBtn" type="button">Ver</button></div>
@@ -973,7 +979,44 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     catch (_) { active.scrollIntoView(false); }
   }
 
+  async function copyExploraAlias(button) {
+    const alias = button?.dataset?.copyAlias || EXPLORA_ALIAS;
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(alias);
+        copied = true;
+      }
+    } catch (_) { copied = false; }
+    if (!copied) {
+      const area = document.createElement("textarea");
+      area.value = alias;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.left = "-9999px";
+      area.style.top = "0";
+      document.body.appendChild(area);
+      area.focus();
+      area.select();
+      try { copied = document.execCommand("copy"); } catch (_) { copied = false; }
+      area.remove();
+    }
+    if (button) {
+      const label = button.querySelector("em");
+      const previous = label?.textContent || "Copiar";
+      button.classList.toggle("is-copied", copied);
+      if (label) label.textContent = copied ? "Copiado" : "Copiar";
+      window.setTimeout(() => {
+        button.classList.remove("is-copied");
+        if (label) label.textContent = previous;
+      }, 1400);
+    }
+    if (copied) window.showToast?.(`Alias ${alias} copiado.`);
+    else window.alert?.(`Alias de Explora: ${alias}`);
+  }
+
   function bindShell() {
+    $("payDebtAliasCopyBtn")?.addEventListener("click", event => copyExploraAlias(event.currentTarget));
     document.querySelectorAll("[data-pay-tab]").forEach(button => button.addEventListener("click", () => {
       state.tab = button.dataset.payTab || "chofer";
       markTabAlertSeen(state.tab);
@@ -4317,8 +4360,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function renderMainCard(summary) {
-    const amount = $("payMainAmount"), subtitle = $("payMainSubtitle"), pillLabel = $("payPillLabel"), pillAmount = $("payPillAmount"), extra = $("payExtraLines");
+    const amount = $("payMainAmount"), subtitle = $("payMainSubtitle"), pillLabel = $("payPillLabel"), pillAmount = $("payPillAmount"), extra = $("payExtraLines"), debtAliasHint = $("payDebtAliasHint");
     if (!amount || !subtitle || !pillLabel || !pillAmount || !extra) return;
+    if (debtAliasHint) debtAliasHint.hidden = activeClosureKind(state.tab) !== "pendientes" || isAdmin();
     const lines = [];
     if (isAdmin() && !getDriverUid()) {
       amount.textContent = currency(0);
