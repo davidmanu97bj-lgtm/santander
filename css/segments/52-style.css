@@ -2880,3 +2880,224 @@ body.explora-pay-mode:not(.explora-admin-activity-home):not(.pay-admin-closures-
   .pay-profile-actions button{min-height:40px!important;padding:10px 8px!important;font-size:14px!important;}
 }
 @media(max-width:350px){.pay-profile-phone-row{grid-template-columns:1fr!important;}}
+
+
+/* v4060 · Más admin/chofer simétrico + Deudas admin compacto */
+body.explora-pay-mode.pay-more-open .explora-pay-more{
+  display:grid!important;
+  grid-template-rows:auto auto 1fr!important;
+  align-content:start!important;
+  gap:14px!important;
+  padding:calc(20px + env(safe-area-inset-top)) 18px calc(92px + env(safe-area-inset-bottom))!important;
+  background:#fff!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-head{
+  align-items:center!important;
+  justify-content:flex-start!important;
+  padding:4px 0 8px!important;
+  margin:0!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-title-wrap{
+  display:grid!important;
+  gap:2px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-head h1{
+  font-size:32px!important;
+  line-height:1!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-head p,
+body.explora-pay-mode.pay-more-open .pay-more-profile,
+body.explora-pay-mode.pay-more-open .pay-more-logout-zone,
+body.explora-pay-mode.pay-more-open .pay-more-spacer,
+body.explora-pay-mode.pay-more-open #payMoreAdminList{
+  display:none!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-card{
+  width:100%!important;
+  margin:0!important;
+  border-radius:28px!important;
+  border:1px solid rgba(210,215,232,.95)!important;
+  box-shadow:0 12px 28px rgba(28,31,45,.065)!important;
+  overflow:hidden!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row{
+  grid-template-columns:56px minmax(0,1fr) 22px!important;
+  gap:14px!important;
+  min-height:82px!important;
+  padding:14px 18px!important;
+  border-bottom:1px solid rgba(232,235,244,.95)!important;
+  background:#fff!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row-icon{
+  width:54px!important;
+  height:54px!important;
+  border-radius:19px!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row-copy strong{
+  font-size:18px!important;
+  line-height:1.08!important;
+  letter-spacing:-.02em!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row-copy small{
+  margin-top:5px!important;
+  font-size:13px!important;
+  line-height:1.2!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-chevron{
+  font-size:28px!important;
+  text-align:right!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row--danger{
+  color:#bd3434!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row--danger .pay-more-row-icon{
+  background:#fff1f1!important;
+  color:#bd3434!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row--danger .pay-more-row-copy strong{
+  color:#bd3434!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row--danger .pay-more-row-copy small{
+  color:#a75b5b!important;
+}
+body.explora-pay-mode.pay-more-open .pay-more-row--danger .pay-more-chevron{
+  color:#d7a0a0!important;
+}
+@media(max-width:390px){
+  body.explora-pay-mode.pay-more-open .explora-pay-more{
+    padding-left:14px!important;
+    padding-right:14px!important;
+    padding-bottom:calc(88px + env(safe-area-inset-bottom))!important;
+  }
+  body.explora-pay-mode.pay-more-open .pay-more-row{
+    grid-template-columns:52px minmax(0,1fr) 20px!important;
+    min-height:78px!important;
+    padding:13px 15px!important;
+  }
+  body.explora-pay-mode.pay-more-open .pay-more-row-icon{
+    width:50px!important;
+    height:50px!important;
+    border-radius:18px!important;
+  }
+}
+
+body.explora-admin-debts-white .admin-shared-shell{
+  max-width:520px!important;
+  margin:0 auto!important;
+  padding-left:16px!important;
+  padding-right:16px!important;
+}
+body.explora-admin-debts-white .admin-shared-header{
+  padding-left:0!important;
+  padding-right:0!important;
+}
+body.explora-admin-debts-white .debt-form,
+body.explora-admin-debts-white .admin-debt-existing{
+  border-radius:28px!important;
+}
+body.explora-admin-debts-white .debt-form{
+  display:grid!important;
+  gap:12px!important;
+}
+body.explora-admin-debts-white .debt-field{
+  display:grid!important;
+  gap:7px!important;
+  margin:0!important;
+}
+body.explora-admin-debts-white .debt-field input,
+body.explora-admin-debts-white .debt-field select,
+body.explora-admin-debts-white .debt-field textarea,
+body.explora-admin-debts-white .admin-debt-existing-selector select{
+  width:100%!important;
+  min-height:50px!important;
+  box-sizing:border-box!important;
+  padding:13px 14px!important;
+}
+body.explora-admin-debts-white .debt-field textarea{
+  min-height:78px!important;
+  resize:vertical!important;
+}
+body.explora-admin-debts-white .debt-reason-grid{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:8px!important;
+}
+body.explora-admin-debts-white .debt-choice{
+  min-height:50px!important;
+  padding:10px 6px!important;
+  font-size:12px!important;
+  text-align:center!important;
+}
+body.explora-admin-debts-white .debt-info-note,
+body.explora-admin-debts-white .debt-vehicle-readonly{
+  padding:12px 13px!important;
+}
+body.explora-admin-debts-white .debt-summary{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:9px!important;
+  padding:10px!important;
+}
+body.explora-admin-debts-white .debt-summary div{
+  display:grid!important;
+  gap:4px!important;
+  padding:11px 12px!important;
+  border-radius:16px!important;
+  background:#fff!important;
+  border:1px solid rgba(225,229,240,.95)!important;
+}
+body.explora-admin-debts-white .debt-summary strong{
+  text-align:left!important;
+  font-size:15px!important;
+  line-height:1.14!important;
+}
+body.explora-admin-debts-white .admin-debt-submit{
+  margin-top:2px!important;
+  width:100%!important;
+}
+body.explora-admin-debts-white .admin-debt-existing-head{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:12px!important;
+}
+body.explora-admin-debts-white .admin-debt-existing-head small{
+  display:block!important;
+  margin-top:3px!important;
+  color:#8a90a2!important;
+  font-size:12px!important;
+  line-height:1.2!important;
+  font-weight:760!important;
+}
+body.explora-admin-debts-white .admin-debt-existing-selector{
+  display:grid!important;
+  gap:8px!important;
+}
+body.explora-admin-debts-white .admin-debt-existing-control{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) 92px!important;
+  gap:8px!important;
+  align-items:center!important;
+}
+body.explora-admin-debts-white .admin-debt-existing-selector button{
+  min-height:50px!important;
+  border-radius:18px!important;
+  padding:0 10px!important;
+  font-size:12px!important;
+  letter-spacing:.02em!important;
+}
+@media(max-width:430px){
+  body.explora-admin-debts-white .debt-reason-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  body.explora-admin-debts-white .debt-summary{
+    grid-template-columns:1fr 1fr!important;
+  }
+}
+@media(max-width:350px){
+  body.explora-admin-debts-white .admin-debt-existing-control{
+    grid-template-columns:1fr!important;
+  }
+  body.explora-admin-debts-white .debt-summary{
+    grid-template-columns:1fr!important;
+  }
+}
