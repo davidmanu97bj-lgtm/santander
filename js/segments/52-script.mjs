@@ -1130,6 +1130,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       const button = event.target.closest("[data-pay-more-action]");
       if (!button) return;
       const action = safe(button.dataset.payMoreAction);
+      if (action === "salir") {
+        logoutFromMore();
+        return;
+      }
       if (action === "abrir-perfil") {
         openDriverProfileModal();
         return;
@@ -1268,11 +1272,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (isAdmin()) {
       return [
         { title:"Mi perfil", detail:"Alias, CUIT y celular", action:"abrir-perfil", icon:"user" },
-        { title:"Deudas", detail:"Multas, choques y adelantos", action:"admin-multas", icon:"alert" }
+        { title:"Deudas", detail:"Multas, choques y adelantos", action:"admin-multas", icon:"alert" },
+        { title:"Salir", detail:"Cerrar sesión", action:"salir", icon:"logout", tone:"danger" }
       ];
     }
     return [
-      { title:"Mi perfil", detail:"Alias, CUIT y celular", action:"abrir-perfil", icon:"user" }
+      { title:"Mi perfil", detail:"Alias, CUIT y celular", action:"abrir-perfil", icon:"user" },
+      { title:"Salir", detail:"Cerrar sesión", action:"salir", icon:"logout", tone:"danger" }
     ];
   }
 
@@ -1289,7 +1295,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       receipt:'<path d="M7 3h10v18l-2-1-2 1-2-1-2 1-2-1Z"></path><path d="M9 8h6M9 12h6M9 16h4"></path>',
       users:'<path d="M16 21a6 6 0 0 0-12 0"></path><circle cx="10" cy="8" r="4"></circle><path d="M22 21a5 5 0 0 0-5-5"></path><path d="M17 4a4 4 0 0 1 0 8"></path>',
       wallet:'<path d="M4 7.5h14.5A1.5 1.5 0 0 1 20 9v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11"></path><path d="M16 12h5v4h-5a2 2 0 0 1 0-4Z"></path>',
-      trash:'<path d="M4 7h16"></path><path d="M10 11v6M14 11v6"></path><path d="M6 7l1 14h10l1-14"></path><path d="M9 7V4h6v3"></path>'
+      trash:'<path d="M4 7h16"></path><path d="M10 11v6M14 11v6"></path><path d="M6 7l1 14h10l1-14"></path><path d="M9 7V4h6v3"></path>',
+      logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5"></path><path d="M21 12H9"></path>'
     };
     return `<svg viewBox="0 0 24 24">${icons[name] || icons.user}</svg>`;
   }
@@ -1618,7 +1625,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (moreRole) moreRole.textContent = roleLabel;
     const list = $("payMoreList");
     if (list) list.innerHTML = moreItems().map(item => `
-      <button class="pay-more-row" data-pay-more-action="${esc(item.action)}" type="button">
+      <button class="pay-more-row ${item.tone === "danger" ? "pay-more-row--danger" : ""}" data-pay-more-action="${esc(item.action)}" type="button">
         <span class="pay-more-row-icon">${moreIcon(item.icon)}</span>
         <span class="pay-more-row-copy"><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></span>
         <span class="pay-more-chevron">›</span>
