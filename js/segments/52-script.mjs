@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4063-deudas-alias-copy";
+  const VERSION = "explora-pago-home-v52-v4054-menu-perfil-minimo-compacto";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -978,6 +978,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     try { active.scrollIntoView({ behavior:"smooth", block:"nearest", inline:"center" }); }
     catch (_) { active.scrollIntoView(false); }
   }
+
 
   async function copyExploraAlias(button) {
     const alias = button?.dataset?.copyAlias || EXPLORA_ALIAS;
