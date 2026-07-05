@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v2.4.1 · sincronización previa dashboard iOS Android */
+/* EXPLORA PWA registration · v2.4.2 · admin +chofer y actividades arriba */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4065-sync-before-dashboard';
+  const BUILD = 'v4066-admin-chofer-actividad-nav';
   const reloadOnceKey = `explora-sw-reload-${BUILD}`;
 
   const clearLegacyCaches = async () => {
@@ -21,7 +21,7 @@
   const register = async () => {
     try {
       await clearLegacyCaches();
-      const registration = await navigator.serviceWorker.register('./service-worker.js?build=v4065-sync-before-dashboard', {
+      const registration = await navigator.serviceWorker.register('./service-worker.js?build=v4066-admin-chofer-actividad-nav', {
         scope: './',
         updateViaCache: 'none'
       });
