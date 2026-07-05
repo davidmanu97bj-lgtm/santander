@@ -104,3 +104,69 @@
 @media (prefers-reduced-motion:reduce){
   .explora-splash-logo{animation:none!important}
 }
+
+/* EXPLORA v4065 · sincronización real antes de abrir dashboard */
+.explora-sync-panel{
+  width:min(86vw,380px);
+  margin:22px auto 0;
+  padding:18px 16px 16px;
+  border:1px solid rgba(245,185,66,.22);
+  border-radius:24px;
+  background:linear-gradient(180deg,rgba(16,18,21,.78),rgba(4,6,8,.92));
+  box-shadow:0 22px 70px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.035);
+  color:#fff;
+  text-align:center;
+}
+.explora-sync-spinner{
+  width:36px;
+  height:36px;
+  margin:0 auto 12px;
+  border-radius:50%;
+  border:3px solid rgba(245,185,66,.18);
+  border-top-color:#f5c75d;
+  animation:exploraSyncSpin .78s linear infinite;
+}
+.explora-sync-panel strong{
+  display:block;
+  color:#f5c75d;
+  font-size:15px;
+  font-weight:950;
+  letter-spacing:.04em;
+}
+.explora-sync-panel small{
+  display:block;
+  min-height:32px;
+  margin-top:7px;
+  color:rgba(255,255,255,.70);
+  font-size:12px;
+  line-height:1.34;
+}
+.explora-sync-progress{
+  width:100%;
+  height:8px;
+  margin-top:14px;
+  overflow:hidden;
+  border-radius:999px;
+  background:rgba(255,255,255,.085);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.35);
+}
+.explora-sync-progress span{
+  display:block;
+  width:0%;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg,#b98126,#f5c75d,#ffe08a);
+  box-shadow:0 0 18px rgba(245,199,93,.36);
+  transition:width .22s ease;
+}
+.explora-sync-percent{
+  margin-top:8px;
+  color:rgba(255,255,255,.74);
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+body.explora-login-visible .explora-sync-panel,
+body.explora-role-blocked .explora-sync-panel{display:none!important;}
+@keyframes exploraSyncSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.explora-sync-spinner{animation:none}.explora-sync-progress span{transition:none}}
