@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4058-no-ios-keychain-login-sheet */
+/* Compatibilidad validada: v4059-whatsapp-app-direct-no-api */
 /* EXPLORA PWA service worker · v2.5.4 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4058-no-ios-keychain-login-sheet`;
+const CACHE_NAME = `${CACHE_PREFIX}v4059-whatsapp-app-direct-no-api`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -15,30 +15,29 @@ kill();if(document.readyState==='loading')document.addEventListener('DOMContentL
 const APP_SHELL = [
   './',
   './index.html',
-  './css/segments/01-style.css?v4058-no-ios-keychain-login-sheet',
   './css/segments/46-style.css',
   './css/segments/47-style.css?v=2411-logo',
   './css/segments/07-style.css?v=3921-billing-visual-fix',
   './js/segments/09-script.js',
   './js/segments/07-script.js?v=3921-billing-visual-fix',
-  './js/segments/13-script.mjs?v=4058-no-ios-keychain-login-sheet',
+  './js/segments/13-script.mjs?v=4059-whatsapp-app-direct-no-api',
   './css/segments/14-style.css?v=4023-activity-photo-viewer',
   './js/segments/14-script.mjs?v=4023-activity-photo-viewer',
-  './js/segments/15-script.mjs?v=4058-no-ios-keychain-login-sheet',
+  './js/segments/15-script.mjs?v=4059-whatsapp-app-direct-no-api',
   './css/segments/32-style.css?v=2445-finance-nav-fix',
   './css/segments/38-style.css?v=2445-finance-nav-fix',
   './js/segments/01-script.js?v2442-weekly-payment-production',
   './js/segments/19-script.mjs?v2442-weekly-payment-production',
   './js/segments/39-script.mjs?v=4016-card-alerts',
-  './js/segments/11-script.mjs?v4058-no-ios-keychain-login-sheet',
+  './js/segments/11-script.mjs?v4019-activity-time-home',
   './js/core/weekly-core.mjs?v2442-weekly-payment-production',
   './css/segments/45-style.css?v=2440-weekly-closure-cash-record-recovery',
   './css/segments/44-style.css?v=2503-more-white-exit',
-  './css/segments/50-style.css?v4058-no-ios-keychain-login-sheet',
+  './css/segments/50-style.css?v=4016-card-alerts',
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
-  './css/segments/52-style.css?v=4058-no-ios-keychain-login-sheet',
-  './js/segments/52-script.mjs?v=4058-no-ios-keychain-login-sheet',
+  './css/segments/52-style.css?v=4059-whatsapp-app-direct-no-api',
+  './js/segments/52-script.mjs?v=4059-whatsapp-app-direct-no-api',
   './assets/icono_eficiencia_km.png',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
@@ -129,4 +128,4 @@ self.addEventListener('message', (event) => {
 
 /* cache bump: v4015 role guard */
 
-/* cache bump: v4050 cierres rojo/verde + icono cobro */
+/* cache bump: v4059 WhatsApp app directo sin api */
