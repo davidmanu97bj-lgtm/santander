@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4068-deuda-compensa-gastos";
+  const VERSION = "explora-pago-home-v52-v4069-deuda-compensa-gastos-permissions-fix";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -4824,7 +4824,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const driverName = displayName();
     const paymentId = debtPaymentId(driverUid);
     const periodStartMs = Number(availability.gastos.resetMs || 0);
-    const balanceDocId = `expense_debt_${driverUid.replace(/[^a-zA-Z0-9_-]/g, "_")}_${periodStartMs}`;
+    const expenseLedgerKey = `expense_debt_${driverUid.replace(/[^a-zA-Z0-9_-]/g, "_")}_${periodStartMs}`;
     const allocations = [];
     let transactionPreviousBalance = availability.debt;
     let transactionNewBalance = Math.max(0, availability.debt - amount);
@@ -4832,10 +4832,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     let expenseBalanceAfter = Math.max(0, availability.available - amount);
 
     await runTransaction(state.db, async transaction => {
-      const balanceRef = doc(state.db, "gastos_deuda_saldos", balanceDocId);
-      const balanceSnap = await transaction.get(balanceRef);
-      const balanceData = balanceSnap.exists() ? balanceSnap.data() : {};
-      const previouslyApplied = Math.max(0, moneyNumber(balanceData.totalApplied || 0), number(availability.alreadyApplied || 0));
+      // Usamos exclusivamente las colecciones de deuda ya habilitadas en producción.
+      // El total previamente compensado se reconstruye desde deuda_pagos, que ya forma
+      // parte del flujo existente y evita depender de una colección nueva sin reglas.
+      const previouslyApplied = Math.max(0, number(availability.alreadyApplied || 0));
       const currentExpenseGross = Math.max(0, number(availability.before || 0));
       const availableInsideTransaction = Math.max(0, currentExpenseGross - previouslyApplied);
       if (amount > availableInsideTransaction + 0.49) throw new Error("El saldo de Gastos cambió. Actualizá y volvé a intentar.");
@@ -4911,7 +4911,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         usedExpenseBalance:true,
         sourceModule:"gastos_deuda",
         expensePeriodStartMs:periodStartMs,
-        expenseBalanceDocumentId:balanceDocId,
+        expenseLedgerKey,
         expenseAmountBeforeOffset:availableInsideTransaction,
         expenseAmountAfterOffset:expenseBalanceAfter,
         expenseGrossDueToDriver:currentExpenseGross,
@@ -4933,22 +4933,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         version:VERSION
       };
       transaction.set(doc(state.db, "deuda_pagos", paymentId), paymentPayload, { merge:false });
-      transaction.set(balanceRef, {
-        balanceId:balanceDocId,
-        driverUid,
-        choferUid:driverUid,
-        driverName,
-        expensePeriodStartMs:periodStartMs,
-        expenseGrossDueToDriver:currentExpenseGross,
-        totalApplied:previouslyApplied + amount,
-        availableAfter:expenseBalanceAfter,
-        lastPaymentId:paymentId,
-        updatedAt:serverTimestamp(),
-        updatedAtMs:nowMs,
-        createdAt:balanceSnap.exists() ? (balanceData.createdAt || serverTimestamp()) : serverTimestamp(),
-        createdAtMs:Number(balanceData.createdAtMs || nowMs),
-        version:VERSION
-      }, { merge:true });
       transaction.set(doc(state.db, "deuda_movimientos", `movement_${paymentId}`), {
         movementId:`movement_${paymentId}`,
         type:"expense_offset",
@@ -5473,7 +5457,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       setTimeout(closeClosureModal, 700);
     } catch (error) {
       console.error("EXPLORA_PAY_CLOSURE", error);
-      setModalMessage(error?.message || "No se pudo completar el cierre.", "error");
+      const rawMessage = safe(error?.message || "");
+      const friendlyMessage = /missing or insufficient permissions|permission-denied/i.test(rawMessage)
+        ? "Firebase rechazó el registro. Cerrá y abrí la app para cargar la versión corregida y volvé a intentar."
+        : (rawMessage || "No se pudo completar el cierre.");
+      setModalMessage(friendlyMessage, "error");
     } finally {
       state.busy = false;
       if (submit) submit.textContent = oldText;
