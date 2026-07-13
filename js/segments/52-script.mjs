@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4069-deuda-compensa-gastos-permissions-fix";
+  const VERSION = "explora-pago-home-v52-v4071-gastos-ajuste-visible-layout-lock";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -787,6 +787,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
             </button>
           </div>
           <div class="pay-liquid-pill"><span id="payPillLabel" class="closure-liquidation-label">Dinero a liquidar</span><strong id="payPillAmount">—</strong></div>
+          <div class="pay-expense-debt-reconciliation" id="payExpenseDebtReconciliation" hidden></div>
           <div class="pay-extra-lines" id="payExtraLines"></div>
           <div class="pay-status-pill" id="payClosureStatus" hidden><span><b>—</b><br><small id="payClosureStatusText">—</small></span><button id="payClosureStatusBtn" type="button">Ver</button></div>
         </section>
@@ -1010,10 +1011,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function scrollActivePayTabIntoView() {
-    const active = document.querySelector(".pay-tab.is-active");
-    if (!active) return;
-    try { active.scrollIntoView({ behavior:"smooth", block:"nearest", inline:"center" }); }
-    catch (_) { active.scrollIntoView(false); }
+    // Las cinco pestañas ya entran simultáneamente. scrollIntoView con inline:center
+    // desplazaba horizontalmente todo el documento en iPhone y rompía la simetría.
+    const tabs = document.querySelector(".pay-tabs");
+    if (tabs) tabs.scrollLeft = 0;
+    const scrollingElement = document.scrollingElement || document.documentElement;
+    if (scrollingElement && scrollingElement.scrollLeft) scrollingElement.scrollLeft = 0;
+    if (document.body && document.body.scrollLeft) document.body.scrollLeft = 0;
   }
 
 
@@ -4287,6 +4291,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     state.latestSummary = summary;
     state.pendingClosure = pendingClosureFor(getDriverUid(), state.tab);
     if (!PAY_TAB_ORDER.includes(state.tab)) state.tab = "chofer";
+    const dashboard = $("exploraPagoDashboard");
+    if (dashboard) dashboard.dataset.activePayTab = state.tab;
     document.querySelectorAll("[data-pay-tab]").forEach(button => {
       const active = button.dataset.payTab === state.tab;
       button.classList.toggle("is-active", active);
@@ -4487,9 +4493,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function renderMainCard(summary) {
-    const amount = $("payMainAmount"), subtitle = $("payMainSubtitle"), pillLabel = $("payPillLabel"), pillAmount = $("payPillAmount"), extra = $("payExtraLines"), debtAliasHint = $("payDebtAliasHint");
+    const amount = $("payMainAmount"), subtitle = $("payMainSubtitle"), pillLabel = $("payPillLabel"), pillAmount = $("payPillAmount"), extra = $("payExtraLines"), debtAliasHint = $("payDebtAliasHint"), expenseDebtReconciliation = $("payExpenseDebtReconciliation");
     if (!amount || !subtitle || !pillLabel || !pillAmount || !extra) return;
     if (debtAliasHint) debtAliasHint.hidden = activeClosureKind(state.tab) !== "pendientes" || isAdmin();
+    if (expenseDebtReconciliation) {
+      expenseDebtReconciliation.hidden = true;
+      expenseDebtReconciliation.innerHTML = "";
+    }
     const lines = [];
     if (isAdmin() && !getDriverUid()) {
       amount.textContent = currency(0);
@@ -4531,13 +4541,32 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       sub = "Gastos actuales del período abierto";
       pill = t.netSettlementToDriver > 0 ? "Explora debe liquidar a chofer" : t.netSettlementToDriver < 0 ? "Chofer debe liquidar a Explora" : "Nadie debe liquidar";
       pillValue = abs(t.netSettlementToDriver);
+      const expenseBeforeDebt = Math.max(0, number(t.expenseAmountToDriverBeforeDebt || t.exploraExpenseShare || 0));
+      const expenseDebtOffset = Math.max(0, number(t.expenseDebtOffsetApplied || 0));
+      const expenseFinalSettlement = Math.max(0, number(t.amountToDriver || 0));
       lines.push(
         ["Gastos cargados por chofer", currency(summary.expenseTotal)],
         ["Parte chofer", currency(summary.driverExpenseShare)],
-        ["Explora debía liquidar", currency(t.expenseAmountToDriverBeforeDebt || t.exploraExpenseShare || 0)],
-        ["Ajuste de deuda con Gastos", t.expenseDebtOffsetApplied > 0 ? `−${currency(t.expenseDebtOffsetApplied)}` : currency(0)],
-        ["Explora reintegra", currency(t.amountToDriver || 0)]
+        ["Explora debía liquidar", currency(expenseBeforeDebt)],
+        ["Ajuste de deuda con Gastos", expenseDebtOffset > 0 ? `−${currency(expenseDebtOffset)}` : currency(0)],
+        ["Explora reintegra", currency(expenseFinalSettlement)]
       );
+      if (expenseDebtReconciliation && expenseDebtOffset > 0.49) {
+        expenseDebtReconciliation.hidden = false;
+        expenseDebtReconciliation.innerHTML = `
+          <div class="pay-expense-debt-reconciliation-head">
+            <span aria-hidden="true">↔</span>
+            <strong>Ajuste de deuda con Gastos aplicado</strong>
+          </div>
+          <div class="pay-expense-debt-reconciliation-grid">
+            <span>Explora debía liquidar <strong>${esc(currency(expenseBeforeDebt))}</strong></span>
+            <span>Aplicado a deuda <strong>−${esc(currency(expenseDebtOffset))}</strong></span>
+          </div>
+          <div class="pay-expense-debt-reconciliation-final">
+            <span>Explora debe liquidar finalmente</span>
+            <strong>${esc(currency(expenseFinalSettlement))}</strong>
+          </div>`;
+      }
     } else if (state.tab === "explora") {
       const t = tabSummary(summary, "explora");
       main = summary.nonCashInExplora;
