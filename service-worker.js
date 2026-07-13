@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4071-gastos-ajuste-visible-layout-lock */
+/* Compatibilidad validada: v4072-whatsapp-nativo-deuda-gastos */
 /* EXPLORA PWA service worker · v2.5.4 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4071-gastos-ajuste-visible-layout-lock`;
+const CACHE_NAME = `${CACHE_PREFIX}v4072-whatsapp-nativo-deuda-gastos`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -38,8 +38,8 @@ const APP_SHELL = [
   './css/segments/50-style.css?v=4016-card-alerts',
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
-  './css/segments/52-style.css?v=4071-gastos-ajuste-visible-layout-lock',
-  './js/segments/52-script.mjs?v=4071-gastos-ajuste-visible-layout-lock',
+  './css/segments/52-style.css?v=4072-whatsapp-nativo-deuda-gastos',
+  './js/segments/52-script.mjs?v=4072-whatsapp-nativo-deuda-gastos',
   './assets/icono_eficiencia_km.png',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
@@ -132,4 +132,4 @@ self.addEventListener('message', (event) => {
 
 /* cache bump: v4050 cierres rojo/verde + icono cobro */
 
-/* cache bump: v4071 ajuste de deuda visible + bloqueo de desplazamiento horizontal */
+/* cache bump: v4072 WhatsApp nativo directo + aviso ajuste de deuda con Gastos */
