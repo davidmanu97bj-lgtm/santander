@@ -74,12 +74,10 @@ body.explora-pay-mode #mainBottomNav.performance-bottom-nav{
 .pay-icons{display:flex;align-items:center;gap:11px;}
 .pay-icon-btn{width:52px;height:52px;border:0;border-radius:18px;background:rgba(255,255,255,.72);display:grid;place-items:center;color:#26283a;padding:0;box-shadow:0 1px 0 rgba(255,255,255,.42) inset;}
 .pay-icon-btn svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:.82;}
-.pay-tabs{position:relative;display:flex;align-items:flex-end;gap:2px;margin:0 0 -1px;min-height:72px;z-index:2;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;overscroll-behavior-x:contain;padding:0 2px;scrollbar-width:none;}
-.pay-tabs::-webkit-scrollbar{display:none;}
-.pay-tab{height:72px;min-width:92px;flex:0 0 auto;scroll-snap-align:start;border:0;background:transparent;color:#242638;font-size:18px;font-weight:520;letter-spacing:-.02em;border-radius:22px 22px 0 0;position:relative;z-index:2;padding:0 12px;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.05;white-space:nowrap;}
-.pay-tab[data-pay-tab="caja_chica"]{min-width:112px;}
-.pay-tab[data-pay-tab="pendientes"]{min-width:118px;}
-.pay-tab.is-active{font-weight:850;background:var(--pay-card);box-shadow:0 -1px 0 rgba(255,255,255,.8) inset;}
+.pay-tabs{position:relative;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:end;gap:1px;margin:0 0 -1px;min-height:72px;z-index:2;overflow:visible;padding:0;}
+.pay-tab{height:72px;min-width:0;width:100%;border:0;background:transparent;color:#242638;font-size:14px;font-weight:520;letter-spacing:-.025em;border-radius:22px 22px 0 0;position:relative;z-index:2;padding:0 2px;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.05;white-space:normal;overflow-wrap:normal;}
+.pay-tab[data-pay-tab="caja_chica"],.pay-tab[data-pay-tab="pendientes"]{min-width:0;}
+.pay-tab.is-active{min-width:0;font-weight:850;background:var(--pay-card);box-shadow:0 -1px 0 rgba(255,255,255,.8) inset;}
 .pay-tab-label{display:block;max-width:100%;}
 .pay-tab-alert-badge{position:absolute;top:4px;right:7px;min-width:24px;height:18px;padding:0 5px;border-radius:999px;background:#fff7d6;border:1px solid rgba(212,164,22,.45);box-shadow:0 4px 10px rgba(35,38,53,.14);color:#2a2b36;font-size:10px;font-weight:900;line-height:18px;letter-spacing:-.02em;display:inline-flex;align-items:center;justify-content:center;gap:2px;white-space:nowrap;z-index:5;}
 .pay-tab-alert-badge[hidden]{display:none!important;}
@@ -193,7 +191,11 @@ body.explora-pay-mode #mainBottomNav.performance-bottom-nav{
 .pay-closure-message{min-height:20px;margin-top:10px;font-size:13px;font-weight:700;color:#596073;}
 .pay-closure-message.is-error{color:#be2e2e}.pay-closure-message.is-ok{color:#25823a}
 @media (max-width:390px){
-  .pay-title{font-size:22px}.pay-icon-btn{width:48px;height:48px}.pay-tab{font-size:16px}.pay-amount{font-size:39px}.pay-main-card{padding:24px 18px 18px}.pay-actions{gap:9px}.pay-action{min-height:102px;font-size:14px;border-radius:22px}.pay-debt-alias-hint{grid-template-columns:1fr;gap:10px;margin:-4px 0 12px}.pay-debt-alias-btn{width:100%;grid-template-columns:auto 1fr auto;align-items:center;text-align:left;min-width:0}.pay-liquid-pill{font-size:16px}.pay-liquid-pill strong{font-size:16px}.pay-bottom-nav{height:84px}.pay-nav-main{width:68px;height:68px}.pay-floating-spark{width:58px;height:58px;bottom:110px;}
+  .pay-title{font-size:22px}.pay-icon-btn{width:48px;height:48px}.pay-tab{font-size:13px;padding-inline:1px}.pay-amount{font-size:39px}.pay-main-card{padding:24px 18px 18px}.pay-actions{gap:9px}.pay-action{min-height:102px;font-size:14px;border-radius:22px}.pay-debt-alias-hint{grid-template-columns:1fr;gap:10px;margin:-4px 0 12px}.pay-debt-alias-btn{width:100%;grid-template-columns:auto 1fr auto;align-items:center;text-align:left;min-width:0}.pay-liquid-pill{font-size:16px}.pay-liquid-pill strong{font-size:16px}.pay-bottom-nav{height:84px}.pay-nav-main{width:68px;height:68px}.pay-floating-spark{width:58px;height:58px;bottom:110px;}
+}
+@media (max-width:350px){
+  .pay-tabs{gap:0;}
+  .pay-tab{font-size:12px;padding-inline:0;letter-spacing:-.03em;}
 }
 
 /* EXPLORA · Más blanco integrado al home */
