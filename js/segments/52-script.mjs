@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4071-gastos-ajuste-visible-layout-lock";
+  const VERSION = "explora-pago-home-v52-v4072-whatsapp-nativo-deuda-gastos";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -2585,26 +2585,42 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return digits;
   }
 
+  function whatsappRuntimePlatform() {
+    const ua = safe(navigator.userAgent || navigator.vendor || "").toLowerCase();
+    const platform = safe(navigator.userAgentData?.platform || navigator.platform || "").toLowerCase();
+    const isAndroid = /android/.test(ua) || /android/.test(platform);
+    const isIOS = /iphone|ipad|ipod/.test(ua)
+      || /iphone|ipad|ipod/.test(platform)
+      || (platform === "macintel" && Number(navigator.maxTouchPoints || 0) > 1);
+    return { isAndroid, isIOS };
+  }
+
   function openWhatsappToPhone(phone = "", text = "") {
     const normalizedPhone = normalizeWhatsappPhone(phone);
     if (!normalizedPhone) return false;
     const encodedText = encodeURIComponent(text || "");
-    const webUrl = `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`;
+    const query = `phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
+    const { isAndroid, isIOS } = whatsappRuntimePlatform();
 
-    // Compatibilidad iOS + Android + PWA:
-    // usar siempre enlace universal HTTPS. Evita esquemas nativos que en Android WebView/PWA
-    // puede terminar como página interna con net::ERR_UNKNOWN_URL_SCHEME.
-    // En iOS/Android, wa.me delega a la app instalada; si no existe, queda el fallback web.
-    try {
-      const opened = window.open(webUrl, "_blank", "noopener,noreferrer");
-      if (opened) return true;
-    } catch (_) {}
+    // Móvil: abrir exclusivamente la aplicación instalada. No se usa wa.me,
+    // api.whatsapp.com ni browser_fallback_url, por lo que no existe una página
+    // intermedia de WhatsApp Web entre Explora y la app nativa.
+    const targetUrl = isAndroid
+      ? `intent://send?${query}#Intent;scheme=whatsapp;package=com.whatsapp;end`
+      : isIOS
+        ? `whatsapp://send?${query}`
+        : `https://web.whatsapp.com/send?${query}`;
 
     try {
-      window.location.assign(webUrl);
+      window.location.href = targetUrl;
       return true;
     } catch (_) {
-      try { window.location.href = webUrl; return true; } catch (__) { return false; }
+      try {
+        window.location.assign(targetUrl);
+        return true;
+      } catch (__) {
+        return false;
+      }
     }
   }
 
@@ -2687,6 +2703,23 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     lines.push("Por favor chequeá tu cuenta en Explora.");
     lines.push("Muchas gracias por usar Explora.");
     return lines.join("\n");
+  }
+
+  function debtExpenseOffsetWhatsappText({ driverName = "", amount = 0, expenseBefore = 0, expenseAfter = 0, debtBefore = 0, debtAfter = 0 } = {}) {
+    return [
+      "*AJUSTE DE DEUDA CON SALDO DE GASTOS*",
+      `Chofer: ${safe(driverName) || "Chofer"}`,
+      "",
+      `Explora debía liquidar al chofer: *${currency(expenseBefore)}*`,
+      `Monto utilizado para achicar la deuda: *${currency(amount)}*`,
+      `Explora debe liquidar ahora: *${currency(expenseAfter)}*`,
+      "",
+      `Deuda anterior: ${currency(debtBefore)}`,
+      `Deuda restante: *${currency(debtAfter)}*`,
+      "",
+      "El ajuste se realizó correctamente desde Gastos y no requiere comprobante.",
+      "Revisá el movimiento en Explora."
+    ].join("\n");
   }
 
   function notifyClosureReceiptWhatsapp({ closure = {}, receipt = null, uploadedBy = "admin" } = {}) {
@@ -5023,6 +5056,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       return { ...row, remainingAmount:allocation.newBalance, saldoPendiente:allocation.newBalance, paidAmount:paid, amountPaid:paid, status, debtStatus:status, updatedAtMs:nowMs };
     });
     render();
+    openWhatsappToExplora(debtExpenseOffsetWhatsappText({
+      driverName,
+      amount,
+      expenseBefore:expenseBalanceBefore,
+      expenseAfter:expenseBalanceAfter,
+      debtBefore:transactionPreviousBalance,
+      debtAfter:transactionNewBalance
+    }));
   }
 
   async function submitDebtPayment() {
