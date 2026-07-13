@@ -1,4 +1,7 @@
 {
+  "firestore": {
+    "rules": "firestore.rules"
+  },
   "hosting": {
     "public": ".",
     "ignore": [
@@ -13,10 +16,16 @@
       "*.json.map"
     ],
     "rewrites": [
-      { "source": "**", "destination": "/index.html" }
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
     ]
   },
   "functions": [
-    { "source": "functions", "codebase": "default" }
+    {
+      "source": "functions",
+      "codebase": "default"
+    }
   ]
 }
