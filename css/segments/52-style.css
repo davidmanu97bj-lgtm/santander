@@ -3217,3 +3217,107 @@ body.explora-admin-debts-white .admin-debt-existing-selector select{
   }
 }
 
+
+
+/* v4068 · Deuda: alarma persistente, compensación con Gastos y unión curva */
+.pay-tab.is-active[data-pay-tab="pendientes"]{
+  border-bottom-right-radius:28px;
+}
+.pay-tab-alert-badge.is-debt-alarm{
+  min-width:22px;
+  padding:0 4px;
+  background:#fff0f1;
+  border-color:rgba(217,48,37,.34);
+  color:#d93025;
+  box-shadow:0 5px 12px rgba(217,48,37,.18);
+  font-size:12px;
+}
+.pay-tab.has-persistent-debt-alarm .pay-tab-label{padding-top:8px;}
+.pay-bell-btn .pay-debt-alarm-icon{display:none;}
+.pay-bell-btn.is-debt-alarm{
+  color:#d93025!important;
+  background:rgba(255,255,255,.78)!important;
+  border:1px solid rgba(217,48,37,.20)!important;
+  box-shadow:0 8px 22px rgba(217,48,37,.12),0 1px 0 rgba(255,255,255,.5) inset!important;
+}
+.pay-bell-btn.is-debt-alarm .pay-bell-icon{display:none;}
+.pay-bell-btn.is-debt-alarm .pay-debt-alarm-icon{display:block;stroke:#d93025!important;opacity:1!important;}
+.pay-action.is-debt-blocked{
+  pointer-events:auto!important;
+  cursor:pointer!important;
+  color:#a61b2b!important;
+  background:rgba(239,47,61,.10)!important;
+  border:1px solid rgba(239,47,61,.24)!important;
+  box-shadow:0 10px 24px rgba(190,38,52,.08)!important;
+}
+.pay-action.is-debt-blocked svg{stroke:#bd2434!important;}
+.pay-debt-method-explain{
+  border-radius:16px;
+  background:#f6f7fb;
+  border:1px solid #e1e5f0;
+  color:#596073;
+  padding:11px 12px;
+  font-size:12.5px;
+  line-height:1.3;
+  font-weight:800;
+}
+.pay-debt-method-grid{display:grid;gap:10px;margin-top:2px;}
+.pay-debt-method-card{
+  width:100%;
+  border:1px solid #dfe4f2;
+  border-radius:20px;
+  background:#fff;
+  color:#25283a;
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr);
+  gap:4px 11px;
+  align-items:center;
+  text-align:left;
+  padding:13px;
+  box-shadow:0 8px 22px rgba(25,28,40,.06);
+}
+.pay-debt-method-card--expenses{border-color:rgba(217,48,37,.24);background:linear-gradient(180deg,rgba(255,239,241,.88) 0%,#fff 100%);}
+.pay-debt-method-card--receipt{border-color:rgba(77,79,229,.20);background:linear-gradient(180deg,#f5f7ff 0%,#fff 100%);}
+.pay-debt-method-card:disabled{opacity:.52;filter:grayscale(.15);}
+.pay-debt-method-icon{
+  grid-row:1 / span 3;
+  width:42px;height:42px;border-radius:15px;
+  display:grid;place-items:center;
+  background:#fff;color:#d93025;
+  font-size:22px;font-weight:950;
+  box-shadow:0 5px 13px rgba(25,28,40,.08);
+}
+.pay-debt-method-card--receipt .pay-debt-method-icon{color:#4d4fe5;}
+.pay-debt-method-card strong{font-size:15.5px;font-weight:950;line-height:1.12;color:#25283a;}
+.pay-debt-method-card small{font-size:12.2px;font-weight:760;line-height:1.28;color:#747b91;}
+.pay-debt-method-card em{font-style:normal;font-size:11.5px;font-weight:950;color:#d93025;}
+.pay-debt-method-card--receipt em{color:#4d4fe5;}
+.pay-debt-offset-breakdown{
+  display:grid;gap:7px;border-radius:18px;padding:12px;
+  background:linear-gradient(180deg,#fff4f5 0%,#fff 100%);
+  border:1px solid rgba(217,48,37,.20);
+}
+.pay-debt-offset-breakdown div{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.pay-debt-offset-breakdown span{font-size:12px!important;font-weight:800!important;color:#6b7280!important;}
+.pay-debt-offset-breakdown strong{font-size:14px!important;font-weight:950!important;color:#a61b2b!important;}
+.pay-debt-offset-breakdown p{margin:2px 0 0!important;border-top:1px solid rgba(217,48,37,.12);padding-top:8px;color:#7a3a44!important;font-size:12px!important;font-weight:780!important;line-height:1.28!important;}
+.pay-debt-blocked-notice{
+  border-radius:18px;
+  border:1px solid rgba(217,48,37,.24);
+  background:rgba(239,47,61,.10);
+  color:#9f1d2d;
+  padding:13px 14px;
+  font-size:13px;
+  line-height:1.35;
+  font-weight:900;
+  backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+}
+.pay-activity.is-debt-expense-offset .pay-activity-icon{background:#fff0f1;color:#c42a3b;}
+@media(max-width:390px){
+  .pay-tab.is-active[data-pay-tab="pendientes"]{border-bottom-right-radius:24px;}
+  .pay-debt-method-card{grid-template-columns:38px minmax(0,1fr);padding:11px;border-radius:18px;gap:4px 9px;}
+  .pay-debt-method-icon{width:38px;height:38px;border-radius:14px;font-size:20px;}
+  .pay-debt-method-card strong{font-size:14.5px;}
+  .pay-debt-method-card small{font-size:11.5px;}
+}
