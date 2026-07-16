@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4074-login-persistente */
+/* Compatibilidad validada: v4075-sin-datos-anteriores */
 /* EXPLORA PWA service worker · v2.5.4 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4074-login-persistente`;
+const CACHE_NAME = `${CACHE_PREFIX}v4075-sin-datos-anteriores`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -20,6 +20,7 @@ const APP_SHELL = [
   './css/segments/47-style.css?v=4065-sync-before-dashboard',
   './css/segments/07-style.css?v=3921-billing-visual-fix',
   './js/segments/09-script.js',
+  './js/segments/03-script.js?v=4075-sin-datos-anteriores',
   './js/segments/07-script.js?v=3921-billing-visual-fix',
   './js/segments/13-script.mjs?v=4054-menu-perfil-minimo-compacto',
   './css/segments/14-style.css?v=4023-activity-photo-viewer',
@@ -136,3 +137,5 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4073 Uber Fleet seguro + seis tarjetas visibles */
 
 /* cache bump: v4074 sesión persistente + actualización PWA sin recarga */
+
+/* cache bump: v4075 primera pintura autoritativa sin datos anteriores */
