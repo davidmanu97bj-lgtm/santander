@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v4074 · sesión persistente sin recarga forzada */
+/* EXPLORA PWA registration · v4075 · sesión persistente sin pintura de datos anteriores */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4074-login-persistente';
+  const BUILD = 'v4075-sin-datos-anteriores';
 
   const clearLegacyCaches = async () => {
     try {
