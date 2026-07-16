@@ -671,8 +671,8 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       finishSplashSync();
       if (window.ExploraMainNav) window.ExploraMainNav.setActive("inicio");
       restoreLastDriverScreen();
-      window.ExploraWeeklyEngine?.restoreCache?.();
-      window.ExploraRestoreWeeklyClosureCache?.();
+      // La apertura ya esperó la sincronización autoritativa. No se restauran
+      // snapshots visuales anteriores porque producirían un parpadeo con saldos viejos.
       queueMicrotask(() => {
         window.ExploraDerivations?.startForCurrentSession?.().catch?.((error)=>console.warn("[EXPLORA derivaciones] start", error?.code || error?.message));
         if (typeof window.ExploraLoadWeeklySession === "function") {
@@ -2729,14 +2729,14 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       return cached;
     }
 
-    async function performWeeklyEngineLoad({ force = false, reason = "load" } = {}) {
+    async function performWeeklyEngineLoad({ force = false, reason = "load", restoreCachedVisual = false } = {}) {
       const user = auth.currentUser;
       if (!user?.uid) throw new Error("WEEKLY_AUTH_REQUIRED");
       const period = getActiveWeeklyPeriod();
       const cacheKey = buildSnapshotCacheKey(user.uid, period.id);
       weeklyState.uid=user.uid; weeklyState.period=period; weeklyState.weeklyPeriodId=period.id;
 
-      if (!force && !weeklyState.loaded) restoreWeeklyEngineCacheForCurrentUser();
+      if (!force && restoreCachedVisual === true && !weeklyState.loaded) restoreWeeklyEngineCacheForCurrentUser();
       if (!force && !weeklyState.dirty && weeklyState.loaded && weeklyState.weeklyPeriodId===period.id) return weeklyStatePublicSnapshot();
       if (!force && weeklySnapshotCache.has(cacheKey) && !weeklyState.dirty) {
         if(applySnapshotToWeeklyState(weeklySnapshotCache.get(cacheKey),{reason:"memory-cache"}))notifyWeeklyState(); return weeklyStatePublicSnapshot();
@@ -5911,16 +5911,20 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         return;
       }
 
-      // Si Firebase ya restauró al mismo usuario, se abre de inmediato la última
-      // interfaz conocida. El perfil y los saldos se refrescan luego en segundo plano.
-      const cachedShellOpened = !authSessionState.uiOpened
-        ? openCachedAuthenticatedShell(user, "AUTH_PERSISTED_SESSION")
-        : false;
+      // En un arranque nuevo no se pinta una copia visual guardada. La sesión
+      // Firebase permanece activa, pero el dashboard se revela únicamente cuando
+      // el perfil y el primer snapshot autoritativo terminaron de sincronizar.
+      // Si la interfaz ya estaba abierta en esta misma ejecución, se conserva y
+      // la actualización ocurre en segundo plano sin volver al login.
+      const preserveCurrentUI = Boolean(
+        authSessionState.uiOpened &&
+        authSessionState.authenticatedUser?.uid === user.uid
+      );
 
       let keepSyncVisible = false;
       try {
         await openAuthenticatedExploraSession(user, {
-          preserveOpenUI: cachedShellOpened || authSessionState.uiOpened
+          preserveOpenUI: preserveCurrentUI
         });
         clearSessionRecoveryRetry();
         authSessionState.authenticatedUser = user;
@@ -5932,7 +5936,10 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
           await signOut(auth).catch(() => {});
           showLogin(legacyAccessErrorMessage(error), "SESSION_RESTORE_CRITICAL");
         } else {
-          const fallbackOpened = authSessionState.uiOpened || openCachedAuthenticatedShell(user, "AUTH_RECOVERY_FALLBACK");
+          // Ante una falla temporal se conserva solamente una interfaz que ya
+          // estaba abierta. En arranque frío permanece el loader; nunca se muestra
+          // información persistida de una ejecución anterior.
+          const fallbackOpened = Boolean(authSessionState.uiOpened);
           keepSyncVisible = !fallbackOpened;
           scheduleSessionProfileRecovery(user, error);
         }
@@ -5986,6 +5993,24 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       uiOpened: false,
       logoutInProgress: false
     };
+    window.ExploraDataSyncGate = Object.freeze({
+      begin(detail = "Actualizando información antes de continuar…") {
+        const user = auth.currentUser || authSessionState.authenticatedUser;
+        if (!user?.uid || !authSessionState.uiOpened || authSessionState.logoutInProgress) return false;
+        beginSplashSync(detail);
+        return true;
+      },
+      update(progress, detail = "Actualizando información…") {
+        updateSplashSync(progress, detail);
+      },
+      finish() {
+        return finishSplashSync();
+      },
+      isActive() {
+        return Boolean(splashSyncState.active && !splashHidden);
+      }
+    });
+
     const LOGIN_ALIAS_COLLECTION = "login_aliases";
     const LOGIN_ALIAS_EMAIL_FIELDS = ["authEmail", "email", "correo", "firebaseEmail"];
     const LOGIN_ALIAS_UID_FIELDS = ["uid", "authUid", "firebaseUid", "userId"];
@@ -6883,23 +6908,25 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       }
     }
 
-    function stableDashboardNoticeFallback(activePeriod, error) {
-      const cached = weeklyClosureCache.data;
-      if (cached && ![CLOSURE_STATUS.CLOSURE_LOADING, CLOSURE_STATUS.CLOSURE_ERROR].includes(cached.status)) {
-        return { result:cached, rendered:false, source:"weekly-cache" };
-      }
+    function stableDashboardNoticeFallback(activePeriod, error, { allowStored = true } = {}) {
+      if (allowStored) {
+        const cached = weeklyClosureCache.data;
+        if (cached && ![CLOSURE_STATUS.CLOSURE_LOADING, CLOSURE_STATUS.CLOSURE_ERROR].includes(cached.status)) {
+          return { result:cached, rendered:false, source:"weekly-cache" };
+        }
 
-      if (lastDashboardWeeklyStatusResult && ![CLOSURE_STATUS.CLOSURE_LOADING, CLOSURE_STATUS.CLOSURE_ERROR].includes(lastDashboardWeeklyStatusResult.status)) {
-        return { result:lastDashboardWeeklyStatusResult, rendered:false, source:"last-known" };
-      }
+        if (lastDashboardWeeklyStatusResult && ![CLOSURE_STATUS.CLOSURE_LOADING, CLOSURE_STATUS.CLOSURE_ERROR].includes(lastDashboardWeeklyStatusResult.status)) {
+          return { result:lastDashboardWeeklyStatusResult, rendered:false, source:"last-known" };
+        }
 
-      const frozen = readDashboardNoticeSnapshot();
-      if (frozen) {
-        const interaction = frozen.interaction && frozen.interaction.status
-          ? frozen.interaction
-          : { status:CLOSURE_STATUS.NO_CLOSURE, clickable:false, weeklyPeriodId:activePeriod.id, amount:0, reason:"payment_status_timeout_snapshot" };
-        applyDashboardNoticeSnapshot(frozen, interaction);
-        return { result:interaction, rendered:true, source:"notice-snapshot" };
+        const frozen = readDashboardNoticeSnapshot();
+        if (frozen) {
+          const interaction = frozen.interaction && frozen.interaction.status
+            ? frozen.interaction
+            : { status:CLOSURE_STATUS.NO_CLOSURE, clickable:false, weeklyPeriodId:activePeriod.id, amount:0, reason:"payment_status_timeout_snapshot" };
+          applyDashboardNoticeSnapshot(frozen, interaction);
+          return { result:interaction, rendered:true, source:"notice-snapshot" };
+        }
       }
 
       return {
@@ -7595,7 +7622,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
           console.warn("[EXPLORA cierre] carga", error?.code || error?.message);
 
           if (isPaymentStatusTimeout(error)) {
-            const fallback = stableDashboardNoticeFallback(active, error);
+            const fallback = stableDashboardNoticeFallback(active, error, { allowStored: !force });
             const safeResult = fallback.result;
 
             reportDashboardNoticeError(
@@ -7625,7 +7652,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
             return safeResult;
           }
 
-          if (weeklyClosureCache.data && cacheMatches) {
+          if (!force && weeklyClosureCache.data && cacheMatches) {
             applyClosureState(weeklyClosureCache.data);
             renderDriverStatusCard(weeklyClosureCache.data);
             return weeklyClosureCache.data;
@@ -7644,8 +7671,10 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     window.ExploraRefreshDriverPaymentStatus = refreshDriverPaymentStatus;
 
 
-    window.ExploraLoadWeeklySession = async function({ force = false } = {}) {
-      restoreWeeklyClosureSessionCache();
+    window.ExploraLoadWeeklySession = async function({ force = false, restoreCachedVisual = false } = {}) {
+      // La caché de cierre queda disponible sólo para una recuperación manual
+      // explícita. Durante login y reanudación se espera el estado autoritativo.
+      if (restoreCachedVisual === true && !force) restoreWeeklyClosureSessionCache();
       const closurePromise=refreshDriverPaymentStatus({force}).catch(()=>null);
       const enginePromise=window.ExploraWeeklyEngine?.loadOnce?.({force,reason:"login"}) || window.ExploraWeeklyEngine?.start?.({force,reason:"login"});
       const [closureResult,engineResult]=await Promise.allSettled([closurePromise,enginePromise]);

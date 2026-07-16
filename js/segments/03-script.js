@@ -2,8 +2,8 @@
 (()=>{
   "use strict";
   if(window.ExploraFastCache)return;
-  const VERSION=224;
-  const PREFIX="explora_fast_cache_v224";
+  const VERSION=225;
+  const PREFIX="explora_fast_cache_v225";
   const TTL=Object.freeze({
     dashboard_weekly_billing:300000,
     dashboard_weekly_expenses:300000,
@@ -163,15 +163,20 @@
   }
   function hydrateDashboard(overrides={}){
     const c=context(overrides),admin=c.role.includes("admin");
-    if(admin){const entry=get("admin_summary",c,{allowStale:true});if(entry?.data)return renderAdminOverview(entry.data);return false;}
-    const billing=get("dashboard_weekly_billing",c,{allowStale:true}),expenses=get("dashboard_weekly_expenses",c,{allowStale:true}),data=billing?.data||expenses?.data;
+    if(admin){const entry=get("admin_summary",c,{allowStale:false});if(entry?.data)return renderAdminOverview(entry.data);return false;}
+    const billing=get("dashboard_weekly_billing",c,{allowStale:false}),expenses=get("dashboard_weekly_expenses",c,{allowStale:false}),data=billing?.data||expenses?.data;
     if(data)return renderWeeklySnapshot(data);return false;
   }
-  function prefetchForSession(detail={}){const c=context(detail);hydrateDashboard(c);if(window.ExploraDashboardRealtimeCoordinator){window.ExploraDashboardRealtimeCoordinator.ensure?.("fast-cache-session");return;}queueMicrotask(()=>refreshExpired({force:false}).catch(()=>{}));}
-  document.addEventListener("visibilitychange",()=>{if(document.visibilityState!=="visible")return;if(window.ExploraDashboardRealtimeCoordinator){window.ExploraDashboardRealtimeCoordinator.ensure?.("fast-cache-foreground");return;}hydrateDashboard();refreshExpired().catch(()=>{});});
+  function prefetchForSession(detail={}){
+    // La primera pintura ya fue sincronizada por el módulo de sesión. No se
+    // hidrata automáticamente desde localStorage para evitar datos anteriores.
+    if(window.ExploraDashboardRealtimeCoordinator){window.ExploraDashboardRealtimeCoordinator.ensure?.("fast-cache-session");return;}
+    queueMicrotask(()=>refreshExpired({force:false}).catch(()=>{}));
+  }
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState!=="visible")return;if(window.ExploraDashboardRealtimeCoordinator){window.ExploraDashboardRealtimeCoordinator.ensure?.("fast-cache-foreground");return;}refreshExpired().catch(()=>{});});
   window.addEventListener("explora:session-opened",event=>prefetchForSession(event.detail||{}));
   window.addEventListener("explora:weekly-summary",event=>{const snapshot=event.detail||{};const activeWeeklyId=window.ExploraOperationalClock?.getActiveWeeklyPeriod?.()?.id||window.ExploraWeeklyEngine?.getActiveWeeklyPeriod?.()?.id||"";if(snapshot.loading||!snapshot.uid||!snapshot.weeklyPeriodId||(activeWeeklyId&&snapshot.weeklyPeriodId!==activeWeeklyId))return;const c={uid:snapshot.uid,role:"chofer",weeklyPeriodId:snapshot.weeklyPeriodId};set("dashboard_weekly_billing",snapshot,c);set("dashboard_weekly_expenses",snapshot,c);if(window.ExploraDashboardRealtimeCoordinator?.isCoordinating?.())return;renderWeeklySnapshot(snapshot);});
   window.addEventListener("explora:auth-cleared",()=>{locks.clear();requestIds.clear();});
-  document.addEventListener("DOMContentLoaded",()=>{hydrateDashboard();ensureScheduler();});
+  document.addEventListener("DOMContentLoaded",()=>{ensureScheduler();});
   window.ExploraFastCache=Object.freeze({VERSION,TTL,context,key:storageKey,get,set,invalidate,clearOperational,isFresh,run,registerRefresher,refreshExpired,hydrateDashboard,renderWeeklySnapshot,renderAdminOverview,prefetchForSession,getStats:()=>({...stats,locks:locks.size,refreshers:refreshers.size})});
 })();

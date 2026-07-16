@@ -1,12 +1,12 @@
 
 (()=>{
   "use strict";
-  if(window.__exploraIdleDashboardRestartV1)return;
-  window.__exploraIdleDashboardRestartV1=true;
+  if(window.__exploraIdleDashboardRestartV2)return;
+  window.__exploraIdleDashboardRestartV2=true;
 
   const IDLE_MS=120000;
   const CHECK_MS=5000;
-  const STORAGE_KEY="explora:dashboard:last-valid:v1";
+  const STORAGE_KEY="explora:dashboard:last-valid:v1"; // sólo se elimina; ya no se restaura
   const RELOAD_GUARD_KEY="explora:dashboard:auto-reload-guard:v1";
   const MAX_SNAPSHOT_AGE_MS=6*60*60*1000;
   const TARGETS={
@@ -75,22 +75,13 @@
       }catch(_){}
     },180);
   }
+  function discardStoredSnapshot(){
+    try{sessionStorage.removeItem(STORAGE_KEY)}catch(_){}
+  }
   function restoreSnapshot(){
-    try{
-      const raw=sessionStorage.getItem(STORAGE_KEY);if(!raw)return false;
-      const data=JSON.parse(raw);
-      if(!data||Date.now()-Number(data.savedAt||0)>MAX_SNAPSHOT_AGE_MS)return false;
-      if(data.path&&data.path!==location.pathname)return false;
-      let restored=0;
-      for(const [id,payload] of Object.entries(data.values||{})){
-        const el=node(id);if(!el||!payload)continue;
-        if(payload.mode==="text")el.textContent=String(payload.value||"");
-        else el.innerHTML=String(payload.value||"");
-        el.dataset.exploraRestoredSnapshot="true";
-        restored++;
-      }
-      return restored>0;
-    }catch(_){return false}
+    // v4075: nunca se vuelven a pintar valores de una sesión visual anterior.
+    discardStoredSnapshot();
+    return false;
   }
   function noteActivity(){lastActivity=Date.now()}
   function canAutoReload(){
@@ -120,19 +111,31 @@
     const session=window.ExploraSession||{};
     if(!session.authUser?.uid&&!window.ExploraFirebase?.auth?.currentUser?.uid)return;
     resumeRefreshInFlight=true;
+    const syncGate=window.ExploraDataSyncGate;
+    const gateOpened=Boolean(syncGate?.begin?.("Actualizando saldos y actividades antes de continuar…"));
     try{
-      window.dispatchEvent(new CustomEvent("explora:app-resumed",{detail:{reason,reload:false}}));
+      syncGate?.update?.(18,"Verificando la sesión activa…");
+      window.dispatchEvent(new CustomEvent("explora:app-resumed",{detail:{reason,reload:false,coveredUntilFresh:true}}));
       const tasks=[];
       const globalRefresh=window.ExploraFirestoreGlobalSync?.refresh?.({reason:`${reason}-no-reload`});
       if(globalRefresh&&typeof globalRefresh.then==="function")tasks.push(globalRefresh);
-      const weeklyRefresh=window.ExploraWeeklyEngine?.loadOnce?.({force:true,reason:`${reason}-no-reload`});
-      if(weeklyRefresh&&typeof weeklyRefresh.then==="function")tasks.push(weeklyRefresh);
-      const sessionRefresh=window.ExploraLoadWeeklySession?.({force:true,reason:`${reason}-no-reload`});
-      if(sessionRefresh&&typeof sessionRefresh.then==="function")tasks.push(sessionRefresh);
+      const isAdmin=String(session.role||"").toLowerCase().includes("admin")||document.body.classList.contains("explora-shared-admin");
+      if(isAdmin){
+        const adminRefresh=window.ExploraAdminShared?.refresh?.();
+        if(adminRefresh&&typeof adminRefresh.then==="function")tasks.push(adminRefresh);
+      }else{
+        const weeklyRefresh=window.ExploraWeeklyEngine?.loadOnce?.({force:true,reason:`${reason}-no-reload`});
+        if(weeklyRefresh&&typeof weeklyRefresh.then==="function")tasks.push(weeklyRefresh);
+        const sessionRefresh=window.ExploraLoadWeeklySession?.({force:true,reason:`${reason}-no-reload`});
+        if(sessionRefresh&&typeof sessionRefresh.then==="function")tasks.push(sessionRefresh);
+      }
+      syncGate?.update?.(58,"Consultando la información actual…");
       if(tasks.length)await Promise.allSettled(tasks);
+      syncGate?.update?.(94,"Información actual lista…");
     }catch(error){
       console.warn("[EXPLORA_RESUME_REFRESH_WARN]",error?.code||error?.message||error);
     }finally{
+      if(gateOpened||syncGate?.isActive?.())await Promise.resolve(syncGate?.finish?.()).catch(()=>{});
       resumeRefreshInFlight=false;
     }
   }
@@ -142,17 +145,26 @@
     saveSnapshot();
     lastActivity=Date.now();
   }
+  function coverAuthenticatedDashboardForResume(){
+    const session=window.ExploraSession||{};
+    const authenticated=Boolean(session.authUser?.uid||window.ExploraFirebase?.auth?.currentUser?.uid);
+    if(!authenticated||!document.body.classList.contains("explora-authenticated"))return false;
+    return Boolean(window.ExploraDataSyncGate?.begin?.("Actualizando información antes de continuar…"));
+  }
   function onVisibilityChange(){
     if(document.visibilityState==="hidden"){
+      coverAuthenticatedDashboardForResume();
       saveSnapshot();
       return;
     }
-    restoreSnapshot();
     const hiddenAt=Number(sessionStorage.getItem("explora:dashboard:hidden-at")||0);
-    if(hiddenAt&&Date.now()-hiddenAt>=15000)refreshSessionWithoutReload("resume-after-background");
+    const elapsed=hiddenAt?Date.now()-hiddenAt:0;
+    if(hiddenAt&&elapsed>=15000)refreshSessionWithoutReload("resume-after-background");
+    else if(window.ExploraDataSyncGate?.isActive?.())Promise.resolve(window.ExploraDataSyncGate.finish()).catch(()=>{});
     noteActivity();
   }
   function onPageHide(){
+    coverAuthenticatedDashboardForResume();
     saveSnapshot();
     try{sessionStorage.setItem("explora:dashboard:hidden-at",String(Date.now()))}catch(_){}
   }
@@ -163,7 +175,7 @@
     roots.forEach(root=>observer.observe(root,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:["hidden","class","data-status"]}));
   }
   function init(){
-    restoreSnapshot();
+    discardStoredSnapshot();
     activityEvents.forEach(name=>window.addEventListener(name,noteActivity,{passive:true,capture:true}));
     document.addEventListener("visibilitychange",()=>{
       if(document.visibilityState==="hidden"){
@@ -174,13 +186,12 @@
     window.addEventListener("pagehide",onPageHide,{capture:true});
     window.addEventListener("beforeunload",saveSnapshot,{capture:true});
     window.addEventListener("pageshow",event=>{
-      restoreSnapshot();
       if(event.persisted)refreshSessionWithoutReload("pageshow-bfcache");
     });
     startObserver();
     intervalId=window.setInterval(checkIdle,CHECK_MS);
     window.ExploraIdleDashboardRestart={
-      version:"1.0.0",
+      version:"2.0.0",
       idleMs:IDLE_MS,
       save:saveSnapshot,
       restore:restoreSnapshot,
