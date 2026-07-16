@@ -1,6 +1,6 @@
 
     import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { initializeAuth, getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, getDocs, query, where, limit, serverTimestamp, runTransaction, writeBatch, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
     import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
@@ -16,12 +16,24 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
 };
 
     const app = getApps().length ? getApp() : initializeApp(EXPLORA_FIREBASE_CONFIG);
-    const auth = getAuth(app);
+    let auth;
+    try {
+      auth = initializeAuth(app, {
+        persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence]
+      });
+    } catch (error) {
+      // Otro módulo puede haber inicializado Auth primero. En ese caso se reutiliza
+      // exactamente la misma instancia, sin cambiar ni reiniciar su persistencia.
+      auth = getAuth(app);
+    }
     const db = getFirestore(app);
     const storage = getStorage(app);
     const functions = getFunctions(app, "southamerica-east1");
 
-    const persistenceReadyPromise = setPersistence(auth, browserLocalPersistence).catch((error) => {
+    const persistenceReadyPromise = (typeof auth.authStateReady === "function"
+      ? auth.authStateReady()
+      : Promise.resolve()
+    ).catch((error) => {
       console.warn("[EXPLORA login] persistence:error", error && error.code ? error.code : "unknown");
     });
 
@@ -623,12 +635,17 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     }
 
     function showLogin(message = "", reason = "") {
-      if (
-        authSessionState.authenticatedUser &&
-        authSessionState.uiOpened &&
-        !authSessionState.logoutInProgress
-      ) {
-        loginDevDiagnostic("SHOW_LOGIN_BLOCKED", { reason: reason || "authenticated-ui-open" });
+      const persistentUser = auth.currentUser || authSessionState.authenticatedUser;
+      if (persistentUser && !authSessionState.logoutInProgress) {
+        loginDevDiagnostic("SHOW_LOGIN_BLOCKED", {
+          reason: reason || "authenticated-session-present",
+          uidMatches: !authSessionState.authenticatedUser || authSessionState.authenticatedUser.uid === persistentUser.uid,
+          uiOpened: authSessionState.uiOpened
+        });
+        if (!authSessionState.uiOpened) {
+          beginSplashSync("Restaurando la sesión activa de EXPLORA…");
+          setBodyMode("explora-auth-checking");
+        }
         return;
       }
       splashSyncState.active = false;
@@ -3765,9 +3782,18 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       }
     }
 
-    async function performAuthenticatedExploraSessionOpen(authUser) {
-      beginSplashSync("Restaurando sesión y verificando datos actuales…");
-      resetCurrentSessionUI();
+    async function performAuthenticatedExploraSessionOpen(authUser, options = {}) {
+      const preserveOpenUI = Boolean(
+        options.preserveOpenUI &&
+        authSessionState.uiOpened &&
+        authSessionState.authenticatedUser?.uid === authUser?.uid
+      );
+      if (!preserveOpenUI) {
+        beginSplashSync("Restaurando sesión y verificando datos actuales…");
+        resetCurrentSessionUI();
+      } else {
+        loginDevDiagnostic("SESSION_REFRESH_IN_BACKGROUND", { uid: authUser.uid });
+      }
       const sessionGeneration = Number(exploraSession.generation || 0) + 1;
       exploraSession.generation = sessionGeneration;
       exploraSession.closing = false;
@@ -3832,14 +3858,14 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       return { user: authUser, profile, role, profileDocumentId: loaded.profileDocumentId, generation: sessionGeneration };
     }
 
-    async function openAuthenticatedExploraSession(authUser) {
+    async function openAuthenticatedExploraSession(authUser, options = {}) {
       if (!authUser || !authUser.uid) throw new Error("AUTH_USER_MISSING");
       if (activeSessionOpenPromise && activeSessionUid === authUser.uid) {
         return activeSessionOpenPromise;
       }
 
       activeSessionUid = authUser.uid;
-      activeSessionOpenPromise = performAuthenticatedExploraSessionOpen(authUser)
+      activeSessionOpenPromise = performAuthenticatedExploraSessionOpen(authUser, options)
         .finally(() => {
           authSessionState.profileLoading = false;
           activeSessionOpenPromise = null;
@@ -5837,7 +5863,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         sessionRecoveryRetryTimer = null;
         if (!auth.currentUser?.uid || auth.currentUser.uid !== user.uid || authSessionState.logoutInProgress) return;
         try {
-          await openAuthenticatedExploraSession(user);
+          await openAuthenticatedExploraSession(user, { preserveOpenUI: authSessionState.uiOpened });
           clearSessionRecoveryRetry();
         } catch (retryError) {
           if (isCriticalAccessError(retryError)) {
@@ -5868,24 +5894,34 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         authSessionState.uiOpened = false;
         resetCurrentSessionUI();
         exploraSession.authReady = true;
-        if (!authSessionState.logoutInProgress) showLogin("", "AUTH_NULL");
+        authSessionState.bootCompleted = true;
+        if (!authSessionState.logoutInProgress) showLogin("", "AUTH_NULL_CONFIRMED");
         finishSplash();
         return;
       }
 
       if (
-        authSessionState.authenticatedUser &&
-        authSessionState.authenticatedUser.uid === user.uid &&
-        authSessionState.uiOpened
+        authSessionState.authenticatedUser?.uid === user.uid &&
+        authSessionState.uiOpened &&
+        !authSessionState.profileLoading
       ) {
         exploraSession.authReady = true;
+        authSessionState.bootCompleted = true;
         finishSplash();
         return;
       }
 
+      // Si Firebase ya restauró al mismo usuario, se abre de inmediato la última
+      // interfaz conocida. El perfil y los saldos se refrescan luego en segundo plano.
+      const cachedShellOpened = !authSessionState.uiOpened
+        ? openCachedAuthenticatedShell(user, "AUTH_PERSISTED_SESSION")
+        : false;
+
       let keepSyncVisible = false;
       try {
-        await openAuthenticatedExploraSession(user);
+        await openAuthenticatedExploraSession(user, {
+          preserveOpenUI: cachedShellOpened || authSessionState.uiOpened
+        });
         clearSessionRecoveryRetry();
         authSessionState.authenticatedUser = user;
       } catch (error) {
@@ -5896,7 +5932,8 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
           await signOut(auth).catch(() => {});
           showLogin(legacyAccessErrorMessage(error), "SESSION_RESTORE_CRITICAL");
         } else {
-          keepSyncVisible = !authSessionState.uiOpened;
+          const fallbackOpened = authSessionState.uiOpened || openCachedAuthenticatedShell(user, "AUTH_RECOVERY_FALLBACK");
+          keepSyncVisible = !fallbackOpened;
           scheduleSessionProfileRecovery(user, error);
         }
       } finally {
@@ -5907,28 +5944,30 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       }
     }
 
-    function hasRecentCachedExploraSession() {
-      try {
-        const raw = localStorage.getItem(EXPLORA_SESSION_PREFIX + "last");
-        if (!raw) return false;
-        const cached = JSON.parse(raw);
-        const age = Date.now() - Number(cached?.ts || 0);
-        return Boolean(cached?.uid && age >= 0 && age < 1000 * 60 * 60 * 24 * 45);
-      } catch (_) {
-        return false;
-      }
+    let unsubscribeAuth = null;
+    let authObserverStarted = false;
+
+    async function startPersistentAuthObserver() {
+      if (authObserverStarted) return;
+      await persistenceReadyPromise;
+      authObserverStarted = true;
+      unsubscribeAuth = onAuthStateChanged(auth, handleAuthStateChanged);
+
+      // Protección extrema para navegadores WebKit que no entreguen el primer
+      // callback: se procesa una sola vez el estado ya resuelto, sin recargar la página.
+      setTimeout(() => {
+        if (!authHandledOnce && !authSessionState.logoutInProgress) {
+          loginDevDiagnostic("AUTH_INITIAL_CALLBACK_FALLBACK", { hasUser: Boolean(auth.currentUser) });
+          handleAuthStateChanged(auth.currentUser).catch((error) => {
+            console.warn("[EXPLORA login] initial auth fallback", error?.code || error?.message || error);
+          });
+        }
+      }, Math.min(AUTH_RESTORE_GRACE_MS, 2500));
     }
 
-    let unsubscribeAuth = null;
-    persistenceReadyPromise.finally(() => {
-      unsubscribeAuth = onAuthStateChanged(auth, handleAuthStateChanged);
-      setTimeout(() => {
-        if (!authHandledOnce && !auth.currentUser && !authSessionState.logoutInProgress) {
-          const cachedSession = hasRecentCachedExploraSession();
-          loginDevDiagnostic("AUTH_RESTORE_GRACE_TIMEOUT", { cachedSession });
-          if (!cachedSession) showLogin("", "AUTH_RESTORE_GRACE_TIMEOUT");
-        }
-      }, AUTH_RESTORE_GRACE_MS);
+    startPersistentAuthObserver().catch((error) => {
+      console.warn("[EXPLORA login] observer:start", error?.code || error?.message || error);
+      showLogin("No se pudo restaurar la sesión. Intentá ingresar nuevamente.", "AUTH_OBSERVER_START_FAILED");
     });
 
 

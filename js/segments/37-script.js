@@ -28,6 +28,7 @@
   let reloadScheduled=false;
   let observer=null;
   let saveTimer=0;
+  let resumeRefreshInFlight=false;
 
   function node(id){return document.getElementById(id)}
   function isDashboardVisible(){
@@ -114,18 +115,41 @@
     setTimeout(()=>location.reload(),120);
     return true;
   }
+  async function refreshSessionWithoutReload(reason="resume"){
+    if(resumeRefreshInFlight)return;
+    const session=window.ExploraSession||{};
+    if(!session.authUser?.uid&&!window.ExploraFirebase?.auth?.currentUser?.uid)return;
+    resumeRefreshInFlight=true;
+    try{
+      window.dispatchEvent(new CustomEvent("explora:app-resumed",{detail:{reason,reload:false}}));
+      const tasks=[];
+      const globalRefresh=window.ExploraFirestoreGlobalSync?.refresh?.({reason:`${reason}-no-reload`});
+      if(globalRefresh&&typeof globalRefresh.then==="function")tasks.push(globalRefresh);
+      const weeklyRefresh=window.ExploraWeeklyEngine?.loadOnce?.({force:true,reason:`${reason}-no-reload`});
+      if(weeklyRefresh&&typeof weeklyRefresh.then==="function")tasks.push(weeklyRefresh);
+      const sessionRefresh=window.ExploraLoadWeeklySession?.({force:true,reason:`${reason}-no-reload`});
+      if(sessionRefresh&&typeof sessionRefresh.then==="function")tasks.push(sessionRefresh);
+      if(tasks.length)await Promise.allSettled(tasks);
+    }catch(error){
+      console.warn("[EXPLORA_RESUME_REFRESH_WARN]",error?.code||error?.message||error);
+    }finally{
+      resumeRefreshInFlight=false;
+    }
+  }
   function checkIdle(){
     if(Date.now()-lastActivity<IDLE_MS)return;
-    if(autoReload(document.visibilityState==="hidden"?"idle-hidden":"idle-visible"))return;
-    lastActivity=Date.now()-IDLE_MS+15000;
+    // La app ya no se recarga por inactividad. Sólo conserva una copia visual.
+    saveSnapshot();
+    lastActivity=Date.now();
   }
   function onVisibilityChange(){
     if(document.visibilityState==="hidden"){
       saveSnapshot();
       return;
     }
+    restoreSnapshot();
     const hiddenAt=Number(sessionStorage.getItem("explora:dashboard:hidden-at")||0);
-    if(hiddenAt&&Date.now()-hiddenAt>=IDLE_MS){autoReload("resume-after-idle");return;}
+    if(hiddenAt&&Date.now()-hiddenAt>=15000)refreshSessionWithoutReload("resume-after-background");
     noteActivity();
   }
   function onPageHide(){
@@ -151,7 +175,7 @@
     window.addEventListener("beforeunload",saveSnapshot,{capture:true});
     window.addEventListener("pageshow",event=>{
       restoreSnapshot();
-      if(event.persisted)checkIdle();
+      if(event.persisted)refreshSessionWithoutReload("pageshow-bfcache");
     });
     startObserver();
     intervalId=window.setInterval(checkIdle,CHECK_MS);
@@ -161,6 +185,7 @@
       save:saveSnapshot,
       restore:restoreSnapshot,
       restart:()=>autoReload("manual-api"),
+      refresh:refreshSessionWithoutReload,
       resetActivity:noteActivity,
       stop:()=>{clearInterval(intervalId);observer?.disconnect?.();}
     };
