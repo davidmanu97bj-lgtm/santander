@@ -1,10 +1,9 @@
-/* EXPLORA PWA registration · v2.4.2 · admin +chofer y actividades arriba */
+/* EXPLORA PWA registration · v4074 · sesión persistente sin recarga forzada */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4066-admin-chofer-actividad-nav';
-  const reloadOnceKey = `explora-sw-reload-${BUILD}`;
+  const BUILD = 'v4074-login-persistente';
 
   const clearLegacyCaches = async () => {
     try {
@@ -21,7 +20,7 @@
   const register = async () => {
     try {
       await clearLegacyCaches();
-      const registration = await navigator.serviceWorker.register('./service-worker.js?build=v4066-admin-chofer-actividad-nav', {
+      const registration = await navigator.serviceWorker.register(`./service-worker.js?build=${BUILD}`, {
         scope: './',
         updateViaCache: 'none'
       });
@@ -41,14 +40,15 @@
       activateWaiting();
       registration.update().catch(() => {});
 
+      // Antes se ejecutaba window.location.reload() en cada controllerchange.
+      // En iOS/Android eso podía reconstruir la app, volver a mostrar el login y
+      // repetir el arranque. Ahora la actualización queda activa sin interrumpir
+      // la sesión; la nueva versión se utiliza naturalmente en la próxima apertura.
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        try {
-          if (sessionStorage.getItem(reloadOnceKey) === '1') return;
-          sessionStorage.setItem(reloadOnceKey, '1');
-          window.location.reload();
-        } catch (_) {
-          window.location.reload();
-        }
+        window.__EXPLORA_SW_UPDATE_READY__ = true;
+        window.dispatchEvent(new CustomEvent('explora:service-worker-updated', {
+          detail: { build: BUILD, reloadRequired: false }
+        }));
       });
 
       window.setInterval(() => {
