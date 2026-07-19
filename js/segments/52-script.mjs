@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4076-caja-chica-neta-en-liquidacion";
+  const VERSION = "explora-pago-home-v52-v4077-caja-chica-cierre-automatico-facturacion";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -237,20 +237,42 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       .reduce((sum, row) => sum + billingCashboxOffsetOf(row), 0);
   }
 
-  function billingSettlementWithCashbox({ cash = 0, digital = 0, cashboxEligibleGross = 0, cashboxRate = .05 } = {}) {
+  function billingClosureClosesCashbox(row = {}) {
+    const affects = Array.isArray(row.affectsTabs) ? row.affectsTabs.map(activeClosureKind) : [];
+    return row.autoClosesCashbox === true || row.cashboxClosedWithBilling === true || row.cashboxAutoClosed === true || affects.includes("caja_chica");
+  }
+
+  function lastCashboxResetMs(rows = []) {
+    const automaticCuts = (rows || [])
+      .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
+      .filter(row => isBillingClosureKind(closureKindOf(row)))
+      .filter(billingClosureClosesCashbox)
+      .filter(row => !/cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
+      .map(closureCutMs)
+      .filter(Boolean)
+      .sort((a,b)=>b-a);
+    if (automaticCuts[0]) return automaticCuts[0];
+    // Migración segura: hasta el primer cierre de Facturación v4077 se conserva el período
+    // de Caja chica que ya estaba abierto en versiones anteriores.
+    return lastClosureMs(rows, "caja_chica");
+  }
+
+  function billingSettlementWithCashbox({ cash = 0, digital = 0, cashboxEligibleGross = 0, cashboxRate = .05, cashboxAmount = null } = {}) {
     const cashAmount = Math.max(0, number(cash));
     const digitalAmount = Math.max(0, number(digital));
-    const eligibleGross = Math.max(0, Math.min(cashAmount, number(cashboxEligibleGross)));
+    const eligibleGross = Math.max(0, number(cashboxEligibleGross));
     const rate = Math.max(0, number(cashboxRate));
     const gross = cashAmount + digitalAmount;
     const share = gross * .5;
     const netBeforeCashboxToDriver = share - cashAmount;
-    const cashboxGenerated = eligibleGross * rate;
-    // La caja chica solo se compensa dentro de Facturación cuando Explora debe pagar.
-    // Si el chofer debe pagar, la caja chica permanece en su módulo independiente.
-    const cashboxOffsetApplied = netBeforeCashboxToDriver > 0
-      ? Math.min(netBeforeCashboxToDriver, cashboxGenerated)
-      : 0;
+    const explicitCashbox = cashboxAmount !== null && cashboxAmount !== undefined;
+    const cashboxGenerated = explicitCashbox ? Math.max(0, number(cashboxAmount)) : eligibleGross * rate;
+    // v4077: el total pendiente de Caja chica entra completo en “quién paga a quién”,
+    // tanto si paga Explora como si paga el chofer. En cierres históricos sin el campo
+    // cashboxAmount se conserva la lógica anterior para no reescribir datos ya cerrados.
+    const cashboxOffsetApplied = explicitCashbox
+      ? cashboxGenerated
+      : (netBeforeCashboxToDriver > 0 ? Math.min(netBeforeCashboxToDriver, cashboxGenerated) : 0);
     const netToDriver = netBeforeCashboxToDriver - cashboxOffsetApplied;
     return {
       gross,
@@ -259,7 +281,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       cashboxEligibleGross:eligibleGross,
       cashboxGenerated,
       cashboxOffsetApplied,
-      cashboxRemainingInDriver:Math.max(0, cashboxGenerated - cashboxOffsetApplied),
+      cashboxRemainingInDriver:explicitCashbox ? 0 : Math.max(0, cashboxGenerated - cashboxOffsetApplied),
       netToDriver,
       amountToDriver:Math.max(0, netToDriver),
       amountFromDriver:Math.max(0, -netToDriver)
@@ -1617,8 +1639,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const cashboxGross = Math.max(0, oldCashboxGross - (cashboxGenerates ? amount : 0));
     const eligibleGross = Math.max(0, oldEligibleGross - (cashboxGenerates ? amount : 0));
     const cashboxRate = moneyNumber(closure.cashboxRate ?? .05) || .05;
-    const settlement = billingSettlementWithCashbox({ cash, digital, cashboxEligibleGross:eligibleGross, cashboxRate });
+    const autoClosesCashbox = billingClosureClosesCashbox(closure);
     const cashboxGenerated = cashboxGross * cashboxRate;
+    const alreadyCompensated = autoClosesCashbox ? Math.max(0, moneyNumber(closure.cashboxAlreadyCompensated || 0)) : 0;
+    const cashboxPending = autoClosesCashbox ? Math.max(0, cashboxGenerated - alreadyCompensated) : null;
+    const settlement = billingSettlementWithCashbox({ cash, digital, cashboxEligibleGross:eligibleGross, cashboxRate, cashboxAmount:cashboxPending });
     return {
       gross:settlement.gross, grossBeforeCashbox:settlement.gross, cashInDriver:cash, cashGrossInDriver:cash,
       exploraCash:digital, nonCashInExplora:digital, nonCashGrossInExplora:digital,
@@ -1627,12 +1652,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       billingAmountToDriverBeforeCashbox:Math.max(0, settlement.netBeforeCashboxToDriver),
       billingCashboxGross:cashboxGross,
       billingCashboxEligibleGross:settlement.cashboxEligibleGross,
-      billingCashboxGenerated:cashboxGenerated,
+      billingCashboxGenerated:autoClosesCashbox ? settlement.cashboxGenerated : cashboxGenerated,
       billingCashboxEligibleAmount:settlement.cashboxGenerated,
       billingCashboxOffsetApplied:settlement.cashboxOffsetApplied,
-      cashboxTotal:cashboxGenerated,
-      cashboxInDriver:settlement.cashboxRemainingInDriver,
-      cashboxInExplora:settlement.cashboxOffsetApplied,
+      cashboxGeneratedTotal:cashboxGenerated,
+      cashboxTotal:autoClosesCashbox ? settlement.cashboxGenerated : cashboxGenerated,
+      cashboxIncludedInSettlement:autoClosesCashbox ? settlement.cashboxGenerated : moneyNumber(closure.cashboxIncludedInSettlement || 0),
+      cashboxInDriver:autoClosesCashbox ? settlement.cashboxGenerated : settlement.cashboxRemainingInDriver,
+      cashboxInExplora:autoClosesCashbox ? 0 : settlement.cashboxOffsetApplied,
       netSettlementToDriver:settlement.netToDriver,
       amountDueFromDriver:settlement.amountFromDriver, amountFromDriver:settlement.amountFromDriver,
       amountDueToDriver:settlement.amountToDriver, amountToDriver:settlement.amountToDriver
@@ -1692,29 +1719,41 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   async function adminDeleteAdjustClosuresDirect({ type, driverUid, documentId, movement }) {
     const includeField = type === "gasto" ? "includedExpenseIds" : "includedBillingIds";
-    const docs = await adminDeleteRelatedClosures(driverUid, documentId, includeField);
+    const docsMap = new Map();
+    for (const field of (type === "gasto" ? [includeField] : [includeField, "includedCashboxIds"])) {
+      const found = await adminDeleteRelatedClosures(driverUid, documentId, field);
+      found.forEach(snap => docsMap.set(snap.id, snap));
+    }
+    const docs = [...docsMap.values()];
     let adjusted = 0;
     for (const snap of docs) {
       const closure = snap.data() || {};
       const kind = activeClosureKind(closure.closureKind || closure.closureType || closure.payTab || closure.closeKind || closure.kind || closure.cierreTipo || closure.type || closure.category);
       let patch = null;
+      const inBillingIds = Array.isArray(closure.includedBillingIds) && closure.includedBillingIds.map(safe).includes(safe(documentId));
+      const inCashboxIds = Array.isArray(closure.includedCashboxIds) && closure.includedCashboxIds.map(safe).includes(safe(documentId));
       if (type === "gasto" && kind === "gastos") patch = adminDeleteExpenseClosurePatch(closure, movement);
-      if (type === "cobro" && (kind === "chofer" || kind === "explora" || kind === "facturacion")) patch = adminDeleteBillingClosurePatch(closure, movement);
+      if (type === "cobro" && (kind === "chofer" || kind === "explora" || kind === "facturacion")) patch = adminDeleteBillingClosurePatch(closure, movement, { cashboxOnly:!inBillingIds && inCashboxIds });
       if (type === "caja_chica" && (kind === "chofer" || kind === "explora" || kind === "facturacion") && methodOf(movement) === "cash") patch = adminDeleteBillingClosurePatch(closure, movement, { cashboxOnly:true });
       if ((type === "cobro" || type === "caja_chica") && kind === "caja_chica" && methodOf(movement) === "cash") patch = adminDeleteCashboxClosurePatch(closure, movement);
       if (!patch) continue;
-      const removesPrimaryMovement = type !== "caja_chica" || kind === "caja_chica";
+      const primaryIds = Array.isArray(closure[includeField]) ? closure[includeField].map(safe) : [];
+      const removesPrimaryMovement = (type !== "caja_chica" || kind === "caja_chica") && primaryIds.includes(safe(documentId));
       const generatedIds = Array.isArray(closure.includedCashboxGeneratedBillingIds)
         ? adminDeleteRemoveArrayItem(closure.includedCashboxGeneratedBillingIds, documentId)
         : closure.includedCashboxGeneratedBillingIds;
       const eligibleIds = Array.isArray(closure.includedCashboxEligibleBillingIds)
         ? adminDeleteRemoveArrayItem(closure.includedCashboxEligibleBillingIds, documentId)
         : closure.includedCashboxEligibleBillingIds;
+      const cashboxIds = Array.isArray(closure.includedCashboxIds)
+        ? adminDeleteRemoveArrayItem(closure.includedCashboxIds, documentId)
+        : closure.includedCashboxIds;
       await updateDoc(doc(state.db, "cierres_semanales", snap.id), {
         ...patch,
         [includeField]:removesPrimaryMovement ? adminDeleteRemoveArrayItem(closure[includeField], documentId) : closure[includeField],
         ...(generatedIds !== undefined ? { includedCashboxGeneratedBillingIds:generatedIds } : {}),
         ...(eligibleIds !== undefined ? { includedCashboxEligibleBillingIds:eligibleIds } : {}),
+        ...(cashboxIds !== undefined ? { includedCashboxIds:cashboxIds } : {}),
         includedCount:removesPrimaryMovement ? Math.max(0, Number(closure.includedCount || 0) - 1) : Number(closure.includedCount || 0),
         adminAdjusted:true,
         adminAdjustedReason:type === "caja_chica" ? "Caja chica excluida manualmente" : "Movimiento eliminado manualmente",
@@ -2631,9 +2670,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       lines.push(`Digital Explora: ${currency(summary.nonCashInExplora || 0)}`);
       lines.push(`Total facturado: ${currency(summary.gross || 0)}`);
       lines.push(`Parte de cada uno: ${currency(summary.billingShareEach || 0)}`);
-      lines.push(`Caja chica 5% sobre efectivo: ${currency(summary.billingCashboxGenerated || summary.cashboxTotal || 0)}`);
+      lines.push(`Caja chica acumulada incluida: ${currency(summary.billingCashboxGenerated || summary.cashboxTotal || 0)}`);
       if (number(summary.billingCashboxOffsetApplied || 0) > 0) {
-        lines.push(`Caja chica descontada de la liquidación de Explora: −${currency(summary.billingCashboxOffsetApplied)}`);
+        lines.push(`Caja chica descontada al chofer en el resultado final: −${currency(summary.billingCashboxOffsetApplied)}`);
       }
     }
     if (result.direction === "explora_to_driver") {
@@ -3466,7 +3505,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     // El corte de cualquiera de los dos corta toda la facturación: efectivo + digital.
     const resetBillingMs = lastBillingClosureMs(closures);
     const resetExpensesMs = lastClosureMs(closures, "gastos");
-    const resetCashboxMs = lastClosureMs(closures, "caja_chica");
+    const resetCashboxMs = lastCashboxResetMs(closures);
 
     const billingRecords = records.filter(row => !movementIsDeleted(row) && rowMs(row) > resetBillingMs).sort((a,b)=>rowMs(b)-rowMs(a));
     const cashRecords = billingRecords.filter(row => methodOf(row) === "cash");
@@ -3490,34 +3529,38 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
 
     // Facturación conserva efectivo, digital, total y reparto 50/50 completos.
-    // El 5% se muestra como desglose y solo se descuenta del pago cuando Explora debe liquidar al chofer.
+    // Caja chica mantiene su período vigente hasta que se pide un cierre de Facturación.
+    // En ese pedido se suma TODO el 5% pendiente al resultado final y se reinicia automáticamente.
     const cashInDriver = cashGrossInDriver;
     const nonCashInExplora = nonCashGrossInExplora;
     const cashboxGeneratedBillingRecords = cashRecords.filter(row => !cashboxIsExcluded(row));
-    const cashboxEligibleBillingRecords = cashboxGeneratedBillingRecords.filter(row => rowMs(row) > resetCashboxMs);
-    const billingCashboxGross = cashboxGeneratedBillingRecords.reduce((sum, row) => sum + amountOf(row), 0);
-    const billingCashboxEligibleGross = cashboxEligibleBillingRecords.reduce((sum, row) => sum + amountOf(row), 0);
+    const cashboxEligibleBillingRecords = cashboxRecords;
+    const billingCurrentCashboxGross = cashboxGeneratedBillingRecords.reduce((sum, row) => sum + amountOf(row), 0);
+    const billingCurrentCashboxGenerated = billingCurrentCashboxGross * cashboxRate;
+    const cashboxGross = cashboxRecords.reduce((sum, row) => sum + amountOf(row), 0);
+    const cashboxGeneratedTotal = cashboxGross * cashboxRate;
+    const cashboxOffsetPreviouslyApplied = Math.min(cashboxGeneratedTotal, billingCashboxOffsetsAfter(closures, resetCashboxMs));
+    const cashboxTotal = Math.max(0, cashboxGeneratedTotal - cashboxOffsetPreviouslyApplied);
+    const billingCashboxGross = cashboxGross;
+    const billingCashboxEligibleGross = cashboxGross;
     const billingSettlement = billingSettlementWithCashbox({
       cash:cashInDriver,
       digital:nonCashInExplora,
       cashboxEligibleGross:billingCashboxEligibleGross,
-      cashboxRate
+      cashboxRate,
+      cashboxAmount:cashboxTotal
     });
-    const cashboxFromBillingCash = billingCashboxGross * cashboxRate;
-    const billingCashboxEligibleAmount = billingSettlement.cashboxGenerated;
+    const cashboxFromBillingCash = billingCurrentCashboxGenerated;
+    const billingCashboxEligibleAmount = cashboxTotal;
     const cashboxFromBillingExplora = 0;
-    const billingCashboxOffsetApplied = billingSettlement.cashboxOffsetApplied;
-    const billingCashboxRemainingInDriver = billingSettlement.cashboxRemainingInDriver;
+    const billingCashboxOffsetApplied = cashboxTotal;
+    const billingCashboxRemainingInDriver = 0;
 
     const gross = billingSettlement.gross;
     const grossBeforeCashbox = gross;
-    const cashboxGross = cashboxRecords.reduce((sum, row) => sum + amountOf(row), 0);
-    const cashboxGeneratedTotal = cashboxGross * cashboxRate;
-    const cashboxOffsetPreviouslyApplied = Math.min(cashboxGeneratedTotal, billingCashboxOffsetsAfter(closures, resetCashboxMs));
-    const cashboxOffsetReservedOpen = Math.min(cashboxGeneratedTotal, cashboxOffsetPreviouslyApplied + billingCashboxOffsetApplied);
-    const cashboxTotal = Math.max(0, cashboxGeneratedTotal - cashboxOffsetReservedOpen);
+    const cashboxOffsetReservedOpen = cashboxOffsetPreviouslyApplied;
     const cashboxInDriver = cashboxTotal;
-    const cashboxInExplora = cashboxOffsetReservedOpen;
+    const cashboxInExplora = cashboxOffsetPreviouslyApplied;
     const cashboxAmountFromDriver = cashboxInDriver;
     const cashboxAmountToDriver = 0;
     const billingShareEach = billingSettlement.share;
@@ -3550,7 +3593,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       resetMs:resetBillingMs, records:billingRecords, cashboxGeneratedRecords:cashboxGeneratedBillingRecords, cashboxEligibleRecords:cashboxEligibleBillingRecords, expenses:[], gross, grossBeforeCashbox, expenseTotal:0,
       cashGrossInDriver, nonCashGrossInExplora, cashInDriver, nonCashInExplora, billingShareEach,
       cashboxRate, cashboxTotal:cashboxFromBillingCash, cashboxInDriver:billingCashboxRemainingInDriver, cashboxInExplora:billingCashboxOffsetApplied,
-      billingCashboxGross, billingCashboxEligibleGross, billingCashboxGenerated:cashboxFromBillingCash, billingCashboxEligibleAmount, billingCashboxOffsetApplied, billingCashboxRemainingInDriver,
+      billingCashboxGross, billingCashboxEligibleGross, billingCashboxGenerated:cashboxTotal, billingCurrentCashboxGross, billingCurrentCashboxGenerated, billingCashboxEligibleAmount, billingCashboxOffsetApplied, billingCashboxRemainingInDriver,
       billingNetBeforeCashboxToDriver, billingAmountToDriverBeforeCashbox:Math.max(0, billingNetBeforeCashboxToDriver),
       amountToDriver:amountToDriverForBilling, amountFromDriver:amountFromDriverForBilling,
       netSettlementToDriver:billingNetToDriver,
@@ -3585,7 +3628,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       records:billingRecords, billingRecords, cashRecords, exploraRecords, expenses:filteredExpenses, debts, debtPayments, tabs, pendientes:pendientesTab,
       cashboxRecords, cashboxCashRecords, cashboxExploraRecords,
       gross, grossBeforeCashbox, cashGrossInDriver, nonCashGrossInExplora, cashboxFromBillingCash, cashboxFromBillingExplora, cashInDriver, nonCashInExplora, billingShareEach,
-      billingCashboxGross, billingCashboxEligibleGross, billingCashboxGenerated:cashboxFromBillingCash, billingCashboxEligibleAmount, billingCashboxOffsetApplied, billingCashboxRemainingInDriver,
+      billingCashboxGross, billingCashboxEligibleGross, billingCashboxGenerated:cashboxTotal, billingCurrentCashboxGross, billingCurrentCashboxGenerated, billingCashboxEligibleAmount, billingCashboxOffsetApplied, billingCashboxRemainingInDriver,
       billingNetBeforeCashboxToDriver, billingAmountToDriverBeforeCashbox:Math.max(0, billingNetBeforeCashboxToDriver),
       cashboxRate, cashboxGross, cashboxGeneratedTotal, cashboxOffsetPreviouslyApplied, cashboxOffsetReservedOpen, cashboxTotal, cashboxInDriver, cashboxInExplora, cashboxAmountFromDriver, cashboxAmountToDriver,
       driverShare:billingShareEach, exploraShare:billingShareEach,
@@ -3633,25 +3676,29 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       // tener más dinero que el chofer, el botón de Explora debe habilitarse nuevamente.
       if (target === "explora" || target === "facturacion") {
         const t = tabSummary(summary, "explora");
-        const amountToDriverBeforeCashbox = number(t.billingAmountToDriverBeforeCashbox || summary.billingAmountToDriverBeforeCashbox || summary.amountToDriverForBilling || t.amountToDriver || 0);
-        return { visible:true, enabled:amountToDriverBeforeCashbox > 0.49, pending:true };
+        const amountToDriver = number(summary.amountToDriverForBilling || t.amountToDriver || 0);
+        const amountFromDriver = number(summary.amountFromDriverForBilling || t.amountFromDriver || 0);
+        const hasBilling = number(summary.gross || t.gross || 0) > 0.49;
+        const beforeCashbox = number(summary.billingNetBeforeCashboxToDriver || t.billingNetBeforeCashboxToDriver || 0);
+        return { visible:true, enabled:amountToDriver > 0.49 || (hasBilling && amountFromDriver <= 0.49 && amountToDriver <= 0.49 && beforeCashbox > 0), pending:true };
       }
       if (target === "chofer") {
         const tChofer = tabSummary(summary, "chofer");
-        const tExplora = tabSummary(summary, "explora");
         const amountFromDriver = number(summary.amountFromDriverForBilling || tChofer.amountFromDriver || 0);
-        const amountToDriver = number(summary.amountToDriverForBilling || tExplora.amountToDriver || 0);
-        const hasBilling = number(summary.gross || tChofer.gross || tExplora.gross || 0) > 0.49;
-        return { visible:true, enabled:isAdmin() && (amountFromDriver > 0.49 || amountToDriver > 0.49 || hasBilling), pending:true };
+        const amountToDriver = number(summary.amountToDriverForBilling || tChofer.amountToDriver || 0);
+        const hasBilling = number(summary.gross || tChofer.gross || 0) > 0.49;
+        const beforeCashbox = number(summary.billingNetBeforeCashboxToDriver || tChofer.billingNetBeforeCashboxToDriver || 0);
+        return { visible:true, enabled:amountFromDriver > 0.49 || (hasBilling && amountFromDriver <= 0.49 && amountToDriver <= 0.49 && beforeCashbox <= 0), pending:true };
       }
-      if (target === "caja_chica" || target === "gastos") return { visible:true, enabled:false, pending:true };
+      if (target === "caja_chica") return { visible:true, enabled:false, pending:true, automaticWithBilling:true };
+      if (target === "gastos") return { visible:true, enabled:false, pending:true };
       return { visible:false, enabled:false, pending:true };
     }
 
     if (target === "caja_chica") {
-      const t = tabSummary(summary, "caja_chica");
-      // Caja chica solo la pide Explora/admin cuando hay caja chica en efectivo para pasar.
-      return { visible:true, enabled:isAdmin() && number(t.amountFromDriver || 0) > 0 };
+      // Caja chica ya no tiene cierre manual: se incluye y reinicia al pedir cierre
+      // desde Chofer o Explora, según el resultado final de Facturación.
+      return { visible:true, enabled:false, automaticWithBilling:true };
     }
 
     if (target === "gastos") {
@@ -3668,17 +3715,23 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (target === "chofer") {
       const tChofer = tabSummary(summary, "chofer");
       const amountFromDriver = number(summary.amountFromDriverForBilling || tChofer.amountFromDriver || 0);
-      // CHOFER solo se activa cuando el chofer realmente debe liquidar.
-      // Si Explora debe pagar, la acción vive en la tarjeta EXPLORA.
-      return { visible:true, enabled:amountFromDriver > 0.49 };
+      const amountToDriver = number(summary.amountToDriverForBilling || tChofer.amountToDriver || 0);
+      const hasBilling = number(summary.gross || tChofer.gross || 0) > 0.49;
+      const balancedAfterCashbox = amountFromDriver <= 0.49 && amountToDriver <= 0.49;
+      const beforeCashbox = number(summary.billingNetBeforeCashboxToDriver || tChofer.billingNetBeforeCashboxToDriver || 0);
+      // El botón corresponde al pagador FINAL luego de incluir toda la Caja chica acumulada.
+      return { visible:true, enabled:amountFromDriver > 0.49 || (hasBilling && balancedAfterCashbox && beforeCashbox <= 0) };
     }
 
     if (target === "explora") {
       const t = tabSummary(summary, "explora");
-      const amountToDriverBeforeCashbox = number(t.billingAmountToDriverBeforeCashbox || summary.billingAmountToDriverBeforeCashbox || summary.amountToDriverForBilling || t.amountToDriver || 0);
-      // Facturación se habilita cuando Explora tenía saldo a favor del chofer antes de descontar caja chica.
-      // Si el 5% absorbe todo el pago, se crea un cierre equilibrado para registrar la compensación y evitar duplicarla.
-      return { visible:true, enabled:amountToDriverBeforeCashbox > 0.49 };
+      const amountToDriver = number(summary.amountToDriverForBilling || t.amountToDriver || 0);
+      const amountFromDriver = number(summary.amountFromDriverForBilling || t.amountFromDriver || 0);
+      const hasBilling = number(summary.gross || t.gross || 0) > 0.49;
+      const balancedAfterCashbox = amountFromDriver <= 0.49 && amountToDriver <= 0.49;
+      const beforeCashbox = number(summary.billingNetBeforeCashboxToDriver || t.billingNetBeforeCashboxToDriver || 0);
+      // Explora solicita únicamente cuando el resultado final, Caja chica incluida, queda a su cargo.
+      return { visible:true, enabled:amountToDriver > 0.49 || (hasBilling && balancedAfterCashbox && beforeCashbox > 0) };
     }
 
     return { visible:false, enabled:false };
@@ -3691,7 +3744,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       if (status.blockedByDebt || (target === "gastos" && number(summary.pendingDebtTotal || summary.pendientes?.remainingAmount || 0) > 0.49)) {
         throw new Error("Debes dejar tu deuda en $0 antes de pedir un cierre. Utiliza el dinero que Explora debe liquidarte para saldar tu deuda y vuelve a intentar.");
       }
-      if (target === "caja_chica") throw new Error("No hay caja chica en efectivo pendiente para cerrar.");
+      if (target === "caja_chica") throw new Error("Caja chica se cierra automáticamente junto con Facturación y no admite cierre manual.");
       if (target === "gastos") throw new Error("No hay gastos abiertos para pedir cierre.");
       if (target === "chofer") throw new Error("No hay saldo pendiente para pedir cierre al chofer en este momento.");
       if (target === "explora") throw new Error("El cierre de facturación no corresponde a Explora en este momento.");
@@ -3848,8 +3901,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       enabled = amountFromDriver > 0.49;
       if (!enabled) label = amountToDriver > 0.49 ? "Liquida Explora" : "Sin acción";
     } else if (target === "caja_chica") {
-      enabled = number(t.amountFromDriver || 0) > 0.49;
-      if (!enabled) label = "Sin caja chica";
+      return adminClosureActionHtml({ uid, kind, action:"none", label:"Se cierra con Facturación", tone:"locked", disabled:true });
     } else {
       enabled = !!closureButtonState(kind, summary).enabled;
     }
@@ -3938,13 +3990,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         actionHtml:adminIncomingClosureAction(uid, "gastos", summary)
       }),
       adminClosureModuleHtml({
-        kind:"caja_chica", title:"Caja chica", subtitle:"100% a cargo del chofer",
+        kind:"caja_chica", title:"Caja chica", subtitle:"Cierra automáticamente con Facturación",
         metrics:[
           adminClosureMetricHtml("Efectivo base", caja.gross || 0),
           adminClosureMetricHtml("Caja chica 5%", caja.cashboxTotal || 0),
-          adminClosureMetricHtml("Chofer liquida", caja.amountFromDriver || 0)
+          adminClosureMetricHtml("Incluida en próximo cierre", caja.cashboxTotal || 0)
         ],
-        actionHtml:adminBillingRequestAction(uid, "caja_chica", summary)
+        actionHtml:adminClosureActionHtml({ uid, kind:"caja_chica", action:"none", label:"Se cierra con Facturación", tone:"locked", disabled:true })
       }),
       adminClosureModuleHtml({
         kind:"pendientes", title:"Deudas", subtitle:"100% a cargo del chofer",
@@ -3956,7 +4008,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         actionHtml:adminDebtAction(uid)
       })
     ];
-    const totalOpen = [chofer.amountFromDriver, explora.amountToDriver, gastos.amountToDriver, caja.amountFromDriver, pendientes.remainingAmount].reduce((sum, value) => sum + Math.max(0, number(value)), 0);
+    // Caja chica ya está incluida en el resultado final de Chofer/Explora; no volver a sumarla.
+    const totalOpen = [chofer.amountFromDriver, explora.amountToDriver, gastos.amountToDriver, pendientes.remainingAmount].reduce((sum, value) => sum + Math.max(0, number(value)), 0);
     return `
       <article class="pay-admin-driver-closure-card" data-driver-uid="${esc(uid)}">
         <header class="pay-admin-driver-closure-head">
@@ -4477,6 +4530,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function closureMatchesSummaryKind(row = {}, kind = state.tab) {
     const target = mapModuleKey(kind);
     if (!target) return false;
+    if (target === "caja_chica" && isBillingClosureKind(closureKindOf(row)) && billingClosureClosesCashbox(row)) return true;
     return closureMatchesIndependentModule(row, target);
   }
 
@@ -4556,9 +4610,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function previousCashboxClosureParts(row = {}) {
-    const total = firstUsefulNumber(row, ["cashboxTotal", "mainTotal", "totalCajaChica", "total", "amount", "monto"]) ?? 0;
-    const fromDriver = firstUsefulNumber(row, ["amountDueFromDriver", "amountFromDriver", "paidByDriver", "liquidadoPorChofer", "driverPaidExplora", "cashboxInDriver"]) ?? total;
+    const automatic = isBillingClosureKind(closureKindOf(row)) && billingClosureClosesCashbox(row);
+    const total = firstUsefulNumber(row, automatic
+      ? ["cashboxIncludedInSettlement", "cashboxTotal", "billingCashboxGenerated", "totalCajaChica"]
+      : ["cashboxTotal", "mainTotal", "totalCajaChica", "total", "amount", "monto"]) ?? 0;
+    const fromDriver = automatic
+      ? total
+      : (firstUsefulNumber(row, ["amountDueFromDriver", "amountFromDriver", "paidByDriver", "liquidadoPorChofer", "driverPaidExplora", "cashboxInDriver"]) ?? total);
     return {
+      automatic,
       total:Math.max(0, total),
       fromDriver:Math.max(0, fromDriver)
     };
@@ -4583,11 +4643,17 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
     if (target === "caja_chica") {
       const p = previousCashboxClosureParts(row);
-      return [
-        ["Caja chica anterior", currency(p.total)],
-        ["Liquidado por chofer", currency(p.fromDriver)],
-        ["Total caja chica anterior", currency(p.total)]
-      ];
+      return p.automatic
+        ? [
+            ["Caja chica del cierre anterior", currency(p.total)],
+            ["Incluida en Facturación", currency(p.total)],
+            ["Tipo de cierre", "Automático"]
+          ]
+        : [
+            ["Caja chica anterior", currency(p.total)],
+            ["Liquidado por chofer", currency(p.fromDriver)],
+            ["Total caja chica anterior", currency(p.total)]
+          ];
     }
     if (target === "explora") {
       const p = previousBillingClosureParts(row);
@@ -4664,14 +4730,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     } else if (activeClosureKind(state.tab) === "caja_chica") {
       const t = tabSummary(summary, "caja_chica");
       main = t.cashboxTotal || 0;
-      sub = "Caja chica actual del período abierto";
-      pill = t.amountFromDriver > 0 ? "Chofer debe liquidar a Explora" : "Nadie debe liquidar";
-      pillValue = t.amountFromDriver || 0;
+      sub = "Se cierra automáticamente junto con Facturación";
+      pill = t.cashboxTotal > 0 ? "Se incluirá en el próximo cierre" : "Sin caja chica pendiente";
+      pillValue = t.cashboxTotal || 0;
       lines.push(
-        ["Efectivo base", currency(t.gross || 0)],
-        ["Caja chica generada 5%", currency(t.cashboxGeneratedTotal || t.cashboxTotal || 0)],
-        ["Descontada / reservada en Explora", t.cashboxOffsetReservedOpen > 0 ? `−${currency(t.cashboxOffsetReservedOpen)}` : currency(0)],
-        ["Total caja chica pendiente", currency(t.cashboxTotal || 0)]
+        ["Efectivo base acumulado", currency(t.gross || 0)],
+        ["Caja chica generada 5%", currency(t.cashboxGeneratedTotal || 0)],
+        ["Ya compensada anteriormente", t.cashboxOffsetPreviouslyApplied > 0 ? `−${currency(t.cashboxOffsetPreviouslyApplied)}` : currency(0)],
+        ["Total a incluir en Facturación", currency(t.cashboxTotal || 0)]
       );
     } else if (state.tab === "gastos") {
       const t = tabSummary(summary, "gastos");
@@ -4728,7 +4794,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         ["Digital de Explora", currency(summary.nonCashInExplora)],
         ["Total facturado", currency(summary.gross)],
         ["Parte de cada uno 50%", currency(summary.billingShareEach)],
-        ["Caja chica 5% efectivo", currency(t.billingCashboxGenerated || summary.cashboxFromBillingCash || 0)]
+        ["Caja chica acumulada 5%", currency(t.billingCashboxGenerated || summary.cashboxTotal || 0)]
       );
     } else {
       main = summary.cashboxTotal || 0;
@@ -4778,7 +4844,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       action.classList.toggle("is-closure-locked", stateForButton.visible && !stateForButton.enabled && !debtBlocked);
       action.classList.toggle("is-debt-blocked", debtBlocked);
       const label = stateForButton.visible ? closureLabel(kind) : "";
-      action.querySelector("span").innerHTML = debtBlocked ? `Deuda activa<br/>resolver` : `Pedir cierre<br/>${esc(label)}`;
+      action.querySelector("span").innerHTML = debtBlocked
+        ? `Deuda activa<br/>resolver`
+        : stateForButton.automaticWithBilling
+          ? `Cierre automático<br/>con facturación`
+          : `Pedir cierre<br/>${esc(label)}`;
     }
     if (!box || !text) return;
     const pending = pendingHomeClosureFor(getDriverUid(), kind);
@@ -5386,7 +5456,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       ? [["Efectivo base", currency(closure.cashboxGross || gross)], ["Caja chica 5%", currency(closure.cashboxTotal || closure.mainTotal || amount)]]
       : k === "gastos"
         ? [["Gastos cargados", currency(expenseTotal)], ["Explora debía liquidar", currency(closure.expenseAmountToDriverBeforeDebt || expenseTotal * .5)], ["Ajuste de deuda con Gastos", currency(closure.expenseDebtOffsetApplied || 0)], ["Explora liquida finalmente", currency(toDriver || closure.expenseAmountToDriverAfterDebt || 0)]]
-        : [["Efectivo chofer", currency(cash)], ["Digital Explora", currency(digital)], ["Total facturado", currency(gross)], ["Parte de cada uno", currency(share)], ["Caja chica 5% efectivo", currency(closure.billingCashboxGenerated || closure.cashboxTotal || 0)], ["Caja chica descontada", currency(closure.billingCashboxOffsetApplied || 0)]];
+        : [["Efectivo chofer", currency(cash)], ["Digital Explora", currency(digital)], ["Total facturado", currency(gross)], ["Parte de cada uno", currency(share)], ["Caja chica acumulada incluida", currency(closure.cashboxIncludedInSettlement || closure.billingCashboxGenerated || closure.cashboxTotal || 0)], ["Caja chica descontada al chofer", currency(closure.billingCashboxOffsetApplied || 0)]];
     const receiptUrl = closureProofUrl(closure);
     const rows = [[result, amount > 0 ? currency(amount) : "Al día", "closure-payment-result settlement-result-green"]]
       .concat(detail)
@@ -5749,7 +5819,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const user = state.auth?.currentUser;
     if (!user?.uid) throw new Error("No hay sesión activa.");
     const kind = activeClosureKind(state.modalKind || state.tab);
-    if (!isClosureTab(kind)) throw new Error("Elegí Caja chica, Gastos o Explora para pedir un cierre.");
+    if (!isClosureTab(kind)) throw new Error("Elegí Chofer, Explora o Gastos para pedir un cierre.");
     let targetUid = getDriverUid();
     let targetName = displayName();
     if (isAdmin()) {
@@ -5789,6 +5859,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const recordIds = (summary.records || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
     const cashboxGeneratedBillingIds = (summary.cashboxGeneratedRecords || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
     const cashboxEligibleBillingIds = (summary.cashboxEligibleRecords || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
+    const cashboxRecordIds = (fullSummary.cashboxRecords || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
     const expenseIds = (summary.expenses || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
     const amountFromDriver = Number(summary.amountFromDriver || 0);
     const amountToDriver = Number(summary.amountToDriver || 0);
@@ -5805,7 +5876,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       payTab:kind,
       billingClosure:isBillingClosureKind(kind),
       billingResetGroup:isBillingClosureKind(kind) ? "facturacion" : "",
-      affectsTabs:isBillingClosureKind(kind) ? ["chofer", "explora", "facturacion"] : [kind],
+      autoClosesCashbox:isBillingClosureKind(kind),
+      cashboxClosedWithBilling:isBillingClosureKind(kind),
+      cashboxAutoClosed:isBillingClosureKind(kind),
+      cashboxResetGroup:isBillingClosureKind(kind) ? "facturacion" : "",
+      affectsTabs:isBillingClosureKind(kind) ? ["chofer", "explora", "facturacion", "caja_chica"] : [kind],
       homeModule:kind,
       requestModule:kind,
       originModule:kind,
@@ -5841,13 +5916,19 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       cashInDriver:Number(summary.cashInDriver || 0),
       exploraCash:Number(summary.nonCashInExplora || 0),
       cashboxRate:Number(summary.cashboxRate || 0),
-      cashboxGross:Number(summary.billingCashboxGross ?? summary.billingCashboxEligibleGross ?? summary.gross ?? 0),
-      cashboxTotal:Number(summary.billingCashboxGenerated ?? summary.cashboxTotal ?? 0),
-      cashboxInDriver:Number(summary.billingCashboxRemainingInDriver ?? summary.cashboxInDriver ?? 0),
-      cashboxInExplora:Number(summary.billingCashboxOffsetApplied ?? summary.cashboxInExplora ?? 0),
+      cashboxGross:isBillingRequest ? Number(fullSummary.cashboxGross || 0) : Number(summary.cashboxGross || 0),
+      cashboxTotal:isBillingRequest ? Number(fullSummary.cashboxTotal || 0) : Number(summary.cashboxTotal || 0),
+      cashboxGeneratedTotal:isBillingRequest ? Number(fullSummary.cashboxGeneratedTotal || 0) : Number(summary.cashboxGeneratedTotal || 0),
+      cashboxAlreadyCompensated:isBillingRequest ? Number(fullSummary.cashboxOffsetPreviouslyApplied || 0) : 0,
+      cashboxIncludedInSettlement:isBillingRequest ? Number(fullSummary.cashboxTotal || 0) : 0,
+      cashboxInDriver:isBillingRequest ? Number(fullSummary.cashboxTotal || 0) : Number(summary.cashboxInDriver || 0),
+      cashboxInExplora:isBillingRequest ? 0 : Number(summary.cashboxInExplora || 0),
+      cashboxPeriodStartMs:isBillingRequest ? Number(fullSummary.tabs?.caja_chica?.resetMs || 0) : 0,
+      cashboxCutoffAtMs:isBillingRequest ? cutoffAtMs : 0,
       billingCashboxGross:Number(summary.billingCashboxGross || 0),
       billingCashboxEligibleGross:Number(summary.billingCashboxEligibleGross || 0),
       billingCashboxGenerated:Number(summary.billingCashboxGenerated || 0),
+      billingCurrentCashboxGenerated:Number(summary.billingCurrentCashboxGenerated || 0),
       billingCashboxEligibleAmount:Number(summary.billingCashboxEligibleAmount || 0),
       billingCashboxOffsetApplied:Number(summary.billingCashboxOffsetApplied || 0),
       billingCashboxRemainingInDriver:Number(summary.billingCashboxRemainingInDriver || 0),
@@ -5860,6 +5941,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       includedBillingIds:recordIds,
       includedCashboxGeneratedBillingIds:cashboxGeneratedBillingIds,
       includedCashboxEligibleBillingIds:cashboxEligibleBillingIds,
+      includedCashboxIds:isBillingRequest ? cashboxRecordIds : [],
       includedExpenseIds:expenseIds,
       includedCount:Number(recordIds.length + expenseIds.length),
       cycleStartedAtMs:Number(summary.resetMs || 0),
