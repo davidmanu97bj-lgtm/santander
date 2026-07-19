@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4077-caja-chica-cierre-automatico-facturacion";
+  const VERSION = "explora-pago-home-v52-v4078-rechazo-cierre-restaura-periodo";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -970,7 +970,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           <div class="pay-closure-field" id="payDebtPaymentField" hidden><label for="payDebtPaymentAmountInput">Monto a pagar</label><input id="payDebtPaymentAmountInput" type="text" inputmode="numeric" autocomplete="off" placeholder="$ 0" /><small id="payDebtPaymentHint">El pago reduce la deuda pendiente actual.</small></div>
           <div class="pay-closure-field" id="payClosureFileField" hidden><label for="payClosureReceiptInput">Comprobante de transferencia</label><input id="payClosureReceiptInput" type="file" accept="image/*,application/pdf" /></div>
           <div class="pay-closure-message" id="payClosureMessage"></div>
-          <div class="pay-closure-actions"><button class="pay-closure-secondary" id="payClosureCancel" type="button">Cancelar</button><button class="pay-closure-primary" id="payClosureSubmit" type="button">Pedir cierre</button></div>
+          <div class="pay-closure-actions"><button class="pay-closure-danger" id="payClosureReject" type="button" hidden>No aceptar cierre</button><button class="pay-closure-secondary" id="payClosureCancel" type="button">Cancelar</button><button class="pay-closure-primary" id="payClosureSubmit" type="button">Pedir cierre</button></div>
         </section>
       </div>
       <div class="pay-profile-backdrop" id="payProfileBackdrop" aria-hidden="true">
@@ -1206,6 +1206,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     $("payAdminTypeSelect")?.addEventListener("change", event => selectAdminActivityType(event.target?.value || ""));
     $("payClosureClose")?.addEventListener("click", closeClosureModal);
     $("payClosureCancel")?.addEventListener("click", handleDebtModalBackOrClose);
+    $("payClosureReject")?.addEventListener("click", rejectClosureByAdmin);
     $("payClosureBackdrop")?.addEventListener("click", event => { if (event.target?.id === "payClosureBackdrop") closeClosureModal(); });
     $("payEfficiencyClose")?.addEventListener("click", closeEfficiencyModal);
     $("payEfficiencyBackdrop")?.addEventListener("click", event => { if (event.target?.id === "payEfficiencyBackdrop") closeEfficiencyModal(); });
@@ -2116,8 +2117,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const cuts = rows
       .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
       .filter(row => {
-        // Cada módulo corta solamente su propio período abierto.
-        // Facturación agrupa Chofer+Explora, pero NO corta Caja chica ni Gastos.
+        // Cada módulo corta su propio período abierto.
+        // Facturación agrupa Chofer+Explora; Caja chica se reinicia por su corte automático v4077 y Gastos sigue independiente.
         return closureMatchesIndependentModule(row, target);
       })
       .filter(row => !/cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
@@ -2214,6 +2215,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const due = number(closure.amountDueFromDriver || closure.amountFromDriver || 0);
     const toDriver = number(closure.amountDueToDriver || closure.amountToDriver || 0);
     const proof = closureHasProof(closure);
+    if (closureIsRejected(closure)) return "Cierre no aceptado por Explora · período restaurado";
     if (/confirmed|confirmado|completed|closed|cerrado|al_dia|al día|pagado/.test(status)) return "Cierre completo";
     if (due > 0 && proof) return "El chofer ya liquidó, chequea el comprobante en tus notificaciones.";
     if (toDriver > 0 && proof) return "Explora ya liquidó, chequea el comprobante en tus notificaciones.";
@@ -2222,24 +2224,38 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return "Cierre solicitado";
   }
 
+  function closureIsRejected(closure = {}) {
+    const status = safe(closure.status || closure.estado || closure.closureStatus || closure.statusLabel).toLowerCase();
+    return closure.rejected === true || /rejected|rechazado|cancelled|canceled|anulado|no aceptado/.test(status);
+  }
+
   function closureIsCompleted(closure = {}) {
     const status = safe(closure.status || closure.estado || closure.statusLabel).toLowerCase();
-    return /confirmed|confirmado|completed|closed|cerrado|al_dia|al día|pagado/.test(status);
+    return !closureIsRejected(closure) && /confirmed|confirmado|completed|closed|cerrado|al_dia|al día|pagado/.test(status);
+  }
+
+  function canAdminRejectClosure(closure = {}) {
+    if (!isAdmin() || !closure?.id) return false;
+    if (safe(closure.closureMode || closure.periodType) !== "on_demand") return false;
+    if (closureIsCompleted(closure) || closureIsRejected(closure) || closureHasProof(closure)) return false;
+    return true;
   }
 
   function closureActivityStateText(closure = {}) {
+    if (closureIsRejected(closure)) return "NO ACEPTADO";
     return closureIsCompleted(closure) ? "CERRADO" : "ABIERTO";
   }
 
   function closureActivityMeta(closure = {}) {
+    if (closureIsRejected(closure)) return "NO ACEPTADO · Período restaurado";
     const stateText = closureActivityStateText(closure);
     const statusText = closureStatusText(closure);
     return stateText === "CERRADO" ? "CERRADO · Cierre completo" : `ABIERTO · ${statusText}`;
   }
 
   function closurePayerClass(closure = {}) {
-    // v4050: en Última actividad todos los cierres se pintan por estado, no por quién paga.
-    // Abierto = rojo. Cerrado = verde. Aplica para chofer y admin.
+    // v4078: abierto rojo, cerrado verde y cierre no aceptado en gris neutro.
+    if (closureIsRejected(closure)) return "is-closure-rejected";
     return closureIsCompleted(closure) ? "is-closure-closed" : "is-closure-open";
   }
 
@@ -2247,7 +2263,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const due = number(closure.amountDueFromDriver || 0);
     const toDriver = number(closure.amountDueToDriver || 0);
     const proof = closureHasProof(closure);
-    if (closureIsCompleted(closure)) return "none";
+    if (closureIsCompleted(closure) || closureIsRejected(closure)) return "none";
     if (!isAdmin() && closureNeedsDriverKm(closure)) return "driver_km";
     if (isAdmin()) {
       const targetUid = notificationDriverUid();
@@ -3888,8 +3904,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       return adminClosureActionHtml({ uid, kind, action:"open-closure", id:safe(pending.id), label, tone:"red" });
     }
     if (pending) {
-      const waiting = pendingAction === "admin_waiting_driver" ? "Esperando chofer" : "Cierre abierto";
-      return adminClosureActionHtml({ uid, kind, action:"open-closure", id:safe(pending.id), label:waiting, tone:"locked", disabled:pendingAction === "admin_waiting_driver" });
+      const waiting = pendingAction === "admin_waiting_driver" ? "Esperando chofer · revisar" : "Revisar cierre abierto";
+      return adminClosureActionHtml({ uid, kind, action:"open-closure", id:safe(pending.id), label:waiting, tone:"red", disabled:false });
     }
     const target = activeClosureKind(kind);
     const t = tabSummary(summary, target);
@@ -3916,7 +3932,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       return adminClosureActionHtml({ uid, kind, action:"open-closure", id:safe(pending.id), label, tone:"red" });
     }
     if (pending && action === "admin_waiting_driver") {
-      return adminClosureActionHtml({ uid, kind, action:"open-closure", id:safe(pending.id), label:"Esperando chofer", tone:"locked", disabled:true });
+      return adminClosureActionHtml({ uid, kind, action:"open-closure", id:safe(pending.id), label:"Esperando chofer · revisar", tone:"red", disabled:false });
     }
     const target = activeClosureKind(kind);
     const t = tabSummary(summary, target);
@@ -5471,7 +5487,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function renderClosureModal() {
     renderDriverSelect();
-    const title = $("payClosureTitle"), subtitle = $("payClosureSubtitle"), summary = $("payClosureSummary"), fileField = $("payClosureFileField"), debtField = $("payDebtPaymentField"), debtInput = $("payDebtPaymentAmountInput"), debtHint = $("payDebtPaymentHint"), kmField = $("payClosureKmField"), kmInput = $("payClosureKmInput"), kmHint = $("payClosureKmHint"), submit = $("payClosureSubmit"), cancel = $("payClosureCancel");
+    const title = $("payClosureTitle"), subtitle = $("payClosureSubtitle"), summary = $("payClosureSummary"), fileField = $("payClosureFileField"), debtField = $("payDebtPaymentField"), debtInput = $("payDebtPaymentAmountInput"), debtHint = $("payDebtPaymentHint"), kmField = $("payClosureKmField"), kmInput = $("payClosureKmInput"), kmHint = $("payClosureKmHint"), submit = $("payClosureSubmit"), cancel = $("payClosureCancel"), reject = $("payClosureReject");
     const actions = submit?.closest(".pay-closure-actions");
     if (!title || !subtitle || !summary || !fileField || !submit || !cancel) return;
     const closure = state.modalClosure;
@@ -5485,7 +5501,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     cancel.textContent = "Cancelar";
     cancel.hidden = false;
     submit.hidden = false;
-    if (actions) actions.hidden = false;
+    if (reject) { reject.hidden = true; reject.disabled = true; reject.textContent = "No aceptar cierre"; }
+    if (actions) { actions.hidden = false; actions.classList.remove("has-reject"); }
     submit.className = "pay-closure-primary";
     submit.disabled = false;
 
@@ -5563,6 +5580,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       const toDriver = number(closure.amountDueToDriver || 0);
       const proof = closureHasProof(closure);
       const completed = closureIsCompleted(closure);
+      const rejectable = canAdminRejectClosure(closure);
+      if (reject) {
+        reject.hidden = !rejectable;
+        reject.disabled = !rejectable;
+        reject.textContent = safe(closure.requestedByRole).toLowerCase() === "driver" ? "No aceptar cierre" : "Anular cierre";
+      }
+      if (actions) actions.classList.toggle("has-reject", rejectable);
       const kmNeeded = action === "driver_km";
       const uploadNeeded = (action === "driver_upload" || action === "admin_upload") && !proof && !completed;
       fileField.hidden = !uploadNeeded;
@@ -5678,6 +5702,62 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const payData = closureAmountLine(latest);
     const driverPayment = driverPaymentProfileForUid(getDriverUid());
     summary.innerHTML += closurePaymentRowsHtml({ driverPayment, direction:payData.direction });
+  }
+
+  async function rejectClosureByAdmin() {
+    const closure = state.modalClosure;
+    if (state.busy) return;
+    if (!canAdminRejectClosure(closure)) {
+      setModalMessage("Este cierre ya no puede rechazarse porque fue cerrado o tiene comprobante.", "error");
+      return;
+    }
+    const accepted = window.confirm("¿No aceptar este cierre? El corte se anulará y Facturación junto con Caja chica volverán automáticamente al período anterior.");
+    if (!accepted) return;
+    state.busy = true;
+    const button = $("payClosureReject");
+    const oldText = button?.textContent || "No aceptar cierre";
+    if (button) { button.disabled = true; button.textContent = "Restaurando…"; }
+    setModalMessage("Restaurando el período anterior…");
+    try {
+      const nowMs = Date.now();
+      const patch = {
+        status:"rejected",
+        estado:"rechazado",
+        statusLabel:"Cierre no aceptado por Explora · período restaurado",
+        closureStatus:"rejected",
+        paymentStatus:"cancelled",
+        receiptStatus:"not_required",
+        paid:false,
+        completed:false,
+        rejected:true,
+        rejectionReason:"incorrect_closure_request",
+        rejectedByUid:state.auth?.currentUser?.uid || "",
+        rejectedByName:accountName(),
+        rejectedByRole:"admin",
+        rejectedAt:serverTimestamp(),
+        rejectedAtMs:nowMs,
+        rollbackRestored:true,
+        rollbackRestoredAt:serverTimestamp(),
+        rollbackRestoredAtMs:nowMs,
+        updatedAt:serverTimestamp(),
+        updatedAtMs:nowMs,
+        version:VERSION
+      };
+      await updateDoc(doc(state.db, "cierres_semanales", closure.id), patch);
+      state.closures = state.closures.map(row => safe(row.id || row.closureId) === safe(closure.id) ? { ...row, ...patch, rejectedAtMs:nowMs, rollbackRestoredAtMs:nowMs, updatedAtMs:nowMs } : row);
+      state.pendingClosure = null;
+      state.modalClosure = { ...closure, ...patch, rejectedAtMs:nowMs, rollbackRestoredAtMs:nowMs, updatedAtMs:nowMs };
+      state.latestSummary = computeSummary();
+      render();
+      setModalMessage("Cierre no aceptado. El período anterior fue restaurado.", "ok");
+      setTimeout(closeClosureModal, 900);
+    } catch (error) {
+      console.error("EXPLORA_PAY_REJECT_CLOSURE", error);
+      setModalMessage(error?.message || "No se pudo restaurar el cierre.", "error");
+      if (button) { button.disabled = false; button.textContent = oldText; }
+    } finally {
+      state.busy = false;
+    }
   }
 
   async function submitClosureModal() {
