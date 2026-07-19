@@ -3461,3 +3461,32 @@ body.explora-pay-mode .pay-tabs{
   .pay-expense-debt-reconciliation-grid span{padding:8px;font-size:10.8px;}
   .pay-expense-debt-reconciliation-grid strong{font-size:13px;}
 }
+
+
+/* v4078 · Admin puede no aceptar un cierre y restaurar el período anterior */
+.pay-closure-actions.has-reject{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+}
+.pay-closure-actions.has-reject #payClosureReject{
+  grid-column:1 / -1;
+}
+.pay-activity.is-closure-rejected{
+  background:#f5f6f8!important;
+  border-color:#cfd3da!important;
+  box-shadow:0 8px 18px rgba(50,56,68,.045)!important;
+}
+.pay-activity.is-closure-rejected .pay-activity-icon{
+  background:#e7e9ee!important;
+  color:#555c6b!important;
+}
+.pay-activity.is-closure-rejected .pay-activity-title{
+  color:#353a45!important;
+}
+.pay-activity.is-closure-rejected .pay-activity-meta,
+.pay-activity.is-closure-rejected .pay-activity-detail{
+  color:#666d7a!important;
+}
+@media (max-width:340px){
+  .pay-closure-actions.has-reject{grid-template-columns:1fr!important;}
+  .pay-closure-actions.has-reject #payClosureReject{grid-column:auto;}
+}
