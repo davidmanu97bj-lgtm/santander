@@ -723,7 +723,10 @@ function financialBillingClosurePatch(closure = {}, movement = {}, { cashboxOnly
   const cashboxRate = Math.max(0, financialNumber(closure.cashboxRate || .05));
   const cashboxGenerated = cashboxGross * cashboxRate;
   const cashboxEligibleAmount = eligibleGross * cashboxRate;
-  const cashboxOffsetApplied = netBeforeCashboxToDriver > 0 ? Math.min(netBeforeCashboxToDriver, cashboxEligibleAmount) : 0;
+  const autoClosesCashbox = closure.autoClosesCashbox === true || closure.cashboxClosedWithBilling === true || closure.cashboxAutoClosed === true || (Array.isArray(closure.affectsTabs) && closure.affectsTabs.includes("caja_chica"));
+  const alreadyCompensated = autoClosesCashbox ? Math.max(0, financialNumber(closure.cashboxAlreadyCompensated || 0)) : 0;
+  const cashboxPending = autoClosesCashbox ? Math.max(0, cashboxGenerated - alreadyCompensated) : cashboxEligibleAmount;
+  const cashboxOffsetApplied = autoClosesCashbox ? cashboxPending : (netBeforeCashboxToDriver > 0 ? Math.min(netBeforeCashboxToDriver, cashboxEligibleAmount) : 0);
   const netToDriver = netBeforeCashboxToDriver - cashboxOffsetApplied;
   return {
     gross, grossBeforeCashbox:gross, cashInDriver:cash, cashGrossInDriver:cash,
@@ -733,12 +736,14 @@ function financialBillingClosurePatch(closure = {}, movement = {}, { cashboxOnly
     billingAmountToDriverBeforeCashbox:Math.max(0, netBeforeCashboxToDriver),
     billingCashboxGross:cashboxGross,
     billingCashboxEligibleGross:eligibleGross,
-    billingCashboxGenerated:cashboxGenerated,
-    billingCashboxEligibleAmount:cashboxEligibleAmount,
+    billingCashboxGenerated:autoClosesCashbox ? cashboxPending : cashboxGenerated,
+    billingCashboxEligibleAmount:autoClosesCashbox ? cashboxPending : cashboxEligibleAmount,
     billingCashboxOffsetApplied:cashboxOffsetApplied,
-    cashboxTotal:cashboxGenerated,
-    cashboxInDriver:Math.max(0, cashboxEligibleAmount - cashboxOffsetApplied),
-    cashboxInExplora:cashboxOffsetApplied,
+    cashboxGeneratedTotal:cashboxGenerated,
+    cashboxTotal:autoClosesCashbox ? cashboxPending : cashboxGenerated,
+    cashboxIncludedInSettlement:autoClosesCashbox ? cashboxPending : financialNumber(closure.cashboxIncludedInSettlement || 0),
+    cashboxInDriver:autoClosesCashbox ? cashboxPending : Math.max(0, cashboxEligibleAmount - cashboxOffsetApplied),
+    cashboxInExplora:autoClosesCashbox ? 0 : cashboxOffsetApplied,
     netSettlementToDriver:netToDriver,
     amountDueFromDriver:Math.max(0, -netToDriver), amountFromDriver:Math.max(0, -netToDriver),
     amountDueToDriver:Math.max(0, netToDriver), amountToDriver:Math.max(0, netToDriver)
@@ -777,18 +782,26 @@ function financialExpenseClosurePatch(closure = {}, movement = {}) {
 
 async function financialAdjustClosures({ type, driverUid, documentId, movement, adminUid }) {
   const includeField = type === "gasto" ? "includedExpenseIds" : "includedBillingIds";
-  const docs = await financialRelatedClosures(driverUid, documentId, includeField);
+  const docsMap = new Map();
+  for (const field of (type === "gasto" ? [includeField] : [includeField, "includedCashboxIds"])) {
+    const found = await financialRelatedClosures(driverUid, documentId, field);
+    found.forEach(docSnap => docsMap.set(docSnap.id, docSnap));
+  }
+  const docs = [...docsMap.values()];
   let adjusted = 0;
   for (const docSnap of docs) {
     const closure = docSnap.data() || {};
     const kind = financialClosureKind(closure);
     let patch = null;
+    const inBillingIds = Array.isArray(closure.includedBillingIds) && closure.includedBillingIds.map(text).includes(text(documentId));
+    const inCashboxIds = Array.isArray(closure.includedCashboxIds) && closure.includedCashboxIds.map(text).includes(text(documentId));
     if (type === "gasto" && kind === "gastos") patch = financialExpenseClosurePatch(closure, movement);
-    if (type === "cobro" && financialIsBillingClosure(kind)) patch = financialBillingClosurePatch(closure, movement);
+    if (type === "cobro" && financialIsBillingClosure(kind)) patch = financialBillingClosurePatch(closure, movement, { cashboxOnly:!inBillingIds && inCashboxIds });
     if (type === "caja_chica" && financialIsBillingClosure(kind) && financialMethodOf(movement) === "cash") patch = financialBillingClosurePatch(closure, movement, { cashboxOnly:true });
     if ((type === "cobro" || type === "caja_chica") && kind === "caja_chica" && financialMethodOf(movement) === "cash") patch = financialCashboxClosurePatch(closure, movement);
     if (!patch) continue;
-    const removesPrimaryMovement = type !== "caja_chica" || kind === "caja_chica";
+    const primaryIds = Array.isArray(closure[includeField]) ? closure[includeField].map(text) : [];
+    const removesPrimaryMovement = (type !== "caja_chica" || kind === "caja_chica") && primaryIds.includes(text(documentId));
     const remainingIds = removesPrimaryMovement ? financialRemoveArrayItem(closure[includeField], documentId) : closure[includeField];
     const generatedIds = Array.isArray(closure.includedCashboxGeneratedBillingIds)
       ? financialRemoveArrayItem(closure.includedCashboxGeneratedBillingIds, documentId)
@@ -796,11 +809,15 @@ async function financialAdjustClosures({ type, driverUid, documentId, movement, 
     const eligibleIds = Array.isArray(closure.includedCashboxEligibleBillingIds)
       ? financialRemoveArrayItem(closure.includedCashboxEligibleBillingIds, documentId)
       : closure.includedCashboxEligibleBillingIds;
+    const cashboxIds = Array.isArray(closure.includedCashboxIds)
+      ? financialRemoveArrayItem(closure.includedCashboxIds, documentId)
+      : closure.includedCashboxIds;
     await docSnap.ref.set({
       ...patch,
       [includeField]:remainingIds,
       ...(generatedIds !== undefined ? { includedCashboxGeneratedBillingIds:generatedIds } : {}),
       ...(eligibleIds !== undefined ? { includedCashboxEligibleBillingIds:eligibleIds } : {}),
+      ...(cashboxIds !== undefined ? { includedCashboxIds:cashboxIds } : {}),
       includedCount:removesPrimaryMovement ? Math.max(0, Number(closure.includedCount || 0) - 1) : Number(closure.includedCount || 0),
       adminAdjusted:true,
       adminAdjustedReason:type === "caja_chica" ? "Caja chica excluida manualmente" : "Movimiento eliminado manualmente",
@@ -809,7 +826,7 @@ async function financialAdjustClosures({ type, driverUid, documentId, movement, 
       adminAdjustedByUid:adminUid,
       updatedAt:FieldValue.serverTimestamp(),
       updatedAtMs:Date.now(),
-      version:"v4018-admin-delete-action-fix"
+      version:"v4077-caja-chica-cierre-automatico"
     }, { merge:true });
     adjusted += 1;
   }
