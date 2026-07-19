@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v4075 · sesión persistente sin pintura de datos anteriores */
+/* EXPLORA PWA registration · v4079 · rechazo restaura período en panel chofer */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4075-sin-datos-anteriores';
+  const BUILD = 'v4079-rechazo-cierre-restaura-en-chofer';
 
   const clearLegacyCaches = async () => {
     try {
