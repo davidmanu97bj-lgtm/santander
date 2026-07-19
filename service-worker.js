@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4076-caja-chica-neta-liquidacion */
+/* Compatibilidad validada: v4077-caja-chica-cierre-automatico */
 /* EXPLORA PWA service worker · v2.5.5 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4076-caja-chica-neta-liquidacion`;
+const CACHE_NAME = `${CACHE_PREFIX}v4077-caja-chica-cierre-automatico`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -41,7 +41,7 @@ const APP_SHELL = [
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
   './css/segments/52-style.css?v=4073-uber-fleet',
-  './js/segments/52-script.mjs?v=4076-caja-chica-neta-liquidacion',
+  './js/segments/52-script.mjs?v=4077-caja-chica-cierre-automatico',
   './assets/icono_eficiencia_km.png',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
@@ -141,3 +141,5 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4075 primera pintura autoritativa sin datos anteriores */
 
 /* cache bump: v4076 caja chica visible y neteada cuando Explora liquida al chofer */
+
+/* cache bump: v4077 caja chica incluida completa y cierre automático con Facturación */
