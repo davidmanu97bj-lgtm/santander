@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4078-rechazo-cierre-restaura-periodo";
+  const VERSION = "explora-pago-home-v52-v4079-rechazo-cierre-restaura-en-chofer";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -218,6 +218,29 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return safe(raw) ? activeClosureKind(raw) : "";
   }
 
+  function closureInvalidationText(row = {}) {
+    return [
+      row.status, row.estado, row.closureStatus, row.paymentStatus, row.receiptStatus,
+      row.statusLabel, row.rejectionReason, row.rollbackStatus, row.closureMode, row.periodType
+    ].map(value => safe(value).toLowerCase()).filter(Boolean).join(" | ");
+  }
+
+  function closureInvalidatesCutoff(row = {}) {
+    const joined = closureInvalidationText(row);
+    return row.rejected === true || row.rollbackRestored === true || row.invalidatesCutoff === true || row.cutoffActive === false ||
+      /reject|rechaz|cancel|anulad|no aceptado|rejected_on_demand/.test(joined);
+  }
+
+  function closureUsesActiveCutoff(row = {}) {
+    const mode = safe(row.closureMode || row.periodType).toLowerCase();
+    return mode === "on_demand" && !closureInvalidatesCutoff(row);
+  }
+
+  function closureIsVisibleOnDemand(row = {}) {
+    const mode = safe(row.closureMode || row.periodType).toLowerCase();
+    return mode === "on_demand" || (mode === "rejected_on_demand" && closureInvalidatesCutoff(row));
+  }
+
   function billingCashboxOffsetOf(row = {}) {
     return Math.max(0, number(
       row.billingCashboxOffsetApplied ??
@@ -230,9 +253,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function billingCashboxOffsetsAfter(closures = [], resetCashboxMs = 0) {
     return closures
-      .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
+      .filter(closureUsesActiveCutoff)
       .filter(row => isBillingClosureKind(closureKindOf(row)))
-      .filter(row => !/cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
       .filter(row => closureCutMs(row) > number(resetCashboxMs))
       .reduce((sum, row) => sum + billingCashboxOffsetOf(row), 0);
   }
@@ -244,10 +266,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function lastCashboxResetMs(rows = []) {
     const automaticCuts = (rows || [])
-      .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
+      .filter(closureUsesActiveCutoff)
       .filter(row => isBillingClosureKind(closureKindOf(row)))
       .filter(billingClosureClosesCashbox)
-      .filter(row => !/cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
       .map(closureCutMs)
       .filter(Boolean)
       .sort((a,b)=>b-a);
@@ -2115,13 +2136,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const target = activeClosureKind(kind);
     if (!target) return 0;
     const cuts = rows
-      .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
+      .filter(closureUsesActiveCutoff)
       .filter(row => {
         // Cada módulo corta su propio período abierto.
         // Facturación agrupa Chofer+Explora; Caja chica se reinicia por su corte automático v4077 y Gastos sigue independiente.
+        // v4079: un cierre rechazado nunca puede seguir actuando como corte, aunque algún campo legado conserve "requested".
         return closureMatchesIndependentModule(row, target);
       })
-      .filter(row => !/cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
       .map(closureCutMs)
       .filter(Boolean)
       .sort((a,b)=>b-a);
@@ -2139,9 +2160,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (isAdmin() && !targetUid) return null;
     const pending = state.closures
       .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
+      .filter(row => !closureInvalidatesCutoff(row))
       .filter(row => closureMatchesIndependentModule(row, target))
       .filter(row => !targetUid || closureBelongsToDriver(row, targetUid))
-      .filter(row => !/confirmed|completed|closed|cerrado|al_dia|al día|pagado|cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
+      .filter(row => !/confirmed|completed|closed|cerrado|al_dia|al día|pagado/i.test(closureInvalidationText(row)))
       .sort((a,b)=>rowMs(b)-rowMs(a));
     return pending[0] || null;
   }
@@ -2153,9 +2175,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (isAdmin() && !targetUid) return null;
     return state.closures
       .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
+      .filter(row => !closureInvalidatesCutoff(row))
       .filter(row => closureMatchesIndependentModule(row, target))
       .filter(row => !targetUid || closureBelongsToDriver(row, targetUid))
-      .filter(row => !/confirmed|completed|closed|cerrado|al_dia|al día|pagado|cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
+      .filter(row => !/confirmed|completed|closed|cerrado|al_dia|al día|pagado/i.test(closureInvalidationText(row)))
       .sort((a,b)=>rowMs(b)-rowMs(a))[0] || null;
   }
 
@@ -2163,7 +2186,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const targetUid = safe(uid);
     const rows = state.closures
       .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
-      .filter(row => !/confirmed|completed|closed|cerrado|al_dia|al día|pagado|cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
+      .filter(row => !closureInvalidatesCutoff(row))
+      .filter(row => !/confirmed|completed|closed|cerrado|al_dia|al día|pagado/i.test(closureInvalidationText(row)))
       .filter(row => targetUid ? closureBelongsToDriver(row, targetUid) : isAdmin())
       .filter(row => closureActionForViewer(row) !== "none")
       .sort((a,b)=>rowMs(b)-rowMs(a));
@@ -2177,7 +2201,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (isAdmin() && !targetUid) return null;
     return state.closures
       .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
-      .filter(row => !/confirmed|completed|closed|cerrado|al_dia|al día|pagado|cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
+      .filter(row => !closureInvalidatesCutoff(row))
+      .filter(row => !/confirmed|completed|closed|cerrado|al_dia|al día|pagado/i.test(closureInvalidationText(row)))
       .filter(row => closureMatchesHomeModule(row, kind))
       .filter(row => !targetUid || closureBelongsToDriver(row, targetUid))
       .filter(row => closureActionForViewer(row) !== "none")
@@ -2225,8 +2250,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function closureIsRejected(closure = {}) {
-    const status = safe(closure.status || closure.estado || closure.closureStatus || closure.statusLabel).toLowerCase();
-    return closure.rejected === true || /rejected|rechazado|cancelled|canceled|anulado|no aceptado/.test(status);
+    return closureInvalidatesCutoff(closure);
   }
 
   function closureIsCompleted(closure = {}) {
@@ -2355,7 +2379,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       })
       .filter(row => row.billingClosure === true || isBillingClosureKind(closureKindOf(row)))
       .filter(row => !targetUid || closureBelongsToDriver(row, targetUid))
-      .filter(row => !/cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
+      .filter(row => !closureInvalidatesCutoff(row))
       .sort((a,b)=>closureCutMs(b)-closureCutMs(a) || rowMs(b)-rowMs(a));
   }
 
@@ -3860,8 +3884,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (!targetUid || !target) return null;
     return (state.closures || [])
       .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
+      .filter(row => !closureInvalidatesCutoff(row))
       .filter(row => !closureIsCompleted(row))
-      .filter(row => !/cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
       .filter(row => closureBelongsToDriver(row, targetUid))
       .filter(row => closureMatchesIndependentModule(row, target))
       .sort((a,b)=>rowMs(b)-rowMs(a))[0] || null;
@@ -4228,7 +4252,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       });
     }
 
-    for (const row of state.closures.filter(r => safe(r.closureMode || r.periodType) === "on_demand")) {
+    for (const row of state.closures.filter(closureIsVisibleOnDemand)) {
       const at = rowMs(row);
       const closureKind = closureKindOf(row);
       const stateText = closureActivityStateText(row);
@@ -4583,10 +4607,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const targetUid = safe(uid);
     if (isAdmin() && !targetUid) return null;
     return state.closures
-      .filter(row => safe(row.closureMode || row.periodType) === "on_demand")
+      .filter(closureUsesActiveCutoff)
       .filter(row => closureMatchesSummaryKind(row, kind))
       .filter(row => !targetUid || closureBelongsToDriver(row, targetUid))
-      .filter(row => !/cancelled|canceled|anulado|rechazado/i.test(safe(row.status || row.estado)))
       .sort((a,b)=>closureCutMs(b)-closureCutMs(a) || rowMs(b)-rowMs(a))[0] || null;
   }
 
@@ -5721,6 +5744,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     try {
       const nowMs = Date.now();
       const patch = {
+        originalClosureMode:safe(closure.originalClosureMode || closure.closureMode || closure.periodType || "on_demand"),
+        originalCutoffAtMs:Number(closure.originalCutoffAtMs || closureCutMs(closure) || 0),
+        closureMode:"rejected_on_demand",
+        periodType:"rejected_on_demand",
+        cutoffActive:false,
+        invalidatesCutoff:true,
         status:"rejected",
         estado:"rechazado",
         statusLabel:"Cierre no aceptado por Explora · período restaurado",
@@ -5749,7 +5778,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       state.modalClosure = { ...closure, ...patch, rejectedAtMs:nowMs, rollbackRestoredAtMs:nowMs, updatedAtMs:nowMs };
       state.latestSummary = computeSummary();
       render();
-      setModalMessage("Cierre no aceptado. El período anterior fue restaurado.", "ok");
+      setModalMessage("Cierre no aceptado. Facturación y Caja chica fueron restauradas también en el panel del chofer.", "ok");
       setTimeout(closeClosureModal, 900);
     } catch (error) {
       console.error("EXPLORA_PAY_REJECT_CLOSURE", error);
