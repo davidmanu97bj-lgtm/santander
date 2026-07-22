@@ -5396,9 +5396,9 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       const rows = drivers.map(driver => {
         const uid = adminDriverKey(driver) || driver.id;
         const username = String(driver.usuario || driver.username || driver.usuarioNormalizado || "").trim();
-        return `<article class="admin-management-card admin-driver-only-card" data-admin-driver-card="${escapeAdminHtml(driver.id)}"><div class="admin-management-card-head"><div class="admin-management-card-title"><strong>${escapeAdminHtml(getProfileName(driver))}</strong><span>ID ${escapeAdminHtml(username || shortAdminUid(uid))} · Rol chofer</span><small>${escapeAdminHtml(driver.telefono || driver.phone || "Teléfono opcional pendiente")}</small></div><span class="admin-management-status is-driver-only">Chofer</span></div><div class="admin-management-actions admin-driver-only-actions"><button class="admin-management-hard-delete" type="button" data-admin-hard-delete-driver="${escapeAdminHtml(driver.id)}">ELIMINAR CHOFER</button></div></article>`;
+        return `<article class="admin-management-card admin-driver-only-card" data-admin-driver-card="${escapeAdminHtml(driver.id)}"><div class="admin-management-card-head"><div class="admin-management-card-title"><strong>${escapeAdminHtml(getProfileName(driver))}</strong><span>ID ${escapeAdminHtml(username || shortAdminUid(uid))} · Rol chofer</span><small>${escapeAdminHtml(driver.telefono || driver.phone || "Teléfono opcional pendiente")}</small></div><span class="admin-management-status is-driver-only">Chofer</span></div><div class="admin-management-actions admin-driver-only-actions"><button class="admin-management-reset" type="button" data-admin-reset-driver="${escapeAdminHtml(driver.id)}">RESETEAR DATOS</button><button class="admin-management-hard-delete" type="button" data-admin-hard-delete-driver="${escapeAdminHtml(driver.id)}">ELIMINAR CHOFER</button></div></article>`;
       }).join("");
-      return `<section class="admin-management-toolbar admin-driver-only-toolbar"><div class="admin-management-toolbar-copy"><strong>Choferes</strong><small>Menú simplificado: crear chofer o eliminar chofer. La gestión de vehículos queda fuera de esta pantalla.</small></div><button class="admin-management-add" type="button" data-admin-add-driver>CREAR CHOFER</button></section><section class="admin-management-list admin-driver-only-list">${rows || '<div class="admin-management-empty">No hay choferes activos.</div>'}</section>`;
+      return `<section class="admin-management-toolbar admin-driver-only-toolbar"><div class="admin-management-toolbar-copy"><strong>Choferes</strong><small>Crear accesos, resetear datos operativos o eliminar choferes. Resetear conserva la cuenta y el vehículo.</small></div><button class="admin-management-add" type="button" data-admin-add-driver>CREAR CHOFER</button></section><section class="admin-management-list admin-driver-only-list">${rows || '<div class="admin-management-empty">No hay choferes activos.</div>'}</section>`;
     }
 
     async function refreshDriversManagement() {
@@ -5426,6 +5426,28 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         const message = String(error?.message || "");
         if (String(error?.code || "").includes("not-found") || message.includes("not found")) {
           throw vehicleInternalError("HARD_DELETE_DRIVER_DATA", "ADMIN_FUNCTION_NOT_DEPLOYED", "La función administrativa todavía no está desplegada en Firebase.", error);
+        }
+        throw error;
+      }
+    }
+
+    async function resetDriverOperationalData(driverDocumentId, confirmation) {
+      const session = assertVehicleAdmin("RESET_DRIVER_OPERATIONAL_DATA");
+      const cleanId = String(driverDocumentId || "").trim();
+      if (!cleanId) throw vehicleInternalError("RESET_DRIVER_OPERATIONAL_DATA", "DRIVER_REQUIRED", "Falta identificar al chofer.");
+      const callable = httpsCallable(functions, "adminResetDriverOperationalData", { timeout: 540000 });
+      try {
+        const response = await callable({ driverId:cleanId, confirmation:String(confirmation || "") });
+        const result = response?.data || {};
+        if (result.ok !== true || result.accountPreserved !== true) throw vehicleInternalError("RESET_DRIVER_OPERATIONAL_DATA", "DRIVER_RESET_INCOMPLETE", "Firebase no confirmó el reseteo seguro del chofer.");
+        invalidateAdminWeeklyData("driver-operational-reset");
+        window.dispatchEvent(new CustomEvent("explora:driver-data-reset", { detail:{ driverUid:cleanId, result } }));
+        await refreshDriversManagement();
+        return { ...result, resetByUid:session.uid };
+      } catch (error) {
+        const message = String(error?.message || "");
+        if (String(error?.code || "").includes("not-found") || message.includes("not found")) {
+          throw vehicleInternalError("RESET_DRIVER_OPERATIONAL_DATA", "ADMIN_RESET_FUNCTION_NOT_DEPLOYED", "La función para resetear datos todavía no está desplegada en Firebase.", error);
         }
         throw error;
       }
@@ -6548,6 +6570,29 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         try { await saveDriverVehicleAssignment(saveDriverVehicleButton.dataset.adminSaveDriverVehicle); }
         catch (_) {}
         finally { adminManagementState.busy = false; }
+        return;
+      }
+      const resetDriverButton = event.target.closest?.("[data-admin-reset-driver]");
+      if (resetDriverButton) {
+        if (adminManagementState.busy) return;
+        const driver = adminManagementState.drivers.find(item => item.id === resetDriverButton.dataset.adminResetDriver);
+        if (!driver) return;
+        const driverName = getProfileName(driver);
+        const first = await openAdminManagementConfirm({
+          title:"RESETEAR DATOS DEL CHOFER",
+          message:`Se borrarán todos los datos operativos de este chofer: cobros, gastos, caja chica, deudas, cierres, préstamos, comprobantes, actividad y acumulados.\n\n${driverName}\n${driver.email || driver.contactEmail || ""}\n\nLa cuenta, contraseña, perfil, teléfono, alias y vehículo asignado se conservarán. No se puede deshacer.`,
+          confirmLabel:"CONTINUAR"
+        });
+        if (!first) return;
+        const typed = window.prompt(`Confirmación final: escribí exactamente RESETEAR ${driverName}`) || "";
+        if (typed.trim() !== `RESETEAR ${driverName}`) { window.showToast?.("Confirmación incorrecta. No se reseteó ningún dato."); return; }
+        adminManagementState.busy = true; resetDriverButton.disabled = true; resetDriverButton.textContent = "RESETEANDO…";
+        try {
+          const result = await resetDriverOperationalData(driver.id, typed.trim());
+          window.showExploraSuccess?.({ title:"DATOS RESETEADOS", message:`${driverName} conserva su cuenta y vehículo. Documentos eliminados: ${result.deletedDocuments || 0}. Archivos eliminados: ${result.deletedFiles || 0}.` });
+        } catch (error) {
+          showVehicleDiagnostic("RESET_DRIVER_OPERATIONAL_DATA", error?.internalCode || error?.code || "DRIVER_RESET_FAILED", error, { functionName:"adminResetDriverOperationalData", driverUid:driver.id, firestorePath:"Cloud Function Admin SDK", queryUsed:"recursive scan + preserve profile/auth/vehicle" });
+        } finally { adminManagementState.busy = false; }
         return;
       }
       const hardDeleteDriverButton = event.target.closest?.("[data-admin-hard-delete-driver]");
