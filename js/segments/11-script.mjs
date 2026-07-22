@@ -4883,7 +4883,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       renderAdminHeader(exploraSession.profile || {});
       renderAdminReservedCards();
       const ops = dashboardOperationCards();
-      setCardCopy(ops[0], "AGREGAR CHOFER", "Crear acceso operativo", "admin-agregar-chofer", "Agregar chofer");
+      setCardCopy(ops[0], "GESTIONAR CHOFERES", "Crear, resetear o eliminar", "admin-choferes", "Gestionar choferes");
       setCardCopy(ops[1], "PRÉSTAMO OPERATIVO", "Adelanto compartido 50 % / 50 %", "admin-prestamo", "Préstamo operativo");
       setCardCopy(ops[2], "MI AUTO", "Gestión del vehículo", "admin-mi-auto", "Mi auto");
       ensureAdminCollaborationCard();
@@ -5523,7 +5523,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         if (needsOverview && !adminSharedState.overview) adminSharedState.overview = await getAdminWeeklyOverview();
         let html = "";
         if (mode === "drivers-management") {
-          setAdminSharedHeader("CHOFERES", "Crear y eliminar choferes.");
+          setAdminSharedHeader("CHOFERES", "Crear, resetear datos o eliminar choferes.");
           html = await renderAdminDriversManagement();
         } else
         if (mode === "closures") {
@@ -5841,7 +5841,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         ["newDriverName","newDriverUsername","newDriverPassword","newDriverEmail","newDriverPhone","newDriverCuit","newDriverAlias"].forEach(id => { const element = $(id); if (element) element.value = ""; });
         invalidateAdminWeeklyData("driver-created");
         await refreshDriversManagement();
-        window.showExploraSuccess?.({ title:"CHOFER CREADO", message:`${nombre} ya puede ingresar con su ID y contraseña.` });
+        window.showExploraSuccess?.({ title:"CHOFER CREADO", message:`${nombre} ya puede ingresar con su ID y contraseña.`, onAccept:async()=>{ closeAdminCreateDriverModal(); if(adminSharedState.mode!=="drivers-management") openAdminSharedModule("drivers-management"); else await refreshDriversManagement(); } });
       } catch (error) {
         const code = error?.internalCode || error?.code || "DRIVER_SAVE_FAILED";
         const internal = error?.internalCode ? error : vehicleInternalError(stage, "DRIVER_SAVE_FAILED", error?.message || "No se pudo crear el chofer.", error);
@@ -6529,7 +6529,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     window.ExploraActions["admin-derivaciones"] = () => openAdminSharedModule("derivations");
     window.ExploraActions["admin-multas"] = () => window.ExploraAdminTools?.openDebt?.();
         window.ExploraActions["admin-choferes"] = () => openAdminSharedModule("drivers-management");
-    window.ExploraActions["admin-agregar-chofer"] = openAdminCreateDriverModal;
+    window.ExploraActions["admin-agregar-chofer"] = () => openAdminSharedModule("drivers-management");
     window.ExploraActions["admin-create-vehicle"] = openAdminCreateVehicleModal;
     window.ExploraActions["admin-deuda"] = () => window.ExploraAdminTools?.openDebt?.();
     window.ExploraActions["admin-prestamo"] = () => openAdminSharedModule("loan");
