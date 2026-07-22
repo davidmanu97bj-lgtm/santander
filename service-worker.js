@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4079-rechazo-cierre-restaura-en-chofer */
+/* Compatibilidad validada: v4080-reset-datos-chofer */
 /* EXPLORA PWA service worker · v2.5.5 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4079-rechazo-cierre-restaura-en-chofer`;
+const CACHE_NAME = `${CACHE_PREFIX}v4080-reset-datos-chofer`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -31,16 +31,16 @@ const APP_SHELL = [
   './js/segments/01-script.js?v2442-weekly-payment-production',
   './js/segments/19-script.mjs?v2442-weekly-payment-production',
   './js/segments/39-script.mjs?v=4016-card-alerts',
-  './js/segments/11-script.mjs?v=4074-login-persistente',
+  './js/segments/11-script.mjs?v=4080-reset-datos-chofer',
   './js/segments/12-script.js?v=4065-sync-before-dashboard',
   './js/segments/37-script.js?v=4074-login-persistente',
   './js/core/weekly-core.mjs?v2442-weekly-payment-production',
   './css/segments/45-style.css?v=2440-weekly-closure-cash-record-recovery',
   './css/segments/44-style.css?v=2503-more-white-exit',
-  './css/segments/50-style.css?v=4016-card-alerts',
+  './css/segments/50-style.css?v=4080-reset-datos-chofer',
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
-  './css/segments/52-style.css?v=4073-uber-fleet',
+  './css/segments/52-style.css?v=4080-reset-datos-chofer',
   './js/segments/52-script.mjs?v=4079-rechazo-cierre-restaura-en-chofer',
   './assets/icono_eficiencia_km.png',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
@@ -145,3 +145,5 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4077 caja chica incluida completa y cierre automático con Facturación */
 
 /* cache bump: v4079 rechazo de cierre restaura Facturación y Caja chica en chofer */
+
+/* cache bump: v4080 reset seguro de datos por chofer */
