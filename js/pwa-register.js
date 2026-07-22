@@ -3,7 +3,7 @@
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4080-reset-datos-chofer';
+  const BUILD = 'v4082-gestion-choferes-visible';
 
   const clearLegacyCaches = async () => {
     try {
