@@ -33,6 +33,42 @@ const PROTECTED_ROOT_COLLECTIONS = new Set([
 ]);
 const SPECIAL_ROOT_COLLECTIONS = new Set(["choferes", "login_aliases", "vehiculos"]);
 
+// El reseteo por chofer conserva identidad, acceso y vehículo. Sólo elimina
+// información operativa que pertenece al chofer seleccionado.
+const DRIVER_RESET_MASTER_COLLECTIONS = new Set([
+  ...PROTECTED_ROOT_COLLECTIONS,
+  ...SPECIAL_ROOT_COLLECTIONS,
+  "usuarios", "users", "perfiles"
+]);
+const DRIVER_RESET_OPERATIONAL_COLLECTIONS = new Set([
+  "billing_records", "gastos", "facturacion_semanal", "gastos_semanales", "servicios_facturados", "cobros", "ingresos", "payment_operations", "receipt_index",
+  "derivaciones", "derivaciones_pendientes", "historial_derivaciones", "derivation_audit", "colaboraciones", "retenciones", "bonos_derivaciones",
+  "cierres_semanales", "cierres_mensuales", "pagos_semanales", "acumulados_semanales", "historial_cierres",
+  "prestamos_operativos", "prestamos_explora", "prestamos_explora_ventanas_8s", "prestamos_explora_ventanas_publicas_8s", "prestamos_explora_historial", "deudas_choferes", "deuda_pagos", "deuda_movimientos",
+  "performance_awards", "performance_cycles", "performance_derivation_winners", "performance_public", "derivation_ranking_public", "ranking_metas_public", "ranking_derivaciones_public",
+  "derivation_ranking", "derivation_rankings", "derivation_stats", "derivation_monthly_stats", "derivation_summary", "derivation_summaries", "derivation_winners", "derivation_bonus", "derivation_bonuses", "ranking_derivaciones", "ranking_derivador", "ranking_derivadores", "ranking_derivaciones_historial", "ranking_derivaciones_estadisticas",
+  "ranking_facturador", "ranking_semanal", "ranking_mensual", "performance_mensual", "performance_semanal", "historial_rendimiento_temporal", "historial_metricas", "historial_rendimiento", "historial_financiero", "metricas_ciclo", "beneficios_ciclo", "ventanas_metas", "metas_temporales", "beneficios_temporales",
+  "simulaciones_choferes", "simulation_operations", "novedades", "novedades_temporales", "notificaciones", "notificaciones_temporales", "estados_temporales",
+  "cache_rankings", "cache_metas", "cache_dashboard", "cache_derivaciones", "cache_novedades", "cache_performance", "snapshots_semanales", "snapshots_mensuales", "snapshots_financieros", "personalRecordEvents"
+]);
+const DRIVER_OPERATIONAL_PROFILE_FIELDS = [
+  "deuda", "deudaActual", "deudaTotal", "saldoDeuda", "prestamo", "prestamoActual", "prestamoActivo", "loanBalance",
+  "facturacionSemanal", "gastosSemanales", "rankingSemanal", "rankingMensual", "performanceMensual", "performanceSemanal",
+  "cierreSemanal", "cierreMensual", "simulacionActiva", "simulationActive", "simulationConfigId", "totalFacturado",
+  "totalGastos", "weeklyRevenue", "monthlyRevenue", "currentGoal", "goalPercent", "benefitAmount", "derivationAmount",
+  "rankingPosition", "derivationRankingPosition", "derivationRank", "derivedMoney", "totalDerivedMoney", "completedDerivations", "sentCompletedDerivations", "derivationCount", "derivationBonus", "bonusAmount", "currentWinner", "previousWinner", "derivationStats", "monthlyDerivationStats", "derivationSummary", "closureStatus", "debtBalance", "currentWeekSnapshot", "lastClosure", "pendingReceipt",
+  "pendingNotification", "performanceHistory", "operationalStats", "cashBalance", "cashboxBalance", "cashboxResetAt", "lastCashboxResetAt",
+  "driverBalance", "exploraBalance", "expenseBalance", "debtPending", "pendingClosure", "pendingClosures", "lastSettlement", "lastLiquidation"
+];
+const DRIVER_RESET_STORAGE_FIELDS = new Set([
+  "storagepath", "fullpath", "receiptpath", "comprobantepath", "adminreceiptpath",
+  "driverreceiptpath", "expensereceiptpath", "billingreceiptpath", "closurereceiptpath",
+  "debtreceiptpath", "loanreceiptpath", "filepath", "archivopath", "davidreceiptpath",
+  "downloadurl", "receipturl", "comprobanteurl", "adminreceipturl", "driverreceipturl",
+  "expensereceipturl", "billingreceipturl", "closurereceipturl", "debtreceipturl",
+  "loanreceipturl", "fileurl", "archivourl", "davidreceipturl"
+]);
+
 const STRONG_OWNER_FIELDS = [
   "driverUid", "simulationDriverUid", "choferUid", "uid", "userId", "usuarioUid",
   "ownerUid", "driverId", "choferId", "profileId", "perfilId", "profileDocumentId",
@@ -311,6 +347,141 @@ async function processCollection(collectionRef, aliases, adminUid, counters) {
   } while (lastDoc);
 }
 
+function classifyDriverResetDocument(data = {}, aliases, collectionId = "") {
+  const matchedOwnerFields = STRONG_OWNER_FIELDS.filter(field => matchAlias(data[field], aliases));
+  const matchedSharedFields = SHARED_PARTICIPANT_FIELDS.filter(field => matchAlias(data[field], aliases));
+  const matchedMetadataFields = METADATA_IDENTITY_FIELDS.filter(field => matchAlias(data[field], aliases));
+  const matchedWeakFields = WEAK_IDENTITY_FIELDS.filter(field => matchAlias(data[field], aliases));
+  if (matchedOwnerFields.length || matchedSharedFields.length || matchedMetadataFields.length) return "delete";
+  if (matchedWeakFields.length && DRIVER_RESET_OPERATIONAL_COLLECTIONS.has(text(collectionId))) return "delete";
+  return "keep";
+}
+
+function collectDriverResetStorageCandidates(value, out = new Set(), key = "") {
+  if (Array.isArray(value)) {
+    value.forEach(item => collectDriverResetStorageCandidates(item, out, key));
+    return out;
+  }
+  if (value && typeof value === "object") {
+    for (const [childKey, childValue] of Object.entries(value)) collectDriverResetStorageCandidates(childValue, out, childKey);
+    return out;
+  }
+  if (typeof value !== "string" || !DRIVER_RESET_STORAGE_FIELDS.has(normalized(key))) return out;
+  const candidate = value.trim();
+  if (candidate.startsWith("gs://") || /firebasestorage\.googleapis\.com/i.test(candidate)) out.add(candidate);
+  else if (candidate && !candidate.startsWith("http") && !candidate.startsWith("data:")) out.add(`gs://${STORAGE_BUCKET}/${candidate.replace(/^\/+/, "")}`);
+  return out;
+}
+
+async function deleteDriverResetStorageForDocument(data, counters) {
+  const candidates = collectDriverResetStorageCandidates(data);
+  for (const candidate of candidates) counters.deletedFiles += await deleteStorageCandidate(candidate);
+}
+
+async function processCollectionForDriverReset(collectionRef, aliases, counters) {
+  let lastDoc = null;
+  do {
+    let query = collectionRef.orderBy(FieldPath.documentId()).limit(PAGE_SIZE);
+    if (lastDoc) query = query.startAfter(lastDoc);
+    const snapshot = await query.get();
+    if (snapshot.empty) break;
+    for (const docSnap of snapshot.docs) {
+      counters.scannedDocuments += 1;
+      if (counters.scannedDocuments > MAX_SCANNED_DOCUMENTS) {
+        throw new HttpsError("resource-exhausted", "El reseteo superó el límite seguro de documentos. No se modificó la cuenta ni el acceso del chofer.");
+      }
+      const data = docSnap.data() || {};
+      if (classifyDriverResetDocument(data, aliases, collectionRef.id) === "delete") {
+        await deleteDriverResetStorageForDocument(data, counters);
+        await db.recursiveDelete(docSnap.ref);
+        counters.deletedDocuments += 1;
+        continue;
+      }
+      const subcollections = await docSnap.ref.listCollections();
+      for (const subcollection of subcollections) await processCollectionForDriverReset(subcollection, aliases, counters);
+    }
+    lastDoc = snapshot.docs[snapshot.docs.length - 1];
+    if (snapshot.size < PAGE_SIZE) break;
+  } while (lastDoc);
+}
+
+async function deleteCollectionCompletelyForDriverReset(collectionRef, counters) {
+  let lastDoc = null;
+  do {
+    let query = collectionRef.orderBy(FieldPath.documentId()).limit(PAGE_SIZE);
+    if (lastDoc) query = query.startAfter(lastDoc);
+    const snapshot = await query.get();
+    if (snapshot.empty) break;
+    for (const docSnap of snapshot.docs) {
+      counters.scannedDocuments += 1;
+      if (counters.scannedDocuments > MAX_SCANNED_DOCUMENTS) {
+        throw new HttpsError("resource-exhausted", "El reseteo superó el límite seguro de documentos. No se modificó la cuenta ni el acceso del chofer.");
+      }
+      await deleteDriverResetStorageForDocument(docSnap.data() || {}, counters);
+      await db.recursiveDelete(docSnap.ref);
+      counters.deletedDocuments += 1;
+    }
+    lastDoc = snapshot.docs[snapshot.docs.length - 1];
+    if (snapshot.size < PAGE_SIZE) break;
+  } while (lastDoc);
+}
+
+function driverOperationalProfilePatch(data = {}, adminUid = "") {
+  const patch = {};
+  for (const field of DRIVER_OPERATIONAL_PROFILE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(data, field)) patch[field] = FieldValue.delete();
+  }
+  const operationalKey = /deuda|prestamo|factur|gasto|ranking|performance|deriv|cierre|receipt|billing|saldo|balance|cashbox|caja|pending|snapshot|simulation|novedad|notification|operational|liquidation|settlement/i;
+  const protectedKey = /nombre|username|usuario|email|correo|phone|telefono|cuit|alias|role|rol|uid|auth|vehicle|vehiculo|patente|photo|avatar|created|fechaalta|password/i;
+  const protectedExact = new Set(["status", "estado", "active", "activo", "isdeleted", "deletedat", "deletedbyuid", "updatedat", "actualizado"]);
+  for (const field of Object.keys(data)) {
+    if (!protectedExact.has(normalized(field)) && !protectedKey.test(field) && operationalKey.test(field)) patch[field] = FieldValue.delete();
+  }
+  patch.ultimaActividad = "sin registro";
+  if (Object.prototype.hasOwnProperty.call(data, "lastActivity")) patch.lastActivity = "sin registro";
+  patch.lastOperationalResetAt = FieldValue.serverTimestamp();
+  patch.lastOperationalResetByUid = adminUid;
+  patch.updatedAt = FieldValue.serverTimestamp();
+  return patch;
+}
+
+async function resetMatchingDriverProfiles(aliases, adminUid, counters) {
+  for (const collectionName of ["choferes", "usuarios", "users", "perfiles"]) {
+    const snapshot = await db.collection(collectionName).get().catch(() => null);
+    if (!snapshot) continue;
+    for (const profileDoc of snapshot.docs) {
+      const data = profileDoc.data() || {};
+      const role = normalized(data.role || data.rol);
+      const authUid = text(data.authUid || data.uid || profileDoc.id);
+      if (ADMIN_ROLES.has(role) || ADMIN_UIDS.has(authUid) || ADMIN_UIDS.has(profileDoc.id)) continue;
+      const values = [profileDoc.id, data.uid, data.authUid, data.firebaseUid, data.userId, data.driverUid, data.driverId, data.choferUid, data.choferId, data.profileId, data.usuario, data.username, data.usuarioNormalizado, data.email, data.authEmail, data.contactEmail, data.correo, data.nombre, data.nombreCompleto];
+      if (!values.some(value => matchAlias(value, aliases))) continue;
+      const subcollections = await profileDoc.ref.listCollections();
+      for (const subcollection of subcollections) await deleteCollectionCompletelyForDriverReset(subcollection, counters);
+      await profileDoc.ref.set(driverOperationalProfilePatch(data, adminUid), { merge: true });
+      counters.updatedProfiles += 1;
+    }
+  }
+}
+
+async function deleteDriverOperationalFilesBySafePrefixes(identityValues, counters) {
+  const roots = ["receipts", "comprobantes", "gastos", "prestamos", "deudas", "cierres_semanales"];
+  const safeValues = [...identityValues].filter(value => /^[a-zA-Z0-9._-]{3,128}$/.test(value) && !value.includes("@"));
+  for (const value of safeValues) {
+    for (const root of roots) {
+      const [files] = await bucket.getFiles({ prefix: `${root}/${value}/` });
+      for (const file of files) {
+        try {
+          await file.delete({ ignoreNotFound: true });
+          counters.deletedFiles += 1;
+        } catch (error) {
+          if (error?.code !== 404 && error?.code !== "404") throw error;
+        }
+      }
+    }
+  }
+}
+
 async function deleteFilesBySafePrefixes(identityValues, counters) {
   const roots = [
     "drivers", "choferes", "profiles", "profile_photos", "avatars", "driver_photos",
@@ -490,6 +661,81 @@ exports.adminCreateDriver = onCall({ region: "southamerica-east1", timeoutSecond
     }
     if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", safeErrorMessage(error, "No se pudo completar la creación del chofer."));
+  }
+});
+
+exports.adminResetDriverOperationalData = onCall({ region: "southamerica-east1", timeoutSeconds: 540, memory: "1GiB" }, async request => {
+  const adminUid = await assertAdmin(request);
+  const driverId = text(request.data?.driverId);
+  const confirmation = text(request.data?.confirmation);
+  if (!driverId) throw new HttpsError("invalid-argument", "Falta el ID del chofer.");
+  if (ADMIN_UIDS.has(driverId)) throw new HttpsError("failed-precondition", "No se puede resetear la cuenta administradora.");
+
+  const driverRef = db.collection("choferes").doc(driverId);
+  const driverSnap = await driverRef.get();
+  if (!driverSnap.exists) throw new HttpsError("not-found", "El chofer no existe.");
+  const driver = driverSnap.data() || {};
+  const driverName = text(driver.nombreCompleto || driver.nombre || driver.username || driver.usuario || driverId);
+  const expectedConfirmation = `RESETEAR ${driverName}`;
+  if (confirmation !== expectedConfirmation) throw new HttpsError("failed-precondition", "La confirmación de reseteo no coincide con el chofer seleccionado.");
+
+  const role = normalized(driver.role || driver.rol);
+  const authUid = text(driver.authUid || driver.uid || driverId);
+  if (ADMIN_ROLES.has(role) || ADMIN_UIDS.has(authUid)) throw new HttpsError("failed-precondition", "No se puede resetear una cuenta administradora.");
+
+  const aliases = collectAliases(driverId, driver);
+  const counters = { scannedDocuments:0, deletedDocuments:0, deletedFiles:0, updatedProfiles:0 };
+  const startedAt = Date.now();
+
+  try {
+    const rootCollections = await db.listCollections();
+    for (const collectionRef of rootCollections) {
+      if (DRIVER_RESET_MASTER_COLLECTIONS.has(collectionRef.id)) continue;
+      await processCollectionForDriverReset(collectionRef, aliases, counters);
+    }
+
+    await resetMatchingDriverProfiles(aliases, adminUid, counters);
+    await deleteDriverOperationalFilesBySafePrefixes(aliases, counters);
+
+    const auditRef = db.collection(ADMIN_AUDIT_COLLECTION).doc(`reset_${driverId}_${Date.now()}`);
+    await auditRef.set({
+      action:"admin_reset_driver_operational_data",
+      adminUid,
+      targetUid:authUid,
+      driverId,
+      driverName,
+      status:"completed",
+      result:counters,
+      createdAt:FieldValue.serverTimestamp(),
+      durationMs:Date.now() - startedAt
+    });
+
+    return {
+      ok:true,
+      driverId,
+      driverName,
+      accountPreserved:true,
+      vehiclePreserved:true,
+      ...counters,
+      durationMs:Date.now() - startedAt
+    };
+  } catch (error) {
+    const message = safeErrorMessage(error, "No se pudo completar el reseteo de datos del chofer.");
+    await db.collection(ADMIN_AUDIT_COLLECTION).doc(`reset_failed_${driverId}_${Date.now()}`).set({
+      action:"admin_reset_driver_operational_data",
+      adminUid,
+      targetUid:authUid,
+      driverId,
+      driverName,
+      status:"failed",
+      partialResult:counters,
+      errorCode:text(error?.code || "internal"),
+      errorMessage:message,
+      createdAt:FieldValue.serverTimestamp(),
+      durationMs:Date.now() - startedAt
+    }).catch(() => {});
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", message);
   }
 });
 
