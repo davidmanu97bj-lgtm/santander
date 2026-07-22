@@ -3,7 +3,7 @@
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4079-rechazo-cierre-restaura-en-chofer';
+  const BUILD = 'v4080-reset-datos-chofer';
 
   const clearLegacyCaches = async () => {
     try {
