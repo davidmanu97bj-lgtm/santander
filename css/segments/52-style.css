@@ -1937,8 +1937,18 @@ body.explora-admin-drivers-white .admin-management-status.is-driver-only{
 }
 body.explora-admin-drivers-white .admin-driver-only-actions{
   display:grid!important;
-  grid-template-columns:1fr!important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+  gap:10px!important;
   margin-top:14px!important;
+}
+body.explora-admin-drivers-white .admin-management-reset{
+  min-height:48px!important;
+  border:1px solid rgba(63,99,235,.24)!important;
+  border-radius:16px!important;
+  background:#f1f5ff!important;
+  color:#3657c8!important;
+  font-weight:900!important;
+  box-shadow:none!important;
 }
 body.explora-admin-drivers-white .admin-management-hard-delete{
   min-height:48px!important;
@@ -1959,6 +1969,7 @@ body.explora-admin-drivers-white .admin-management-list{
     height:39px!important;
   }
   body.explora-admin-drivers-white .admin-shared-heading h1{font-size:25px!important;}
+  body.explora-admin-drivers-white .admin-driver-only-actions{grid-template-columns:1fr!important;}
 }
 
 
