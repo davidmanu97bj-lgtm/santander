@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4080-reset-datos-chofer */
+/* Compatibilidad validada: v4082-gestion-choferes-visible */
 /* EXPLORA PWA service worker · v2.5.5 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4080-reset-datos-chofer`;
+const CACHE_NAME = `${CACHE_PREFIX}v4082-gestion-choferes-visible`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -31,7 +31,7 @@ const APP_SHELL = [
   './js/segments/01-script.js?v2442-weekly-payment-production',
   './js/segments/19-script.mjs?v2442-weekly-payment-production',
   './js/segments/39-script.mjs?v=4016-card-alerts',
-  './js/segments/11-script.mjs?v=4080-reset-datos-chofer',
+  './js/segments/11-script.mjs?v=4082-gestion-choferes-visible',
   './js/segments/12-script.js?v=4065-sync-before-dashboard',
   './js/segments/37-script.js?v=4074-login-persistente',
   './js/core/weekly-core.mjs?v2442-weekly-payment-production',
