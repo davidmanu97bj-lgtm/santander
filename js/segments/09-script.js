@@ -4,7 +4,7 @@
   if(!screen)return;
   const $=id=>document.getElementById(id);
   const AR_TZ="America/Argentina/Cordoba";
-  const state={category:"deudas",rows:[],filter:"todos",search:"",driver:"",month:"",week:"",vehicle:"",loading:false,previousScrollY:0,cache:new Map(),editingRow:null,savingAmount:false};
+  const state={category:"deudas",rows:[],filter:"todos",search:"",driver:"",month:"",week:"",vehicle:"",loading:false,previousScrollY:0,cache:new Map(),editingRow:null,savingAmount:false,adminMode:false};
   const titles={
     deudas:["DEUDAS","Comprobantes de multas, choques y otros cargos"],
     prestamos:["PRÉSTAMOS","Comprobantes de préstamos operativos"],
@@ -17,10 +17,12 @@
   const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const role=()=>String(window.ExploraSession?.role||window.ExploraSession?.rol||window.ExploraSession?.profile?.role||window.ExploraSession?.profile?.rol||window.ExploraSession?.profile?.tipoUsuario||window.ExploraAuthSession?.role||window.ExploraAuthSession?.rol||"").trim().toLowerCase();
   const isAdmin=()=>document.body.classList.contains("explora-shared-admin")||document.body.classList.contains("explora-admin-authenticated")||window.ExploraAccessState?.isAdmin===true||["admin","administrador","owner","superadmin","propietario"].includes(role());
-  const isClosureAdmin=()=>isAdmin()&&state.category==="cierres";
+  const isAdminView=()=>state.adminMode||isAdmin();
+  const isClosureAdmin=()=>isAdminView()&&state.category==="cierres";
   function setStatus(text="",error=false){const el=$("receiptsStatus");if(!el)return;el.textContent=text;el.className=`receipts-status${error?" err":""}`;}
-  function open(){state.previousScrollY=window.scrollY||0;screen.classList.add("is-open");screen.setAttribute("aria-hidden","false");screen.dataset.view="main";window.lockPageScroll?.("receipts");window.ExploraMainNav?.setActive?.("comprobantes");syncAdminFilters();}
-  function close(){screen.classList.remove("is-open");screen.setAttribute("aria-hidden","true");screen.dataset.view="main";window.unlockPageScroll?.("receipts");window.ExploraMainNav?.setActive?.("inicio");requestAnimationFrame(()=>window.scrollTo(0,state.previousScrollY||0));}
+  function open(options={}){if(options&&Object.prototype.hasOwnProperty.call(options,"adminMode"))state.adminMode=options.adminMode===true;state.previousScrollY=window.scrollY||0;screen.classList.add("is-open");screen.setAttribute("aria-hidden","false");screen.dataset.view="main";screen.dataset.adminMode=state.adminMode?"true":"false";window.lockPageScroll?.("receipts");window.ExploraMainNav?.setActive?.("comprobantes");syncAdminFilters();}
+  function openAdminPayments(){state.adminMode=true;open({adminMode:true});return load("alias",{force:true});}
+  function close(){screen.classList.remove("is-open");screen.setAttribute("aria-hidden","true");screen.dataset.view="main";screen.dataset.adminMode="false";state.adminMode=false;window.unlockPageScroll?.("receipts");window.ExploraMainNav?.setActive?.("inicio");requestAnimationFrame(()=>window.scrollTo(0,state.previousScrollY||0));}
   function normalizedState(row){return String(row.state||row.status||row.estado||"registrado").toLowerCase();}
   function rowRaw(row={}){return row.raw&&typeof row.raw==="object"?row.raw:row;}
   function closureStatusKey(row={}){
@@ -106,7 +108,7 @@
     if(sourceCollection==="receipt_index"&&/^payment_/i.test(sourceId))return sourceId.replace(/^payment_/i,"");
     return sourceId;
   }
-  function canEditServiceAmount(){return isAdmin()&&state.category==="alias";}
+  function canEditServiceAmount(){return state.adminMode===true&&state.category==="alias";}
   function rowCard(row,index){
     const stateClass=normalizedState(row).replace(/[^a-z]/g,"");const hasFile=Boolean(row.url);
     const editButton=canEditServiceAmount(row)?`<button type="button" class="receipt-edit-amount" data-receipt-edit-index="${index}">MODIFICAR VALOR</button>`:"";
@@ -183,7 +185,7 @@
   async function saveEditedAmount(){if(state.savingAmount||!state.editingRow)return;const row=state.editingRow,input=$("receiptAmountEditInput"),save=$("receiptAmountEditSave"),cancel=$("receiptAmountEditCancel");const amount=parseAmountInput(input?.value);const current=Math.round(Number(row.amount)||0);if(!(amount>0)){setAmountEditMessage("Ingresá un valor mayor a $0.","error");input?.focus();return;}if(amount===current){setAmountEditMessage("El nuevo valor es igual al actual.","error");input?.focus();return;}if(!window.ExploraReceiptEngine?.modifyServiceAmount){setAmountEditMessage("El módulo de corrección todavía no está disponible. Cerrá y volvé a abrir la app.","error");return;}state.savingAmount=true;if(save)save.disabled=true;if(cancel)cancel.disabled=true;if(input)input.disabled=true;setAmountEditMessage("Guardando corrección…");try{await window.ExploraReceiptEngine.modifyServiceAmount(row,amount);row.amount=amount;if(row.raw&&typeof row.raw==="object"){row.raw.amount=amount;row.raw.monto=amount;row.raw.valor=amount;row.raw.finalPrice=amount;}setAmountEditMessage("Valor corregido correctamente.","success");invalidate("alias");await load("alias",{force:true});setStatus(`Valor corregido a ${money(amount)}.`);setTimeout(()=>closeAmountEditor(true),450);}catch(error){console.error("RECEIPT_AMOUNT_EDIT",error);const code=String(error?.code||error?.message||"");const message=code.includes("NOT_FOUND")?"No se encontró el servicio original en facturación.":code.includes("AUTH")||code.includes("ADMIN")?"La sesión de administrador no tiene permiso para modificar este valor.":code.includes("INVALID")?"Ingresá un valor válido.":"No se pudo modificar el valor. Revisá la conexión e intentá nuevamente.";setAmountEditMessage(message,"error");}finally{state.savingAmount=false;if(save)save.disabled=false;if(cancel)cancel.disabled=false;if(input)input.disabled=false;}}
   function render(){
     const list=$("receiptsList"),rows=filterRows();if(!list)return;
-    list.innerHTML=isClosureAdmin()?groupedClosureAdminHtml(rows):isAdmin()?groupedAdminHtml(rows):rows.map((row,index)=>rowCard(row,index)).join("");
+    list.innerHTML=isClosureAdmin()?groupedClosureAdminHtml(rows):isAdminView()?groupedAdminHtml(rows):rows.map((row,index)=>rowCard(row,index)).join("");
     $("receiptsEmpty").classList.toggle("is-visible",!rows.length);$("receiptsEmpty").textContent=emptyMessages[state.category]||"No se encontraron comprobantes.";
     list.querySelectorAll("[data-receipt-index]").forEach(button=>button.addEventListener("click",()=>window.ExploraReceiptEngine?.openReceiptViewer?.(rows[Number(button.dataset.receiptIndex)])));
     list.querySelectorAll("[data-receipt-edit-index]").forEach(button=>button.addEventListener("click",()=>openAmountEditor(rows[Number(button.dataset.receiptEditIndex)])));
@@ -191,7 +193,7 @@
     renderClosureOverview();
   }
   function syncAdminFilters(){
-    const wrap=$("receiptsAdminFilters");if(!wrap)return;wrap.hidden=!isAdmin();if(!isAdmin())return;
+    const wrap=$("receiptsAdminFilters");if(!wrap)return;wrap.hidden=!isAdminView();if(!isAdminView())return;
     const driver=$("receiptsDriverFilter"),month=$("receiptsMonthFilter"),week=$("receiptsWeekFilter"),vehicle=$("receiptsVehicleFilter");
     const unique=(key,label)=>[...new Map(state.rows.filter(row=>row[key]).map(row=>[String(row[key]),String(label(row))])).entries()];
     driver.innerHTML='<option value="">Todos los choferes</option>'+unique("driverUid",row=>row.driverName||row.driverUid).sort((a,b)=>a[1].localeCompare(b[1],"es")).map(([value,text])=>`<option value="${esc(value)}">${esc(text)}</option>`).join("");
@@ -214,19 +216,19 @@
       state.rows=await window.ExploraReceiptsData?.load?.(category)||[];state.cache.set(category,state.rows);
       if(isClosureAdmin()){
         const active=String(window.ExploraWeeklyEngine?.getActiveWeeklyPeriod?.().id||"");const weeks=uniqueWeekIds();state.week=weeks.includes(active)?active:(weeks[0]||"");
-      }else if(isAdmin()&&!state.month){const now=new Date();state.month=new Intl.DateTimeFormat("en-CA",{timeZone:AR_TZ,year:"numeric",month:"2-digit"}).format(now).slice(0,7);}
-      if(isAdmin()&&!isClosureAdmin()&&!state.week)state.week=window.ExploraWeeklyEngine?.getActiveWeeklyPeriod?.().id||"";
+      }else if(isAdminView()&&!state.month&&category!=="alias"){const now=new Date();state.month=new Intl.DateTimeFormat("en-CA",{timeZone:AR_TZ,year:"numeric",month:"2-digit"}).format(now).slice(0,7);}
+      if(isAdminView()&&!isClosureAdmin()&&!state.week&&category!=="alias")state.week=window.ExploraWeeklyEngine?.getActiveWeeklyPeriod?.().id||"";
       setStatus("");syncAdminFilters();render();
     }catch(error){console.warn("RECEIPTS_LOAD",error);setStatus("No se pudieron cargar los comprobantes. Toca para reintentar.",true);state.rows=[];syncAdminFilters();render();}
     finally{state.loading=false;}
   }
   function invalidate(category){if(category)state.cache.delete(category);else state.cache.clear();}
   window.invalidateReceiptCache=invalidate;
-  window.ExploraReceipts={open,close,openCategory:(category)=>{open();return load(category);},refresh:(category=state.category)=>{invalidate(category);return load(category,{force:true});},invalidate};
-  window.ExploraActions=window.ExploraActions||{};window.ExploraActions.comprobantes=open;window.ExploraActions["resumen-comprobantes"]=open;window.ExploraActions["admin-comprobantes"]=()=>{open();load("alias");};
+  window.ExploraReceipts={open,close,openAdminPayments,openCategory:(category)=>{state.adminMode=isAdmin();open({adminMode:state.adminMode});return load(category);},refresh:(category=state.category)=>{invalidate(category);return load(category,{force:true});},invalidate};
+  window.ExploraActions=window.ExploraActions||{};window.ExploraActions.comprobantes=()=>{state.adminMode=false;open({adminMode:false});};window.ExploraActions["resumen-comprobantes"]=window.ExploraActions.comprobantes;window.ExploraActions["admin-comprobantes"]=openAdminPayments;
   document.addEventListener("DOMContentLoaded",()=>{
     $("receiptsBackBtn")?.addEventListener("click",()=>{if(screen.dataset.view==="list"){screen.dataset.view="main";return;}close();});
-    $("receiptsScreen")?.addEventListener("click",event=>{const button=event.target.closest("[data-receipt-category]");if(button)load(button.dataset.receiptCategory);});
+    $("receiptsScreen")?.addEventListener("click",event=>{const button=event.target.closest("[data-receipt-category]");if(button){state.adminMode=isAdmin();screen.dataset.adminMode=state.adminMode?"true":"false";load(button.dataset.receiptCategory);}});
     $("receiptsSearchInput")?.addEventListener("input",event=>{state.search=event.target.value;render();});
     $("receiptsFilterRow")?.addEventListener("click",event=>{const button=event.target.closest("[data-receipt-filter]");if(!button||button.hidden)return;state.filter=button.dataset.receiptFilter;document.querySelectorAll("[data-receipt-filter]").forEach(item=>item.classList.toggle("is-active",item===button));render();});
     [["receiptsDriverFilter","driver"],["receiptsMonthFilter","month"],["receiptsWeekFilter","week"],["receiptsVehicleFilter","vehicle"]].forEach(([id,key])=>$(id)?.addEventListener("change",event=>{state[key]=event.target.value;render();syncAdminFilters();}));

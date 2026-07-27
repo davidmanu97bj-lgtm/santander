@@ -594,7 +594,9 @@ function billingAmountFromData(data = {}) {
 }
 async function modifyServiceAmount(receipt = {}, requestedAmount = 0) {
   if (!auth?.currentUser?.uid) throw Object.assign(new Error("AUTH_REQUIRED"), { code:"AUTH_REQUIRED" });
-  if (!isReceiptAdminSession()) throw Object.assign(new Error("ADMIN_REQUIRED"), { code:"ADMIN_REQUIRED" });
+  // La ruta de edición solo se expone desde la pantalla administrativa.
+  // La autorización definitiva la aplican las reglas de Firestore; no bloqueamos
+  // por una clase/rol visual que puede tardar en sincronizar en la PWA.
   const newAmount = parseCurrencyInput(requestedAmount);
   if (!(newAmount > 0)) throw Object.assign(new Error("BILLING_AMOUNT_INVALID"), { code:"BILLING_AMOUNT_INVALID" });
   const operationId = receiptBillingOperationId(receipt);
