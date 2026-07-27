@@ -4,7 +4,7 @@
   if(!screen)return;
   const $=id=>document.getElementById(id);
   const AR_TZ="America/Argentina/Cordoba";
-  const state={category:"deudas",rows:[],filter:"todos",search:"",driver:"",month:"",week:"",vehicle:"",loading:false,previousScrollY:0,cache:new Map()};
+  const state={category:"deudas",rows:[],filter:"todos",search:"",driver:"",month:"",week:"",vehicle:"",loading:false,previousScrollY:0,cache:new Map(),editingRow:null,savingAmount:false};
   const titles={
     deudas:["DEUDAS","Comprobantes de multas, choques y otros cargos"],
     prestamos:["PRÉSTAMOS","Comprobantes de préstamos operativos"],
@@ -95,9 +95,12 @@
       return true;
     });
   }
+  function serviceOperationId(row={}){const raw=rowRaw(row);return String(raw.relatedDocumentId||raw.recordId||row.operationId||raw.billingId||raw.operationId||"").trim();}
+  function canEditServiceAmount(row={}){return isAdmin()&&state.category==="alias"&&Boolean(serviceOperationId(row));}
   function rowCard(row,index){
     const stateClass=normalizedState(row).replace(/[^a-z]/g,"");const hasFile=Boolean(row.url);
-    return `<article class="receipt-row-card"><span class="receipt-row-icon">▣</span><span class="receipt-row-info"><b>${esc(row.title||"Comprobante")}</b><small>Fecha: ${esc(row.date||"—")}</small><small>Usuario: ${esc(row.driverName||"—")}</small><small>Detalle: ${esc(row.detail||row.subtitle||"—")}</small></span><span class="receipt-row-side"><span class="receipt-row-amount">${money(row.amount)}</span><span class="receipt-state ${stateClass}">${esc(row.state||"Registrado")}</span>${hasFile?`<button type="button" class="receipt-view-photo" data-receipt-index="${index}">VER FOTO</button>`:`<small>SIN FOTO</small>`}</span><span class="receipt-row-chevron">›</span></article>`;
+    const editButton=canEditServiceAmount(row)?`<button type="button" class="receipt-edit-amount" data-receipt-edit-index="${index}">MODIFICAR VALOR</button>`:"";
+    return `<article class="receipt-row-card"><span class="receipt-row-icon">▣</span><span class="receipt-row-info"><b>${esc(row.title||"Comprobante")}</b><small>Fecha: ${esc(row.date||"—")}</small><small>Usuario: ${esc(row.driverName||"—")}</small><small>Detalle: ${esc(row.detail||row.subtitle||"—")}</small></span><span class="receipt-row-side"><span class="receipt-row-amount">${money(row.amount)}</span><span class="receipt-state ${stateClass}">${esc(row.state||"Registrado")}</span><span class="receipt-row-actions">${hasFile?`<button type="button" class="receipt-view-photo" data-receipt-index="${index}">VER FOTO</button>`:`<small>SIN FOTO</small>`}${editButton}</span></span><span class="receipt-row-chevron">›</span></article>`;
   }
   function closureRowCard(row,index){
     const status=closureStatusKey(row),vehicle=vehicleInfo(row),hasFile=Boolean(row.url),amount=Number(row.amount)||0;
@@ -161,11 +164,18 @@
     if(!closure&&state.filter==="recibido")state.filter="todos";
     Object.values(map).forEach(button=>button?.classList.toggle("is-active",button.dataset.receiptFilter===state.filter));
   }
+  function setAmountEditMessage(text="",kind=""){const el=$("receiptAmountEditMessage");if(!el)return;el.textContent=text;el.className=`receipt-amount-edit-message${kind?` is-${kind}`:""}`;}
+  function formatAmountInput(value){const digits=String(value??"").replace(/\D/g,"").replace(/^0+/,"");return digits?Number(digits).toLocaleString("es-AR"):"";}
+  function parseAmountInput(value){const digits=String(value??"").replace(/\D/g,"");const amount=Number(digits);return Number.isFinite(amount)?Math.round(amount):0;}
+  function openAmountEditor(row){if(!canEditServiceAmount(row))return;state.editingRow=row;const backdrop=$("receiptAmountEditBackdrop"),input=$("receiptAmountEditInput");if(!backdrop||!input)return;$("receiptAmountEditDriver").textContent=row.driverName||"Chofer";$("receiptAmountEditCurrent").textContent=money(row.amount);input.value=formatAmountInput(row.amount);setAmountEditMessage("Verificá el nuevo monto antes de guardar.");backdrop.classList.add("is-open");backdrop.setAttribute("aria-hidden","false");window.lockPageScroll?.("receipt-amount-edit");setTimeout(()=>{input.focus();input.select?.();},80);}
+  function closeAmountEditor(force=false){if(state.savingAmount&&!force)return;const backdrop=$("receiptAmountEditBackdrop");backdrop?.classList.remove("is-open");backdrop?.setAttribute("aria-hidden","true");state.editingRow=null;setAmountEditMessage("");window.unlockPageScroll?.("receipt-amount-edit");}
+  async function saveEditedAmount(){if(state.savingAmount||!state.editingRow)return;const row=state.editingRow,input=$("receiptAmountEditInput"),save=$("receiptAmountEditSave"),cancel=$("receiptAmountEditCancel");const amount=parseAmountInput(input?.value);const current=Math.round(Number(row.amount)||0);if(!(amount>0)){setAmountEditMessage("Ingresá un valor mayor a $0.","error");input?.focus();return;}if(amount===current){setAmountEditMessage("El nuevo valor es igual al actual.","error");input?.focus();return;}if(!window.ExploraReceiptEngine?.modifyServiceAmount){setAmountEditMessage("El módulo de corrección todavía no está disponible. Cerrá y volvé a abrir la app.","error");return;}state.savingAmount=true;if(save)save.disabled=true;if(cancel)cancel.disabled=true;if(input)input.disabled=true;setAmountEditMessage("Guardando corrección…");try{await window.ExploraReceiptEngine.modifyServiceAmount(row,amount);row.amount=amount;if(row.raw&&typeof row.raw==="object"){row.raw.amount=amount;row.raw.monto=amount;row.raw.valor=amount;row.raw.finalPrice=amount;}setAmountEditMessage("Valor corregido correctamente.","success");invalidate("alias");await load("alias",{force:true});setStatus(`Valor corregido a ${money(amount)}.`);setTimeout(()=>closeAmountEditor(true),450);}catch(error){console.error("RECEIPT_AMOUNT_EDIT",error);const code=String(error?.code||error?.message||"");const message=code.includes("NOT_FOUND")?"No se encontró el servicio original en facturación.":code.includes("AUTH")||code.includes("ADMIN")?"La sesión de administrador no tiene permiso para modificar este valor.":code.includes("INVALID")?"Ingresá un valor válido.":"No se pudo modificar el valor. Revisá la conexión e intentá nuevamente.";setAmountEditMessage(message,"error");}finally{state.savingAmount=false;if(save)save.disabled=false;if(cancel)cancel.disabled=false;if(input)input.disabled=false;}}
   function render(){
     const list=$("receiptsList"),rows=filterRows();if(!list)return;
     list.innerHTML=isClosureAdmin()?groupedClosureAdminHtml(rows):isAdmin()?groupedAdminHtml(rows):rows.map((row,index)=>rowCard(row,index)).join("");
     $("receiptsEmpty").classList.toggle("is-visible",!rows.length);$("receiptsEmpty").textContent=emptyMessages[state.category]||"No se encontraron comprobantes.";
     list.querySelectorAll("[data-receipt-index]").forEach(button=>button.addEventListener("click",()=>window.ExploraReceiptEngine?.openReceiptViewer?.(rows[Number(button.dataset.receiptIndex)])));
+    list.querySelectorAll("[data-receipt-edit-index]").forEach(button=>button.addEventListener("click",()=>openAmountEditor(rows[Number(button.dataset.receiptEditIndex)])));
     list.querySelectorAll("[data-admin-open-closure]").forEach(button=>button.addEventListener("click",()=>window.ExploraAdminShared?.openClosure?.(button.dataset.adminOpenClosure||"",button.dataset.adminClosureWeek||"")));
     renderClosureOverview();
   }
@@ -212,5 +222,10 @@
     $("receiptsCurrentWeekBtn")?.addEventListener("click",()=>{const active=String(window.ExploraWeeklyEngine?.getActiveWeeklyPeriod?.().id||"");state.week=active;const select=$("receiptsWeekFilter");if(select)select.value=state.week;render();syncAdminFilters();});
     $("receiptsPreviousWeekBtn")?.addEventListener("click",event=>{const week=event.currentTarget.dataset.week||"";if(!week)return;state.week=week;const select=$("receiptsWeekFilter");if(select)select.value=week;render();syncAdminFilters();});
     $("receiptsStatus")?.addEventListener("click",()=>{if($("receiptsStatus").classList.contains("err"))load(state.category,{force:true});});
+    $("receiptAmountEditInput")?.addEventListener("input",event=>{event.target.value=formatAmountInput(event.target.value);setAmountEditMessage("");});
+    $("receiptAmountEditInput")?.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();saveEditedAmount();}else if(event.key==="Escape"){event.preventDefault();closeAmountEditor();}});
+    $("receiptAmountEditCancel")?.addEventListener("click",()=>closeAmountEditor());
+    $("receiptAmountEditSave")?.addEventListener("click",saveEditedAmount);
+    $("receiptAmountEditBackdrop")?.addEventListener("click",event=>{if(event.target?.id==="receiptAmountEditBackdrop")closeAmountEditor();});
   });
 })();

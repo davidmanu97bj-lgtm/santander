@@ -570,6 +570,114 @@ function openReceiptViewer(receipt = {}) {
   else { preview.innerHTML='<div class="receipts-empty is-visible">El comprobante está disponible para abrir bajo demanda.</div>';link.hidden=false;link.href=url;link.textContent=mime.includes("pdf")||/\.pdf(?:$|\?)/i.test(url)?"VER ARCHIVO":"VER FOTO"; }
   backdrop.classList.add("is-open");backdrop.setAttribute("aria-hidden","false");window.lockPageScroll?.("receipt-viewer");
 }
+function isReceiptAdminSession() {
+  const role = String(window.ExploraSession?.role || "").toLowerCase();
+  return ["admin","administrador","owner"].includes(role);
+}
+function receiptBillingOperationId(receipt = {}) {
+  const raw = receipt?.raw && typeof receipt.raw === "object" ? receipt.raw : receipt;
+  return String(raw.relatedDocumentId || raw.recordId || receipt.operationId || raw.billingId || raw.operationId || "").trim();
+}
+function billingAmountFromData(data = {}) {
+  for (const value of [data.amount,data.monto,data.valor,data.finalPrice,data.totalAmount,data.importe,data.price,data.total]) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) return Math.round(parsed);
+  }
+  return 0;
+}
+async function modifyServiceAmount(receipt = {}, requestedAmount = 0) {
+  if (!auth?.currentUser?.uid) throw Object.assign(new Error("AUTH_REQUIRED"), { code:"AUTH_REQUIRED" });
+  if (!isReceiptAdminSession()) throw Object.assign(new Error("ADMIN_REQUIRED"), { code:"ADMIN_REQUIRED" });
+  const newAmount = parseCurrencyInput(requestedAmount);
+  if (!(newAmount > 0)) throw Object.assign(new Error("BILLING_AMOUNT_INVALID"), { code:"BILLING_AMOUNT_INVALID" });
+  const operationId = receiptBillingOperationId(receipt);
+  if (!operationId) throw Object.assign(new Error("BILLING_OPERATION_INVALID"), { code:"BILLING_OPERATION_INVALID" });
+
+  const raw = receipt?.raw && typeof receipt.raw === "object" ? receipt.raw : receipt;
+  const billingReference = doc(db, "billing_records", operationId);
+  const canonicalIndexId = receiptIndexId("payment", operationId);
+  const visibleIndexId = String(raw.sourceCollection || "") === "receipt_index" && raw.id ? String(raw.id) : canonicalIndexId;
+  const indexIds = [...new Set([visibleIndexId, canonicalIndexId].filter(Boolean))];
+  const indexReferences = indexIds.map(id => doc(db, "receipt_index", id));
+  const auditId = stableId("billing_amount_edit", auth.currentUser.uid);
+  const auditReference = doc(db, "admin_audit", auditId);
+  let previousAmount = 0;
+
+  await runTransaction(db, async transaction => {
+    const billingSnapshot = await transaction.get(billingReference);
+    const indexSnapshots = [];
+    for (const reference of indexReferences) indexSnapshots.push(await transaction.get(reference));
+    if (!billingSnapshot.exists()) throw Object.assign(new Error("BILLING_RECORD_NOT_FOUND"), { code:"BILLING_RECORD_NOT_FOUND" });
+
+    const billingData = billingSnapshot.data() || {};
+    previousAmount = billingAmountFromData(billingData);
+    if (!(previousAmount >= 0)) throw Object.assign(new Error("BILLING_PREVIOUS_AMOUNT_INVALID"), { code:"BILLING_PREVIOUS_AMOUNT_INVALID" });
+    if (previousAmount === newAmount) return;
+
+    const correctionCount = Math.max(0, Number(billingData.amountCorrectionCount || 0)) + 1;
+    const billingUpdate = {
+      amount:newAmount,
+      monto:newAmount,
+      valor:newAmount,
+      finalPrice:newAmount,
+      previousAmount,
+      amountBeforeCorrection:previousAmount,
+      amountCorrectionCount:correctionCount,
+      amountCorrectedByUid:auth.currentUser.uid,
+      amountCorrectedByRole:"admin",
+      amountCorrectedAt:serverTimestamp(),
+      updatedAt:serverTimestamp()
+    };
+    ["totalAmount","importe","price","total"].forEach(key => { if (Object.prototype.hasOwnProperty.call(billingData,key)) billingUpdate[key]=newAmount; });
+    transaction.update(billingReference, billingUpdate);
+
+    indexSnapshots.forEach((snapshot,index) => {
+      if (!snapshot.exists()) return;
+      transaction.update(indexReferences[index], {
+        amount:newAmount,
+        previousAmount:billingAmountFromData(snapshot.data() || {}) || previousAmount,
+        amountCorrectedByUid:auth.currentUser.uid,
+        amountCorrectedByRole:"admin",
+        amountCorrectedAt:serverTimestamp(),
+        updatedAt:serverTimestamp()
+      });
+    });
+
+    transaction.set(auditReference, {
+      type:"billing_amount_correction",
+      action:"modify_service_amount",
+      collection:"billing_records",
+      recordId:operationId,
+      operationId,
+      driverUid:String(billingData.driverUid || billingData.choferUid || billingData.uid || receipt.driverUid || ""),
+      driverName:String(billingData.driverName || receipt.driverName || "Chofer"),
+      previousAmount,
+      newAmount,
+      difference:newAmount - previousAmount,
+      weeklyPeriodId:String(billingData.weeklyPeriodId || billingData.periodoSemanalId || receipt.weeklyPeriodId || ""),
+      editedByUid:auth.currentUser.uid,
+      editedByRole:"admin",
+      createdAt:serverTimestamp()
+    });
+  });
+
+  try {
+    window.invalidateWeeklyFinancialEngine?.("billing-amount-corrected");
+    window.ExploraWeeklyEngine?.invalidate?.("billing-amount-corrected", { refresh:true });
+    window.ExploraAdminShared?.invalidate?.();
+    window.invalidateReceiptCache?.("alias");
+    ["dashboard_weekly_billing","billing_ranking","goal_bubbles","performance_bundle","admin_summary"].forEach(name => window.ExploraFastCache?.invalidate?.(name));
+    window.dispatchEvent(new CustomEvent("explora:cobro-modificado", { detail:{ operationId, previousAmount, newAmount, editedByUid:auth.currentUser.uid } }));
+    await Promise.allSettled([
+      window.ExploraWeeklyEngine?.refresh?.({ force:true, reason:"billing-amount-corrected" }),
+      window.ExploraPerformanceEngine?.refresh?.({ force:true, reason:"billing-amount-corrected" })
+    ]);
+  } catch (refreshError) {
+    console.warn("BILLING_AMOUNT_CORRECTION_REFRESH", refreshError?.code || refreshError?.message || refreshError);
+  }
+  return { operationId, previousAmount, newAmount };
+}
+
 function closeReceiptViewer() {
   const backdrop = $("receiptDetailBackdrop");
   if (!backdrop) return;
@@ -598,6 +706,7 @@ window.ExploraReceiptEngine = {
   receiptIndexId,
   openReceiptViewer,
   closeReceiptViewer,
+  modifyServiceAmount,
   resetUploadState,
   deleteUploadedFile,
   getState:getUploadState
