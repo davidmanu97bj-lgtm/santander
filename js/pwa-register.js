@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v4079 · rechazo restaura período en panel chofer */
+/* EXPLORA PWA registration · v4085 · modificar valor admin real */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4082-gestion-choferes-visible';
+  const BUILD = 'v4085-modificar-valor-admin-real';
 
   const clearLegacyCaches = async () => {
     try {
