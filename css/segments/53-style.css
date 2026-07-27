@@ -1,4 +1,4 @@
-/* EXPLORA v4083 · corrección de valor de servicios desde comprobantes (admin) */
+/* EXPLORA v4084 · corrección de valor de servicios desde comprobantes (admin) */
 .receipt-row-actions{display:flex;flex-direction:column;align-items:stretch;gap:7px;margin-top:5px}
 .receipt-edit-amount{border:1px solid rgba(120,192,255,.48);border-radius:10px;background:rgba(30,117,210,.16);color:#dcefff;font:800 10px/1.1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.055em;padding:9px 8px;cursor:pointer;white-space:nowrap;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .receipt-edit-amount:active{transform:scale(.985);background:rgba(30,117,210,.28)}
