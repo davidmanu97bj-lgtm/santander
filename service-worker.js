@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4085-modificar-valor-admin-real */
-/* EXPLORA PWA service worker · v2.5.5 */
+/* Compatibilidad validada: v4086-editar-valor-actividades-admin */
+/* EXPLORA PWA service worker · v2.5.6 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4085-modificar-valor-admin-real`;
+const CACHE_NAME = `${CACHE_PREFIX}v4086-editar-valor-actividades-admin`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -17,13 +17,13 @@ const APP_SHELL = [
   './index.html',
   './css/segments/01-style.css?v=4062-login-sin-autofill-session-restore',
   './css/segments/46-style.css',
-  './css/segments/53-style.css?v=4083-modificar-valor-servicio',
+  './css/segments/53-style.css?v=4086-editar-valor-actividades-admin',
   './css/segments/47-style.css?v=4065-sync-before-dashboard',
   './css/segments/07-style.css?v=3921-billing-visual-fix',
-  './js/segments/09-script.js?v=4083-modificar-valor-servicio',
+  './js/segments/09-script.js?v=4086-editar-valor-actividades-admin',
   './js/segments/03-script.js?v=4075-sin-datos-anteriores',
   './js/segments/07-script.js?v=3921-billing-visual-fix',
-  './js/segments/13-script.mjs?v=4083-modificar-valor-servicio',
+  './js/segments/13-script.mjs?v=4086-editar-valor-actividades-admin',
   './css/segments/14-style.css?v=4023-activity-photo-viewer',
   './js/segments/14-script.mjs?v=4023-activity-photo-viewer',
   './js/segments/15-script.mjs?v=4054-menu-perfil-minimo-compacto',
@@ -32,7 +32,7 @@ const APP_SHELL = [
   './js/segments/01-script.js?v2442-weekly-payment-production',
   './js/segments/19-script.mjs?v2442-weekly-payment-production',
   './js/segments/39-script.mjs?v=4016-card-alerts',
-  './js/segments/11-script.mjs?v=4084-modificar-valor-visible-admin',
+  './js/segments/11-script.mjs?v=4086-editar-valor-actividades-admin',
   './js/segments/12-script.js?v=4065-sync-before-dashboard',
   './js/segments/37-script.js?v=4074-login-persistente',
   './js/core/weekly-core.mjs?v2442-weekly-payment-production',
@@ -41,8 +41,8 @@ const APP_SHELL = [
   './css/segments/50-style.css?v=4080-reset-datos-chofer',
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
-  './css/segments/52-style.css?v=4080-reset-datos-chofer',
-  './js/segments/52-script.mjs?v=4079-rechazo-cierre-restaura-en-chofer',
+  './css/segments/52-style.css?v=4086-editar-valor-actividades-admin',
+  './js/segments/52-script.mjs?v=4086-editar-valor-actividades-admin',
   './assets/icono_eficiencia_km.png',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
@@ -154,3 +154,5 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4084 botón MODIFICAR VALOR visible al abrir Comprobantes en administrador */
 
 /* cache bump: v4085 modo administrador explícito + edición visible sin filtros automáticos */
+
+/* cache bump: v4086 edición directa de valores desde Actividades Admin + recálculo de cierres */

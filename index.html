@@ -1110,6 +1110,25 @@
 </div>
 </section>
 </div>
+<div aria-hidden="true" class="pay-admin-amount-edit-backdrop" id="payAdminAmountEditBackdrop">
+<section aria-labelledby="payAdminAmountEditTitle" aria-modal="true" class="pay-admin-amount-edit-modal" role="dialog">
+<p class="pay-admin-amount-edit-kicker">ADMINISTRADOR · ACTIVIDADES</p>
+<h2 id="payAdminAmountEditTitle">EDITAR VALOR</h2>
+<div class="pay-admin-amount-edit-context">
+<span>CHOFER</span><strong id="payAdminAmountEditDriver">—</strong>
+<span>SERVICIO</span><strong id="payAdminAmountEditDetail">—</strong>
+</div>
+<div class="pay-admin-amount-edit-values">
+<article><span>VALOR ANTERIOR</span><strong id="payAdminAmountEditPrevious">$0</strong></article>
+<label for="payAdminAmountEditInput"><span>NUEVO VALOR</span><input autocomplete="off" id="payAdminAmountEditInput" inputmode="numeric" placeholder="Ej.: 25000" type="text"/></label>
+</div>
+<div aria-live="assertive" class="pay-admin-amount-edit-message" id="payAdminAmountEditMessage"></div>
+<div class="pay-admin-amount-edit-actions">
+<button class="pay-admin-amount-edit-cancel" id="payAdminAmountEditCancel" type="button">CANCELAR</button>
+<button class="pay-admin-amount-edit-save" id="payAdminAmountEditSave" type="button">ACEPTAR CAMBIO</button>
+</div>
+</section>
+</div>
 <section aria-hidden="true" aria-label="Derivaciones" class="derivation-screen" data-derivation-view="received" id="derivationScreen">
 <div class="derivation-shell derivation-shell--simple">
 <header class="derivation-header">
@@ -1309,14 +1328,14 @@
 <script id="exploraReceiptUIV197" src="js/segments/06-script.js"></script>
 <script id="exploraBillingV188" src="js/segments/07-script.js?v=3921-billing-visual-fix"></script>
 <script id="exploraPerformanceNavigationV210" src="js/segments/08-script.js"></script>
-<link href="css/segments/53-style.css?v=4085-modificar-valor-admin-real" rel="stylesheet"/>
-<script id="exploraReceiptsV247" src="js/segments/09-script.js?v=4085-modificar-valor-admin-real"></script>
+<link href="css/segments/53-style.css?v=4086-editar-valor-actividades-admin" rel="stylesheet"/>
+<script id="exploraReceiptsV247" src="js/segments/09-script.js?v=4086-editar-valor-actividades-admin"></script>
 <script id="exploraProductionPolicyV251" src="js/segments/10-script.js"></script>
-<script src="js/segments/11-script.mjs?v=4085-modificar-valor-admin-real" type="module"></script>
+<script src="js/segments/11-script.mjs?v=4086-editar-valor-actividades-admin" type="module"></script>
 <!-- EXPLORA v160: motor semanal unificado + splash seguro + históricos financieros -->
 <link href="css/segments/32-style.css?v=2445-finance-nav-fix" rel="stylesheet"/>
 <script id="exploraSplashEmergencyPatch" src="js/segments/12-script.js?v=4065-sync-before-dashboard"></script>
-<script id="exploraUnifiedWeeklyFinanceModule" src="js/segments/13-script.mjs?v=4085-modificar-valor-admin-real" type="module"></script>
+<script id="exploraUnifiedWeeklyFinanceModule" src="js/segments/13-script.mjs?v=4086-editar-valor-actividades-admin" type="module"></script>
 <script id="exploraDebtNotificationsV189" src="js/segments/14-script.mjs?v=4023-activity-photo-viewer" type="module"></script>
 <script id="exploraAdminDebtLaunchV190" src="js/segments/15-script.mjs?v=4061-chequeo-deudas-mas-chofer" type="module"></script>
 <!-- EXPLORA v256 · derivaciones recibidas primero, pestañas separadas y flujo operativo estable -->
@@ -1393,8 +1412,8 @@
 <script id="exploraGlobalClockAppWideSync" src="js/segments/42-script.js"></script>
 <link href="css/segments/47-style.css?v=4065-sync-before-dashboard" rel="stylesheet"/>
 <link href="css/segments/48-style.css?v=2412-ranking-mobile" rel="stylesheet"/>
-<link href="css/segments/52-style.css?v=4080-reset-datos-chofer" rel="stylesheet"/>
-<script id="exploraPagoHomeOnDemandClosure" src="js/segments/52-script.mjs?v=4079-rechazo-cierre-restaura-en-chofer" type="module"></script>
-<script defer="" id="explora-pwa-registration" src="js/pwa-register.js?v=4085-modificar-valor-admin-real"></script>
+<link href="css/segments/52-style.css?v=4086-editar-valor-actividades-admin" rel="stylesheet"/>
+<script id="exploraPagoHomeOnDemandClosure" src="js/segments/52-script.mjs?v=4086-editar-valor-actividades-admin" type="module"></script>
+<script defer="" id="explora-pwa-registration" src="js/pwa-register.js?v=4086-editar-valor-actividades-admin"></script>
 </body>
 </html>
