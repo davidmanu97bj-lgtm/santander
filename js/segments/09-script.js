@@ -15,8 +15,8 @@
   const emptyMessages={deudas:"No hay comprobantes de deudas.",prestamos:"No hay comprobantes de préstamos.",alias:"No hay comprobantes de pagos de clientes.",gastos:"No hay comprobantes de gastos.",cierres:"No hay cierres semanales para los filtros seleccionados."};
   const money=v=>new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0}).format(Number(v)||0).replace(/\s/g,"");
   const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-  const role=()=>String(window.ExploraSession?.role||"").toLowerCase();
-  const isAdmin=()=>["admin","administrador","owner"].includes(role());
+  const role=()=>String(window.ExploraSession?.role||window.ExploraSession?.rol||window.ExploraSession?.profile?.role||window.ExploraSession?.profile?.rol||window.ExploraSession?.profile?.tipoUsuario||window.ExploraAuthSession?.role||window.ExploraAuthSession?.rol||"").trim().toLowerCase();
+  const isAdmin=()=>document.body.classList.contains("explora-shared-admin")||document.body.classList.contains("explora-admin-authenticated")||window.ExploraAccessState?.isAdmin===true||["admin","administrador","owner","superadmin","propietario"].includes(role());
   const isClosureAdmin=()=>isAdmin()&&state.category==="cierres";
   function setStatus(text="",error=false){const el=$("receiptsStatus");if(!el)return;el.textContent=text;el.className=`receipts-status${error?" err":""}`;}
   function open(){state.previousScrollY=window.scrollY||0;screen.classList.add("is-open");screen.setAttribute("aria-hidden","false");screen.dataset.view="main";window.lockPageScroll?.("receipts");window.ExploraMainNav?.setActive?.("comprobantes");syncAdminFilters();}
@@ -95,8 +95,18 @@
       return true;
     });
   }
-  function serviceOperationId(row={}){const raw=rowRaw(row);return String(raw.relatedDocumentId||raw.recordId||row.operationId||raw.billingId||raw.operationId||"").trim();}
-  function canEditServiceAmount(row={}){return isAdmin()&&state.category==="alias"&&Boolean(serviceOperationId(row));}
+  function serviceOperationId(row={}){
+    const raw=rowRaw(row);
+    const direct=String(raw.relatedDocumentId||raw.recordId||raw.billingRecordId||raw.billingId||raw.operationId||row.billingRecordId||row.billingId||row.operationId||row.recordId||"").trim();
+    const sourceCollection=String(raw.sourceCollection||"").toLowerCase();
+    const sourceId=String(raw.id||"").trim();
+    if(sourceCollection==="billing_records"&&sourceId)return sourceId;
+    if(sourceCollection==="receipt_index"&&sourceId&&direct===sourceId&&/^payment_/i.test(sourceId))return sourceId.replace(/^payment_/i,"");
+    if(direct)return direct;
+    if(sourceCollection==="receipt_index"&&/^payment_/i.test(sourceId))return sourceId.replace(/^payment_/i,"");
+    return sourceId;
+  }
+  function canEditServiceAmount(){return isAdmin()&&state.category==="alias";}
   function rowCard(row,index){
     const stateClass=normalizedState(row).replace(/[^a-z]/g,"");const hasFile=Boolean(row.url);
     const editButton=canEditServiceAmount(row)?`<button type="button" class="receipt-edit-amount" data-receipt-edit-index="${index}">MODIFICAR VALOR</button>`:"";
@@ -115,12 +125,13 @@
     rows.forEach(row=>{const key=String(row.driverUid||row.driverName||"sin-chofer");if(!drivers.has(key))drivers.set(key,{name:row.driverName||"Chofer",rows:[]});drivers.get(key).rows.push(row);});
     return [...drivers.entries()].sort((a,b)=>a[1].name.localeCompare(b[1].name,"es")).map(([,driver])=>{
       const months=new Map();driver.rows.forEach(row=>{const key=row.monthKey||"Sin mes";if(!months.has(key))months.set(key,[]);months.get(key).push(row);});
+      const expand=state.category==="alias"?" open":"";
       const monthHtml=[...months.entries()].sort((a,b)=>String(b[0]).localeCompare(String(a[0]))).map(([month,monthRows])=>{
         const weeks=new Map();monthRows.forEach(row=>{const key=row.weeklyPeriodId||"Sin semana";if(!weeks.has(key))weeks.set(key,[]);weeks.get(key).push(row);});
-        const weekHtml=[...weeks.entries()].map(([week,weekRows])=>`<details class="receipt-group-level receipt-group-week"><summary>SEMANA ${esc(week)} <span>${weekRows.length}</span></summary><div class="receipt-group-items">${weekRows.map(row=>rowCard(row,rows.indexOf(row))).join("")}</div></details>`).join("");
-        return `<details class="receipt-group-level receipt-group-month"><summary>${esc(month)} <span>${monthRows.length}</span></summary>${weekHtml}</details>`;
+        const weekHtml=[...weeks.entries()].map(([week,weekRows])=>`<details class="receipt-group-level receipt-group-week"${expand}><summary>SEMANA ${esc(week)} <span>${weekRows.length}</span></summary><div class="receipt-group-items">${weekRows.map(row=>rowCard(row,rows.indexOf(row))).join("")}</div></details>`).join("");
+        return `<details class="receipt-group-level receipt-group-month"${expand}><summary>${esc(month)} <span>${monthRows.length}</span></summary>${weekHtml}</details>`;
       }).join("");
-      return `<details class="receipt-group-level receipt-group-driver"><summary>${esc(driver.name)} <span>${driver.rows.length}</span></summary>${monthHtml}</details>`;
+      return `<details class="receipt-group-level receipt-group-driver"${expand}><summary>${esc(driver.name)} <span>${driver.rows.length}</span></summary>${monthHtml}</details>`;
     }).join("");
   }
   function groupedClosureAdminHtml(rows){
@@ -212,7 +223,7 @@
   function invalidate(category){if(category)state.cache.delete(category);else state.cache.clear();}
   window.invalidateReceiptCache=invalidate;
   window.ExploraReceipts={open,close,openCategory:(category)=>{open();return load(category);},refresh:(category=state.category)=>{invalidate(category);return load(category,{force:true});},invalidate};
-  window.ExploraActions=window.ExploraActions||{};window.ExploraActions.comprobantes=open;window.ExploraActions["resumen-comprobantes"]=open;window.ExploraActions["admin-comprobantes"]=()=>{open();load("cierres");};
+  window.ExploraActions=window.ExploraActions||{};window.ExploraActions.comprobantes=open;window.ExploraActions["resumen-comprobantes"]=open;window.ExploraActions["admin-comprobantes"]=()=>{open();load("alias");};
   document.addEventListener("DOMContentLoaded",()=>{
     $("receiptsBackBtn")?.addEventListener("click",()=>{if(screen.dataset.view==="list"){screen.dataset.view="main";return;}close();});
     $("receiptsScreen")?.addEventListener("click",event=>{const button=event.target.closest("[data-receipt-category]");if(button)load(button.dataset.receiptCategory);});

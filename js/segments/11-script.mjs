@@ -6537,7 +6537,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     window.ExploraActions["admin-facturacion"] = () => openAdminSharedModule("billing");
     window.ExploraActions["admin-colaboracion-bono"] = () => openAdminSharedModule("collaboration");
     window.ExploraActions["admin-gastos"] = () => openAdminSharedModule("expenses");
-    window.ExploraActions["admin-comprobantes"] = () => window.ExploraReceipts?.openCategory?.("cierres") || window.ExploraReceipts?.open?.();
+    window.ExploraActions["admin-comprobantes"] = () => window.ExploraReceipts?.openCategory?.("alias") || window.ExploraReceipts?.open?.();
 
     $("adminSharedBackBtn")?.addEventListener("click", () => {
       if (adminSharedState.mode === "closure-detail") {

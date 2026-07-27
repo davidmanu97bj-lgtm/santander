@@ -571,12 +571,19 @@ function openReceiptViewer(receipt = {}) {
   backdrop.classList.add("is-open");backdrop.setAttribute("aria-hidden","false");window.lockPageScroll?.("receipt-viewer");
 }
 function isReceiptAdminSession() {
-  const role = String(window.ExploraSession?.role || "").toLowerCase();
-  return ["admin","administrador","owner"].includes(role);
+  const role = String(window.ExploraSession?.role || window.ExploraSession?.rol || window.ExploraSession?.profile?.role || window.ExploraSession?.profile?.rol || window.ExploraSession?.profile?.tipoUsuario || window.ExploraAuthSession?.role || window.ExploraAuthSession?.rol || "").trim().toLowerCase();
+  return document.body.classList.contains("explora-shared-admin") || document.body.classList.contains("explora-admin-authenticated") || window.ExploraAccessState?.isAdmin === true || ["admin","administrador","owner","superadmin","propietario"].includes(role);
 }
 function receiptBillingOperationId(receipt = {}) {
   const raw = receipt?.raw && typeof receipt.raw === "object" ? receipt.raw : receipt;
-  return String(raw.relatedDocumentId || raw.recordId || receipt.operationId || raw.billingId || raw.operationId || "").trim();
+  const direct = String(raw.relatedDocumentId || raw.recordId || raw.billingRecordId || raw.billingId || raw.operationId || receipt.billingRecordId || receipt.billingId || receipt.operationId || receipt.recordId || "").trim();
+  const sourceCollection = String(raw.sourceCollection || "").toLowerCase();
+  const sourceId = String(raw.id || "").trim();
+  if (sourceCollection === "billing_records" && sourceId) return sourceId;
+  if (sourceCollection === "receipt_index" && sourceId && direct === sourceId && /^payment_/i.test(sourceId)) return sourceId.replace(/^payment_/i, "");
+  if (direct) return direct;
+  if (sourceCollection === "receipt_index" && /^payment_/i.test(sourceId)) return sourceId.replace(/^payment_/i, "");
+  return sourceId;
 }
 function billingAmountFromData(data = {}) {
   for (const value of [data.amount,data.monto,data.valor,data.finalPrice,data.totalAmount,data.importe,data.price,data.total]) {
