@@ -1,5 +1,5 @@
 
-import { collection, doc, getDocs, query, where, setDoc, runTransaction, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { collection, doc, getDocs, query, where, limit, setDoc, runTransaction, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 import { installmentPlan } from "../core/driver-debt-core.mjs";
 
@@ -592,6 +592,182 @@ function billingAmountFromData(data = {}) {
   }
   return 0;
 }
+function billingCorrectionNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+function billingCorrectionMethod(data = {}) {
+  const raw = String(data.paymentMethod || data.metodoPago || data.financialCategory || data.receiptPaymentMethod || data.paymentProvider || data.method || "").trim().toLowerCase();
+  if (/cash|efectivo/.test(raw)) return "cash";
+  if (/qr/.test(raw)) return "qr";
+  if (/card|tarjeta|point/.test(raw)) return "card";
+  if (/transfer|alias|transf/.test(raw)) return "transfer";
+  return raw || "cash";
+}
+function billingCorrectionCashboxExcluded(data = {}) {
+  return data.excludeFromCashbox === true || data.cashboxExcluded === true || data.cajaChicaEliminada === true || data.ignoreCashbox === true || data.noCashbox === true;
+}
+function billingCorrectionClosureKind(data = {}) {
+  const raw = String(data.closureKind || data.closureType || data.payTab || data.closeKind || data.kind || data.cierreTipo || data.type || data.category || data.moduleKey || "").trim().toLowerCase();
+  if (/caja|chica|cashbox|petty/.test(raw)) return "caja_chica";
+  if (/gasto|expense/.test(raw)) return "gastos";
+  if (/chofer|driver|explora|digital|factur|billing|cobro|transfer|qr|card|tarjeta|efectivo|cash/.test(raw)) return "facturacion";
+  return raw;
+}
+function billingCorrectionClosesCashbox(data = {}) {
+  const affects = Array.isArray(data.affectsTabs) ? data.affectsTabs.map(value => String(value || "").toLowerCase()) : [];
+  return data.autoClosesCashbox === true || data.cashboxClosedWithBilling === true || data.cashboxAutoClosed === true || affects.some(value => /caja|cashbox/.test(value));
+}
+function billingCorrectionArrayIncludes(data = {}, field = "", id = "") {
+  return Array.isArray(data[field]) && data[field].map(value => String(value || "").trim()).includes(String(id || "").trim());
+}
+function billingCorrectionSettlement({ cash = 0, digital = 0, eligibleGross = 0, rate = .05, cashboxAmount = null } = {}) {
+  const cashAmount = Math.max(0, billingCorrectionNumber(cash));
+  const digitalAmount = Math.max(0, billingCorrectionNumber(digital));
+  const eligible = Math.max(0, billingCorrectionNumber(eligibleGross));
+  const normalizedRate = Math.max(0, billingCorrectionNumber(rate, .05));
+  const gross = cashAmount + digitalAmount;
+  const share = gross * .5;
+  const netBeforeCashboxToDriver = share - cashAmount;
+  const explicitCashbox = cashboxAmount !== null && cashboxAmount !== undefined;
+  const cashboxGenerated = explicitCashbox ? Math.max(0, billingCorrectionNumber(cashboxAmount)) : eligible * normalizedRate;
+  const cashboxOffsetApplied = explicitCashbox ? cashboxGenerated : (netBeforeCashboxToDriver > 0 ? Math.min(netBeforeCashboxToDriver, cashboxGenerated) : 0);
+  const netToDriver = netBeforeCashboxToDriver - cashboxOffsetApplied;
+  return {
+    gross,
+    share,
+    netBeforeCashboxToDriver,
+    cashboxEligibleGross:eligible,
+    cashboxGenerated,
+    cashboxOffsetApplied,
+    cashboxRemainingInDriver:explicitCashbox ? 0 : Math.max(0, cashboxGenerated - cashboxOffsetApplied),
+    netToDriver,
+    amountToDriver:Math.max(0, netToDriver),
+    amountFromDriver:Math.max(0, -netToDriver)
+  };
+}
+async function billingCorrectionClosureRefs(operationId = "") {
+  const id = String(operationId || "").trim();
+  if (!id) return [];
+  const map = new Map();
+  const failures = [];
+  for (const field of ["includedBillingIds", "includedCashboxIds", "includedCashboxGeneratedBillingIds", "includedCashboxEligibleBillingIds"]) {
+    try {
+      const snap = await getDocs(query(collection(db, "cierres_semanales"), where(field, "array-contains", id), limit(250)));
+      snap.forEach(item => map.set(item.id, doc(db, "cierres_semanales", item.id)));
+    } catch (error) {
+      console.warn("BILLING_AMOUNT_CORRECTION_CLOSURE_QUERY", field, error?.code || error?.message || error);
+      failures.push({ field, error });
+    }
+  }
+  if (failures.length) {
+    const error = Object.assign(new Error("BILLING_CLOSURE_LOOKUP_FAILED"), { code:"BILLING_CLOSURE_LOOKUP_FAILED", failures });
+    throw error;
+  }
+  return [...map.entries()].map(([id, reference]) => ({ id, reference }));
+}
+function billingCorrectionClosurePatch(closure = {}, billingData = {}, operationId = "", previousAmount = 0, newAmount = 0) {
+  const kind = billingCorrectionClosureKind(closure);
+  const inBilling = billingCorrectionArrayIncludes(closure, "includedBillingIds", operationId);
+  const inCashbox = ["includedCashboxIds", "includedCashboxGeneratedBillingIds", "includedCashboxEligibleBillingIds"].some(field => billingCorrectionArrayIncludes(closure, field, operationId));
+  if (!inBilling && !inCashbox) return null;
+  const delta = billingCorrectionNumber(newAmount) - billingCorrectionNumber(previousAmount);
+  if (!delta) return null;
+  const method = billingCorrectionMethod(billingData);
+  const cashboxGenerates = method === "cash" && !billingCorrectionCashboxExcluded(billingData);
+  const adjustmentMeta = {
+    adminAdjusted:true,
+    adminAdjustedReason:"Valor de servicio corregido",
+    amountCorrectionRecordId:String(operationId || ""),
+    amountCorrectionPrevious:Number(previousAmount || 0),
+    amountCorrectionNew:Number(newAmount || 0),
+    amountCorrectionDifference:Number(delta || 0),
+    amountCorrectedByUid:auth.currentUser?.uid || "",
+    amountCorrectedByRole:"admin",
+    amountCorrectedAt:serverTimestamp(),
+    updatedAt:serverTimestamp(),
+    updatedAtMs:Date.now(),
+    version:"v4086-admin-activity-edit"
+  };
+
+  if (kind === "facturacion") {
+    const cashboxOnly = !inBilling && inCashbox;
+    const oldCash = billingCorrectionNumber(closure.cashInDriver ?? closure.cashGrossInDriver ?? closure.driverActualCash);
+    const oldDigital = billingCorrectionNumber(closure.exploraCash ?? closure.nonCashInExplora ?? closure.nonCashGrossInExplora);
+    const cash = Math.max(0, oldCash + (!cashboxOnly && method === "cash" ? delta : 0));
+    const digital = Math.max(0, oldDigital + (!cashboxOnly && method !== "cash" ? delta : 0));
+    const oldCashboxGross = billingCorrectionNumber(closure.billingCashboxGross ?? closure.cashboxGross ?? oldCash);
+    const oldEligibleGross = billingCorrectionNumber(closure.billingCashboxEligibleGross ?? closure.cashboxEligibleGross ?? oldCashboxGross);
+    const cashboxGross = Math.max(0, oldCashboxGross + (cashboxGenerates ? delta : 0));
+    const eligibleGross = Math.max(0, oldEligibleGross + (cashboxGenerates ? delta : 0));
+    const cashboxRate = billingCorrectionNumber(closure.cashboxRate, .05) || .05;
+    const autoClosesCashbox = billingCorrectionClosesCashbox(closure);
+    const cashboxGenerated = cashboxGross * cashboxRate;
+    const alreadyCompensated = autoClosesCashbox ? Math.max(0, billingCorrectionNumber(closure.cashboxAlreadyCompensated || 0)) : 0;
+    const cashboxPending = autoClosesCashbox ? Math.max(0, cashboxGenerated - alreadyCompensated) : null;
+    const settlement = billingCorrectionSettlement({ cash, digital, eligibleGross, rate:cashboxRate, cashboxAmount:cashboxPending });
+    const payerRole = settlement.amountFromDriver > .49 ? "driver" : settlement.amountToDriver > .49 ? "admin" : "balanced";
+    return {
+      gross:settlement.gross,
+      grossBeforeCashbox:settlement.gross,
+      cashInDriver:cash,
+      cashGrossInDriver:cash,
+      exploraCash:digital,
+      nonCashInExplora:digital,
+      nonCashGrossInExplora:digital,
+      billingShareEach:settlement.share,
+      driverShare:settlement.share,
+      exploraShare:settlement.share,
+      driverEntitlement:settlement.share,
+      driverFinal:settlement.share,
+      billingNetBeforeCashboxToDriver:settlement.netBeforeCashboxToDriver,
+      billingAmountToDriverBeforeCashbox:Math.max(0, settlement.netBeforeCashboxToDriver),
+      billingCashboxGross:cashboxGross,
+      billingCashboxEligibleGross:settlement.cashboxEligibleGross,
+      billingCashboxGenerated:autoClosesCashbox ? settlement.cashboxGenerated : cashboxGenerated,
+      billingCashboxEligibleAmount:settlement.cashboxGenerated,
+      billingCashboxOffsetApplied:settlement.cashboxOffsetApplied,
+      cashboxGeneratedTotal:cashboxGenerated,
+      cashboxTotal:autoClosesCashbox ? settlement.cashboxGenerated : cashboxGenerated,
+      cashboxIncludedInSettlement:autoClosesCashbox ? settlement.cashboxGenerated : billingCorrectionNumber(closure.cashboxIncludedInSettlement || 0),
+      cashboxInDriver:autoClosesCashbox ? settlement.cashboxGenerated : settlement.cashboxRemainingInDriver,
+      cashboxInExplora:autoClosesCashbox ? 0 : settlement.cashboxOffsetApplied,
+      netSettlementToDriver:settlement.netToDriver,
+      amountDueFromDriver:settlement.amountFromDriver,
+      amountFromDriver:settlement.amountFromDriver,
+      amountDueToDriver:settlement.amountToDriver,
+      amountToDriver:settlement.amountToDriver,
+      pendingPayerRole:payerRole,
+      receiptRequiredFrom:payerRole,
+      paymentDirection:payerRole === "driver" ? "driver_to_explora" : payerRole === "admin" ? "explora_to_driver" : "balanced",
+      ...adjustmentMeta
+    };
+  }
+
+  if (kind === "caja_chica" && cashboxGenerates) {
+    const rate = billingCorrectionNumber(closure.cashboxRate, .05) || .05;
+    const gross = Math.max(0, billingCorrectionNumber(closure.cashboxGross ?? closure.gross ?? closure.cashboxBase) + delta);
+    const total = Math.max(0, billingCorrectionNumber(closure.cashboxTotal ?? closure.mainTotal ?? closure.amountDueFromDriver) + delta * rate);
+    return {
+      gross,
+      cashboxGross:gross,
+      mainTotal:total,
+      cashboxTotal:total,
+      cashboxInDriver:total,
+      cashboxInExplora:0,
+      amountDueFromDriver:total,
+      amountFromDriver:total,
+      amountDueToDriver:0,
+      amountToDriver:0,
+      netSettlementToDriver:-total,
+      pendingPayerRole:total > .49 ? "driver" : "balanced",
+      receiptRequiredFrom:total > .49 ? "driver" : "balanced",
+      paymentDirection:total > .49 ? "driver_to_explora" : "balanced",
+      ...adjustmentMeta
+    };
+  }
+  return null;
+}
 async function modifyServiceAmount(receipt = {}, requestedAmount = 0) {
   if (!auth?.currentUser?.uid) throw Object.assign(new Error("AUTH_REQUIRED"), { code:"AUTH_REQUIRED" });
   // La ruta de edición solo se expone desde la pantalla administrativa.
@@ -608,14 +784,18 @@ async function modifyServiceAmount(receipt = {}, requestedAmount = 0) {
   const visibleIndexId = String(raw.sourceCollection || "") === "receipt_index" && raw.id ? String(raw.id) : canonicalIndexId;
   const indexIds = [...new Set([visibleIndexId, canonicalIndexId].filter(Boolean))];
   const indexReferences = indexIds.map(id => doc(db, "receipt_index", id));
+  const closureCandidates = await billingCorrectionClosureRefs(operationId);
   const auditId = stableId("billing_amount_edit", auth.currentUser.uid);
   const auditReference = doc(db, "admin_audit", auditId);
   let previousAmount = 0;
+  const closureUpdates = [];
 
   await runTransaction(db, async transaction => {
     const billingSnapshot = await transaction.get(billingReference);
     const indexSnapshots = [];
     for (const reference of indexReferences) indexSnapshots.push(await transaction.get(reference));
+    const closureSnapshots = [];
+    for (const candidate of closureCandidates) closureSnapshots.push({ ...candidate, snapshot:await transaction.get(candidate.reference) });
     if (!billingSnapshot.exists()) throw Object.assign(new Error("BILLING_RECORD_NOT_FOUND"), { code:"BILLING_RECORD_NOT_FOUND" });
 
     const billingData = billingSnapshot.data() || {};
@@ -652,6 +832,15 @@ async function modifyServiceAmount(receipt = {}, requestedAmount = 0) {
       });
     });
 
+    closureUpdates.length = 0;
+    closureSnapshots.forEach(candidate => {
+      if (!candidate.snapshot.exists()) return;
+      const patch = billingCorrectionClosurePatch(candidate.snapshot.data() || {}, billingData, operationId, previousAmount, newAmount);
+      if (!patch) return;
+      transaction.update(candidate.reference, patch);
+      closureUpdates.push({ id:candidate.id, patch });
+    });
+
     transaction.set(auditReference, {
       type:"billing_amount_correction",
       action:"modify_service_amount",
@@ -663,6 +852,8 @@ async function modifyServiceAmount(receipt = {}, requestedAmount = 0) {
       previousAmount,
       newAmount,
       difference:newAmount - previousAmount,
+      adjustedClosureCount:closureUpdates.length,
+      adjustedClosureIds:closureUpdates.map(item => item.id),
       weeklyPeriodId:String(billingData.weeklyPeriodId || billingData.periodoSemanalId || receipt.weeklyPeriodId || ""),
       editedByUid:auth.currentUser.uid,
       editedByRole:"admin",
@@ -684,7 +875,7 @@ async function modifyServiceAmount(receipt = {}, requestedAmount = 0) {
   } catch (refreshError) {
     console.warn("BILLING_AMOUNT_CORRECTION_REFRESH", refreshError?.code || refreshError?.message || refreshError);
   }
-  return { operationId, previousAmount, newAmount };
+  return { operationId, previousAmount, newAmount, closureUpdates };
 }
 
 function closeReceiptViewer() {

@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4079-rechazo-cierre-restaura-en-chofer";
+  const VERSION = "explora-pago-home-v52-v4086-editar-valor-actividades-admin";
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -79,6 +79,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     adminDeleteMessage:"",
     adminDeleteBusy:false,
     adminDeleteBusyKey:"",
+    adminAmountEditRow:null,
+    adminAmountEditBusy:false,
     busy:false,
     refreshing:false
   };
@@ -1319,9 +1321,40 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       openClosureFromNotification(button.dataset.payNotificationClosure);
     });
     $("payActivityList")?.addEventListener("click", event => {
+      const editButton = event.target.closest("[data-pay-activity-edit]");
+      if (editButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        openAdminActivityAmountEditor(editButton.dataset.payActivityEdit || "");
+        return;
+      }
       const row = event.target.closest("[data-pay-activity-closure]");
       if (!row) return;
       openClosureFromNotification(row.dataset.payActivityClosure);
+    });
+    $("payAdminAmountEditCancel")?.addEventListener("click", closeAdminActivityAmountEditor);
+    $("payAdminAmountEditSave")?.addEventListener("click", () => {
+      saveAdminActivityAmountEdit().catch(error => {
+        console.error("EXPLORA_ADMIN_ACTIVITY_AMOUNT_EDIT", error);
+        setAdminActivityAmountMessage(error?.message || "No se pudo modificar el valor.", "error");
+      });
+    });
+    $("payAdminAmountEditBackdrop")?.addEventListener("click", event => {
+      if (event.target?.id === "payAdminAmountEditBackdrop") closeAdminActivityAmountEditor();
+    });
+    $("payAdminAmountEditInput")?.addEventListener("input", event => {
+      const digits = safe(event.target?.value).replace(/\D/g, "");
+      event.target.value = digits ? new Intl.NumberFormat("es-AR", { maximumFractionDigits:0 }).format(Number(digits)) : "";
+      setAdminActivityAmountMessage("");
+    });
+    $("payAdminAmountEditInput")?.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        saveAdminActivityAmountEdit().catch(error => setAdminActivityAmountMessage(error?.message || "No se pudo modificar el valor.", "error"));
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        closeAdminActivityAmountEditor();
+      }
     });
     $("payMoreLogoutBtn")?.addEventListener("click", logoutFromMore);
     $("payMoreList")?.addEventListener("click", event => {
@@ -4162,6 +4195,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       const paymentHasPhoto = method !== "cash" && rowHasAttachment(row);
       rows.push({
         at, type:"payment", method, source:row, driverName:driverNameForRow(row), title:`${dateTimeShort(at)} · ${paymentLabel(method)}`,
+        editId:safe(row.id || row.recordId || row.operationId || row.billingRecordId),
         meta:safe(row.description || row.detalle || row.notes || row.ruta || "Servicio registrado"),
         detail: method === "cash"
           ? `Cobró el chofer en efectivo: ${currency(amount)} · caja chica separada ${currency(cashbox)}`
@@ -4910,6 +4944,159 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     text.textContent = card.title;
   }
 
+  function setAdminActivityAmountMessage(message = "", tone = "") {
+    const box = $("payAdminAmountEditMessage");
+    if (!box) return;
+    box.textContent = safe(message);
+    box.className = `pay-admin-amount-edit-message${tone ? ` is-${tone}` : ""}`;
+  }
+
+  function adminActivityPaymentById(documentId = "") {
+    const id = safe(documentId);
+    if (!id) return null;
+    return (state.records || []).find(row => safe(row.id || row.recordId || row.operationId || row.billingRecordId) === id) || null;
+  }
+
+  function openAdminActivityAmountEditor(documentId = "") {
+    if (!isAdmin()) return;
+    const row = adminActivityPaymentById(documentId);
+    if (!row) {
+      window.alert("No se encontró el servicio en las actividades actuales.");
+      return;
+    }
+    const currentAmount = Math.round(amountOf(row));
+    if (!(currentAmount > 0)) {
+      window.alert("Este servicio no tiene un valor válido para editar.");
+      return;
+    }
+    state.adminAmountEditRow = row;
+    const backdrop = $("payAdminAmountEditBackdrop");
+    const input = $("payAdminAmountEditInput");
+    if (!backdrop || !input) return;
+    $("payAdminAmountEditDriver").textContent = driverNameForRow(row);
+    $("payAdminAmountEditDetail").textContent = safe(row.description || row.detalle || row.notes || row.ruta || paymentLabel(methodOf(row)));
+    $("payAdminAmountEditPrevious").textContent = currency(currentAmount);
+    input.value = new Intl.NumberFormat("es-AR", { maximumFractionDigits:0 }).format(currentAmount);
+    input.disabled = false;
+    $("payAdminAmountEditSave").disabled = false;
+    $("payAdminAmountEditCancel").disabled = false;
+    setAdminActivityAmountMessage("Ingresá el valor correcto y confirmá.");
+    backdrop.classList.add("is-open");
+    backdrop.setAttribute("aria-hidden", "false");
+    window.lockPageScroll?.("pay-admin-amount-edit");
+    setTimeout(() => {
+      input.focus();
+      input.select?.();
+    }, 80);
+  }
+
+  function closeAdminActivityAmountEditor() {
+    if (state.adminAmountEditBusy) return;
+    const backdrop = $("payAdminAmountEditBackdrop");
+    backdrop?.classList.remove("is-open");
+    backdrop?.setAttribute("aria-hidden", "true");
+    state.adminAmountEditRow = null;
+    setAdminActivityAmountMessage("");
+    window.unlockPageScroll?.("pay-admin-amount-edit");
+  }
+
+  function applyAdminActivityAmountLocally(documentId = "", newAmount = 0, closureUpdates = []) {
+    const id = safe(documentId);
+    const amount = Math.round(number(newAmount));
+    if (!id || !(amount > 0)) return;
+    state.records = (state.records || []).map(row => {
+      if (safe(row.id || row.recordId || row.operationId || row.billingRecordId) !== id) return row;
+      return {
+        ...row,
+        amount,
+        monto:amount,
+        valor:amount,
+        finalPrice:amount,
+        totalAmount:Object.prototype.hasOwnProperty.call(row, "totalAmount") ? amount : row.totalAmount,
+        importe:Object.prototype.hasOwnProperty.call(row, "importe") ? amount : row.importe,
+        price:Object.prototype.hasOwnProperty.call(row, "price") ? amount : row.price,
+        total:Object.prototype.hasOwnProperty.call(row, "total") ? amount : row.total,
+        updatedAtMs:Date.now()
+      };
+    });
+    if (Array.isArray(closureUpdates) && closureUpdates.length) {
+      const patches = new Map(closureUpdates.map(item => [safe(item?.id), item?.patch || {}]).filter(([closureId]) => closureId));
+      state.closures = (state.closures || []).map(row => patches.has(safe(row.id)) ? { ...row, ...patches.get(safe(row.id)), updatedAtMs:Date.now() } : row);
+    }
+    state.latestSummary = computeSummary();
+    render();
+  }
+
+  async function saveAdminActivityAmountEdit() {
+    if (state.adminAmountEditBusy || !isAdmin()) return;
+    const row = state.adminAmountEditRow;
+    const input = $("payAdminAmountEditInput");
+    if (!row || !input) return;
+    const previousAmount = Math.round(amountOf(row));
+    const newAmount = Math.round(moneyNumber(input.value));
+    if (!(newAmount > 0)) {
+      setAdminActivityAmountMessage("Ingresá un valor mayor a $0.", "error");
+      input.focus();
+      return;
+    }
+    if (newAmount === previousAmount) {
+      setAdminActivityAmountMessage("El valor nuevo es igual al anterior.", "error");
+      input.focus();
+      return;
+    }
+    if (!window.ExploraReceiptEngine?.modifyServiceAmount) {
+      setAdminActivityAmountMessage("El módulo de edición no está disponible. Cerrá y volvé a abrir la app.", "error");
+      return;
+    }
+    const documentId = safe(row.id || row.recordId || row.operationId || row.billingRecordId);
+    if (!documentId) {
+      setAdminActivityAmountMessage("No se pudo identificar el servicio original.", "error");
+      return;
+    }
+    state.adminAmountEditBusy = true;
+    input.disabled = true;
+    $("payAdminAmountEditSave").disabled = true;
+    $("payAdminAmountEditCancel").disabled = true;
+    setAdminActivityAmountMessage("Guardando y recalculando cierres…");
+    try {
+      const result = await window.ExploraReceiptEngine.modifyServiceAmount({
+        ...row,
+        raw:{ ...row, id:documentId, sourceCollection:"billing_records", recordId:documentId, billingRecordId:documentId, operationId:documentId },
+        recordId:documentId,
+        billingRecordId:documentId,
+        operationId:documentId,
+        driverName:driverNameForRow(row)
+      }, newAmount);
+      applyAdminActivityAmountLocally(documentId, newAmount, result?.closureUpdates || []);
+      setAdminActivityAmountMessage(`Valor actualizado: ${currency(previousAmount)} → ${currency(newAmount)}.`, "success");
+      window.ExploraAdminShared?.invalidate?.();
+      window.invalidateReceiptCache?.("alias");
+      setTimeout(() => {
+        state.adminAmountEditBusy = false;
+        closeAdminActivityAmountEditor();
+      }, 650);
+      return;
+    } catch (error) {
+      console.error("EXPLORA_ADMIN_ACTIVITY_AMOUNT_EDIT_SAVE", error);
+      const code = safe(error?.code || error?.message).toUpperCase();
+      const message = code.includes("NOT_FOUND")
+        ? "No se encontró el servicio original en Firestore."
+        : code.includes("PERMISSION") || code.includes("ADMIN") || code.includes("AUTH")
+          ? "La sesión de administrador no tiene permiso para modificar este servicio."
+          : code.includes("INVALID")
+            ? "Ingresá un valor válido."
+            : "No se pudo modificar el valor ni recalcular los cierres. Revisá la conexión e intentá nuevamente.";
+      setAdminActivityAmountMessage(message, "error");
+    } finally {
+      if (state.adminAmountEditBusy) {
+        state.adminAmountEditBusy = false;
+        input.disabled = false;
+        $("payAdminAmountEditSave").disabled = false;
+        $("payAdminAmountEditCancel").disabled = false;
+      }
+    }
+  }
+
   function activityIcon(type) {
     if (type === "debt" || type === "debt_payment" || type === "debt_expense_offset") return `<svg viewBox="0 0 24 24"><path d="M12 2 2 20h20L12 2Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg>`;
     if (type === "expense" || type === "cashbox") return `<svg viewBox="0 0 24 24"><path d="M4 7.5h14.5A1.5 1.5 0 0 1 20 9v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11"></path><path d="M16 12h5v4h-5a2 2 0 0 1 0-4Z"></path></svg>`;
@@ -4931,10 +5118,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         : "";
       const photoClass = photoButton ? " has-photo-action" : "";
       const driverLine = isAdmin() ? `<div class="pay-activity-driver-name">${esc(row.driverName || "Chofer")}</div>` : "";
+      const editButton = isAdmin() && row.type === "payment" && row.editId
+        ? `<button class="pay-activity-edit-value" type="button" data-pay-activity-edit="${esc(row.editId)}" aria-label="Editar valor del servicio" title="Editar valor"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4l11-11-4-4L4 16v4Z"></path><path d="m13.5 6.5 4 4"></path></svg></button>`
+        : "";
       return `<article class="pay-activity ${row.type === "closure" ? "is-clickable" : ""}${closureTone}${photoClass}"${closureAttr}>
         <span class="pay-activity-icon">${activityIcon(row.type)}</span>
         <div>${driverLine}<div class="pay-activity-title">${esc(row.title)}</div><div class="pay-activity-meta">${esc(row.meta)}</div><div class="pay-activity-detail">${esc(row.detail)}</div></div>
-        <strong class="pay-activity-amount ${row.positive ? "is-positive" : row.negative ? "is-negative" : ""}">${row.amount ? (row.amount > 0 ? "+" : "") + currency(row.amount) : ""}</strong>
+        <div class="pay-activity-side"><strong class="pay-activity-amount ${row.positive ? "is-positive" : row.negative ? "is-negative" : ""}">${row.amount ? (row.amount > 0 ? "+" : "") + currency(row.amount) : ""}</strong>${editButton}</div>
         ${photoButton}
       </article>`;
     }).join("");
