@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v4085 · modificar valor admin real */
+/* EXPLORA PWA registration · v4086 · editar valor desde actividades admin */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4085-modificar-valor-admin-real';
+  const BUILD = 'v4086-editar-valor-actividades-admin';
 
   const clearLegacyCaches = async () => {
     try {
