@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4084-modificar-valor-visible-admin */
+/* Compatibilidad validada: v4085-modificar-valor-admin-real */
 /* EXPLORA PWA service worker · v2.5.5 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4084-modificar-valor-visible-admin`;
+const CACHE_NAME = `${CACHE_PREFIX}v4085-modificar-valor-admin-real`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -152,3 +152,5 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4083 administrador modifica valor de servicio desde comprobantes */
 
 /* cache bump: v4084 botón MODIFICAR VALOR visible al abrir Comprobantes en administrador */
+
+/* cache bump: v4085 modo administrador explícito + edición visible sin filtros automáticos */
