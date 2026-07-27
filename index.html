@@ -1091,6 +1091,25 @@
 </div>
 </section>
 </div>
+<div aria-hidden="true" class="receipt-amount-edit-backdrop" id="receiptAmountEditBackdrop">
+<section aria-labelledby="receiptAmountEditTitle" aria-modal="true" class="receipt-amount-edit-modal" role="dialog">
+<p class="receipt-amount-edit-kicker">ADMINISTRADOR · SERVICIO</p>
+<h2 id="receiptAmountEditTitle">MODIFICAR VALOR</h2>
+<p class="receipt-amount-edit-description">Corregí el monto cargado. El cambio actualizará la facturación y los cálculos financieros del servicio.</p>
+<div class="receipt-amount-edit-summary">
+<span>CHOFER</span><strong id="receiptAmountEditDriver">—</strong>
+<span>VALOR ACTUAL</span><strong id="receiptAmountEditCurrent">$0</strong>
+</div>
+<label class="receipt-amount-edit-field" for="receiptAmountEditInput">NUEVO VALOR
+<input autocomplete="off" id="receiptAmountEditInput" inputmode="numeric" placeholder="Ej.: 25000" type="text"/>
+</label>
+<div aria-live="assertive" class="receipt-amount-edit-message" id="receiptAmountEditMessage"></div>
+<div class="receipt-amount-edit-actions">
+<button class="receipt-amount-edit-cancel" id="receiptAmountEditCancel" type="button">CANCELAR</button>
+<button class="receipt-amount-edit-save" id="receiptAmountEditSave" type="button">GUARDAR VALOR</button>
+</div>
+</section>
+</div>
 <section aria-hidden="true" aria-label="Derivaciones" class="derivation-screen" data-derivation-view="received" id="derivationScreen">
 <div class="derivation-shell derivation-shell--simple">
 <header class="derivation-header">
@@ -1290,13 +1309,14 @@
 <script id="exploraReceiptUIV197" src="js/segments/06-script.js"></script>
 <script id="exploraBillingV188" src="js/segments/07-script.js?v=3921-billing-visual-fix"></script>
 <script id="exploraPerformanceNavigationV210" src="js/segments/08-script.js"></script>
-<script id="exploraReceiptsV247" src="js/segments/09-script.js?v=247"></script>
+<link href="css/segments/53-style.css?v=4083-modificar-valor-servicio" rel="stylesheet"/>
+<script id="exploraReceiptsV247" src="js/segments/09-script.js?v=4083-modificar-valor-servicio"></script>
 <script id="exploraProductionPolicyV251" src="js/segments/10-script.js"></script>
 <script src="js/segments/11-script.mjs?v=4082-gestion-choferes-visible" type="module"></script>
 <!-- EXPLORA v160: motor semanal unificado + splash seguro + históricos financieros -->
 <link href="css/segments/32-style.css?v=2445-finance-nav-fix" rel="stylesheet"/>
 <script id="exploraSplashEmergencyPatch" src="js/segments/12-script.js?v=4065-sync-before-dashboard"></script>
-<script id="exploraUnifiedWeeklyFinanceModule" src="js/segments/13-script.mjs?v=4054-menu-perfil-minimo-compacto" type="module"></script>
+<script id="exploraUnifiedWeeklyFinanceModule" src="js/segments/13-script.mjs?v=4083-modificar-valor-servicio" type="module"></script>
 <script id="exploraDebtNotificationsV189" src="js/segments/14-script.mjs?v=4023-activity-photo-viewer" type="module"></script>
 <script id="exploraAdminDebtLaunchV190" src="js/segments/15-script.mjs?v=4061-chequeo-deudas-mas-chofer" type="module"></script>
 <!-- EXPLORA v256 · derivaciones recibidas primero, pestañas separadas y flujo operativo estable -->

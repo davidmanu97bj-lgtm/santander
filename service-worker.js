@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4082-gestion-choferes-visible */
+/* Compatibilidad validada: v4083-modificar-valor-servicio */
 /* EXPLORA PWA service worker · v2.5.5 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4082-gestion-choferes-visible`;
+const CACHE_NAME = `${CACHE_PREFIX}v4083-modificar-valor-servicio`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -17,12 +17,13 @@ const APP_SHELL = [
   './index.html',
   './css/segments/01-style.css?v=4062-login-sin-autofill-session-restore',
   './css/segments/46-style.css',
+  './css/segments/53-style.css?v=4083-modificar-valor-servicio',
   './css/segments/47-style.css?v=4065-sync-before-dashboard',
   './css/segments/07-style.css?v=3921-billing-visual-fix',
-  './js/segments/09-script.js',
+  './js/segments/09-script.js?v=4083-modificar-valor-servicio',
   './js/segments/03-script.js?v=4075-sin-datos-anteriores',
   './js/segments/07-script.js?v=3921-billing-visual-fix',
-  './js/segments/13-script.mjs?v=4054-menu-perfil-minimo-compacto',
+  './js/segments/13-script.mjs?v=4083-modificar-valor-servicio',
   './css/segments/14-style.css?v=4023-activity-photo-viewer',
   './js/segments/14-script.mjs?v=4023-activity-photo-viewer',
   './js/segments/15-script.mjs?v=4054-menu-perfil-minimo-compacto',
@@ -147,3 +148,5 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4079 rechazo de cierre restaura Facturación y Caja chica en chofer */
 
 /* cache bump: v4080 reset seguro de datos por chofer */
+
+/* cache bump: v4083 administrador modifica valor de servicio desde comprobantes */
