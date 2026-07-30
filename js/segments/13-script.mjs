@@ -1042,6 +1042,12 @@ window.ExploraRegisterBillingRecord = async function(input = {}) {
       monthlyPeriodId:periods.monthlyPeriodId, yearlyPeriodId:periods.yearlyPeriodId, year:periods.year, month:periods.month,
       fecha:now.toLocaleDateString("es-AR", { timeZone:AR_TZ }), hora:now.toLocaleTimeString("es-AR", { timeZone:AR_TZ, hour:"2-digit", minute:"2-digit" }),
       ...saveReceiptMetadata(receipt || {}, { ownerUid:session.uid, uploadedByUid:session.uid, uploadedByRole:"driver" }),
+      // Enlaces normalizados para integraciones WhatsApp → Telegram.
+      // Los alias permiten que el reenviador adjunte la imagen o muestre un vínculo directo.
+      notificationPhotoUrl:receipt?.receiptUrl || receipt?.fileUrl || null,
+      telegramPhotoUrl:receipt?.receiptUrl || receipt?.fileUrl || null,
+      whatsappPhotoUrl:receipt?.receiptUrl || receipt?.fileUrl || null,
+      firebasePhotoUrl:receipt?.receiptUrl || receipt?.fileUrl || null,
       createdAt:serverTimestamp(), completedAt:serverTimestamp(), updatedAt:serverTimestamp()
     };
 
@@ -2262,6 +2268,11 @@ const ExploraExpenseV202 = (() => {
         porcentajeCompartido:50,
         receiptUrl,
         receiptPath:path,
+        // Alias estándar para que WhatsApp/Telegram detecten y adjunten la foto.
+        notificationPhotoUrl:receiptUrl,
+        telegramPhotoUrl:receiptUrl,
+        whatsappPhotoUrl:receiptUrl,
+        firebasePhotoUrl:receiptUrl,
         receiptMimeType:uploadContentType,
         receiptOriginalExtension:expenseUploadState.sourceExtension || null,
         receiptProcessedExtension:expenseUploadState.processedExtension || extension,
@@ -2292,6 +2303,10 @@ const ExploraExpenseV202 = (() => {
         expenseType,
         receiptUrl,
         receiptPath:path,
+        notificationPhotoUrl:receiptUrl,
+        telegramPhotoUrl:receiptUrl,
+        whatsappPhotoUrl:receiptUrl,
+        firebasePhotoUrl:receiptUrl,
         storagePath:path,
         fullPath:path,
         downloadURL:receiptUrl,

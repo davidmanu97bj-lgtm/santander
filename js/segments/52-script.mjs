@@ -6328,6 +6328,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function closureClosedPayload({ closure = {}, receipt = null, uploadedBy = "admin" } = {}) {
     const nowMs = Date.now();
     const isDriver = uploadedBy === "driver";
+    const directReceiptUrl = receipt?.url || closureProofUrl(closure) || null;
     const actorName = isDriver ? displayName() : accountName();
     const actorRole = isDriver ? "driver" : "admin";
     const label = isDriver
@@ -6354,8 +6355,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       confirmedByName:actorName,
       confirmedAt:serverTimestamp(),
       confirmedAtMs:nowMs,
-      receiptUrl:receipt?.url || closureProofUrl(closure) || null,
+      receiptUrl:directReceiptUrl,
       receiptPath:receipt?.path || safe(closure.receiptPath || closure.driverReceiptPath || closure.adminReceiptPath) || null,
+      // Enlace directo reutilizable por WhatsApp y por el puente hacia Telegram.
+      notificationPhotoUrl:directReceiptUrl,
+      telegramPhotoUrl:directReceiptUrl,
+      whatsappPhotoUrl:directReceiptUrl,
+      firebasePhotoUrl:directReceiptUrl,
       receiptUploadedBy:actorRole,
       receiptUploadedAt:serverTimestamp(),
       receiptUploadedAtMs:nowMs,
