@@ -1,7 +1,7 @@
 /* Compatibilidad validada: v4088-apertura-instantanea */
 /* EXPLORA PWA service worker · v2.5.6 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4088-apertura-instantanea`;
+const CACHE_NAME = `${CACHE_PREFIX}v4089-arranque-estable`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -32,9 +32,9 @@ const APP_SHELL = [
   './js/segments/01-script.js?v2442-weekly-payment-production',
   './js/segments/19-script.mjs?v2442-weekly-payment-production',
   './js/segments/39-script.mjs?v=4016-card-alerts',
-  './js/segments/11-script.mjs?v=4088-apertura-instantanea',
+  './js/segments/11-script.mjs?v=4089-arranque-estable',
   './js/segments/12-script.js?v=4065-sync-before-dashboard',
-  './js/segments/37-script.js?v=4088-sync-silenciosa',
+  './js/segments/37-script.js?v=4089-arranque-estable',
   './js/core/weekly-core.mjs?v2442-weekly-payment-production',
   './css/segments/45-style.css?v=2440-weekly-closure-cash-record-recovery',
   './css/segments/44-style.css?v=2503-more-white-exit',
@@ -160,3 +160,5 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4087 enlaces directos de comprobantes para WhatsApp y Telegram */
 
 /* cache bump: v4088 apertura instantánea + sincronización silenciosa al reanudar */
+
+/* cache bump: v4089 arranque estable sin $0 ni parpadeos */
