@@ -319,7 +319,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       if (percentElement) percentElement.textContent = `${splashSyncState.progress}%`;
     }
 
-    function beginSplashSync(detail = "Estamos actualizando tu perfil antes de abrir el menú.") {
+    function beginSplashSync(detail = "Consultando la información más reciente…") {
       splashHidden = false;
       splashSyncState.active = true;
       splashSyncState.progress = 0;
@@ -327,13 +327,13 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       document.body.classList.remove("explora-splash-hidden");
       const splash = $("exploraSplash");
       if (splash) { splash.removeAttribute("aria-hidden"); splash.style.display = "grid"; splash.style.pointerEvents = "auto"; }
-      setSplashSyncProgress(3, "Sincronizando información", detail);
+      setSplashSyncProgress(3, "Actualizando EXPLORA", detail);
       splashSyncState.timer = setInterval(() => {
         if (!splashSyncState.active) return;
         const current = Number(splashSyncState.progress || 0);
         if (current >= 92) return;
         const step = current < 35 ? 5 : current < 70 ? 3 : 1;
-        setSplashSyncProgress(Math.min(92, current + step), "Sincronizando información", splashSyncState.detail || detail);
+        setSplashSyncProgress(Math.min(92, current + step), "Actualizando EXPLORA", splashSyncState.detail || detail);
       }, 180);
     }
 
@@ -5933,16 +5933,20 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         return;
       }
 
-      // Apertura instantánea: si existe una sesión visual válida del mismo usuario,
-      // mostramos inmediatamente la última interfaz guardada y sincronizamos Firebase
-      // en segundo plano. El splash completo queda reservado para el primer acceso,
-      // un cierre de sesión o cuando no existe ningún dato local utilizable.
-      let preserveCurrentUI = Boolean(
+      // Regla de arranque v4090:
+      // - Si la app sigue viva en memoria y ya estaba abierta con el mismo usuario,
+      //   mantenemos esa interfaz mientras se actualiza en segundo plano.
+      // - Si es una apertura nueva (proceso reconstruido por iOS/Android), NO se
+      //   restaura ninguna vista persistida. Se mantiene el panel “Actualizando…”
+      //   hasta tener datos confirmados de Firebase, evitando mostrar información vieja.
+      const preserveCurrentUI = Boolean(
         authSessionState.uiOpened &&
         authSessionState.authenticatedUser?.uid === user.uid
       );
       if (!preserveCurrentUI) {
-        preserveCurrentUI = openCachedAuthenticatedShell(user, "persistent-auth-restore");
+        beginSplashSync("Actualizando tu información. Esperá un momento…");
+        updateSplashSync(12, "Consultando los datos más recientes de Firebase…", "Actualizando EXPLORA");
+        setBodyMode("explora-auth-checking");
       }
 
       let keepSyncVisible = false;
