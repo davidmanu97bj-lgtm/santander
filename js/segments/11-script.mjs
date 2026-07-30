@@ -5933,15 +5933,17 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         return;
       }
 
-      // En un arranque nuevo no se pinta una copia visual guardada. La sesión
-      // Firebase permanece activa, pero el dashboard se revela únicamente cuando
-      // el perfil y el primer snapshot autoritativo terminaron de sincronizar.
-      // Si la interfaz ya estaba abierta en esta misma ejecución, se conserva y
-      // la actualización ocurre en segundo plano sin volver al login.
-      const preserveCurrentUI = Boolean(
+      // Apertura instantánea: si existe una sesión visual válida del mismo usuario,
+      // mostramos inmediatamente la última interfaz guardada y sincronizamos Firebase
+      // en segundo plano. El splash completo queda reservado para el primer acceso,
+      // un cierre de sesión o cuando no existe ningún dato local utilizable.
+      let preserveCurrentUI = Boolean(
         authSessionState.uiOpened &&
         authSessionState.authenticatedUser?.uid === user.uid
       );
+      if (!preserveCurrentUI) {
+        preserveCurrentUI = openCachedAuthenticatedShell(user, "persistent-auth-restore");
+      }
 
       let keepSyncVisible = false;
       try {

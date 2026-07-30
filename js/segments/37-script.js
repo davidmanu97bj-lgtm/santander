@@ -111,11 +111,12 @@
     const session=window.ExploraSession||{};
     if(!session.authUser?.uid&&!window.ExploraFirebase?.auth?.currentUser?.uid)return;
     resumeRefreshInFlight=true;
-    const syncGate=window.ExploraDataSyncGate;
-    const gateOpened=Boolean(syncGate?.begin?.("Actualizando saldos y actividades antes de continuar…"));
+    // Al volver desde segundo plano mantenemos visible la última información y
+    // refrescamos silenciosamente. No bloqueamos toda la app con el splash.
+    const syncGate=null;
+    const gateOpened=false;
     try{
-      syncGate?.update?.(18,"Verificando la sesión activa…");
-      window.dispatchEvent(new CustomEvent("explora:app-resumed",{detail:{reason,reload:false,coveredUntilFresh:true}}));
+      window.dispatchEvent(new CustomEvent("explora:app-resumed",{detail:{reason,reload:false,coveredUntilFresh:false,backgroundSync:true}}));
       const tasks=[];
       const globalRefresh=window.ExploraFirestoreGlobalSync?.refresh?.({reason:`${reason}-no-reload`});
       if(globalRefresh&&typeof globalRefresh.then==="function")tasks.push(globalRefresh);
@@ -146,10 +147,9 @@
     lastActivity=Date.now();
   }
   function coverAuthenticatedDashboardForResume(){
-    const session=window.ExploraSession||{};
-    const authenticated=Boolean(session.authUser?.uid||window.ExploraFirebase?.auth?.currentUser?.uid);
-    if(!authenticated||!document.body.classList.contains("explora-authenticated"))return false;
-    return Boolean(window.ExploraDataSyncGate?.begin?.("Actualizando información antes de continuar…"));
+    // La aplicación conserva la última pantalla al pasar a segundo plano.
+    // La actualización se realiza al regresar sin cubrir ni bloquear el menú.
+    return false;
   }
   function onVisibilityChange(){
     if(document.visibilityState==="hidden"){
