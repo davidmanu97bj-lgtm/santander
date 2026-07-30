@@ -1,7 +1,7 @@
-/* Compatibilidad validada: v4086-editar-valor-actividades-admin */
+/* Compatibilidad validada: v4087-telegram-fotos-directas */
 /* EXPLORA PWA service worker · v2.5.6 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4086-editar-valor-actividades-admin`;
+const CACHE_NAME = `${CACHE_PREFIX}v4087-telegram-fotos-directas`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -156,3 +156,5 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4085 modo administrador explícito + edición visible sin filtros automáticos */
 
 /* cache bump: v4086 edición directa de valores desde Actividades Admin + recálculo de cierres */
+
+/* cache bump: v4087 enlaces directos de comprobantes para WhatsApp y Telegram */
