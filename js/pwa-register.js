@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v4086 · editar valor desde actividades admin */
+/* EXPLORA PWA registration · v4090 · arranque sin información vieja */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4086-editar-valor-actividades-admin';
+  const BUILD = 'v4090-sin-datos-viejos';
 
   const clearLegacyCaches = async () => {
     try {
