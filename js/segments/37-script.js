@@ -6,9 +6,11 @@
 
   const IDLE_MS=120000;
   const CHECK_MS=5000;
-  const STORAGE_KEY="explora:dashboard:last-valid:v1"; // sólo se elimina; ya no se restaura
+  const STORAGE_KEY="explora:dashboard:last-valid:v2";
+  const SHELL_KEY="explora:dashboard:stable-shell:v1";
   const RELOAD_GUARD_KEY="explora:dashboard:auto-reload-guard:v1";
-  const MAX_SNAPSHOT_AGE_MS=6*60*60*1000;
+  const MAX_SNAPSHOT_AGE_MS=24*60*60*1000;
+  const MAX_SHELL_HTML_LENGTH=1500000;
   const TARGETS={
     performancePodium:"html",
     performanceDerivatorBody:"html",
@@ -66,22 +68,71 @@
     }
     return validPrimary>=2?data:null;
   }
+  function currentCachedUid(){
+    try{return String(JSON.parse(localStorage.getItem("explora_sesion_nueva_last")||"{}").uid||"")}catch(_){return ""}
+  }
+  function collectStableShell(){
+    const root=node("driverDashboardReal");
+    if(!root||root.hidden)return null;
+    const uid=String(window.ExploraSession?.authUser?.uid||window.ExploraFirebase?.auth?.currentUser?.uid||currentCachedUid());
+    if(!uid)return null;
+    const html=String(root.innerHTML||"");
+    if(!html||html.length>MAX_SHELL_HTML_LENGTH)return null;
+    return {uid,savedAt:Date.now(),html,scrollY:Math.max(0,Math.round(window.scrollY||0))};
+  }
   function saveSnapshot(){
     clearTimeout(saveTimer);
     saveTimer=setTimeout(()=>{
       try{
         const data=collectSnapshot();
-        if(data)sessionStorage.setItem(STORAGE_KEY,JSON.stringify(data));
+        if(data)localStorage.setItem(STORAGE_KEY,JSON.stringify({...data,uid:currentCachedUid()}));
+        const shell=collectStableShell();
+        if(shell)localStorage.setItem(SHELL_KEY,JSON.stringify(shell));
       }catch(_){}
     },180);
   }
   function discardStoredSnapshot(){
-    try{sessionStorage.removeItem(STORAGE_KEY)}catch(_){}
+    try{localStorage.removeItem(STORAGE_KEY);localStorage.removeItem(SHELL_KEY)}catch(_){}
   }
   function restoreSnapshot(){
-    // v4075: nunca se vuelven a pintar valores de una sesión visual anterior.
-    discardStoredSnapshot();
-    return false;
+    try{
+      const parsed=JSON.parse(localStorage.getItem(STORAGE_KEY)||"null");
+      const uid=currentCachedUid();
+      if(!parsed||!uid||String(parsed.uid||"")!==uid||Date.now()-Number(parsed.savedAt||0)>MAX_SNAPSHOT_AGE_MS)return false;
+      for(const [id,item] of Object.entries(parsed.values||{})){
+        const el=node(id);if(!el||!item)continue;
+        if(item.mode==="text")el.textContent=item.value;else el.innerHTML=item.value;
+      }
+      return true;
+    }catch(_){return false}
+  }
+  function mountStableShell(){
+    try{
+      const parsed=JSON.parse(localStorage.getItem(SHELL_KEY)||"null");
+      const uid=currentCachedUid();
+      if(!parsed||!uid||String(parsed.uid||"")!==uid||Date.now()-Number(parsed.savedAt||0)>MAX_SNAPSHOT_AGE_MS||!parsed.html)return false;
+      const overlay=document.createElement("div");
+      overlay.id="exploraStableStartupShell";
+      overlay.setAttribute("aria-hidden","true");
+      overlay.style.cssText="position:fixed;inset:0;z-index:2147483000;overflow:auto;background:#050505;pointer-events:none;opacity:1;transition:opacity .16s ease";
+      const inner=document.createElement("div");
+      inner.id="driverDashboardReal";
+      inner.innerHTML=parsed.html;
+      overlay.appendChild(inner);
+      document.body.appendChild(overlay);
+      requestAnimationFrame(()=>{overlay.scrollTop=Math.max(0,Number(parsed.scrollY||0))});
+      document.body.classList.add("explora-splash-hidden");
+      const splash=node("exploraSplash");if(splash)splash.style.display="none";
+      window.__exploraStableStartupShellMounted=true;
+      return true;
+    }catch(_){return false}
+  }
+  function removeStableShell(){
+    const overlay=node("exploraStableStartupShell");
+    if(!overlay)return;
+    overlay.style.opacity="0";
+    setTimeout(()=>overlay.remove(),180);
+    window.__exploraStableStartupShellMounted=false;
   }
   function noteActivity(){lastActivity=Date.now()}
   function canAutoReload(){
@@ -175,7 +226,7 @@
     roots.forEach(root=>observer.observe(root,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:["hidden","class","data-status"]}));
   }
   function init(){
-    discardStoredSnapshot();
+    mountStableShell();
     activityEvents.forEach(name=>window.addEventListener(name,noteActivity,{passive:true,capture:true}));
     document.addEventListener("visibilitychange",()=>{
       if(document.visibilityState==="hidden"){
@@ -188,6 +239,12 @@
     window.addEventListener("pageshow",event=>{
       if(event.persisted)refreshSessionWithoutReload("pageshow-bfcache");
     });
+    window.addEventListener("explora:auth-ready",()=>{
+      saveSnapshot();
+      setTimeout(removeStableShell,120);
+    });
+    window.addEventListener("explora:session-opened",()=>setTimeout(removeStableShell,120));
+    setTimeout(removeStableShell,15000);
     startObserver();
     intervalId=window.setInterval(checkIdle,CHECK_MS);
     window.ExploraIdleDashboardRestart={
