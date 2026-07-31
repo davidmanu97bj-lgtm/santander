@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4101-admin-bandeja-uber";
+  const VERSION = "explora-pago-home-v52-v4102-admin-uber-verificado";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -1250,14 +1250,19 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         const button = event.target.closest("[data-uber-driver-uid]");
         const driverUid = safe(button?.dataset?.uberDriverUid);
         if (driverUid) {
+          const closureId = safe(button?.dataset?.uberClosureId);
           state.selectedDriverUid = driverUid;
-          state.selectedDriverName = (state.uberWeeks || []).find(row => safe(row.driverUid || row.choferUid || row.driverId) === driverUid)?.driverName || "";
+          state.selectedDriverName = (state.uberWeeks || []).find(row => safe(row.id || row.closureId) === closureId)?.driverName
+            || (state.uberWeeks || []).find(row => safe(row.driverUid || row.choferUid || row.driverId) === driverUid)?.driverName
+            || "";
+          state.uberReviewClosureId = closureId;
           renderEfficiencyModal();
         }
       }
       if (action === "back-uber-list") {
         state.selectedDriverUid = "";
         state.selectedDriverName = "";
+        state.uberReviewClosureId = "";
         renderEfficiencyModal();
       }
       if (action === "approve-uber-week") reviewUberWeeklyClosure("approved").catch(error => setEfficiencyFormMessage(error?.message || "No se pudo aprobar.", "error"));
@@ -1409,6 +1414,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         showPayView("admin-cierres");
         return;
       }
+      if (action === "admin-uber-closures") {
+        state.selectedDriverUid = "";
+        state.selectedDriverName = "";
+        state.uberReviewClosureId = "";
+        showPayView("inicio");
+        refreshOpenData("admin-uber-menu").finally(() => openEfficiencyModal());
+        return;
+      }
       showPayView("inicio");
       runExistingAction(action);
     });
@@ -1422,6 +1435,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       }
       if (action === "admin-cierres") {
         showPayView("admin-cierres");
+        return;
+      }
+      if (action === "admin-uber-closures") {
+        state.selectedDriverUid = "";
+        state.selectedDriverName = "";
+        state.uberReviewClosureId = "";
+        showPayView("inicio");
+        refreshOpenData("admin-uber-menu").finally(() => openEfficiencyModal());
         return;
       }
       showPayView("inicio");
@@ -1563,8 +1584,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function moreItems() {
     if (isAdmin()) {
+      const pendingUber = (state.uberWeeks || []).filter(row => {
+        const review = safe(row.reviewStatus).toLowerCase();
+        const status = safe(row.status).toLowerCase();
+        return review === "pending" || status === "pending_review" || (!review && !["approved", "rejected"].includes(status));
+      }).length;
       return [
         { title:"Mi perfil", detail:"Alias, CUIT y celular", action:"abrir-perfil", icon:"user" },
+        { title:"Comprobantes Uber", detail:pendingUber ? `${pendingUber} cierre${pendingUber === 1 ? "" : "s"} pendiente${pendingUber === 1 ? "" : "s"}` : "Aceptar o rechazar cierres semanales", action:"admin-uber-closures", icon:"receipt" },
         { title:"Deudas", detail:"Multas, choques y adelantos", action:"admin-multas", icon:"alert" },
         { title:"Salir", detail:"Cerrar sesión", action:"salir", icon:"logout", tone:"danger" }
       ];
@@ -3484,7 +3511,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       ? (state.uberWeeks || []).filter(item => {
           const review = safe(item.reviewStatus).toLowerCase();
           const status = safe(item.status).toLowerCase();
-          return review === "pending" || status === "pending_review";
+          return review === "pending"
+            || status === "pending_review"
+            || (!review && !["approved", "rejected"].includes(status));
         })
       : [];
     const row = uberWeekFor();
@@ -3610,13 +3639,17 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function renderEfficiencyModal() {
     const body = $("payEfficiencyBody");
     if (!body) return;
+    const modalTitle = $("payEfficiencyTitle");
+    if (modalTitle) modalTitle.textContent = isAdmin() ? "Comprobantes Uber" : "Cierre Uber semanal";
     const uid = getDriverUid();
     if (isAdmin() && !uid) {
       const pendingRows = (state.uberWeeks || [])
         .filter(item => {
           const review = safe(item.reviewStatus).toLowerCase();
           const status = safe(item.status).toLowerCase();
-          return review === "pending" || status === "pending_review";
+          return review === "pending"
+            || status === "pending_review"
+            || (!review && !["approved", "rejected"].includes(status));
         })
         .sort((a,b) => rowMs(b) - rowMs(a));
 
@@ -3646,7 +3679,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
               </div>
               <div class="pay-efficiency-form-actions">
                 ${row.receiptUrl ? `<button class="pay-efficiency-secondary" data-pay-efficiency-action="view-uber-proof" data-uber-proof-url="${esc(row.receiptUrl)}" type="button">Ver comprobante</button>` : ""}
-                <button class="pay-efficiency-primary" data-pay-efficiency-action="open-uber-review" data-uber-driver-uid="${esc(driverUid)}" type="button">Revisar cierre</button>
+                <button class="pay-efficiency-primary" data-pay-efficiency-action="open-uber-review" data-uber-driver-uid="${esc(driverUid)}" data-uber-closure-id="${esc(safe(row.id || row.closureId))}" type="button">Revisar cierre</button>
               </div>
             </article>`;
           }).join("")}
@@ -3655,7 +3688,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       return;
     }
     const period = uberWeekWindow();
-    const row = uberWeekFor(uid, period.weekId) || (state.uberWeeks || []).find(item => safe(item.driverUid) === safe(uid) && safe(item.reviewStatus) === "pending");
+    const exactReviewId = safe(state.uberReviewClosureId);
+    const row = isAdmin() && exactReviewId
+      ? (state.uberWeeks || []).find(item => safe(item.id || item.closureId) === exactReviewId)
+      : (uberWeekFor(uid, period.weekId) || (state.uberWeeks || []).find(item => {
+          const sameDriver = safe(item.driverUid || item.choferUid || item.driverId) === safe(uid);
+          const review = safe(item.reviewStatus).toLowerCase();
+          const status = safe(item.status).toLowerCase();
+          return sameDriver && (review === "pending" || status === "pending_review");
+        }));
     if (row && safe(row.reviewStatus || row.status) !== "rejected") {
       const total = moneyNumber(row.grossAmount || row.totalAmount || row.amount);
       const debtShare = moneyNumber(row.exploraShare || row.debtAmount || total/2);
@@ -3741,6 +3782,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     state.uberWeeks=(state.uberWeeks||[]).map(x=>safe(x.id)===safe(row.id)?{...x,reviewStatus:decision,status:approved?"approved":"rejected"}:x);
     state.selectedDriverUid = "";
     state.selectedDriverName = "";
+    state.uberReviewClosureId = "";
     renderEfficiencyButton();
     renderEfficiencyModal();
   }
@@ -3749,7 +3791,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const backdrop = $("payEfficiencyBackdrop"); if (!backdrop) return;
     backdrop.classList.add("is-open"); backdrop.setAttribute("aria-hidden", "false"); renderEfficiencyModal();
   }
-  function closeEfficiencyModal() { const backdrop=$("payEfficiencyBackdrop"); if (!backdrop) return; backdrop.classList.remove("is-open"); backdrop.setAttribute("aria-hidden","true"); state.uberWeeklyFile=null; }
+  function closeEfficiencyModal() {
+    const backdrop = $("payEfficiencyBackdrop");
+    if (!backdrop) return;
+    backdrop.classList.remove("is-open");
+    backdrop.setAttribute("aria-hidden", "true");
+    state.uberWeeklyFile = null;
+    state.uberReviewClosureId = "";
+  }
 
   function renderBellBadge() {
     const badge = $("payBellBadge");
