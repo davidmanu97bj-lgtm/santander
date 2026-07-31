@@ -3574,3 +3574,27 @@ body.explora-pay-mode .pay-tabs{
   margin:6px 0 14px;
   color:#697386;
 }
+
+/* v4100 · Fecha límite del comprobante Uber */
+.pay-uber-deadline{
+  margin:14px 0 18px;
+  padding:14px 16px;
+  border:1px solid rgba(31,122,68,.25);
+  border-radius:16px;
+  background:rgba(31,122,68,.07);
+}
+.pay-uber-deadline strong{
+  display:block;
+  margin-bottom:4px;
+}
+.pay-uber-deadline p,
+.pay-uber-deadline small{
+  margin:0;
+}
+.pay-uber-deadline.is-expired{
+  border-color:rgba(190,43,43,.28);
+  background:rgba(190,43,43,.08);
+}
+.pay-uber-deadline.is-expired strong{
+  color:#a91f1f;
+}
