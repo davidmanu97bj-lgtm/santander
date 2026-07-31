@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4097-uber-lunes-0400";
+  const VERSION = "explora-pago-home-v52-v4098-uber-domingo-0400";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -3347,17 +3347,17 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function uberWeekWindow(now = new Date()) {
     const d = new Date(now);
-    const daysSinceMonday = (d.getDay() + 6) % 7;
+    const daysSinceSunday = d.getDay();
 
-    // Semana operativa de Uber: lunes 04:00 hasta el lunes siguiente 03:59:59.
+    // Semana operativa de Uber: domingo 04:00 hasta el domingo siguiente 03:59:59.
     let activeStart = new Date(
       d.getFullYear(),
       d.getMonth(),
-      d.getDate() - daysSinceMonday,
+      d.getDate() - daysSinceSunday,
       4, 0, 0, 0
     );
 
-    // Los lunes antes de las 04:00 todavía pertenece a la semana anterior.
+    // Los domingos antes de las 04:00 todavía pertenece a la semana anterior.
     if (d.getTime() < activeStart.getTime()) {
       activeStart = new Date(
         activeStart.getFullYear(),
@@ -3553,7 +3553,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
     const disabled = !period.enabled;
     const completedLabel = `${dateShort(period.start.getTime())} 04:00 – ${dateShort(period.end.getTime())} 03:59`;
-    body.innerHTML = `<div class="pay-uber-week-head"><span class="pay-uber-eyebrow">CIERRE SEMANAL</span><strong>Cargá tu facturación semanal de Uber</strong><p>Período a declarar: <strong>${esc(completedLabel)}</strong>.</p><p>Próximo reinicio: lunes 04:00 · ${esc(period.countdownText)}.</p></div><label class="pay-uber-field"><span>Monto total de ganancias Uber</span><div class="pay-uber-money-wrap"><span class="pay-uber-money-prefix">$</span><input id="payUberWeeklyAmount" type="text" inputmode="numeric" autocomplete="off" placeholder="0" ${disabled?"disabled":""}></div><small>Los puntos de miles se agregan automáticamente.</small></label><label class="pay-uber-field"><span>Captura de ganancias de la semana</span><input id="payUberWeeklyFile" type="file" accept="image/*" ${disabled?"disabled":""}><small>La captura es obligatoria y debe mostrar el total semanal.</small></label><div class="pay-uber-calculation" id="payUberWeeklyCalculation"><strong>Resumen del cierre</strong><p>Ingresá el monto total para calcular lo que irá a <strong>Deudas</strong> y a <strong>Caja chica</strong>.</p></div><div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status" aria-live="polite"></div><div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="close" type="button">Cancelar</button><button class="pay-efficiency-primary" data-pay-efficiency-action="submit-uber-week" type="button" ${disabled?"disabled":""}>Registrar cierre Uber</button></div>`;
+    body.innerHTML = `<div class="pay-uber-week-head"><span class="pay-uber-eyebrow">CIERRE SEMANAL</span><strong>Cargá tu facturación semanal de Uber</strong><p>Período a declarar: <strong>${esc(completedLabel)}</strong>.</p><p>Próximo reinicio: domingo 04:00 · ${esc(period.countdownText)}.</p></div><label class="pay-uber-field"><span>Monto total de ganancias Uber</span><div class="pay-uber-money-wrap"><span class="pay-uber-money-prefix">$</span><input id="payUberWeeklyAmount" type="text" inputmode="numeric" autocomplete="off" placeholder="0" ${disabled?"disabled":""}></div><small>Los puntos de miles se agregan automáticamente.</small></label><label class="pay-uber-field"><span>Captura de ganancias de la semana</span><input id="payUberWeeklyFile" type="file" accept="image/*" ${disabled?"disabled":""}><small>La captura es obligatoria y debe mostrar el total semanal.</small></label><div class="pay-uber-calculation" id="payUberWeeklyCalculation"><strong>Resumen del cierre</strong><p>Ingresá el monto total para calcular lo que irá a <strong>Deudas</strong> y a <strong>Caja chica</strong>.</p></div><div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status" aria-live="polite"></div><div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="close" type="button">Cancelar</button><button class="pay-efficiency-primary" data-pay-efficiency-action="submit-uber-week" type="button" ${disabled?"disabled":""}>Registrar cierre Uber</button></div>`;
   }
 
   async function uploadUberWeeklyReceipt({ driverUid, weekId, file }) {
