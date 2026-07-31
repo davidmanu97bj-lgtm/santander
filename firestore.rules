@@ -405,18 +405,48 @@ service cloud.firestore {
         return signedIn()
           && owns(request.resource.data)
           && request.resource.data.driverUid == uid()
+          && request.resource.data.choferUid == uid()
+          && request.resource.data.driverId == uid()
           && request.resource.data.createdByUid == uid()
           && request.resource.data.sourceModule == 'uber_weekly'
           && request.resource.data.type == 'uber_weekly'
+          && request.resource.data.debtType == 'uber_weekly'
+          && request.resource.data.uberGrossAmount is number
+          && request.resource.data.uberGrossAmount > 0
           && request.resource.data.totalAmount is number
           && request.resource.data.totalAmount > 0
+          && request.resource.data.totalAmount * 2 == request.resource.data.uberGrossAmount
+          && request.resource.data.amount == request.resource.data.totalAmount
           && request.resource.data.remainingAmount == request.resource.data.totalAmount
           && request.resource.data.saldoPendiente == request.resource.data.totalAmount
+          && request.resource.data.paidAmount == 0
+          && request.resource.data.amountPaid == 0
+          && request.resource.data.uberCashboxRate == 0.05
+          && request.resource.data.uberCashboxAmount is number
+          && request.resource.data.uberCashboxAmount * 20 == request.resource.data.uberGrossAmount
+          && request.resource.data.reviewStatus == 'pending'
+          && request.resource.data.status == 'pending'
+          && request.resource.data.debtStatus == 'pending'
           && request.resource.data.receiptUrl is string
-          && request.resource.data.receiptUrl.size() > 0;
+          && request.resource.data.receiptUrl.size() > 0
+          && request.resource.data.receiptPath is string
+          && request.resource.data.receiptPath.size() > 0;
       }
+      function driverUberDebtResubmissionUpdate() {
+        return signedIn()
+          && owns(resource.data)
+          && owns(request.resource.data)
+          && resource.data.sourceModule == 'uber_weekly'
+          && resource.data.reviewStatus == 'rejected'
+          && isUberWeeklyDebtCreate()
+          && ownershipFieldsUnchanged();
+      }
+
       allow create: if isAdmin() || isUberWeeklyDebtCreate();
-      allow update: if isAdmin() || driverDebtAckUpdate() || driverDebtPaymentUpdate();
+      allow update: if isAdmin()
+        || driverDebtAckUpdate()
+        || driverDebtPaymentUpdate()
+        || driverUberDebtResubmissionUpdate();
       allow delete: if isAdmin();
 
       match /payments/{paymentId} {
@@ -434,19 +464,68 @@ service cloud.firestore {
 
 
     match /uber_weekly_closures/{closureId} {
-      allow read: if isAdmin() || owns(resource.data);
+      function validUberWeeklyClosure(data) {
+        return data.driverUid == uid()
+          && data.choferUid == uid()
+          && data.driverId == uid()
+          && data.createdByUid == uid()
+          && data.closureId == closureId
+          && data.weekId is string
+          && data.weekId.size() > 0
+          && data.grossAmount is number
+          && data.grossAmount > 0
+          && data.totalAmount == data.grossAmount
+          && data.exploraShare is number
+          && data.exploraShare * 2 == data.grossAmount
+          && data.debtAmount == data.exploraShare
+          && data.cashboxRate == 0.05
+          && data.cashboxAmount is number
+          && data.cashboxAmount * 20 == data.grossAmount
+          && data.uberCashboxAmount == data.cashboxAmount
+          && data.receiptUrl is string
+          && data.receiptUrl.size() > 0
+          && data.receiptPath is string
+          && data.receiptPath.size() > 0
+          && data.telegramPhotoUrl == data.receiptUrl
+          && data.notificationPhotoUrl == data.receiptUrl
+          && data.reviewStatus == 'pending'
+          && data.status == 'pending_review'
+          && data.locked == true;
+      }
+
+      // La transacción consulta primero un ID determinístico aunque el documento aún no exista.
+      allow get: if isAdmin()
+        || owns(resource.data)
+        || (signedIn() && closureId.matches('^uber_' + uid() + '_.*$'));
+
+      allow list: if isAdmin() || owns(resource.data);
+
       allow create: if signedIn()
         && owns(request.resource.data)
-        && request.resource.data.driverUid == uid()
-        && request.resource.data.createdByUid == uid()
-        && request.resource.data.grossAmount is number
-        && request.resource.data.grossAmount > 0
-        && request.resource.data.exploraShare is number
-        && request.resource.data.exploraShare > 0
-        && request.resource.data.receiptUrl is string
-        && request.resource.data.receiptUrl.size() > 0
-        && request.resource.data.reviewStatus == 'pending';
-      allow update, delete: if isAdmin();
+        && validUberWeeklyClosure(request.resource.data);
+
+      // El chofer sólo puede volver a presentar una semana previamente rechazada.
+      allow update: if isAdmin() || (
+        signedIn()
+        && owns(resource.data)
+        && owns(request.resource.data)
+        && resource.data.reviewStatus == 'rejected'
+        && validUberWeeklyClosure(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'weekLabel', 'weekStartMs', 'weekEndMs',
+          'driverName', 'grossAmount', 'totalAmount',
+          'driverShare', 'driverNetAmount',
+          'exploraShare', 'debtAmount',
+          'cashboxRate', 'cashboxAmount', 'uberCashboxAmount',
+          'receiptUrl', 'receiptPath',
+          'notificationPhotoUrl', 'telegramPhotoUrl', 'firebasePhotoUrl',
+          'reviewStatus', 'status', 'locked',
+          'createdAt', 'createdAtMs',
+          'updatedAt', 'updatedAtMs', 'version'
+        ])
+      );
+
+      allow delete: if isAdmin();
     }
 
     match /deuda_pagos/{paymentId} {
@@ -947,20 +1026,42 @@ service cloud.firestore {
         return signedIn()
           && owns(request.resource.data)
           && request.resource.data.driverUid == uid()
+          && request.resource.data.choferUid == uid()
           && request.resource.data.createdByUid == uid()
           && request.resource.data.type == 'uber_weekly_review'
+          && request.resource.data.category == 'uber'
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0
+          && request.resource.data.exploraShare is number
+          && request.resource.data.exploraShare * 2 == request.resource.data.amount
+          && request.resource.data.cashboxAmount is number
+          && request.resource.data.cashboxAmount * 20 == request.resource.data.amount
+          && request.resource.data.uberCashboxAmount == request.resource.data.cashboxAmount
           && request.resource.data.receiptUrl is string
-          && request.resource.data.receiptUrl.size() > 0;
+          && request.resource.data.receiptUrl.size() > 0
+          && request.resource.data.telegramPhotoUrl == request.resource.data.receiptUrl
+          && request.resource.data.notificationPhotoUrl == request.resource.data.receiptUrl;
       }
+      function isUberWeeklyNotificationResubmission() {
+        return signedIn()
+          && owns(resource.data)
+          && owns(request.resource.data)
+          && resource.data.type == 'uber_weekly_review'
+          && isUberWeeklyNotificationCreate()
+          && ownershipFieldsUnchanged();
+      }
+
       allow create: if isAdmin() || isStandardDebtNotificationCreate() || isExpenseDebtNotificationCreate() || isUberWeeklyNotificationCreate();
 
-      allow update: if isAdmin() || (
-        signedIn()
-        && owns(resource.data)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'read', 'readAt', 'updatedAt'
-        ])
-      );
+      allow update: if isAdmin()
+        || isUberWeeklyNotificationResubmission()
+        || (
+          signedIn()
+          && owns(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'read', 'readAt', 'updatedAt'
+          ])
+        );
 
       allow delete: if isAdmin();
     }
