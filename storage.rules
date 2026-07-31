@@ -1,0 +1,67 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function isHardcodedAdmin() {
+      return signedIn() && uid() == '2LziyTTdFcZzSOhK3hLbAKs2U4s2';
+    }
+
+    function hasAdminClaim() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
+    function hasAdminDocument() {
+      return signedIn() && (
+        firestore.exists(/databases/(default)/documents/administradores/$(uid()))
+        || firestore.exists(/databases/(default)/documents/admins/$(uid()))
+      );
+    }
+
+    function isAdmin() {
+      return isHardcodedAdmin() || hasAdminClaim() || hasAdminDocument();
+    }
+
+    function validReceipt() {
+      return request.resource != null
+        && request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType != null
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType == 'application/pdf'
+        );
+    }
+
+    // Cierre semanal Uber: cada chofer escribe únicamente en su propia carpeta.
+    match /uber_weekly/{driverUid}/{weekId}/{fileName} {
+      allow read: if signedIn() && (isAdmin() || uid() == driverUid);
+      allow create, update: if signedIn() && uid() == driverUid && validReceipt();
+      allow delete: if isAdmin() || (signedIn() && uid() == driverUid);
+    }
+
+    // Comprobantes de cierres por pedido.
+    match /closure_receipts/{driverUid}/{closureId}/{fileName} {
+      allow read: if signedIn() && (isAdmin() || uid() == driverUid);
+      allow create, update: if signedIn() && uid() == driverUid && validReceipt();
+      allow delete: if isAdmin() || (signedIn() && uid() == driverUid);
+    }
+
+    // Comprobantes generales existentes del proyecto.
+    match /receipts/{driverUid}/{allPaths=**} {
+      allow read: if signedIn() && (isAdmin() || uid() == driverUid);
+      allow create, update: if signedIn() && uid() == driverUid && validReceipt();
+      allow delete: if isAdmin() || (signedIn() && uid() == driverUid);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
