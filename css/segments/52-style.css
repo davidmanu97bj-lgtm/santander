@@ -3556,3 +3556,21 @@ body.explora-pay-mode .pay-tabs{
 .pay-uber-summary-note{background:#fff7df!important;border:1px solid #efdda6!important;border-radius:12px!important;margin-top:11px!important;padding:10px 11px!important;color:#626879!important}
 .pay-efficiency-primary{background:linear-gradient(180deg,#f2cf68 0%,#dfad2d 100%)!important;color:#29230f!important;box-shadow:0 8px 18px rgba(192,143,22,.2)!important}
 .pay-efficiency-secondary{background:#f3f5fa!important;color:#3c4354!important;border:1px solid #dce1ec!important}
+
+/* v4099 · Revisión administrativa del cierre Uber */
+.pay-uber-admin-review{
+  margin-top:18px;
+  padding:18px;
+  border:1px solid rgba(191,143,0,.34);
+  border-radius:20px;
+  background:#fffaf0;
+}
+.pay-uber-admin-review>strong{
+  display:block;
+  font-size:18px;
+  color:#202634;
+}
+.pay-uber-admin-review>p{
+  margin:6px 0 14px;
+  color:#697386;
+}
