@@ -9,9 +9,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4094-uber-resumen-claro";
-  const UBER_WEEKLY_TEST_ALWAYS_ENABLED = true;
-  const AR_TZ = "America/Argentina/Cordoba";
+  const VERSION = "explora-pago-home-v52-v4097-uber-lunes-0400";
+    const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
   const EXPLORA_CUIT = "20-40411688-7";
@@ -3348,13 +3347,65 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function uberWeekWindow(now = new Date()) {
     const d = new Date(now);
-    const day = d.getDay();
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate() + mondayOffset, 0, 0, 0, 0);
-    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6, 23, 59, 59, 999);
-    const weekId = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,"0")}-${String(start.getDate()).padStart(2,"0")}`;
-    const daysRemaining = Math.max(0, Math.ceil((end.getTime() - d.getTime()) / 86400000));
-    return { start, end, weekId, daysRemaining, enabled:UBER_WEEKLY_TEST_ALWAYS_ENABLED || d.getDay() === 0 };
+    const daysSinceMonday = (d.getDay() + 6) % 7;
+
+    // Semana operativa de Uber: lunes 04:00 hasta el lunes siguiente 03:59:59.
+    let activeStart = new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate() - daysSinceMonday,
+      4, 0, 0, 0
+    );
+
+    // Los lunes antes de las 04:00 todavía pertenece a la semana anterior.
+    if (d.getTime() < activeStart.getTime()) {
+      activeStart = new Date(
+        activeStart.getFullYear(),
+        activeStart.getMonth(),
+        activeStart.getDate() - 7,
+        4, 0, 0, 0
+      );
+    }
+
+    const nextReset = new Date(
+      activeStart.getFullYear(),
+      activeStart.getMonth(),
+      activeStart.getDate() + 7,
+      4, 0, 0, 0
+    );
+
+    // El cierre que se declara corresponde a la última semana ya finalizada.
+    const start = new Date(
+      activeStart.getFullYear(),
+      activeStart.getMonth(),
+      activeStart.getDate() - 7,
+      4, 0, 0, 0
+    );
+    const end = new Date(activeStart.getTime() - 1);
+
+    const weekId = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,"0")}-${String(start.getDate()).padStart(2,"0")}_0400`;
+    const remainingMs = Math.max(0, nextReset.getTime() - d.getTime());
+    const daysRemaining = Math.floor(remainingMs / 86400000);
+    const hoursRemaining = Math.floor((remainingMs % 86400000) / 3600000);
+    const minutesRemaining = Math.floor((remainingMs % 3600000) / 60000);
+    const countdownText = daysRemaining > 0
+      ? `Faltan ${daysRemaining} día${daysRemaining === 1 ? "" : "s"} y ${hoursRemaining} h`
+      : hoursRemaining > 0
+        ? `Faltan ${hoursRemaining} h y ${minutesRemaining} min`
+        : `Faltan ${Math.max(1, minutesRemaining)} min`;
+
+    return {
+      start,
+      end,
+      activeStart,
+      nextReset,
+      weekId,
+      daysRemaining,
+      hoursRemaining,
+      minutesRemaining,
+      countdownText,
+      enabled: true
+    };
   }
 
   function uberWeekFor(uid = getDriverUid(), weekId = uberWeekWindow().weekId) {
@@ -3371,7 +3422,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     button.classList.toggle("is-uber-loaded", !!row && safe(row.status) !== "rejected");
     const text = row && safe(row.status) !== "rejected"
       ? (safe(row.reviewStatus) === "approved" ? "Semana Uber cerrada" : "En revisión")
-      : period.daysRemaining === 0 ? "Hoy cierra tu semana Uber" : `Faltan ${period.daysRemaining} día${period.daysRemaining === 1 ? "" : "s"}`;
+      : "Cierre Uber disponible";
     if (label) label.textContent = text;
     button.setAttribute("aria-label", text);
     button.title = text;
@@ -3501,7 +3552,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       return;
     }
     const disabled = !period.enabled;
-    body.innerHTML = `<div class="pay-uber-week-head"><span class="pay-uber-eyebrow">CIERRE SEMANAL</span><strong>${disabled ? `En ${period.daysRemaining} día${period.daysRemaining===1?"":"s"} finaliza la semana` : "Cargá tu facturación semanal de Uber"}</strong><p>${disabled ? "Cuando finalice la semana podrás cargar tu facturación." : "Modo de prueba activo: podés registrar el cierre hoy."}</p></div><label class="pay-uber-field"><span>Monto total de ganancias Uber</span><div class="pay-uber-money-wrap"><span class="pay-uber-money-prefix">$</span><input id="payUberWeeklyAmount" type="text" inputmode="numeric" autocomplete="off" placeholder="0" ${disabled?"disabled":""}></div><small>Los puntos de miles se agregan automáticamente.</small></label><label class="pay-uber-field"><span>Captura de ganancias de la semana</span><input id="payUberWeeklyFile" type="file" accept="image/*,application/pdf" ${disabled?"disabled":""}><small>La captura es obligatoria y debe mostrar el total semanal.</small></label><div class="pay-uber-calculation" id="payUberWeeklyCalculation"><strong>Resumen del cierre</strong><p>Ingresá el monto total para calcular lo que irá a <strong>Deudas</strong> y a <strong>Caja chica</strong>.</p></div><div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status" aria-live="polite"></div><div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="close" type="button">Cancelar</button><button class="pay-efficiency-primary" data-pay-efficiency-action="submit-uber-week" type="button" ${disabled?"disabled":""}>Registrar cierre Uber</button></div>`;
+    const completedLabel = `${dateShort(period.start.getTime())} 04:00 – ${dateShort(period.end.getTime())} 03:59`;
+    body.innerHTML = `<div class="pay-uber-week-head"><span class="pay-uber-eyebrow">CIERRE SEMANAL</span><strong>Cargá tu facturación semanal de Uber</strong><p>Período a declarar: <strong>${esc(completedLabel)}</strong>.</p><p>Próximo reinicio: lunes 04:00 · ${esc(period.countdownText)}.</p></div><label class="pay-uber-field"><span>Monto total de ganancias Uber</span><div class="pay-uber-money-wrap"><span class="pay-uber-money-prefix">$</span><input id="payUberWeeklyAmount" type="text" inputmode="numeric" autocomplete="off" placeholder="0" ${disabled?"disabled":""}></div><small>Los puntos de miles se agregan automáticamente.</small></label><label class="pay-uber-field"><span>Captura de ganancias de la semana</span><input id="payUberWeeklyFile" type="file" accept="image/*" ${disabled?"disabled":""}><small>La captura es obligatoria y debe mostrar el total semanal.</small></label><div class="pay-uber-calculation" id="payUberWeeklyCalculation"><strong>Resumen del cierre</strong><p>Ingresá el monto total para calcular lo que irá a <strong>Deudas</strong> y a <strong>Caja chica</strong>.</p></div><div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status" aria-live="polite"></div><div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="close" type="button">Cancelar</button><button class="pay-efficiency-primary" data-pay-efficiency-action="submit-uber-week" type="button" ${disabled?"disabled":""}>Registrar cierre Uber</button></div>`;
   }
 
   async function uploadUberWeeklyReceipt({ driverUid, weekId, file }) {
@@ -3519,7 +3571,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (state.uberWeeklyBusy) return;
     if (isAdmin()) throw new Error("La carga semanal debe realizarla el chofer.");
     const period = uberWeekWindow();
-    if (!period.enabled) throw new Error(`En ${period.daysRemaining} días finaliza la semana y podrás cargar tu facturación.`);
+    if (!period.enabled) throw new Error("El cierre Uber todavía no está disponible.");
     const driverUid = getOwnDriverUid();
     const total = moneyNumber($("payUberWeeklyAmount")?.value || 0);
     if (!(total > 0)) throw new Error("Ingresá el monto total de ganancias Uber.");
