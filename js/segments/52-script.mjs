@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4091-cierre-uber-semanal";
+  const VERSION = "explora-pago-home-v52-v4093-uber-caja-chica";
   const UBER_WEEKLY_TEST_ALWAYS_ENABLED = true;
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
@@ -1250,7 +1250,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       if (action === "view-uber-proof") { const url = event.target.closest("[data-uber-proof-url]")?.dataset?.uberProofUrl || ""; if (url) window.open(url, "_blank", "noopener,noreferrer"); }
     });
     $("payEfficiencyBody")?.addEventListener("change", event => { if (event.target?.id === "payUberWeeklyFile") state.uberWeeklyFile = event.target.files?.[0] || null; });
-    $("payEfficiencyBody")?.addEventListener("input", event => { if (event.target?.id === "payUberWeeklyAmount") renderUberWeeklyCalculation(); });
+    $("payEfficiencyBody")?.addEventListener("input", event => {
+      if (event.target?.id !== "payUberWeeklyAmount") return;
+      const digits = String(event.target.value || "").replace(/\D/g, "").slice(0, 12);
+      event.target.value = digits ? Number(digits).toLocaleString("es-AR") : "";
+      renderUberWeeklyCalculation();
+    });
     $("payClosureReceiptInput")?.addEventListener("change", event => { state.modalFile = event.target?.files?.[0] || null; renderClosureModal(); });
     $("payDebtPaymentAmountInput")?.addEventListener("input", event => { if (window.formatCurrencyInput) event.target.value = window.formatCurrencyInput(event.target.value); });
     $("payClosureSummary")?.addEventListener("click", event => {
@@ -3474,8 +3479,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const box = $("payUberWeeklyCalculation");
     if (!box) return;
     const total = moneyNumber(input?.value || 0);
-    const half = Math.round((total / 2) * 100) / 100;
-    box.innerHTML = total > 0 ? `<strong>Distribución del cierre</strong><div><span>Ganancias informadas</span><b>${currency(total)}</b></div><div><span>Le queda al chofer (50%)</span><b>${currency(half)}</b></div><div><span>Le corresponde a Explora (50%)</span><b>${currency(half)}</b></div><p>Generarás una deuda de <strong>${currency(half)}</strong> a favor de Explora. La verás en tu tarjeta <strong>Deudas</strong>.</p>` : `<p>Ingresá el total de ganancias para ver cuánto corresponde a cada parte.</p>`;
+    const debtShare = Math.round(total * 50) / 100;
+    const cashboxShare = Math.round(total * 5) / 100;
+    const driverNet = Math.max(0, Math.round((total - debtShare - cashboxShare) * 100) / 100);
+    box.innerHTML = total > 0 ? `<strong>Distribución del cierre</strong><div><span>Ganancias informadas</span><b>${currency(total)}</b></div><div><span>Le queda al chofer (45%)</span><b>${currency(driverNet)}</b></div><div><span>Explora 50% · irá a Deudas</span><b>${currency(debtShare)}</b></div><div><span>Caja chica Uber 5%</span><b>${currency(cashboxShare)}</b></div><p>Generarás una deuda de <strong>${currency(debtShare)}</strong> a favor de Explora y se registrarán <strong>${currency(cashboxShare)}</strong> en <strong>Caja chica</strong>.</p>` : `<p>Ingresá el total para ver el 50% de deuda, el 5% de caja chica y el neto del chofer.</p>`;
   }
 
   function renderEfficiencyModal() {
@@ -3487,13 +3494,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const row = uberWeekFor(uid, period.weekId) || (state.uberWeeks || []).find(item => safe(item.driverUid) === safe(uid) && safe(item.reviewStatus) === "pending");
     if (row && safe(row.reviewStatus || row.status) !== "rejected") {
       const total = moneyNumber(row.grossAmount || row.totalAmount || row.amount);
-      const half = moneyNumber(row.exploraShare || row.debtAmount || total/2);
+      const debtShare = moneyNumber(row.exploraShare || row.debtAmount || total/2);
+      const cashboxShare = moneyNumber(row.cashboxAmount || row.uberCashboxAmount || total*.05);
+      const driverNet = moneyNumber(row.driverNetAmount || Math.max(0, total-debtShare-cashboxShare));
       const adminActions = isAdmin() && safe(row.reviewStatus) !== "approved" ? `<div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="reject-uber-week" type="button">Rechazar</button><button class="pay-efficiency-primary" data-pay-efficiency-action="approve-uber-week" type="button">Aprobar cierre</button></div>` : "";
-      body.innerHTML = `<div class="pay-uber-success"><div class="pay-uber-success-icon">✓</div><strong>${esc(uberWeeklyStatusLabel(row))}</strong><p>Semana ${esc(row.weekLabel || period.weekId)}</p></div><div class="pay-uber-summary"><div><span>Total Uber</span><b>${currency(total)}</b></div><div><span>Chofer 50%</span><b>${currency(total-half)}</b></div><div><span>Explora 50% · Deuda</span><b>${currency(half)}</b></div></div>${row.receiptUrl ? `<button class="pay-efficiency-secondary pay-uber-view-proof" data-pay-efficiency-action="view-uber-proof" data-uber-proof-url="${esc(row.receiptUrl)}" type="button">Ver captura de Uber</button>` : ""}${adminActions}<div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status"></div>`;
+      body.innerHTML = `<div class="pay-uber-success"><div class="pay-uber-success-icon">✓</div><strong>${esc(uberWeeklyStatusLabel(row))}</strong><p>Semana ${esc(row.weekLabel || period.weekId)}</p></div><div class="pay-uber-summary"><div><span>Total Uber</span><b>${currency(total)}</b></div><div><span>Chofer neto 45%</span><b>${currency(driverNet)}</b></div><div><span>Explora 50% · Deudas</span><b>${currency(debtShare)}</b></div><div><span>Caja chica Uber 5%</span><b>${currency(cashboxShare)}</b></div></div>${row.receiptUrl ? `<button class="pay-efficiency-secondary pay-uber-view-proof" data-pay-efficiency-action="view-uber-proof" data-uber-proof-url="${esc(row.receiptUrl)}" type="button">Ver captura de Uber</button>` : ""}${adminActions}<div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status"></div>`;
       return;
     }
     const disabled = !period.enabled;
-    body.innerHTML = `<div class="pay-uber-week-head"><strong>${disabled ? `En ${period.daysRemaining} día${period.daysRemaining===1?"":"s"} finaliza la semana` : "Cargá tu facturación semanal de Uber"}</strong><p>${disabled ? "Cuando finalice la semana podrás cargar tu facturación." : "Modo de prueba: el formulario está habilitado todos los días."}</p></div><label class="pay-uber-field">Monto total de ganancias Uber<input id="payUberWeeklyAmount" type="text" inputmode="decimal" placeholder="$0" ${disabled?"disabled":""}></label><label class="pay-uber-field">Captura de ganancias de la semana<input id="payUberWeeklyFile" type="file" accept="image/*,application/pdf" ${disabled?"disabled":""}><small>La foto del comprobante es obligatoria.</small></label><div class="pay-uber-calculation" id="payUberWeeklyCalculation"><p>Ingresá el total de ganancias para ver cuánto corresponde a cada parte.</p></div><div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status"></div><div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="close" type="button">Cancelar</button><button class="pay-efficiency-primary" data-pay-efficiency-action="submit-uber-week" type="button" ${disabled?"disabled":""}>Registrar cierre Uber</button></div>`;
+    body.innerHTML = `<div class="pay-uber-week-head"><span class="pay-uber-eyebrow">CIERRE SEMANAL</span><strong>${disabled ? `En ${period.daysRemaining} día${period.daysRemaining===1?"":"s"} finaliza la semana` : "Cargá tu facturación semanal de Uber"}</strong><p>${disabled ? "Cuando finalice la semana podrás cargar tu facturación." : "Modo de prueba activo: podés registrar el cierre hoy."}</p></div><label class="pay-uber-field"><span>Monto total de ganancias Uber</span><div class="pay-uber-money-wrap"><span class="pay-uber-money-prefix">$</span><input id="payUberWeeklyAmount" type="text" inputmode="numeric" autocomplete="off" placeholder="0" ${disabled?"disabled":""}></div><small>Los puntos de miles se agregan automáticamente.</small></label><label class="pay-uber-field"><span>Captura de ganancias de la semana</span><input id="payUberWeeklyFile" type="file" accept="image/*,application/pdf" ${disabled?"disabled":""}><small>La captura es obligatoria y debe mostrar el total semanal.</small></label><div class="pay-uber-calculation" id="payUberWeeklyCalculation"><p>Ingresá el total para ver deuda 50%, caja chica 5% y neto del chofer.</p></div><div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status" aria-live="polite"></div><div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="close" type="button">Cancelar</button><button class="pay-efficiency-primary" data-pay-efficiency-action="submit-uber-week" type="button" ${disabled?"disabled":""}>Registrar cierre Uber</button></div>`;
   }
 
   async function uploadUberWeeklyReceipt({ driverUid, weekId, file }) {
@@ -3521,17 +3530,17 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     state.uberWeeklyBusy = true; setEfficiencyFormMessage("Subiendo comprobante y generando deuda…");
     try {
       const proof = await uploadUberWeeklyReceipt({ driverUid, weekId:period.weekId, file });
-      const nowMs = Date.now(); const share = Math.round(total * 50) / 100; const driverName = displayName();
+      const nowMs = Date.now(); const share = Math.round(total * 50) / 100; const cashboxAmount = Math.round(total * 5) / 100; const driverNetAmount = Math.max(0, Math.round((total - share - cashboxAmount) * 100) / 100); const driverName = displayName();
       const closureId = `uber_${driverUid}_${period.weekId}`; const debtId = `debt_${closureId}`;
       const weekLabel = `${dateShort(period.start.getTime())} – ${dateShort(period.end.getTime())}`;
       await runTransaction(state.db, async tx => {
         const closureRef = doc(state.db, "uber_weekly_closures", closureId); const snap = await tx.get(closureRef);
         if (snap.exists() && safe(snap.data()?.reviewStatus) !== "rejected") throw new Error("Esta semana ya fue cargada.");
-        tx.set(closureRef, { closureId, id:closureId, weekId:period.weekId, weekLabel, weekStartMs:period.start.getTime(), weekEndMs:period.end.getTime(), driverUid, choferUid:driverUid, driverId:driverUid, driverName, grossAmount:total, totalAmount:total, driverShare:total-share, exploraShare:share, debtAmount:share, receiptUrl:proof.url, receiptPath:proof.path, notificationPhotoUrl:proof.url, telegramPhotoUrl:proof.url, firebasePhotoUrl:proof.url, reviewStatus:"pending", status:"pending_review", locked:true, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, updatedAt:serverTimestamp(), updatedAtMs:nowMs, version:VERSION }, { merge:false });
-        tx.set(doc(state.db, "deudas_choferes", debtId), { debtId, id:debtId, driverUid, choferUid:driverUid, driverId:driverUid, driverName, type:"uber_weekly", debtType:"uber_weekly", concept:`Uber semanal · ${weekLabel}`, description:`50% de ganancias Uber (${currency(total)})`, totalAmount:share, amount:share, remainingAmount:share, saldoPendiente:share, paidAmount:0, amountPaid:0, status:"pending", debtStatus:"pending", reviewStatus:"pending", sourceModule:"uber_weekly", uberClosureId:closureId, receiptUrl:proof.url, receiptPath:proof.path, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, updatedAt:serverTimestamp(), updatedAtMs:nowMs, version:VERSION }, { merge:false });
-        tx.set(doc(state.db, "notificaciones", `uber_review_${closureId}`), { notificationId:`uber_review_${closureId}`, type:"uber_weekly_review", category:"uber", driverUid, choferUid:driverUid, driverName, closureId, debtId, title:"CIERRE UBER PARA REVISIÓN", message:`${driverName} informó ${currency(total)}. Explora recibe ${currency(share)}.`, amount:total, exploraShare:share, receiptUrl:proof.url, notificationPhotoUrl:proof.url, telegramPhotoUrl:proof.url, read:false, acknowledged:false, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, version:VERSION }, { merge:false });
+        tx.set(closureRef, { closureId, id:closureId, weekId:period.weekId, weekLabel, weekStartMs:period.start.getTime(), weekEndMs:period.end.getTime(), driverUid, choferUid:driverUid, driverId:driverUid, driverName, grossAmount:total, totalAmount:total, driverShare:driverNetAmount, driverNetAmount, exploraShare:share, debtAmount:share, cashboxRate:.05, cashboxAmount, uberCashboxAmount:cashboxAmount, receiptUrl:proof.url, receiptPath:proof.path, notificationPhotoUrl:proof.url, telegramPhotoUrl:proof.url, firebasePhotoUrl:proof.url, reviewStatus:"pending", status:"pending_review", locked:true, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, updatedAt:serverTimestamp(), updatedAtMs:nowMs, version:VERSION }, { merge:false });
+        tx.set(doc(state.db, "deudas_choferes", debtId), { debtId, id:debtId, driverUid, choferUid:driverUid, driverId:driverUid, driverName, type:"uber_weekly", debtType:"uber_weekly", concept:`Uber semanal · ${weekLabel}`, description:`50% de ganancias Uber (${currency(total)}). Caja chica Uber 5%: ${currency(cashboxAmount)}`, totalAmount:share, amount:share, remainingAmount:share, saldoPendiente:share, paidAmount:0, amountPaid:0, status:"pending", debtStatus:"pending", reviewStatus:"pending", sourceModule:"uber_weekly", uberClosureId:closureId, uberGrossAmount:total, uberCashboxRate:.05, uberCashboxAmount:cashboxAmount, receiptUrl:proof.url, receiptPath:proof.path, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, updatedAt:serverTimestamp(), updatedAtMs:nowMs, version:VERSION }, { merge:false });
+        tx.set(doc(state.db, "notificaciones", `uber_review_${closureId}`), { notificationId:`uber_review_${closureId}`, type:"uber_weekly_review", category:"uber", driverUid, choferUid:driverUid, driverName, closureId, debtId, title:"CIERRE UBER PARA REVISIÓN", message:`${driverName} informó ${currency(total)}. ${currency(share)} irá a Deudas y ${currency(cashboxAmount)} a Caja chica Uber.`, amount:total, exploraShare:share, cashboxAmount, uberCashboxAmount:cashboxAmount, driverNetAmount, receiptUrl:proof.url, notificationPhotoUrl:proof.url, telegramPhotoUrl:proof.url, read:false, acknowledged:false, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, version:VERSION }, { merge:false });
       });
-      state.uberWeeks = [{ id:closureId, closureId, weekId:period.weekId, weekLabel, driverUid, driverName, grossAmount:total, exploraShare:share, debtAmount:share, receiptUrl:proof.url, reviewStatus:"pending", status:"pending_review", createdAtMs:nowMs }, ...(state.uberWeeks||[]).filter(x=>safe(x.id)!==closureId)];
+      state.uberWeeks = [{ id:closureId, closureId, weekId:period.weekId, weekLabel, driverUid, driverName, grossAmount:total, exploraShare:share, debtAmount:share, cashboxAmount, uberCashboxAmount:cashboxAmount, driverNetAmount, receiptUrl:proof.url, reviewStatus:"pending", status:"pending_review", createdAtMs:nowMs }, ...(state.uberWeeks||[]).filter(x=>safe(x.id)!==closureId)];
       state.uberWeeklyFile=null; setEfficiencyFormMessage("Cierre Uber registrado exitosamente.", "ok"); renderEfficiencyButton(); renderEfficiencyModal();
     } finally { state.uberWeeklyBusy=false; }
   }
@@ -3660,7 +3669,19 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const exploraRecords = billingRecords.filter(row => methodOf(row) !== "cash");
     // Caja chica es módulo independiente y SOLO se genera por cobros en efectivo.
     // Cobros digitales (transferencia/QR/tarjeta) no generan ni descuentan caja chica.
-    const cashboxRecords = records.filter(row => !movementIsDeleted(row) && !cashboxIsExcluded(row) && rowMs(row) > resetCashboxMs && methodOf(row) === "cash").sort((a,b)=>rowMs(b)-rowMs(a));
+    const regularCashboxRecords = records.filter(row => !movementIsDeleted(row) && !cashboxIsExcluded(row) && rowMs(row) > resetCashboxMs && methodOf(row) === "cash");
+    const uberCashboxRecords = (state.uberWeeks || []).filter(row => safe(row.reviewStatus || row.status) !== "rejected" && rowMs(row) > resetCashboxMs && moneyNumber(row.grossAmount || row.totalAmount) > 0).map(row => ({
+      ...row,
+      id:`uber_cashbox_${safe(row.id || row.closureId)}`,
+      amount:moneyNumber(row.grossAmount || row.totalAmount),
+      method:"cash",
+      paymentMethod:"cash",
+      sourceModule:"uber_weekly_cashbox",
+      type:"uber_weekly_cashbox",
+      concept:`Caja chica Uber 5% · ${safe(row.weekLabel || row.weekId)}`,
+      cashboxAmount:moneyNumber(row.cashboxAmount || row.uberCashboxAmount || moneyNumber(row.grossAmount || row.totalAmount)*.05)
+    }));
+    const cashboxRecords = [...regularCashboxRecords, ...uberCashboxRecords].sort((a,b)=>rowMs(b)-rowMs(a));
     const cashboxCashRecords = cashboxRecords;
     const cashboxExploraRecords = [];
     const filteredExpenses = expenses.filter(row => !movementIsDeleted(row) && rowMs(row) > resetExpensesMs).sort((a,b)=>rowMs(b)-rowMs(a));
@@ -5607,6 +5628,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         remainingToApply = Math.max(0, remainingToApply - applied);
       }
       const newBalance = Math.max(0, previousBalance - amount);
+      const uberDebtPaidAmount = allocations.filter(item => safe(item.type) === "uber_weekly").reduce((sum,item)=>sum+moneyNumber(item.amount),0);
+      const uberCashboxReferenced = Math.round(uberDebtPaidAmount * 10) / 100;
       const paymentPayload = {
         paymentId,
         id:paymentId,
@@ -5623,6 +5646,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         receiptUrl:receipt.url,
         comprobanteUrl:receipt.url,
         receiptPath:receipt.path,
+        uberDebtPaidAmount,
+        uberCashboxReferenced,
+        cashboxReceiptNote:uberCashboxReferenced > 0 ? `Este comprobante de deuda está asociado a ${currency(uberCashboxReferenced)} de Caja chica Uber.` : "",
         status:"applied",
         estado:"aplicado",
         sourceModule:"pendientes",
@@ -5646,6 +5672,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         newBalance,
         receiptUrl:receipt.url,
         receiptPath:receipt.path,
+        uberDebtPaidAmount,
+        uberCashboxReferenced,
         createdAt:serverTimestamp(),
         createdAtMs:nowMs,
         sourceModule:"pendientes",
@@ -5660,8 +5688,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         paymentId,
         debtId:paymentPayload.debtId,
         title:"REDUCCIÓN DE DEUDA",
-        message:`${driverName} pagó ${currency(amount)}. Saldo anterior ${currency(previousBalance)} · saldo nuevo ${currency(newBalance)}.`,
+        message:`${driverName} pagó ${currency(amount)}. Saldo anterior ${currency(previousBalance)} · saldo nuevo ${currency(newBalance)}.${uberCashboxReferenced > 0 ? ` El comprobante también identifica ${currency(uberCashboxReferenced)} de Caja chica Uber.` : ""}`,
         receiptUrl:receipt.url,
+        uberDebtPaidAmount,
+        uberCashboxReferenced,
         receiptPath:receipt.path,
         amount,
         previousBalance,
@@ -5676,7 +5706,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         version:VERSION
       }, { merge:false });
     });
-    state.debtPayments = [{ id:paymentId, paymentId, driverUid, driverName, amount, previousBalance:currentBalance, newBalance:Math.max(0, currentBalance - amount), receiptUrl:receipt.url, receiptPath:receipt.path, createdAtMs:nowMs, allocations }, ...state.debtPayments];
+    state.debtPayments = [{ id:paymentId, paymentId, driverUid, driverName, amount, previousBalance:currentBalance, newBalance:Math.max(0, currentBalance - amount), receiptUrl:receipt.url, receiptPath:receipt.path, uberDebtPaidAmount, uberCashboxReferenced, createdAtMs:nowMs, allocations }, ...state.debtPayments];
     state.debts = state.debts.map(row => {
       const allocation = allocations.find(item => item.debtId === safe(row.id || row.debtId));
       if (!allocation) return row;
