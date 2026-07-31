@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4100-uber-vencimiento-miercoles";
+  const VERSION = "explora-pago-home-v52-v4101-admin-bandeja-uber";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -1069,13 +1069,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           getGlobalDocs("gastos"),
           getGlobalDocs("cierres_semanales"),
           getGlobalDocs("deudas_choferes"),
-          getGlobalDocs("deuda_pagos")
+          getGlobalDocs("deuda_pagos"),
+          getGlobalDocs("uber_weekly_closures")
         ]);
         state.records = records.sort((a,b)=>rowMs(b)-rowMs(a));
         state.expenses = expenses.sort((a,b)=>rowMs(b)-rowMs(a));
         state.closures = closures.sort((a,b)=>rowMs(b)-rowMs(a));
         state.debts = debts.sort((a,b)=>debtCreatedMs(b)-debtCreatedMs(a));
         state.debtPayments = debtPayments.sort((a,b)=>rowMs(b)-rowMs(a));
+        state.uberWeeks = (uberWeeks || []).sort((a,b)=>rowMs(b)-rowMs(a));
         registerTabAlertMovements("billing_records", state.records);
         registerTabAlertMovements("gastos", state.expenses);
         registerTabAlertMovements("deudas_choferes", state.debts);
@@ -1244,6 +1246,20 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       if (action === "save-initial-km") saveInitialKmFromEfficiency().catch(error => setEfficiencyFormMessage(error?.message || "No se pudo guardar el KM inicial.", "error"));
       if (action === "save-current-km") saveCurrentKmFromEfficiency().catch(error => setEfficiencyFormMessage(error?.message || "No se pudo guardar el KM actual.", "error"));
       if (action === "submit-uber-week") submitUberWeeklyClosure().catch(error => setEfficiencyFormMessage(error?.message || "No se pudo registrar el cierre Uber.", "error"));
+      if (action === "open-uber-review") {
+        const button = event.target.closest("[data-uber-driver-uid]");
+        const driverUid = safe(button?.dataset?.uberDriverUid);
+        if (driverUid) {
+          state.selectedDriverUid = driverUid;
+          state.selectedDriverName = (state.uberWeeks || []).find(row => safe(row.driverUid || row.choferUid || row.driverId) === driverUid)?.driverName || "";
+          renderEfficiencyModal();
+        }
+      }
+      if (action === "back-uber-list") {
+        state.selectedDriverUid = "";
+        state.selectedDriverName = "";
+        renderEfficiencyModal();
+      }
       if (action === "approve-uber-week") reviewUberWeeklyClosure("approved").catch(error => setEfficiencyFormMessage(error?.message || "No se pudo aprobar.", "error"));
       if (action === "reject-uber-week") reviewUberWeeklyClosure("rejected").catch(error => setEfficiencyFormMessage(error?.message || "No se pudo rechazar.", "error"));
       if (action === "view-uber-proof") { const url = event.target.closest("[data-uber-proof-url]")?.dataset?.uberProofUrl || ""; if (url) window.open(url, "_blank", "noopener,noreferrer"); }
@@ -3464,12 +3480,21 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const label = $("payUberWeeklyCountdown");
     if (!button) return;
     const period = uberWeekWindow();
+    const pendingAdminRows = isAdmin()
+      ? (state.uberWeeks || []).filter(item => {
+          const review = safe(item.reviewStatus).toLowerCase();
+          const status = safe(item.status).toLowerCase();
+          return review === "pending" || status === "pending_review";
+        })
+      : [];
     const row = uberWeekFor();
     button.classList.remove("efficiency-good", "efficiency-mid", "efficiency-bad", "efficiency-missing");
-    button.classList.toggle("is-uber-loaded", !!row && safe(row.status) !== "rejected");
-    const text = row && safe(row.status) !== "rejected"
-      ? (safe(row.reviewStatus) === "approved" ? "Semana Uber cerrada" : "En revisión")
-      : (period.expired ? "Cierre Uber vencido" : "Cierre Uber disponible");
+    button.classList.toggle("is-uber-loaded", isAdmin() ? pendingAdminRows.length > 0 : (!!row && safe(row.status) !== "rejected"));
+    const text = isAdmin()
+      ? (pendingAdminRows.length ? `Cierres Uber pendientes: ${pendingAdminRows.length}` : "Sin cierres Uber pendientes")
+      : (row && safe(row.status) !== "rejected"
+          ? (safe(row.reviewStatus) === "approved" ? "Semana Uber cerrada" : "En revisión")
+          : (period.expired ? "Cierre Uber vencido" : "Cierre Uber disponible"));
     if (label) label.textContent = text;
     button.setAttribute("aria-label", text);
     button.title = text;
@@ -3586,7 +3611,49 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const body = $("payEfficiencyBody");
     if (!body) return;
     const uid = getDriverUid();
-    if (isAdmin() && !uid) { body.innerHTML = `<div class="pay-efficiency-empty">Seleccioná un chofer para revisar su cierre Uber.</div>`; return; }
+    if (isAdmin() && !uid) {
+      const pendingRows = (state.uberWeeks || [])
+        .filter(item => {
+          const review = safe(item.reviewStatus).toLowerCase();
+          const status = safe(item.status).toLowerCase();
+          return review === "pending" || status === "pending_review";
+        })
+        .sort((a,b) => rowMs(b) - rowMs(a));
+
+      if (!pendingRows.length) {
+        body.innerHTML = `<div class="pay-uber-admin-inbox"><div class="pay-efficiency-empty"><strong>No hay cierres Uber pendientes</strong><p>Los nuevos comprobantes aparecerán aquí automáticamente.</p></div></div>`;
+        return;
+      }
+
+      body.innerHTML = `<section class="pay-uber-admin-inbox">
+        <div class="pay-uber-inbox-head">
+          <span class="pay-uber-eyebrow">ADMINISTRACIÓN</span>
+          <strong>Cierres Uber pendientes</strong>
+          <p>${pendingRows.length} comprobante${pendingRows.length === 1 ? "" : "s"} esperando revisión.</p>
+        </div>
+        <div class="pay-uber-inbox-list">
+          ${pendingRows.map(row => {
+            const total = moneyNumber(row.grossAmount || row.totalAmount || row.amount);
+            const driverUid = safe(row.driverUid || row.choferUid || row.driverId);
+            return `<article class="pay-uber-inbox-card">
+              <div class="pay-uber-inbox-card-head">
+                <div><span>CHOFER</span><strong>${esc(row.driverName || "Chofer")}</strong></div>
+                <em>Pendiente</em>
+              </div>
+              <div class="pay-uber-inbox-meta">
+                <div><span>Semana</span><b>${esc(row.weekLabel || row.weekId || "—")}</b></div>
+                <div><span>Total Uber</span><b>${currency(total)}</b></div>
+              </div>
+              <div class="pay-efficiency-form-actions">
+                ${row.receiptUrl ? `<button class="pay-efficiency-secondary" data-pay-efficiency-action="view-uber-proof" data-uber-proof-url="${esc(row.receiptUrl)}" type="button">Ver comprobante</button>` : ""}
+                <button class="pay-efficiency-primary" data-pay-efficiency-action="open-uber-review" data-uber-driver-uid="${esc(driverUid)}" type="button">Revisar cierre</button>
+              </div>
+            </article>`;
+          }).join("")}
+        </div>
+      </section>`;
+      return;
+    }
     const period = uberWeekWindow();
     const row = uberWeekFor(uid, period.weekId) || (state.uberWeeks || []).find(item => safe(item.driverUid) === safe(uid) && safe(item.reviewStatus) === "pending");
     if (row && safe(row.reviewStatus || row.status) !== "rejected") {
@@ -3595,7 +3662,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       const cashboxShare = moneyNumber(row.cashboxAmount || row.uberCashboxAmount || total*.05);
       const driverNet = moneyNumber(row.driverNetAmount || Math.max(0, total-debtShare-cashboxShare));
       const adminActions = isAdmin() && safe(row.reviewStatus) !== "approved"
-        ? `<div class="pay-uber-admin-review"><strong>Revisión de Explora</strong><p>Revisá la captura y elegí una opción.</p><div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="reject-uber-week" type="button">Rechazar cierre</button><button class="pay-efficiency-primary" data-pay-efficiency-action="approve-uber-week" type="button">Aprobar cierre</button></div></div>`
+        ? `<div class="pay-uber-admin-review"><strong>Revisión de Explora</strong><p>Revisá la captura y elegí una opción.</p><div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="reject-uber-week" type="button">Rechazar cierre</button><button class="pay-efficiency-primary" data-pay-efficiency-action="approve-uber-week" type="button">Aceptar cierre</button></div><button class="pay-uber-back-list" data-pay-efficiency-action="back-uber-list" type="button">Volver a comprobantes pendientes</button></div>`
         : "";
       body.innerHTML = `<div class="pay-uber-success"><div class="pay-uber-success-icon">✓</div><strong>${esc(uberWeeklyStatusLabel(row))}</strong><p>Semana ${esc(row.weekLabel || period.weekId)}</p></div><div class="pay-uber-summary"><strong>Movimientos generados</strong><div><span>Deudas (50%)</span><b>${currency(debtShare)}</b></div><div><span>Caja chica Uber (5%)</span><b>${currency(cashboxShare)}</b></div></div>${row.receiptUrl ? `<button class="pay-efficiency-secondary pay-uber-view-proof" data-pay-efficiency-action="view-uber-proof" data-uber-proof-url="${esc(row.receiptUrl)}" type="button">Ver captura de Uber</button>` : ""}${adminActions}<div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status"></div>`;
       return;
@@ -3671,7 +3738,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       tx.update(doc(state.db,"deudas_choferes",debtId), { reviewStatus:decision, status:approved?"active":"rejected", debtStatus:approved?"active":"rejected", remainingAmount:approved?moneyNumber(row.exploraShare||row.debtAmount):0, saldoPendiente:approved?moneyNumber(row.exploraShare||row.debtAmount):0, updatedAt:serverTimestamp(), updatedAtMs:nowMs });
       tx.set(doc(state.db,"notificaciones",`uber_review_result_${row.id}`), { notificationId:`uber_review_result_${row.id}`, type:"uber_weekly_review_result", category:"uber", driverUid:row.driverUid, driverName:row.driverName, closureId:row.id, title:approved?"CIERRE UBER APROBADO":"CIERRE UBER RECHAZADO", message:approved?"Explora aprobó tu cierre semanal. La deuda quedó activa.":"Explora rechazó el cierre. Podés corregirlo y volver a cargar.", read:false, acknowledged:false, createdByUid:state.user?.uid||"", createdByRole:"admin", createdAt:serverTimestamp(), createdAtMs:nowMs, version:VERSION }, {merge:false});
     });
-    state.uberWeeks=(state.uberWeeks||[]).map(x=>safe(x.id)===safe(row.id)?{...x,reviewStatus:decision,status:approved?"approved":"rejected"}:x); setEfficiencyFormMessage(approved?"Cierre aprobado y finalizado.":"Cierre rechazado.","ok"); renderEfficiencyButton(); renderEfficiencyModal();
+    state.uberWeeks=(state.uberWeeks||[]).map(x=>safe(x.id)===safe(row.id)?{...x,reviewStatus:decision,status:approved?"approved":"rejected"}:x);
+    state.selectedDriverUid = "";
+    state.selectedDriverName = "";
+    renderEfficiencyButton();
+    renderEfficiencyModal();
   }
 
   async function openEfficiencyModal() {
