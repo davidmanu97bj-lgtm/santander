@@ -3614,3 +3614,33 @@ body.explora-pay-mode .pay-tabs{
 .pay-uber-inbox-meta>div{padding:11px 12px;border-radius:13px;background:#f6f7fa}
 .pay-uber-inbox-meta b{display:block;margin-top:4px}
 .pay-uber-back-list{width:100%;margin-top:12px;border:0;background:transparent;color:#526079;font-weight:750;padding:8px}
+
+/* v4103 · Historial automático de 8 semanas Uber */
+.pay-uber-weeks-head>strong{display:block;font-size:22px;margin-top:4px}
+.pay-uber-weeks-head>p{margin:6px 0 14px;color:#697386}
+.pay-uber-overdue-banner{display:flex;flex-direction:column;gap:3px;padding:13px 14px;margin-bottom:14px;border-radius:15px;background:#fff0f0;border:1px solid rgba(184,35,35,.22)}
+.pay-uber-overdue-banner strong{color:#ad2020}
+.pay-uber-overdue-banner span{font-size:13px;color:#7c4242}
+.pay-uber-week-list{display:grid;gap:10px}
+.pay-uber-week-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border-radius:17px;border:1px solid rgba(31,39,55,.1);background:#fff}
+.pay-uber-week-row.is-red{border-color:rgba(185,40,40,.25);background:#fff8f8}
+.pay-uber-week-row.is-yellow{border-color:rgba(190,132,0,.28);background:#fffaf0}
+.pay-uber-week-row.is-green{border-color:rgba(31,132,71,.25);background:#f5fff8}
+.pay-uber-week-main{min-width:0}
+.pay-uber-week-main>strong{display:block;font-size:16px}
+.pay-uber-week-main>small{display:block;margin-top:4px;color:#7f8795;font-size:11px}
+.pay-uber-week-status{display:inline-block;margin-top:5px;font-size:12px;font-weight:850}
+.is-red .pay-uber-week-status{color:#b52424}
+.is-yellow .pay-uber-week-status{color:#a36d00}
+.is-green .pay-uber-week-status{color:#178344}
+.pay-uber-week-actions{display:flex;align-items:center;gap:7px;flex-shrink:0}
+.pay-uber-attach,.pay-uber-week-proof{border:0;border-radius:11px;padding:9px 11px;font-weight:800;font-size:12px}
+.pay-uber-attach{background:#202938;color:#fff}
+.pay-uber-attach:disabled{background:#d9dde4;color:#7d8490}
+.pay-uber-week-proof{background:#eef1f5;color:#354057}
+.pay-uber-admin-section{margin-top:20px}
+.pay-uber-admin-section h3{margin:0 0 10px;font-size:15px}
+.pay-uber-inbox-card.is-overdue{border-color:rgba(185,40,40,.25);background:#fff8f8}
+.pay-uber-inbox-card.is-overdue em{color:#a91f1f;background:#ffe1e1}
+.pay-uber-inbox-card.is-overdue p{margin:12px 0 0;color:#7f4040;font-size:13px;line-height:1.5}
+#payEfficiencyBtn.is-uber-overdue{box-shadow:0 0 0 2px rgba(188,38,38,.15)}
