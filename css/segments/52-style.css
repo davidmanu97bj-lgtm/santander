@@ -3598,3 +3598,19 @@ body.explora-pay-mode .pay-tabs{
 .pay-uber-deadline.is-expired strong{
   color:#a91f1f;
 }
+
+/* v4101 · Bandeja administrativa de cierres Uber */
+.pay-uber-admin-inbox{display:block}
+.pay-uber-inbox-head{margin-bottom:16px}
+.pay-uber-inbox-head>strong{display:block;font-size:22px;margin-top:4px}
+.pay-uber-inbox-head>p{margin:6px 0 0;color:#697386}
+.pay-uber-inbox-list{display:grid;gap:14px}
+.pay-uber-inbox-card{padding:16px;border:1px solid rgba(32,38,52,.12);border-radius:18px;background:#fff;box-shadow:0 8px 24px rgba(25,31,45,.06)}
+.pay-uber-inbox-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.pay-uber-inbox-card-head span,.pay-uber-inbox-meta span{display:block;font-size:11px;font-weight:800;letter-spacing:.08em;color:#8790a1}
+.pay-uber-inbox-card-head strong{display:block;font-size:17px;margin-top:3px}
+.pay-uber-inbox-card-head em{font-style:normal;font-size:12px;font-weight:800;color:#9a6400;background:#fff1c7;padding:7px 10px;border-radius:999px}
+.pay-uber-inbox-meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.pay-uber-inbox-meta>div{padding:11px 12px;border-radius:13px;background:#f6f7fa}
+.pay-uber-inbox-meta b{display:block;margin-top:4px}
+.pay-uber-back-list{width:100%;margin-top:12px;border:0;background:transparent;color:#526079;font-weight:750;padding:8px}
