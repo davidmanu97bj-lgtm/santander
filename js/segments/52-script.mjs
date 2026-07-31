@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4098-uber-domingo-0400";
+  const VERSION = "explora-pago-home-v52-v4099-uber-whatsapp-admin";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -3397,6 +3397,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return {
       start,
       end,
+      // Uber muestra la fecha límite del domingo, no el último instante
+      // del sábado/domingo anterior.
+      displayEnd: activeStart,
       activeStart,
       nextReset,
       weekId,
@@ -3410,6 +3413,30 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function uberWeekFor(uid = getDriverUid(), weekId = uberWeekWindow().weekId) {
     return (state.uberWeeks || []).find(row => safe(row.driverUid || row.choferUid || row.driverId) === safe(uid) && safe(row.weekId) === safe(weekId)) || null;
+  }
+
+  function uberWeekDisplayLabel(period = uberWeekWindow()) {
+    const start = period?.start instanceof Date ? period.start : new Date(period?.weekStartMs || Date.now());
+    const displayEnd = period?.displayEnd instanceof Date
+      ? period.displayEnd
+      : new Date(period?.weekDisplayEndMs || period?.weekEndBoundaryMs || period?.activeStart?.getTime?.() || period?.end?.getTime?.() || Date.now());
+    return `${start.getDate()}/${start.getMonth() + 1} – ${displayEnd.getDate()}/${displayEnd.getMonth() + 1}`;
+  }
+
+  function uberWeeklyWhatsappText({ driverName, weekLabel, total, debtAmount, cashboxAmount, receiptUrl }) {
+    return [
+      "*NUEVO CIERRE UBER SEMANAL*",
+      "",
+      `Chofer: ${driverName || "Sin nombre"}`,
+      `Semana: ${weekLabel}`,
+      `Total Uber: ${currency(total)}`,
+      `Deudas (50%): ${currency(debtAmount)}`,
+      `Caja chica Uber (5%): ${currency(cashboxAmount)}`,
+      "",
+      `Ver captura de Uber: ${receiptUrl}`,
+      "",
+      "Pendiente de aprobación o rechazo en Explora."
+    ].join("\n");
   }
 
   function renderEfficiencyButton() {
@@ -3547,12 +3574,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       const debtShare = moneyNumber(row.exploraShare || row.debtAmount || total/2);
       const cashboxShare = moneyNumber(row.cashboxAmount || row.uberCashboxAmount || total*.05);
       const driverNet = moneyNumber(row.driverNetAmount || Math.max(0, total-debtShare-cashboxShare));
-      const adminActions = isAdmin() && safe(row.reviewStatus) !== "approved" ? `<div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="reject-uber-week" type="button">Rechazar</button><button class="pay-efficiency-primary" data-pay-efficiency-action="approve-uber-week" type="button">Aprobar cierre</button></div>` : "";
+      const adminActions = isAdmin() && safe(row.reviewStatus) !== "approved"
+        ? `<div class="pay-uber-admin-review"><strong>Revisión de Explora</strong><p>Revisá la captura y elegí una opción.</p><div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="reject-uber-week" type="button">Rechazar cierre</button><button class="pay-efficiency-primary" data-pay-efficiency-action="approve-uber-week" type="button">Aprobar cierre</button></div></div>`
+        : "";
       body.innerHTML = `<div class="pay-uber-success"><div class="pay-uber-success-icon">✓</div><strong>${esc(uberWeeklyStatusLabel(row))}</strong><p>Semana ${esc(row.weekLabel || period.weekId)}</p></div><div class="pay-uber-summary"><strong>Movimientos generados</strong><div><span>Deudas (50%)</span><b>${currency(debtShare)}</b></div><div><span>Caja chica Uber (5%)</span><b>${currency(cashboxShare)}</b></div></div>${row.receiptUrl ? `<button class="pay-efficiency-secondary pay-uber-view-proof" data-pay-efficiency-action="view-uber-proof" data-uber-proof-url="${esc(row.receiptUrl)}" type="button">Ver captura de Uber</button>` : ""}${adminActions}<div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status"></div>`;
       return;
     }
     const disabled = !period.enabled;
-    const completedLabel = `${dateShort(period.start.getTime())} 04:00 – ${dateShort(period.end.getTime())} 03:59`;
+    const completedLabel = `${uberWeekDisplayLabel(period)} · corte 04:00`;
     body.innerHTML = `<div class="pay-uber-week-head"><span class="pay-uber-eyebrow">CIERRE SEMANAL</span><strong>Cargá tu facturación semanal de Uber</strong><p>Período a declarar: <strong>${esc(completedLabel)}</strong>.</p><p>Próximo reinicio: domingo 04:00 · ${esc(period.countdownText)}.</p></div><label class="pay-uber-field"><span>Monto total de ganancias Uber</span><div class="pay-uber-money-wrap"><span class="pay-uber-money-prefix">$</span><input id="payUberWeeklyAmount" type="text" inputmode="numeric" autocomplete="off" placeholder="0" ${disabled?"disabled":""}></div><small>Los puntos de miles se agregan automáticamente.</small></label><label class="pay-uber-field"><span>Captura de ganancias de la semana</span><input id="payUberWeeklyFile" type="file" accept="image/*" ${disabled?"disabled":""}><small>La captura es obligatoria y debe mostrar el total semanal.</small></label><div class="pay-uber-calculation" id="payUberWeeklyCalculation"><strong>Resumen del cierre</strong><p>Ingresá el monto total para calcular lo que irá a <strong>Deudas</strong> y a <strong>Caja chica</strong>.</p></div><div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status" aria-live="polite"></div><div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="close" type="button">Cancelar</button><button class="pay-efficiency-primary" data-pay-efficiency-action="submit-uber-week" type="button" ${disabled?"disabled":""}>Registrar cierre Uber</button></div>`;
   }
 
@@ -3583,16 +3612,28 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       const proof = await uploadUberWeeklyReceipt({ driverUid, weekId:period.weekId, file });
       const nowMs = Date.now(); const share = Math.round(total * 50) / 100; const cashboxAmount = Math.round(total * 5) / 100; const driverNetAmount = Math.max(0, Math.round((total - share - cashboxAmount) * 100) / 100); const driverName = displayName();
       const closureId = `uber_${driverUid}_${period.weekId}`; const debtId = `debt_${closureId}`;
-      const weekLabel = `${dateShort(period.start.getTime())} – ${dateShort(period.end.getTime())}`;
+      const weekLabel = uberWeekDisplayLabel(period);
       await runTransaction(state.db, async tx => {
         const closureRef = doc(state.db, "uber_weekly_closures", closureId); const snap = await tx.get(closureRef);
         if (snap.exists() && safe(snap.data()?.reviewStatus) !== "rejected") throw new Error("Esta semana ya fue cargada.");
-        tx.set(closureRef, { closureId, id:closureId, weekId:period.weekId, weekLabel, weekStartMs:period.start.getTime(), weekEndMs:period.end.getTime(), driverUid, choferUid:driverUid, driverId:driverUid, driverName, grossAmount:total, totalAmount:total, driverShare:driverNetAmount, driverNetAmount, exploraShare:share, debtAmount:share, cashboxRate:.05, cashboxAmount, uberCashboxAmount:cashboxAmount, receiptUrl:proof.url, receiptPath:proof.path, notificationPhotoUrl:proof.url, telegramPhotoUrl:proof.url, firebasePhotoUrl:proof.url, reviewStatus:"pending", status:"pending_review", locked:true, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, updatedAt:serverTimestamp(), updatedAtMs:nowMs, version:VERSION }, { merge:false });
+        tx.set(closureRef, { closureId, id:closureId, weekId:period.weekId, weekLabel, weekStartMs:period.start.getTime(), weekEndMs:period.end.getTime(), weekDisplayEndMs:period.displayEnd.getTime(), weekEndBoundaryMs:period.displayEnd.getTime(), driverUid, choferUid:driverUid, driverId:driverUid, driverName, grossAmount:total, totalAmount:total, driverShare:driverNetAmount, driverNetAmount, exploraShare:share, debtAmount:share, cashboxRate:.05, cashboxAmount, uberCashboxAmount:cashboxAmount, receiptUrl:proof.url, receiptPath:proof.path, notificationPhotoUrl:proof.url, telegramPhotoUrl:proof.url, firebasePhotoUrl:proof.url, reviewStatus:"pending", status:"pending_review", locked:true, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, updatedAt:serverTimestamp(), updatedAtMs:nowMs, version:VERSION }, { merge:false });
         tx.set(doc(state.db, "deudas_choferes", debtId), { debtId, id:debtId, driverUid, choferUid:driverUid, driverId:driverUid, driverName, type:"uber_weekly", debtType:"uber_weekly", concept:`Uber semanal · ${weekLabel}`, description:`50% de ganancias Uber (${currency(total)}). Caja chica Uber 5%: ${currency(cashboxAmount)}`, totalAmount:share, amount:share, remainingAmount:share, saldoPendiente:share, paidAmount:0, amountPaid:0, status:"pending", debtStatus:"pending", reviewStatus:"pending", sourceModule:"uber_weekly", uberClosureId:closureId, uberGrossAmount:total, uberCashboxRate:.05, uberCashboxAmount:cashboxAmount, receiptUrl:proof.url, receiptPath:proof.path, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, updatedAt:serverTimestamp(), updatedAtMs:nowMs, version:VERSION }, { merge:false });
         tx.set(doc(state.db, "notificaciones", `uber_review_${closureId}`), { notificationId:`uber_review_${closureId}`, type:"uber_weekly_review", category:"uber", driverUid, choferUid:driverUid, driverName, closureId, debtId, title:"CIERRE UBER PARA REVISIÓN", message:`${driverName} informó ${currency(total)}. ${currency(share)} irá a Deudas y ${currency(cashboxAmount)} a Caja chica Uber.`, amount:total, exploraShare:share, cashboxAmount, uberCashboxAmount:cashboxAmount, driverNetAmount, receiptUrl:proof.url, notificationPhotoUrl:proof.url, telegramPhotoUrl:proof.url, read:false, acknowledged:false, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, version:VERSION }, { merge:false });
       });
-      state.uberWeeks = [{ id:closureId, closureId, weekId:period.weekId, weekLabel, driverUid, driverName, grossAmount:total, exploraShare:share, debtAmount:share, cashboxAmount, uberCashboxAmount:cashboxAmount, driverNetAmount, receiptUrl:proof.url, reviewStatus:"pending", status:"pending_review", createdAtMs:nowMs }, ...(state.uberWeeks||[]).filter(x=>safe(x.id)!==closureId)];
-      state.uberWeeklyFile=null; setEfficiencyFormMessage("Cierre Uber registrado exitosamente.", "ok"); renderEfficiencyButton(); renderEfficiencyModal();
+      const whatsappText = uberWeeklyWhatsappText({
+        driverName,
+        weekLabel,
+        total,
+        debtAmount: share,
+        cashboxAmount,
+        receiptUrl: proof.url
+      });
+      state.uberWeeks = [{ id:closureId, closureId, weekId:period.weekId, weekLabel, weekStartMs:period.start.getTime(), weekEndMs:period.end.getTime(), weekDisplayEndMs:period.displayEnd.getTime(), driverUid, driverName, grossAmount:total, exploraShare:share, debtAmount:share, cashboxAmount, uberCashboxAmount:cashboxAmount, driverNetAmount, receiptUrl:proof.url, reviewStatus:"pending", status:"pending_review", createdAtMs:nowMs }, ...(state.uberWeeks||[]).filter(x=>safe(x.id)!==closureId)];
+      state.uberWeeklyFile=null;
+      setEfficiencyFormMessage("Cierre Uber registrado. Abriendo WhatsApp para avisar a Explora…", "ok");
+      renderEfficiencyButton();
+      renderEfficiencyModal();
+      window.setTimeout(() => openWhatsappToExplora(whatsappText), 180);
     } finally { state.uberWeeklyBusy=false; }
   }
 
