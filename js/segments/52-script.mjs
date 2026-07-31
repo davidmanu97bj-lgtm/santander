@@ -9,7 +9,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4086-editar-valor-actividades-admin";
+  const VERSION = "explora-pago-home-v52-v4091-cierre-uber-semanal";
+  const UBER_WEEKLY_TEST_ALWAYS_ENABLED = true;
   const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -75,6 +76,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     tabAlertScope:"",
     tabAlertLoadedAt:0,
     efficiency:{ loadedAt:0, loading:false, error:"" },
+    uberWeeks:[],
+    uberWeeklyBusy:false,
+    uberWeeklyFile:null,
     adminDeleteOpen:false,
     adminDeleteMessage:"",
     adminDeleteBusy:false,
@@ -958,7 +962,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         </section>
         <div class="pay-history-content" id="payHistoryContent"><div class="pay-history-empty">Seleccioná un chofer para ver el histórico.</div></div>
       </section>
-      <button class="pay-floating-spark pay-efficiency-btn" id="payEfficiencyBtn" type="button" aria-label="Eficiencia Operativa"><span class="pay-efficiency-icon" aria-hidden="true"></span><span class="pay-efficiency-asterisk" aria-hidden="true">*</span></button>
+      <button class="pay-floating-spark pay-efficiency-btn pay-uber-weekly-btn" id="payEfficiencyBtn" type="button" aria-label="Cierre Uber semanal"><span class="pay-uber-weekly-icon" aria-hidden="true">U</span><span class="pay-uber-weekly-countdown" id="payUberWeeklyCountdown">Cierre Uber</span></button>
       <nav class="pay-bottom-nav" id="payBottomNav" aria-label="Navegación principal Explora">
         <button class="pay-nav-btn is-active" data-pay-nav="inicio" type="button"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 10v10h14V10"></path></svg><span>Inicio</span></button>
         <button class="pay-nav-btn" data-pay-nav="actividad" type="button"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"></path></svg><span>Actividad</span></button>
@@ -980,7 +984,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       </div>
       <div class="pay-efficiency-backdrop" id="payEfficiencyBackdrop" aria-hidden="true">
         <section class="pay-efficiency-modal" role="dialog" aria-modal="true" aria-labelledby="payEfficiencyTitle">
-          <header><div><h2 id="payEfficiencyTitle">Eficiencia operativa</h2><p>Comparación contra tu propio historial.</p></div><button class="pay-efficiency-close" id="payEfficiencyClose" type="button" aria-label="Cerrar">×</button></header>
+          <header><div><h2 id="payEfficiencyTitle">Cierre Uber semanal</h2><p>Declaración semanal de ganancias Uber.</p></div><button class="pay-efficiency-close" id="payEfficiencyClose" type="button" aria-label="Cerrar">×</button></header>
           <div class="pay-efficiency-body" id="payEfficiencyBody"><div class="pay-efficiency-loading">Calculando eficiencia…</div></div>
         </section>
       </div>
@@ -1042,24 +1046,26 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       }
       const uid = getDriverUid();
       if (uid) {
-        const [records, expenses, closures, debts, debtPayments] = await Promise.all([
+        const [records, expenses, closures, debts, debtPayments, uberWeeks] = await Promise.all([
           getScopedDocs("billing_records", uid),
           getScopedDocs("gastos", uid),
           getScopedDocs("cierres_semanales", uid),
           getScopedDocs("deudas_choferes", uid),
-          getScopedDocs("deuda_pagos", uid)
+          getScopedDocs("deuda_pagos", uid),
+          getScopedDocs("uber_weekly_closures", uid)
         ]);
         state.records = records.sort((a,b)=>rowMs(b)-rowMs(a));
         state.expenses = expenses.sort((a,b)=>rowMs(b)-rowMs(a));
         state.closures = closures.sort((a,b)=>rowMs(b)-rowMs(a));
         state.debts = debts.sort((a,b)=>debtCreatedMs(b)-debtCreatedMs(a));
         state.debtPayments = debtPayments.sort((a,b)=>rowMs(b)-rowMs(a));
+        state.uberWeeks = uberWeeks.sort((a,b)=>rowMs(b)-rowMs(a));
         registerTabAlertMovements("billing_records", state.records);
         registerTabAlertMovements("gastos", state.expenses);
         registerTabAlertMovements("deudas_choferes", state.debts);
         registerTabAlertMovements("deuda_pagos", state.debtPayments);
       } else if (isAdmin()) {
-        const [records, expenses, closures, debts, debtPayments] = await Promise.all([
+        const [records, expenses, closures, debts, debtPayments, uberWeeks] = await Promise.all([
           getGlobalDocs("billing_records"),
           getGlobalDocs("gastos"),
           getGlobalDocs("cierres_semanales"),
@@ -1238,7 +1244,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       if (action === "close") closeEfficiencyModal();
       if (action === "save-initial-km") saveInitialKmFromEfficiency().catch(error => setEfficiencyFormMessage(error?.message || "No se pudo guardar el KM inicial.", "error"));
       if (action === "save-current-km") saveCurrentKmFromEfficiency().catch(error => setEfficiencyFormMessage(error?.message || "No se pudo guardar el KM actual.", "error"));
+      if (action === "submit-uber-week") submitUberWeeklyClosure().catch(error => setEfficiencyFormMessage(error?.message || "No se pudo registrar el cierre Uber.", "error"));
+      if (action === "approve-uber-week") reviewUberWeeklyClosure("approved").catch(error => setEfficiencyFormMessage(error?.message || "No se pudo aprobar.", "error"));
+      if (action === "reject-uber-week") reviewUberWeeklyClosure("rejected").catch(error => setEfficiencyFormMessage(error?.message || "No se pudo rechazar.", "error"));
+      if (action === "view-uber-proof") { const url = event.target.closest("[data-uber-proof-url]")?.dataset?.uberProofUrl || ""; if (url) window.open(url, "_blank", "noopener,noreferrer"); }
     });
+    $("payEfficiencyBody")?.addEventListener("change", event => { if (event.target?.id === "payUberWeeklyFile") state.uberWeeklyFile = event.target.files?.[0] || null; });
+    $("payEfficiencyBody")?.addEventListener("input", event => { if (event.target?.id === "payUberWeeklyAmount") renderUberWeeklyCalculation(); });
     $("payClosureReceiptInput")?.addEventListener("change", event => { state.modalFile = event.target?.files?.[0] || null; renderClosureModal(); });
     $("payDebtPaymentAmountInput")?.addEventListener("input", event => { if (window.formatCurrencyInput) event.target.value = window.formatCurrencyInput(event.target.value); });
     $("payClosureSummary")?.addEventListener("click", event => {
@@ -2132,6 +2144,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           listenCollection("gastos", "expenses", ""),
           listenCollection("cierres_semanales", "closures", ""),
           listenCollection("deudas_choferes", "debts", ""),
+          listenCollection("uber_weekly_closures", "uberWeeks", ""),
           listenCollection("deuda_pagos", "debtPayments", "")
         ].filter(Boolean);
         state.unsubscribers.push(...unsubs);
@@ -2145,6 +2158,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       listenCollection("gastos", "expenses", uid),
       listenCollection("cierres_semanales", "closures", uid),
       listenCollection("deudas_choferes", "debts", uid),
+      listenCollection("uber_weekly_closures", "uberWeeks", uid),
       listenCollection("deuda_pagos", "debtPayments", uid)
     ].filter(Boolean);
     state.unsubscribers.push(...unsubs);
@@ -3295,7 +3309,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     try {
       // La eficiencia se recalcula con datos reales actuales del chofer seleccionado/logueado.
       // No compara ni consulta datos de otros choferes para armar el resultado.
-      const [records, expenses, closures, debts, debtPayments] = await Promise.all([
+      const [records, expenses, closures, debts, debtPayments, uberWeeks] = await Promise.all([
         getScopedDocs("billing_records", uid),
         getScopedDocs("gastos", uid),
         getScopedDocs("cierres_semanales", uid),
@@ -3327,15 +3341,35 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
   }
 
+  function uberWeekWindow(now = new Date()) {
+    const d = new Date(now);
+    const day = d.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate() + mondayOffset, 0, 0, 0, 0);
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6, 23, 59, 59, 999);
+    const weekId = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,"0")}-${String(start.getDate()).padStart(2,"0")}`;
+    const daysRemaining = Math.max(0, Math.ceil((end.getTime() - d.getTime()) / 86400000));
+    return { start, end, weekId, daysRemaining, enabled:UBER_WEEKLY_TEST_ALWAYS_ENABLED || d.getDay() === 0 };
+  }
+
+  function uberWeekFor(uid = getDriverUid(), weekId = uberWeekWindow().weekId) {
+    return (state.uberWeeks || []).find(row => safe(row.driverUid || row.choferUid || row.driverId) === safe(uid) && safe(row.weekId) === safe(weekId)) || null;
+  }
+
   function renderEfficiencyButton() {
     const button = $("payEfficiencyBtn");
+    const label = $("payUberWeeklyCountdown");
     if (!button) return;
-    const snapshot = currentEfficiencySnapshot();
-    // El botón del Home queda neutro: los colores verde/rojo pertenecen al historial interno,
-    // no al estado del período actual.
+    const period = uberWeekWindow();
+    const row = uberWeekFor();
     button.classList.remove("efficiency-good", "efficiency-mid", "efficiency-bad", "efficiency-missing");
-    button.setAttribute("aria-label", `Eficiencia operativa: ${snapshot.status?.label || "Historial"}`);
-    button.title = "Eficiencia operativa";
+    button.classList.toggle("is-uber-loaded", !!row && safe(row.status) !== "rejected");
+    const text = row && safe(row.status) !== "rejected"
+      ? (safe(row.reviewStatus) === "approved" ? "Semana Uber cerrada" : "En revisión")
+      : period.daysRemaining === 0 ? "Hoy cierra tu semana Uber" : `Faltan ${period.daysRemaining} día${period.daysRemaining === 1 ? "" : "s"}`;
+    if (label) label.textContent = text;
+    button.setAttribute("aria-label", text);
+    button.title = text;
   }
 
   function signedPercent(value) {
@@ -3428,57 +3462,98 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }).join("")}</div>`;
   }
 
+  function uberWeeklyStatusLabel(row = {}) {
+    const review = safe(row.reviewStatus || row.status).toLowerCase();
+    if (review === "approved") return "Aprobado y finalizado";
+    if (review === "rejected") return "Rechazado: podés corregir y volver a cargar";
+    return "Enviado correctamente · pendiente de revisión";
+  }
+
+  function renderUberWeeklyCalculation() {
+    const input = $("payUberWeeklyAmount");
+    const box = $("payUberWeeklyCalculation");
+    if (!box) return;
+    const total = moneyNumber(input?.value || 0);
+    const half = Math.round((total / 2) * 100) / 100;
+    box.innerHTML = total > 0 ? `<strong>Distribución del cierre</strong><div><span>Ganancias informadas</span><b>${currency(total)}</b></div><div><span>Le queda al chofer (50%)</span><b>${currency(half)}</b></div><div><span>Le corresponde a Explora (50%)</span><b>${currency(half)}</b></div><p>Generarás una deuda de <strong>${currency(half)}</strong> a favor de Explora. La verás en tu tarjeta <strong>Deudas</strong>.</p>` : `<p>Ingresá el total de ganancias para ver cuánto corresponde a cada parte.</p>`;
+  }
+
   function renderEfficiencyModal() {
     const body = $("payEfficiencyBody");
     if (!body) return;
-    if (isAdmin() && !getDriverUid()) {
-      body.innerHTML = `<div class="pay-efficiency-empty">Seleccioná un chofer para ver su historial de eficiencia.</div>`;
+    const uid = getDriverUid();
+    if (isAdmin() && !uid) { body.innerHTML = `<div class="pay-efficiency-empty">Seleccioná un chofer para revisar su cierre Uber.</div>`; return; }
+    const period = uberWeekWindow();
+    const row = uberWeekFor(uid, period.weekId) || (state.uberWeeks || []).find(item => safe(item.driverUid) === safe(uid) && safe(item.reviewStatus) === "pending");
+    if (row && safe(row.reviewStatus || row.status) !== "rejected") {
+      const total = moneyNumber(row.grossAmount || row.totalAmount || row.amount);
+      const half = moneyNumber(row.exploraShare || row.debtAmount || total/2);
+      const adminActions = isAdmin() && safe(row.reviewStatus) !== "approved" ? `<div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="reject-uber-week" type="button">Rechazar</button><button class="pay-efficiency-primary" data-pay-efficiency-action="approve-uber-week" type="button">Aprobar cierre</button></div>` : "";
+      body.innerHTML = `<div class="pay-uber-success"><div class="pay-uber-success-icon">✓</div><strong>${esc(uberWeeklyStatusLabel(row))}</strong><p>Semana ${esc(row.weekLabel || period.weekId)}</p></div><div class="pay-uber-summary"><div><span>Total Uber</span><b>${currency(total)}</b></div><div><span>Chofer 50%</span><b>${currency(total-half)}</b></div><div><span>Explora 50% · Deuda</span><b>${currency(half)}</b></div></div>${row.receiptUrl ? `<button class="pay-efficiency-secondary pay-uber-view-proof" data-pay-efficiency-action="view-uber-proof" data-uber-proof-url="${esc(row.receiptUrl)}" type="button">Ver captura de Uber</button>` : ""}${adminActions}<div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status"></div>`;
       return;
     }
-    const snapshot = currentEfficiencySnapshot();
-    const loading = state.efficiency.loading ? `<div class="pay-efficiency-note">Actualizando historial…</div>` : "";
-    const tone = snapshot.status?.tone || "missing";
-    const initialKmForm = !snapshot.kmSeedLoaded ? renderInitialKmForm(snapshot) : "";
-    const historyHtml = snapshot.kmSeedLoaded ? renderEfficiencyHistoryList(snapshot.history || []) : "";
-    const driverLabel = (isAdmin() ? (state.selectedDriverName || snapshot.name || "chofer") : (snapshot.name || displayName())).toUpperCase();
-    const latest = snapshot.latestEfficiencyEntry;
-    const deltaLine = latest && Number.isFinite(Number(latest.deltaPct)) && latest.referenceAvg > 0 ? `<span class="pay-efficiency-delta">${esc(signedPercent(latest.deltaPct))} contra el promedio propio de ${esc(latest.referenceCount || 0)} cierre${Number(latest.referenceCount || 0) === 1 ? "" : "s"}</span>` : "";
-    const kmReadonlyNote = snapshot.kmSeedLoaded
-      ? `<div class="pay-efficiency-note">KM inicial actual: ${esc(Math.round(snapshot.kmInicial || 0))} km. El KM final se carga únicamente al pedir cierre de facturación.</div>`
-      : "";
-    const warning = tone === "bad" || tone === "alert" ? `<div class="pay-efficiency-warning">El último cierre quedó por debajo del promedio propio. Revisá si faltó cargar algún cobro o si hubo más kilómetros recorridos.</div>` : "";
-    body.innerHTML = `
-      <div class="pay-efficiency-status ${esc(snapshot.status?.css || "efficiency-missing")}">
-        <span class="pay-efficiency-status-symbol"><span class="pay-efficiency-status-icon"></span><span class="pay-efficiency-modal-asterisk" aria-hidden="true">*</span></span>
-        <div class="pay-efficiency-status-copy">
-          <span class="pay-efficiency-driver">${esc(driverLabel)}</span>
-          <strong>${esc(snapshot.status?.label || "Eficiencia")}</strong>
-          <small>${esc(snapshot.status?.level || "Últimos cierres")}</small>
-          ${deltaLine}
-        </div>
-      </div>
-      ${kmReadonlyNote}
-      ${initialKmForm}
-      ${historyHtml}
-      <div class="pay-efficiency-disclaimer">Se muestran los últimos 5 cierres de facturación. Cada cierre nuevo se compara contra el promedio propio de hasta 5 cierres anteriores. El KM final declarado pasa automáticamente a ser el KM inicial del siguiente período.</div>
-      ${warning}${loading}`;
+    const disabled = !period.enabled;
+    body.innerHTML = `<div class="pay-uber-week-head"><strong>${disabled ? `En ${period.daysRemaining} día${period.daysRemaining===1?"":"s"} finaliza la semana` : "Cargá tu facturación semanal de Uber"}</strong><p>${disabled ? "Cuando finalice la semana podrás cargar tu facturación." : "Modo de prueba: el formulario está habilitado todos los días."}</p></div><label class="pay-uber-field">Monto total de ganancias Uber<input id="payUberWeeklyAmount" type="text" inputmode="decimal" placeholder="$0" ${disabled?"disabled":""}></label><label class="pay-uber-field">Captura de ganancias de la semana<input id="payUberWeeklyFile" type="file" accept="image/*,application/pdf" ${disabled?"disabled":""}><small>La foto del comprobante es obligatoria.</small></label><div class="pay-uber-calculation" id="payUberWeeklyCalculation"><p>Ingresá el total de ganancias para ver cuánto corresponde a cada parte.</p></div><div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status"></div><div class="pay-efficiency-form-actions"><button class="pay-efficiency-secondary" data-pay-efficiency-action="close" type="button">Cancelar</button><button class="pay-efficiency-primary" data-pay-efficiency-action="submit-uber-week" type="button" ${disabled?"disabled":""}>Registrar cierre Uber</button></div>`;
+  }
+
+  async function uploadUberWeeklyReceipt({ driverUid, weekId, file }) {
+    if (!state.storage) throw new Error("Storage no está disponible.");
+    if (!(file instanceof File) || !(file.size > 0)) throw new Error("Subí la captura de ganancias de Uber.");
+    if (file.size > 15 * 1024 * 1024) throw new Error("La captura supera 15 MB.");
+    const ext = extensionForFile(file);
+    const path = `uber_weekly/${driverUid}/${weekId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const ref = storageRef(state.storage, path);
+    await uploadBytes(ref, file, { contentType:file.type || "image/jpeg", customMetadata:{ module:"uber_weekly", driverUid, weekId, uploadedByUid:state.auth?.currentUser?.uid || "" } });
+    return { url:await getDownloadURL(ref), path };
+  }
+
+  async function submitUberWeeklyClosure() {
+    if (state.uberWeeklyBusy) return;
+    if (isAdmin()) throw new Error("La carga semanal debe realizarla el chofer.");
+    const period = uberWeekWindow();
+    if (!period.enabled) throw new Error(`En ${period.daysRemaining} días finaliza la semana y podrás cargar tu facturación.`);
+    const driverUid = getOwnDriverUid();
+    const total = moneyNumber($("payUberWeeklyAmount")?.value || 0);
+    if (!(total > 0)) throw new Error("Ingresá el monto total de ganancias Uber.");
+    if (uberWeekFor(driverUid, period.weekId) && safe(uberWeekFor(driverUid, period.weekId).reviewStatus) !== "rejected") throw new Error("Esta semana ya fue cargada.");
+    const file = state.uberWeeklyFile || $("payUberWeeklyFile")?.files?.[0];
+    if (!(file instanceof File)) throw new Error("La captura de ganancias es obligatoria.");
+    state.uberWeeklyBusy = true; setEfficiencyFormMessage("Subiendo comprobante y generando deuda…");
+    try {
+      const proof = await uploadUberWeeklyReceipt({ driverUid, weekId:period.weekId, file });
+      const nowMs = Date.now(); const share = Math.round(total * 50) / 100; const driverName = displayName();
+      const closureId = `uber_${driverUid}_${period.weekId}`; const debtId = `debt_${closureId}`;
+      const weekLabel = `${dateShort(period.start.getTime())} – ${dateShort(period.end.getTime())}`;
+      await runTransaction(state.db, async tx => {
+        const closureRef = doc(state.db, "uber_weekly_closures", closureId); const snap = await tx.get(closureRef);
+        if (snap.exists() && safe(snap.data()?.reviewStatus) !== "rejected") throw new Error("Esta semana ya fue cargada.");
+        tx.set(closureRef, { closureId, id:closureId, weekId:period.weekId, weekLabel, weekStartMs:period.start.getTime(), weekEndMs:period.end.getTime(), driverUid, choferUid:driverUid, driverId:driverUid, driverName, grossAmount:total, totalAmount:total, driverShare:total-share, exploraShare:share, debtAmount:share, receiptUrl:proof.url, receiptPath:proof.path, notificationPhotoUrl:proof.url, telegramPhotoUrl:proof.url, firebasePhotoUrl:proof.url, reviewStatus:"pending", status:"pending_review", locked:true, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, updatedAt:serverTimestamp(), updatedAtMs:nowMs, version:VERSION }, { merge:false });
+        tx.set(doc(state.db, "deudas_choferes", debtId), { debtId, id:debtId, driverUid, choferUid:driverUid, driverId:driverUid, driverName, type:"uber_weekly", debtType:"uber_weekly", concept:`Uber semanal · ${weekLabel}`, description:`50% de ganancias Uber (${currency(total)})`, totalAmount:share, amount:share, remainingAmount:share, saldoPendiente:share, paidAmount:0, amountPaid:0, status:"pending", debtStatus:"pending", reviewStatus:"pending", sourceModule:"uber_weekly", uberClosureId:closureId, receiptUrl:proof.url, receiptPath:proof.path, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, updatedAt:serverTimestamp(), updatedAtMs:nowMs, version:VERSION }, { merge:false });
+        tx.set(doc(state.db, "notificaciones", `uber_review_${closureId}`), { notificationId:`uber_review_${closureId}`, type:"uber_weekly_review", category:"uber", driverUid, choferUid:driverUid, driverName, closureId, debtId, title:"CIERRE UBER PARA REVISIÓN", message:`${driverName} informó ${currency(total)}. Explora recibe ${currency(share)}.`, amount:total, exploraShare:share, receiptUrl:proof.url, notificationPhotoUrl:proof.url, telegramPhotoUrl:proof.url, read:false, acknowledged:false, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, version:VERSION }, { merge:false });
+      });
+      state.uberWeeks = [{ id:closureId, closureId, weekId:period.weekId, weekLabel, driverUid, driverName, grossAmount:total, exploraShare:share, debtAmount:share, receiptUrl:proof.url, reviewStatus:"pending", status:"pending_review", createdAtMs:nowMs }, ...(state.uberWeeks||[]).filter(x=>safe(x.id)!==closureId)];
+      state.uberWeeklyFile=null; setEfficiencyFormMessage("Cierre Uber registrado exitosamente.", "ok"); renderEfficiencyButton(); renderEfficiencyModal();
+    } finally { state.uberWeeklyBusy=false; }
+  }
+
+  async function reviewUberWeeklyClosure(decision) {
+    if (!isAdmin()) throw new Error("Solo Explora puede revisar este cierre.");
+    const period=uberWeekWindow(); const row=uberWeekFor(getDriverUid(), period.weekId) || (state.uberWeeks||[]).find(x=>safe(x.reviewStatus)==="pending" && safe(x.driverUid)===safe(getDriverUid()));
+    if (!row?.id) throw new Error("No se encontró el cierre Uber.");
+    const nowMs=Date.now(); const approved=decision==="approved"; const debtId=safe(row.debtId || `debt_${row.id}`);
+    await runTransaction(state.db, async tx=>{
+      tx.update(doc(state.db,"uber_weekly_closures",row.id), { reviewStatus:decision, status:approved?"approved":"rejected", locked:approved, reviewedByUid:state.user?.uid||"", reviewedAt:serverTimestamp(), reviewedAtMs:nowMs, updatedAt:serverTimestamp(), updatedAtMs:nowMs });
+      tx.update(doc(state.db,"deudas_choferes",debtId), { reviewStatus:decision, status:approved?"active":"rejected", debtStatus:approved?"active":"rejected", remainingAmount:approved?moneyNumber(row.exploraShare||row.debtAmount):0, saldoPendiente:approved?moneyNumber(row.exploraShare||row.debtAmount):0, updatedAt:serverTimestamp(), updatedAtMs:nowMs });
+      tx.set(doc(state.db,"notificaciones",`uber_review_result_${row.id}`), { notificationId:`uber_review_result_${row.id}`, type:"uber_weekly_review_result", category:"uber", driverUid:row.driverUid, driverName:row.driverName, closureId:row.id, title:approved?"CIERRE UBER APROBADO":"CIERRE UBER RECHAZADO", message:approved?"Explora aprobó tu cierre semanal. La deuda quedó activa.":"Explora rechazó el cierre. Podés corregirlo y volver a cargar.", read:false, acknowledged:false, createdByUid:state.user?.uid||"", createdByRole:"admin", createdAt:serverTimestamp(), createdAtMs:nowMs, version:VERSION }, {merge:false});
+    });
+    state.uberWeeks=(state.uberWeeks||[]).map(x=>safe(x.id)===safe(row.id)?{...x,reviewStatus:decision,status:approved?"approved":"rejected"}:x); setEfficiencyFormMessage(approved?"Cierre aprobado y finalizado.":"Cierre rechazado.","ok"); renderEfficiencyButton(); renderEfficiencyModal();
   }
 
   async function openEfficiencyModal() {
-    const backdrop = $("payEfficiencyBackdrop");
-    if (!backdrop) return;
-    backdrop.classList.add("is-open");
-    backdrop.setAttribute("aria-hidden", "false");
-    renderEfficiencyModal();
-    refreshEfficiencyOwnData(true).catch(()=>{});
+    const backdrop = $("payEfficiencyBackdrop"); if (!backdrop) return;
+    backdrop.classList.add("is-open"); backdrop.setAttribute("aria-hidden", "false"); renderEfficiencyModal();
   }
-
-  function closeEfficiencyModal() {
-    const backdrop = $("payEfficiencyBackdrop");
-    if (!backdrop) return;
-    backdrop.classList.remove("is-open");
-    backdrop.setAttribute("aria-hidden", "true");
-  }
+  function closeEfficiencyModal() { const backdrop=$("payEfficiencyBackdrop"); if (!backdrop) return; backdrop.classList.remove("is-open"); backdrop.setAttribute("aria-hidden","true"); state.uberWeeklyFile=null; }
 
   function renderBellBadge() {
     const badge = $("payBellBadge");
@@ -5131,7 +5206,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   async function computeDriverSummary(uid) {
-    const [records, expenses, closures, debts, debtPayments] = await Promise.all([
+    const [records, expenses, closures, debts, debtPayments, uberWeeks] = await Promise.all([
       getScopedDocs("billing_records", uid),
       getScopedDocs("gastos", uid),
       getScopedDocs("cierres_semanales", uid),
