@@ -512,7 +512,7 @@ service cloud.firestore {
         && resource.data.reviewStatus == 'rejected'
         && validUberWeeklyClosure(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'weekLabel', 'weekStartMs', 'weekEndMs',
+          'weekLabel', 'weekStartMs', 'weekEndMs', 'weekDisplayEndMs', 'weekEndBoundaryMs', 'uploadDeadlineMs', 'uploadDeadlineLabel',
           'driverName', 'grossAmount', 'totalAmount',
           'driverShare', 'driverNetAmount',
           'exploraShare', 'debtAmount',
