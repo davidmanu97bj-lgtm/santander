@@ -3506,3 +3506,31 @@ body.explora-pay-mode .pay-tabs{
 .pay-uber-weekly-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:#111;color:#f2c14e;font-weight:900;font-size:15px;border:1px solid rgba(242,193,78,.45)}
 .pay-uber-weekly-countdown{font-size:9px;line-height:1.1;text-align:center;font-weight:800;max-width:94px;color:#fff}.pay-uber-weekly-btn.is-uber-loaded .pay-uber-weekly-icon{background:#1d6b43;color:#fff}
 .pay-uber-week-head,.pay-uber-success,.pay-uber-summary,.pay-uber-calculation{border:1px solid rgba(214,164,56,.28);background:rgba(255,255,255,.035);border-radius:16px;padding:14px;margin-bottom:12px}.pay-uber-week-head strong,.pay-uber-success strong{display:block;font-size:17px;color:#f1c55a}.pay-uber-week-head p,.pay-uber-success p,.pay-uber-calculation p{margin:6px 0 0;color:#bdbdbd;font-size:13px;line-height:1.35}.pay-uber-field{display:block;margin:12px 0;color:#e7e7e7;font-size:13px;font-weight:700}.pay-uber-field input{display:block;width:100%;margin-top:7px;background:#0d0e10;border:1px solid rgba(255,255,255,.14);border-radius:12px;color:#fff;padding:13px;font-size:16px;box-sizing:border-box}.pay-uber-field small{display:block;color:#999;margin-top:5px}.pay-uber-calculation div,.pay-uber-summary div{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)}.pay-uber-calculation div:last-of-type,.pay-uber-summary div:last-child{border-bottom:0}.pay-uber-calculation b,.pay-uber-summary b{color:#f1c55a}.pay-uber-success{text-align:center}.pay-uber-success-icon{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;margin:0 auto 8px;background:#1d6b43;color:#fff;font-size:25px;font-weight:900}.pay-uber-view-proof{width:100%;margin-bottom:12px}
+
+/* EXPLORA v4092 · mejora visual y contraste Cierre Uber */
+.pay-efficiency-modal{background:#fff!important;color:#171923!important}
+.pay-efficiency-modal header h2{color:#171923!important}
+.pay-efficiency-modal header p{color:#697083!important}
+.pay-uber-week-head,.pay-uber-success,.pay-uber-summary,.pay-uber-calculation{background:#fffaf0!important;border:1px solid #edd59a!important;box-shadow:0 8px 24px rgba(63,45,8,.06)!important}
+.pay-uber-eyebrow{display:inline-flex;padding:5px 9px;border-radius:999px;background:#171923;color:#f4c54e;font-size:10px;letter-spacing:.12em;font-weight:900;margin-bottom:8px}
+.pay-uber-week-head strong,.pay-uber-success strong{color:#252936!important;font-size:18px!important;line-height:1.25}
+.pay-uber-week-head p,.pay-uber-success p,.pay-uber-calculation p{color:#697083!important}
+.pay-uber-field{color:#252936!important;font-size:14px!important;margin:18px 0!important}
+.pay-uber-field>span{display:block;margin-bottom:8px;font-weight:850}
+.pay-uber-field input{background:#101114!important;border:1px solid #2a2d34!important;color:#fff!important;min-height:58px!important;border-radius:15px!important;font-size:20px!important}
+.pay-uber-field input[type=file]{font-size:15px!important;padding:12px!important}
+.pay-uber-field small{color:#747b8b!important;font-weight:650!important;margin-top:7px!important}
+.pay-uber-money-wrap{position:relative}.pay-uber-money-wrap input{padding-left:43px!important;font-weight:850;letter-spacing:.01em}.pay-uber-money-prefix{position:absolute!important;left:17px;top:50%;transform:translateY(-50%);z-index:2;color:#f4c54e!important;font-size:21px;font-weight:900}
+.pay-uber-calculation>strong{display:block;color:#252936!important;font-size:15px;margin-bottom:8px}
+.pay-uber-calculation div,.pay-uber-summary div{border-bottom:1px solid #eadfca!important;padding:10px 0!important;align-items:center}
+.pay-uber-calculation span,.pay-uber-summary span{color:#50586a!important;font-weight:700!important}
+.pay-uber-calculation b,.pay-uber-summary b{color:#bd8210!important;font-size:17px!important;white-space:nowrap}
+.pay-uber-calculation p{border-top:1px solid #eadfca;margin-top:9px!important;padding-top:12px!important}
+.pay-efficiency-form-message{white-space:normal;overflow-wrap:anywhere;line-height:1.35}
+.pay-efficiency-form-message.is-error{background:#fff1f1!important;border:1px solid #efb4b4!important;color:#b42323!important;border-radius:12px;padding:11px!important}
+@media(max-width:420px){.pay-efficiency-modal{width:calc(100vw - 22px)!important}.pay-uber-calculation div,.pay-uber-summary div{gap:14px}.pay-uber-calculation span,.pay-uber-summary span{font-size:13px}.pay-uber-calculation b,.pay-uber-summary b{font-size:16px!important}}
+
+/* EXPLORA v4093 · detalle Uber 50% deuda + 5% caja chica */
+.pay-uber-calculation>div,.pay-uber-summary>div{align-items:center;gap:16px}
+.pay-uber-calculation>div span,.pay-uber-summary>div span{max-width:68%;line-height:1.25}
+.pay-uber-calculation>div:nth-of-type(4),.pay-uber-summary>div:nth-of-type(4){border-top:1px dashed rgba(207,151,33,.34);padding-top:12px;margin-top:4px}
