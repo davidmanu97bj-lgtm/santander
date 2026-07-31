@@ -3534,3 +3534,25 @@ body.explora-pay-mode .pay-tabs{
 .pay-uber-calculation>div,.pay-uber-summary>div{align-items:center;gap:16px}
 .pay-uber-calculation>div span,.pay-uber-summary>div span{max-width:68%;line-height:1.25}
 .pay-uber-calculation>div:nth-of-type(4),.pay-uber-summary>div:nth-of-type(4){border-top:1px dashed rgba(207,151,33,.34);padding-top:12px;margin-top:4px}
+
+
+/* EXPLORA v4094 · Cierre Uber claro, sin fondos negros */
+.pay-efficiency-backdrop{background:rgba(30,34,48,.34)!important;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.pay-efficiency-modal{background:#ffffff!important;color:#202433!important;border:1px solid rgba(216,221,235,.95)!important;box-shadow:0 22px 65px rgba(31,38,58,.22)!important}
+.pay-uber-eyebrow{background:#fff3cc!important;color:#8a6200!important;border:1px solid #ecd17b!important}
+.pay-uber-week-head,.pay-uber-success,.pay-uber-summary,.pay-uber-calculation{background:linear-gradient(180deg,#fffdf8 0%,#fffaf0 100%)!important;border:1px solid #eedca9!important;box-shadow:none!important}
+.pay-uber-field input{background:#f7f8fc!important;border:1px solid #d9deea!important;color:#202433!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.9)!important}
+.pay-uber-field input:focus{background:#fff!important;border-color:#d4a62a!important;box-shadow:0 0 0 4px rgba(212,166,42,.13)!important;outline:none!important}
+.pay-uber-field input::placeholder{color:#9aa1b1!important}
+.pay-uber-field input[type=file]{background:#f7f8fc!important;color:#525a6d!important;font-size:14px!important}
+.pay-uber-field input[type=file]::file-selector-button{border:0;border-radius:10px;background:#f2c85b;color:#3c310f;font-weight:850;padding:10px 12px;margin-right:10px;cursor:pointer}
+.pay-uber-money-prefix{color:#9a700b!important}
+.pay-uber-calculation>strong,.pay-uber-summary>strong{display:block;color:#252936!important;font-size:16px!important;margin-bottom:4px!important}
+.pay-uber-summary-intro{border-top:0!important;margin:0 0 6px!important;padding:0!important}
+.pay-uber-calculation>div,.pay-uber-summary>div{background:#fff!important;border:1px solid #eee5d1!important;border-radius:13px!important;padding:12px 13px!important;margin-top:8px!important}
+.pay-uber-calculation>div:nth-of-type(n),.pay-uber-summary>div:nth-of-type(n){border-top:1px solid #eee5d1!important;margin-top:8px!important}
+.pay-uber-calculation span,.pay-uber-summary span{color:#3e4658!important;font-size:14px!important;font-weight:780!important}
+.pay-uber-calculation b,.pay-uber-summary b{color:#9a6c00!important;font-size:18px!important}
+.pay-uber-summary-note{background:#fff7df!important;border:1px solid #efdda6!important;border-radius:12px!important;margin-top:11px!important;padding:10px 11px!important;color:#626879!important}
+.pay-efficiency-primary{background:linear-gradient(180deg,#f2cf68 0%,#dfad2d 100%)!important;color:#29230f!important;box-shadow:0 8px 18px rgba(192,143,22,.2)!important}
+.pay-efficiency-secondary{background:#f3f5fa!important;color:#3c4354!important;border:1px solid #dce1ec!important}
