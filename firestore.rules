@@ -401,7 +401,21 @@ service cloud.firestore {
       }
 
       allow read: if isAdmin() || owns(resource.data);
-      allow create: if isAdmin();
+      function isUberWeeklyDebtCreate() {
+        return signedIn()
+          && owns(request.resource.data)
+          && request.resource.data.driverUid == uid()
+          && request.resource.data.createdByUid == uid()
+          && request.resource.data.sourceModule == 'uber_weekly'
+          && request.resource.data.type == 'uber_weekly'
+          && request.resource.data.totalAmount is number
+          && request.resource.data.totalAmount > 0
+          && request.resource.data.remainingAmount == request.resource.data.totalAmount
+          && request.resource.data.saldoPendiente == request.resource.data.totalAmount
+          && request.resource.data.receiptUrl is string
+          && request.resource.data.receiptUrl.size() > 0;
+      }
+      allow create: if isAdmin() || isUberWeeklyDebtCreate();
       allow update: if isAdmin() || driverDebtAckUpdate() || driverDebtPaymentUpdate();
       allow delete: if isAdmin();
 
@@ -416,6 +430,23 @@ service cloud.firestore {
           || owns(get(/databases/$(database)/documents/deudas_choferes/$(debtId)).data);
         allow write: if isAdmin();
       }
+    }
+
+
+    match /uber_weekly_closures/{closureId} {
+      allow read: if isAdmin() || owns(resource.data);
+      allow create: if signedIn()
+        && owns(request.resource.data)
+        && request.resource.data.driverUid == uid()
+        && request.resource.data.createdByUid == uid()
+        && request.resource.data.grossAmount is number
+        && request.resource.data.grossAmount > 0
+        && request.resource.data.exploraShare is number
+        && request.resource.data.exploraShare > 0
+        && request.resource.data.receiptUrl is string
+        && request.resource.data.receiptUrl.size() > 0
+        && request.resource.data.reviewStatus == 'pending';
+      allow update, delete: if isAdmin();
     }
 
     match /deuda_pagos/{paymentId} {
@@ -912,7 +943,16 @@ service cloud.firestore {
       }
 
       allow read: if isAdmin() || owns(resource.data);
-      allow create: if isAdmin() || isStandardDebtNotificationCreate() || isExpenseDebtNotificationCreate();
+      function isUberWeeklyNotificationCreate() {
+        return signedIn()
+          && owns(request.resource.data)
+          && request.resource.data.driverUid == uid()
+          && request.resource.data.createdByUid == uid()
+          && request.resource.data.type == 'uber_weekly_review'
+          && request.resource.data.receiptUrl is string
+          && request.resource.data.receiptUrl.size() > 0;
+      }
+      allow create: if isAdmin() || isStandardDebtNotificationCreate() || isExpenseDebtNotificationCreate() || isUberWeeklyNotificationCreate();
 
       allow update: if isAdmin() || (
         signedIn()
