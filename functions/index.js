@@ -2,8 +2,9 @@
 
 const crypto = require("node:crypto");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, FieldValue, FieldPath } = require("firebase-admin/firestore");
@@ -24,6 +25,243 @@ const DELETION_JOBS_COLLECTION = "admin_driver_deletion_jobs";
 const ADMIN_AUDIT_COLLECTION = "admin_audit";
 const PAGE_SIZE = 180;
 const MAX_SCANNED_DOCUMENTS = 25000;
+
+
+// Telegram: secretos administrados por Firebase Secret Manager.
+// TELEGRAM_BOT_TOKEN ya puede existir; TELEGRAM_CHAT_ID debe contener el ID del chat/grupo.
+const TELEGRAM_BOT_TOKEN = defineSecret("TELEGRAM_BOT_TOKEN");
+const TELEGRAM_CHAT_ID = defineSecret("TELEGRAM_CHAT_ID");
+const TELEGRAM_NOTIFICATIONS_COLLECTION = "telegram_notifications";
+const TELEGRAM_FUNCTION_REGION = "us-central1";
+const TELEGRAM_PROCESSING_LEASE_MS = 10 * 60 * 1000;
+
+function telegramSafeText(value) {
+  return String(value ?? "").replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function telegramMoney(value) {
+  const parsed = Number(value ?? 0);
+  const amount = Number.isFinite(parsed) ? parsed : 0;
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 0
+  }).format(amount);
+}
+
+function telegramTimestampMs(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value._seconds === "number") return value._seconds * 1000 + Math.floor((value._nanoseconds || 0) / 1000000);
+  if (typeof value.seconds === "number") return value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1000000);
+  return 0;
+}
+
+function telegramDateLabel(data = {}) {
+  const ms = telegramTimestampMs(data.createdAt)
+    || telegramTimestampMs(data.completedAt)
+    || telegramTimestampMs(data.expenseDate)
+    || telegramTimestampMs(data.receiptUploadedAt)
+    || Number(data.createdAtMs || 0)
+    || Date.now();
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    dateStyle: "short",
+    timeStyle: "short"
+  }).format(new Date(ms));
+}
+
+function telegramDriverName(data = {}) {
+  return telegramSafeText(
+    data.driverName || data.choferNombre || data.nombreChofer || data.nombreConductor ||
+    data.displayName || data.chofer || data.usuario || "Chofer"
+  );
+}
+
+function telegramAmount(data = {}) {
+  for (const value of [data.amount, data.monto, data.valor, data.finalPrice, data.totalAmount, data.total, data.importe]) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  }
+  return 0;
+}
+
+function telegramPaymentMethod(data = {}) {
+  const raw = telegramSafeText(
+    data.paymentMethod || data.metodoPago || data.financialCategory ||
+    data.receiptPaymentMethod || data.paymentProvider || data.method || data.tipoPago
+  ).toLowerCase();
+  if (/qr/.test(raw)) return { key: "qr", label: "QR" };
+  if (/card|tarjeta|point|posnet/.test(raw)) return { key: "card", label: "Tarjeta" };
+  if (/transfer|alias|transf/.test(raw)) return { key: "transfer", label: "Transferencia" };
+  if (/cash|efectivo/.test(raw)) return { key: "cash", label: "Efectivo" };
+  return { key: raw || "unknown", label: raw ? raw.toUpperCase() : "Sin especificar" };
+}
+
+function telegramExpenseType(data = {}) {
+  const raw = telegramSafeText(data.expenseType || data.tipo || data.category || data.categoria || "Gasto");
+  const normalizedType = raw.toLowerCase();
+  const labels = {
+    combustible: "Combustible",
+    fuel: "Combustible",
+    peaje: "Peaje",
+    toll: "Peaje",
+    mantenimiento: "Mantenimiento",
+    maintenance: "Mantenimiento",
+    lavado: "Lavado",
+    wash: "Lavado",
+    estacionamiento: "Estacionamiento",
+    parking: "Estacionamiento",
+    otros: "Otros",
+    other: "Otros"
+  };
+  return labels[normalizedType] || raw || "Gasto";
+}
+
+function telegramDirectPhotoUrl(data = {}) {
+  const candidates = [
+    data.telegramPhotoUrl, data.notificationPhotoUrl, data.firebasePhotoUrl,
+    data.whatsappPhotoUrl, data.receiptUrl, data.comprobanteUrl, data.downloadURL,
+    data.fileUrl, data.photoUrl, data.imageUrl, data.archivoUrl
+  ];
+  for (const value of candidates) {
+    const url = telegramSafeText(value);
+    if (/^https?:\/\//i.test(url)) return url;
+  }
+  return "";
+}
+
+async function telegramResolvePhotoUrl(kind, docId, data = {}) {
+  const direct = telegramDirectPhotoUrl(data);
+  if (direct) return direct;
+
+  const candidateIds = kind === "billing"
+    ? [`payment_${docId}`, `billing_${docId}`]
+    : [`expense_${docId}`, `gasto_${docId}`];
+  for (const receiptId of candidateIds) {
+    const snap = await db.collection("receipt_index").doc(receiptId).get();
+    if (snap.exists) {
+      const url = telegramDirectPhotoUrl(snap.data() || {});
+      if (url) return url;
+    }
+  }
+
+  const byRecord = await db.collection("receipt_index").where("recordId", "==", docId).limit(3).get();
+  for (const row of byRecord.docs) {
+    const url = telegramDirectPhotoUrl(row.data() || {});
+    if (url) return url;
+  }
+  return "";
+}
+
+function telegramNotificationDocId(kind, docId) {
+  return `${kind}_${docId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 300);
+}
+
+async function telegramClaimNotification(kind, docId, eventId) {
+  const ref = db.collection(TELEGRAM_NOTIFICATIONS_COLLECTION).doc(telegramNotificationDocId(kind, docId));
+  const nowMs = Date.now();
+  const claimed = await db.runTransaction(async transaction => {
+    const snap = await transaction.get(ref);
+    const current = snap.exists ? (snap.data() || {}) : {};
+    if (current.status === "sent") return false;
+    if (current.status === "processing" && Number(current.updatedAtMs || 0) > nowMs - TELEGRAM_PROCESSING_LEASE_MS) return false;
+    transaction.set(ref, {
+      type: kind,
+      sourceDocumentId: docId,
+      sourceCollection: kind === "billing" ? "billing_records" : "gastos",
+      eventId: telegramSafeText(eventId),
+      status: "processing",
+      attempts: FieldValue.increment(1),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedAtMs: nowMs,
+      createdAt: current.createdAt || FieldValue.serverTimestamp()
+    }, { merge: true });
+    return true;
+  });
+  return { claimed, ref };
+}
+
+async function telegramApi(method, payload, { multipart = false } = {}) {
+  const token = telegramSafeText(TELEGRAM_BOT_TOKEN.value());
+  if (!token) throw new Error("TELEGRAM_BOT_TOKEN no está configurado.");
+  const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+    method: "POST",
+    headers: multipart ? undefined : { "content-type": "application/json" },
+    body: multipart ? payload : JSON.stringify(payload)
+  });
+  const bodyText = await response.text();
+  let body = null;
+  try { body = JSON.parse(bodyText); } catch (_) { body = { ok: false, description: bodyText }; }
+  if (!response.ok || !body?.ok) {
+    const error = new Error(`Telegram ${method}: ${body?.description || response.statusText || response.status}`);
+    error.telegramStatus = response.status;
+    throw error;
+  }
+  return body.result;
+}
+
+async function telegramSendPhoto(photoUrl, caption) {
+  const chatId = telegramSafeText(TELEGRAM_CHAT_ID.value());
+  if (!chatId) throw new Error("TELEGRAM_CHAT_ID no está configurado.");
+
+  try {
+    return await telegramApi("sendPhoto", {
+      chat_id: chatId,
+      photo: photoUrl,
+      caption: caption.slice(0, 1024)
+    });
+  } catch (urlError) {
+    // Respaldo: descarga la imagen desde Firebase y la adjunta físicamente.
+    const imageResponse = await fetch(photoUrl, { redirect: "follow" });
+    if (!imageResponse.ok) throw urlError;
+    const bytes = await imageResponse.arrayBuffer();
+    const contentType = telegramSafeText(imageResponse.headers.get("content-type")) || "image/jpeg";
+    const extension = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
+    const form = new FormData();
+    form.append("chat_id", chatId);
+    form.append("caption", caption.slice(0, 1024));
+    form.append("photo", new Blob([bytes], { type: contentType }), `comprobante.${extension}`);
+    return telegramApi("sendPhoto", form, { multipart: true });
+  }
+}
+
+async function telegramProcessNotification({ kind, docId, data, eventId, caption }) {
+  const { claimed, ref } = await telegramClaimNotification(kind, docId, eventId);
+  if (!claimed) return { skipped: true, reason: "already-processed-or-processing" };
+  try {
+    const photoUrl = await telegramResolvePhotoUrl(kind, docId, data);
+    if (!photoUrl) throw new Error(`El documento ${kind}/${docId} no contiene una URL de foto.`);
+    const message = await telegramSendPhoto(photoUrl, caption);
+    await ref.set({
+      status: "sent",
+      telegramMessageId: message?.message_id || null,
+      telegramChatId: telegramSafeText(message?.chat?.id),
+      photoUrl,
+      sentAt: FieldValue.serverTimestamp(),
+      sentAtMs: Date.now(),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedAtMs: Date.now(),
+      lastError: FieldValue.delete()
+    }, { merge: true });
+    return { sent: true, messageId: message?.message_id || null };
+  } catch (error) {
+    await ref.set({
+      status: "error",
+      lastError: telegramSafeText(error?.message || error).slice(0, 900),
+      failedAt: FieldValue.serverTimestamp(),
+      failedAtMs: Date.now(),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedAtMs: Date.now()
+    }, { merge: true }).catch(() => {});
+    throw error;
+  }
+}
 
 const PROTECTED_ROOT_COLLECTIONS = new Set([
   "system", "configuracion", "explora_config", "tarifas", "settings",
@@ -1409,5 +1647,70 @@ exports.applyDailyDebtPenalties = onSchedule({
   }
   await commitIfNeeded(true);
   console.info("applyDailyDebtPenalties", { processed, skipped, scanned:snap.size, totalInterest, todayKey });
+});
+
+// Envía a Telegram cada cobro digital nuevo (tarjeta, QR o transferencia) con su foto.
+exports.notifyBillingRecordV2 = onDocumentCreated({
+  document: "billing_records/{docId}",
+  region: TELEGRAM_FUNCTION_REGION,
+  memory: "256MiB",
+  timeoutSeconds: 120,
+  retry: true,
+  secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
+}, async event => {
+  const data = event.data?.data() || {};
+  const method = telegramPaymentMethod(data);
+  if (!new Set(["card", "qr", "transfer"]).has(method.key)) {
+    return { skipped: true, reason: "not-digital", method: method.key };
+  }
+
+  const docId = telegramSafeText(event.params?.docId || event.data?.id);
+  const caption = [
+    "COBRO DIGITAL REGISTRADO",
+    `Chofer: ${telegramDriverName(data)}`,
+    `Monto: ${telegramMoney(telegramAmount(data))}`,
+    `Método: ${method.label}`,
+    `Fecha: ${telegramDateLabel(data)}`,
+    `Operación: ${docId}`
+  ].join("\n");
+
+  return telegramProcessNotification({
+    kind: "billing",
+    docId,
+    data,
+    eventId: event.id,
+    caption
+  });
+});
+
+// Envía a Telegram cada gasto nuevo con la foto del comprobante.
+exports.notifyExpenseV2 = onDocumentCreated({
+  document: "gastos/{docId}",
+  region: TELEGRAM_FUNCTION_REGION,
+  memory: "256MiB",
+  timeoutSeconds: 120,
+  retry: true,
+  secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
+}, async event => {
+  const data = event.data?.data() || {};
+  const docId = telegramSafeText(event.params?.docId || event.data?.id);
+  const notes = telegramSafeText(data.notes || data.detalle || data.descripcion || data.observaciones);
+  const captionLines = [
+    "GASTO REGISTRADO",
+    `Chofer: ${telegramDriverName(data)}`,
+    `Monto: ${telegramMoney(telegramAmount(data))}`,
+    `Tipo: ${telegramExpenseType(data)}`,
+    ...(notes ? [`Detalle: ${notes.slice(0, 300)}`] : []),
+    `Fecha: ${telegramDateLabel(data)}`,
+    `Operación: ${docId}`
+  ];
+
+  return telegramProcessNotification({
+    kind: "expense",
+    docId,
+    data,
+    eventId: event.id,
+    caption: captionLines.join("\n")
+  });
 });
 
