@@ -1,4 +1,4 @@
-import { collection, query, where, limit, onSnapshot, getDocs, getDoc, addDoc, doc, updateDoc, deleteDoc, runTransaction, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { collection, query, where, limit, onSnapshot, getDocs, getDoc, addDoc, setDoc, doc, updateDoc, deleteDoc, runTransaction, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4109-uber-sin-datos-7-semanas";
+  const VERSION = "explora-pago-home-v52-v4111-setdoc-y-rango-7-semanas";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -3521,8 +3521,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const candidates = [
       profile.createdAt, profile.altaAt, profile.created, profile.fechaAlta,
       profile.createdDate, profile.creationDate, profile.registeredAt,
+      profile.fechaIngreso, profile.ingresoAt, profile.joinedAt, profile.startDate, profile.hireDate,
       profile.createdAtMs, profile.altaAtMs, profile.creationMs, profile.registeredAtMs,
-      driver.createdAt, driver.createdAtMs
+      profile.fechaIngresoMs, profile.ingresoAtMs, profile.joinedAtMs, profile.startDateMs, profile.hireDateMs,
+      driver.createdAt, driver.createdAtMs, driver.altaAt, driver.altaAtMs, driver.fechaAlta, driver.fechaIngreso, driver.joinedAt, driver.startDate
     ].map(ms).filter(value => value > 0);
     return candidates.length ? Math.min(...candidates) : 0;
   }
