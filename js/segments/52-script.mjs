@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4107-uber-sin-datos";
+  const VERSION = "explora-pago-home-v52-v4109-uber-sin-datos-7-semanas";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -3512,6 +3512,30 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return Array.from({ length: 8 }, (_, index) => uberWeekWindow(now, index));
   }
 
+  function uberDriverCreatedMs(uid = getOwnDriverUid()) {
+    const targetUid = safe(uid);
+    const driver = (state.drivers || []).find(item => safe(item.uid || item.id) === targetUid) || {};
+    const profile = targetUid === safe(getOwnDriverUid())
+      ? { ...(driver.profile || {}), ...(state.profile || {}) }
+      : (driver.profile || driver || {});
+    const candidates = [
+      profile.createdAt, profile.altaAt, profile.created, profile.fechaAlta,
+      profile.createdDate, profile.creationDate, profile.registeredAt,
+      profile.createdAtMs, profile.altaAtMs, profile.creationMs, profile.registeredAtMs,
+      driver.createdAt, driver.createdAtMs
+    ].map(ms).filter(value => value > 0);
+    return candidates.length ? Math.min(...candidates) : 0;
+  }
+
+  function uberNoDataAllowed(uid, period) {
+    if (!period?.start) return false;
+    const createdMs = uberDriverCreatedMs(uid);
+    if (!(createdMs > 0)) return false;
+    const createdWeek = uberWeekWindow(new Date(createdMs), 0);
+    const cutoffMs = createdWeek.start.getTime() + (7 * 7 * 24 * 60 * 60 * 1000);
+    return period.start.getTime() < cutoffMs;
+  }
+
   function uberWeekDisplayLabel(period = uberWeekWindow()) {
     const start = period?.start instanceof Date ? period.start : new Date(period?.weekStartMs || Date.now());
     const displayEnd = period?.displayEnd instanceof Date
@@ -3920,11 +3944,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     </label>
     <div class="pay-uber-calculation" id="payUberWeeklyCalculation"><strong>Resumen del cierre</strong><p>Ingresá el monto total para calcular los importes.</p></div>
     <div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status" aria-live="polite"></div>
-    <div class="pay-uber-no-data-box">
+    ${uberNoDataAllowed(getOwnDriverUid(), period) ? `<div class="pay-uber-no-data-box">
       <strong>¿Todavía no trabajabas esa semana?</strong>
-      <p>Podés cerrarla como “Sin datos”. No solicita monto ni comprobante y no genera Deudas ni Caja chica.</p>
+      <p>Podés cerrarla como “Sin datos”. Esta opción está disponible únicamente durante tus primeras 7 semanas.</p>
       <button class="pay-uber-no-data-button" data-pay-efficiency-action="submit-uber-no-data" type="button">Sin datos</button>
-    </div>
+    </div>` : ""}
     <div class="pay-efficiency-form-actions">
       <button class="pay-efficiency-secondary" data-pay-efficiency-action="back-uber-weeks" type="button">Volver</button>
       <button class="pay-efficiency-primary" data-pay-efficiency-action="submit-uber-week" type="button">Enviar a revisión</button>
@@ -3939,6 +3963,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (!period) throw new Error("Seleccioná una semana.");
     if (!period.isClosed) throw new Error("Esta semana todavía no cerró.");
     const driverUid = getOwnDriverUid();
+    if (!uberNoDataAllowed(driverUid, period)) throw new Error("La opción Sin datos solo está disponible durante las primeras 7 semanas del chofer.");
     const existing = uberWeekFor(driverUid, period.weekId);
     if (existing && safe(existing.reviewStatus).toLowerCase() !== "rejected") throw new Error("Esta semana ya fue cerrada.");
     state.uberWeeklyBusy = true;
