@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4106-carga-verde-todas-tarjetas";
+  const VERSION = "explora-pago-home-v52-v4107-uber-sin-datos";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -1295,6 +1295,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         renderEfficiencyModal();
       }
       if (action === "submit-uber-week") submitUberWeeklyClosure().catch(error => setEfficiencyFormMessage(error?.message || "No se pudo registrar el cierre Uber.", "error"));
+      if (action === "submit-uber-no-data") submitUberWeeklyNoData().catch(error => setEfficiencyFormMessage(error?.message || "No se pudo cerrar la semana sin datos.", "error"));
       if (action === "open-uber-review") {
         const button = event.target.closest("[data-uber-driver-uid]");
         const driverUid = safe(button?.dataset?.uberDriverUid);
@@ -3545,6 +3546,9 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function uberWeeklyStatus(row, period) {
     const review = safe(row?.reviewStatus).toLowerCase();
     const status = safe(row?.status).toLowerCase();
+    if (review === "no_data" || status === "no_data") {
+      return { key:"no_data", label:"Sin datos", tone:"gray" };
+    }
     if (review === "approved" || status === "approved") {
       return { key:"completed", label:"Completado", tone:"green" };
     }
@@ -3704,6 +3708,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function uberWeeklyStatusLabel(row = {}) {
     const review = safe(row.reviewStatus).toLowerCase();
+    if (review === "no_data") return "Sin datos";
     if (review === "approved") return "Completado";
     if (review === "rejected") return "Rechazado: podés volver a cargar";
     return "En revisión";
@@ -3788,6 +3793,24 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           </article>`).join("")}
         </div>
       </div>` : ""}
+
+      ${(() => {
+        const noDataRows = (state.uberWeeks || [])
+          .filter(item => safe(item.reviewStatus).toLowerCase() === "no_data" || safe(item.status).toLowerCase() === "no_data")
+          .sort((a,b) => rowMs(b) - rowMs(a));
+        return noDataRows.length ? `<div class="pay-uber-admin-section">
+          <h3>Semanas sin datos</h3>
+          <div class="pay-uber-inbox-list">
+            ${noDataRows.map(row => `<article class="pay-uber-inbox-card is-no-data">
+              <div class="pay-uber-inbox-card-head">
+                <div><span>CHOFER</span><strong>${esc(row.driverName || "Chofer")}</strong></div>
+                <em>Sin datos</em>
+              </div>
+              <p>${esc(row.weekLabel || row.weekId || "—")}</p>
+            </article>`).join("")}
+          </div>
+        </div>` : "";
+      })()}
 
       <div class="pay-uber-admin-section">
         <h3>Comprobantes en revisión</h3>
@@ -3897,10 +3920,55 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     </label>
     <div class="pay-uber-calculation" id="payUberWeeklyCalculation"><strong>Resumen del cierre</strong><p>Ingresá el monto total para calcular los importes.</p></div>
     <div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status" aria-live="polite"></div>
+    <div class="pay-uber-no-data-box">
+      <strong>¿Todavía no trabajabas esa semana?</strong>
+      <p>Podés cerrarla como “Sin datos”. No solicita monto ni comprobante y no genera Deudas ni Caja chica.</p>
+      <button class="pay-uber-no-data-button" data-pay-efficiency-action="submit-uber-no-data" type="button">Sin datos</button>
+    </div>
     <div class="pay-efficiency-form-actions">
       <button class="pay-efficiency-secondary" data-pay-efficiency-action="back-uber-weeks" type="button">Volver</button>
       <button class="pay-efficiency-primary" data-pay-efficiency-action="submit-uber-week" type="button">Enviar a revisión</button>
     </div>`;
+  }
+
+  async function submitUberWeeklyNoData() {
+    if (state.uberWeeklyBusy) return;
+    if (isAdmin()) throw new Error("La semana debe cerrarla el chofer.");
+    const selectedWeekId = safe(state.uberSelectedWeekId);
+    const period = uberLastEightWeeks().find(item => safe(item.weekId) === selectedWeekId);
+    if (!period) throw new Error("Seleccioná una semana.");
+    if (!period.isClosed) throw new Error("Esta semana todavía no cerró.");
+    const driverUid = getOwnDriverUid();
+    const existing = uberWeekFor(driverUid, period.weekId);
+    if (existing && safe(existing.reviewStatus).toLowerCase() !== "rejected") throw new Error("Esta semana ya fue cerrada.");
+    state.uberWeeklyBusy = true;
+    setEfficiencyFormMessage("Cerrando semana sin datos…");
+    try {
+      const nowMs = Date.now();
+      const driverName = displayName();
+      const closureId = `uber_${driverUid}_${period.weekId}`;
+      const weekLabel = uberWeekDisplayLabel(period);
+      const payload = {
+        closureId, id:closureId, weekId:period.weekId, weekLabel,
+        weekStartMs:period.start.getTime(), weekEndMs:period.end.getTime(),
+        weekDisplayEndMs:period.displayEnd.getTime(), weekEndBoundaryMs:period.displayEnd.getTime(),
+        driverUid, choferUid:driverUid, driverId:driverUid, driverName,
+        grossAmount:0, totalAmount:0, driverShare:0, driverNetAmount:0,
+        exploraShare:0, debtAmount:0, cashboxRate:.05, cashboxAmount:0, uberCashboxAmount:0,
+        receiptUrl:"", receiptPath:"", notificationPhotoUrl:"", telegramPhotoUrl:"", firebasePhotoUrl:"",
+        noData:true, noDataReason:"driver_not_working", reviewStatus:"no_data", status:"no_data", locked:true,
+        createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs,
+        updatedAt:serverTimestamp(), updatedAtMs:nowMs, version:VERSION
+      };
+      await setDoc(doc(state.db, "uber_weekly_closures", closureId), payload, { merge:false });
+      state.uberWeeks = [{ ...payload, createdAt:undefined, updatedAt:undefined }, ...(state.uberWeeks||[]).filter(x=>safe(x.id || x.closureId)!==closureId)];
+      state.uberWeeklyFile = null;
+      state.uberSelectedWeekId = "";
+      renderEfficiencyButton();
+      renderEfficiencyModal();
+    } finally {
+      state.uberWeeklyBusy = false;
+    }
   }
 
   async function uploadUberWeeklyReceipt({ driverUid, weekId, file }) {
