@@ -295,67 +295,19 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
 
     function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
-    async function hideSplashSafely() {
-      if (splashHidden) return;
-      const elapsed = Date.now() - splashStartedAt;
-      const wait = Math.max(0, Math.min(MIN_SPLASH_MS - elapsed, MAX_SPLASH_MS));
-      if (wait > 0) await delay(wait);
-      splashHidden = true;
-      document.body.classList.add("explora-splash-hidden");
-    }
+    async function hideSplashSafely() { return true; }
 
-    const splashSyncState = { progress: 0, timer: null, active: false, detail: "" };
-
-    function setSplashSyncProgress(progress = 0, title = "Sincronizando información", detail = "Estamos actualizando tu perfil antes de abrir el menú.") {
-      const safeProgress = Math.max(0, Math.min(100, Math.round(Number(progress || 0))));
-      splashSyncState.progress = Math.max(splashSyncState.progress || 0, safeProgress);
-      const titleElement = $("exploraSyncTitle");
-      const detailElement = $("exploraSyncDetail");
-      const barElement = $("exploraSyncProgressBar");
-      const percentElement = $("exploraSyncPercent");
-      if (titleElement) titleElement.textContent = title || "Sincronizando información";
-      if (detailElement) detailElement.textContent = detail || "Actualizando datos…";
-      if (barElement) barElement.style.width = `${splashSyncState.progress}%`;
-      if (percentElement) percentElement.textContent = `${splashSyncState.progress}%`;
-    }
-
-    function beginSplashSync(detail = "Consultando la información más reciente…") {
-      splashHidden = false;
-      splashSyncState.active = true;
-      splashSyncState.progress = 0;
-      if (splashSyncState.timer) clearInterval(splashSyncState.timer);
-      document.body.classList.remove("explora-splash-hidden");
-      const splash = $("exploraSplash");
-      if (splash) { splash.removeAttribute("aria-hidden"); splash.style.display = "grid"; splash.style.pointerEvents = "auto"; }
-      setSplashSyncProgress(3, "Actualizando EXPLORA", detail);
-      splashSyncState.timer = setInterval(() => {
-        if (!splashSyncState.active) return;
-        const current = Number(splashSyncState.progress || 0);
-        if (current >= 92) return;
-        const step = current < 35 ? 5 : current < 70 ? 3 : 1;
-        setSplashSyncProgress(Math.min(92, current + step), "Actualizando EXPLORA", splashSyncState.detail || detail);
-      }, 180);
-    }
-
-    async function finishSplashSync() {
-      splashSyncState.active = false;
-      if (splashSyncState.timer) clearInterval(splashSyncState.timer);
-      splashSyncState.timer = null;
-      setSplashSyncProgress(100, "Información actualizada", "Abriendo EXPLORA…");
-      await delay(180);
-      return hideSplashSafely();
-    }
-
-    function updateSplashSync(progress, detail, title = "Sincronizando información") {
-      splashSyncState.detail = detail || splashSyncState.detail || "Actualizando datos…";
-      if (!splashSyncState.active && !splashHidden) splashSyncState.active = true;
-      setSplashSyncProgress(progress, title, splashSyncState.detail);
-    }
-
-    function finishSplash() { return finishSplashSync(); }
+    // EXPLORA v4105: compatibilidad sin pantalla global de carga.
+    // Estas funciones permanecen como no-op para no romper módulos antiguos.
+    const splashSyncState = { progress: 100, timer: null, active: false, detail: "" };
+    function setSplashSyncProgress() {}
+    function beginSplashSync() { return false; }
+    async function finishSplashSync() { return true; }
+    function updateSplashSync() {}
+    function finishSplash() { return true; }
 
     function setBodyMode(mode) {
-      document.body.classList.remove("explora-auth-checking","explora-login-visible","explora-authenticated","explora-role-blocked","explora-admin-authenticated");
+      document.body.classList.remove("explora-auth-pending","explora-auth-checking","explora-login-visible","explora-authenticated","explora-role-blocked","explora-admin-authenticated");
       if (mode !== "explora-authenticated") document.body.classList.remove("explora-shared-admin");
       document.body.classList.add(mode);
     }
@@ -642,18 +594,12 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
           uidMatches: !authSessionState.authenticatedUser || authSessionState.authenticatedUser.uid === persistentUser.uid,
           uiOpened: authSessionState.uiOpened
         });
-        if (!authSessionState.uiOpened) {
-          beginSplashSync("Restaurando la sesión activa de EXPLORA…");
-          setBodyMode("explora-auth-checking");
-        }
+        // Una sesión válida nunca vuelve al login ni activa una pantalla global.
         return;
       }
-      splashSyncState.active = false;
-      if (splashSyncState.timer) { clearInterval(splashSyncState.timer); splashSyncState.timer = null; }
       clearDriverVisuals();
       setBodyMode("explora-login-visible");
       loginMsg(message);
-      hideSplashSafely();
     }
 
     function showDriverApp() {
@@ -668,7 +614,6 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       renderDashboardByRole?.({ role: "chofer", profile: exploraSession.profile || {} });
       const weeklySnapshot = window.ExploraWeeklyEngine?.getState?.();
       if (weeklySnapshot?.loaded && !weeklySnapshot?.loading) window.ExploraFastCache?.renderWeeklySnapshot?.(weeklySnapshot);
-      finishSplashSync();
       if (window.ExploraMainNav) window.ExploraMainNav.setActive("inicio");
       restoreLastDriverScreen();
       // La apertura ya esperó la sincronización autoritativa. No se restauran
@@ -685,7 +630,6 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
 
     function showRoleBlocked() {
       setBodyMode("explora-role-blocked");
-      finishSplashSync();
     }
 
     function saveVisualSession() {
@@ -3789,7 +3733,6 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         authSessionState.authenticatedUser?.uid === authUser?.uid
       );
       if (!preserveOpenUI) {
-        beginSplashSync("Restaurando sesión y verificando datos actuales…");
         resetCurrentSessionUI();
       } else {
         loginDevDiagnostic("SESSION_REFRESH_IN_BACKGROUND", { uid: authUser.uid });
@@ -3799,10 +3742,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       exploraSession.closing = false;
       exploraSession.authReady = false;
       authSessionState.profileLoading = true;
-      updateSplashSync(18, "Verificando usuario autenticado…");
-
       const loaded = await withTimeout(loadLegacyExploraProfile(authUser), 10000, "PROFILE_TIMEOUT");
-      updateSplashSync(44, "Perfil actualizado desde EXPLORA…");
       const rawProfile = loaded.profile || {};
       const role = secureLegacyRoleForAuth(rawProfile, authUser, loaded.role || "");
       if (!loaded.active) throw new Error("PROFILE_DISABLED");
@@ -3838,12 +3778,12 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       loginDevDiagnostic("LEGACY_ROLE_RESOLVED", { role });
       applyDriverDataToUI();
       saveVisualSession();
-      await preloadFreshDashboardDataBeforeOpen(role, authUser, profile, loaded);
 
       if (auth.currentUser?.uid !== authUser.uid || exploraSession.generation !== sessionGeneration || exploraSession.closing) {
         throw new Error("SESSION_OPEN_REPLACED");
       }
 
+      // Abrir el menú apenas se confirmó identidad, perfil y rol.
       if (role === "admin") {
         loginDevDiagnostic("ACCESS_ADMIN", {});
         showAdminApp();
@@ -3851,6 +3791,10 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         loginDevDiagnostic("ACCESS_DRIVER", {});
         showDriverApp();
       }
+
+      // La carga pesada continúa silenciosamente y actualiza módulos puntuales.
+      Promise.resolve(preloadFreshDashboardDataBeforeOpen(role, authUser, profile, loaded))
+        .catch((error) => loginDevDiagnostic("BACKGROUND_PREFLIGHT_SKIPPED", { code: error && (error.message || error.code) || "unknown" }));
       exploraSession.authReady = true;
       const sessionDetail = { uid: authUser.uid, role, generation: sessionGeneration, profileResolved: true, sessionInitialized: true };
       window.dispatchEvent(new CustomEvent("explora:auth-ready", { detail: sessionDetail }));
@@ -5870,8 +5814,6 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       exploraSession.authReady = true;
       const cachedShellOpened = authSessionState.uiOpened;
       if (!cachedShellOpened) {
-        beginSplashSync("Reintentando sincronizar tu perfil. No abrimos el menú hasta tener datos actuales.");
-        setBodyMode("explora-auth-checking");
       }
       const delayMs = Math.min(15000, 1800 + (sessionRecoveryRetryCount * 1700));
       sessionRecoveryRetryCount += 1;
@@ -5943,12 +5885,6 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         authSessionState.uiOpened &&
         authSessionState.authenticatedUser?.uid === user.uid
       );
-      if (!preserveCurrentUI) {
-        beginSplashSync("Actualizando tu información. Esperá un momento…");
-        updateSplashSync(12, "Consultando los datos más recientes de Firebase…", "Actualizando EXPLORA");
-        setBodyMode("explora-auth-checking");
-      }
-
       let keepSyncVisible = false;
       try {
         await openAuthenticatedExploraSession(user, {
@@ -5968,14 +5904,19 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
           // estaba abierta. En arranque frío permanece el loader; nunca se muestra
           // información persistida de una ejecución anterior.
           const fallbackOpened = Boolean(authSessionState.uiOpened);
-          keepSyncVisible = !fallbackOpened;
+          keepSyncVisible = false;
           scheduleSessionProfileRecovery(user, error);
+          if (!fallbackOpened) {
+            resetCurrentSessionUI();
+            await signOut(auth).catch(() => {});
+            showLogin("No se pudo restaurar la sesión. Revisá tu conexión e intentá nuevamente.", "SESSION_RESTORE_TEMPORARY");
+          }
         }
       } finally {
         loginDevDiagnostic("PROFILE_LOAD_FINALLY", {});
         exploraSession.authReady = true;
         authSessionState.bootCompleted = true;
-        if (!keepSyncVisible) finishSplash();
+
       }
     }
 
@@ -6022,21 +5963,10 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       logoutInProgress: false
     };
     window.ExploraDataSyncGate = Object.freeze({
-      begin(detail = "Actualizando información antes de continuar…") {
-        const user = auth.currentUser || authSessionState.authenticatedUser;
-        if (!user?.uid || !authSessionState.uiOpened || authSessionState.logoutInProgress) return false;
-        beginSplashSync(detail);
-        return true;
-      },
-      update(progress, detail = "Actualizando información…") {
-        updateSplashSync(progress, detail);
-      },
-      finish() {
-        return finishSplashSync();
-      },
-      isActive() {
-        return Boolean(splashSyncState.active && !splashHidden);
-      }
+      begin() { return false; },
+      update() {},
+      finish() { return Promise.resolve(true); },
+      isActive() { return false; }
     });
 
     const LOGIN_ALIAS_COLLECTION = "login_aliases";
@@ -6288,9 +6218,6 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       const user = credential.user;
       loginDevDiagnostic("AUTH_SUCCESS", { hasUser: true });
       try { localStorage.setItem(EXPLORA_SESSION_PREFIX + "last_username", normalizedUser); } catch (_) {}
-      beginSplashSync("Validando perfil y actualizando datos de EXPLORA…");
-      setBodyMode("explora-auth-checking");
-
       await withTimeout(openAuthenticatedExploraSession(user), 28000, "LOGIN_TIMEOUT");
       authSessionState.authenticatedUser = user;
       authSessionState.profile = exploraSession.profile || null;
