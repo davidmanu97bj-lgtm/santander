@@ -296,12 +296,10 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
     async function hideSplashSafely() {
-      if (splashHidden) return;
-      const elapsed = Date.now() - splashStartedAt;
-      const wait = Math.max(0, Math.min(MIN_SPLASH_MS - elapsed, MAX_SPLASH_MS));
-      if (wait > 0) await delay(wait);
       splashHidden = true;
       document.body.classList.add("explora-splash-hidden");
+      const splash = $("exploraSplash");
+      if (splash) splash.remove();
     }
 
     const splashSyncState = { progress: 0, timer: null, active: false, detail: "" };
@@ -319,30 +317,19 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       if (percentElement) percentElement.textContent = `${splashSyncState.progress}%`;
     }
 
-    function beginSplashSync(detail = "Consultando la información más reciente…") {
-      splashHidden = false;
-      splashSyncState.active = true;
+    function beginSplashSync() {
+      splashHidden = true;
+      splashSyncState.active = false;
       splashSyncState.progress = 0;
       if (splashSyncState.timer) clearInterval(splashSyncState.timer);
-      document.body.classList.remove("explora-splash-hidden");
-      const splash = $("exploraSplash");
-      if (splash) { splash.removeAttribute("aria-hidden"); splash.style.display = "grid"; splash.style.pointerEvents = "auto"; }
-      setSplashSyncProgress(3, "Actualizando EXPLORA", detail);
-      splashSyncState.timer = setInterval(() => {
-        if (!splashSyncState.active) return;
-        const current = Number(splashSyncState.progress || 0);
-        if (current >= 92) return;
-        const step = current < 35 ? 5 : current < 70 ? 3 : 1;
-        setSplashSyncProgress(Math.min(92, current + step), "Actualizando EXPLORA", splashSyncState.detail || detail);
-      }, 180);
+      splashSyncState.timer = null;
+      document.body.classList.add("explora-splash-hidden");
     }
 
     async function finishSplashSync() {
       splashSyncState.active = false;
       if (splashSyncState.timer) clearInterval(splashSyncState.timer);
       splashSyncState.timer = null;
-      setSplashSyncProgress(100, "Información actualizada", "Abriendo EXPLORA…");
-      await delay(180);
       return hideSplashSafely();
     }
 
@@ -643,8 +630,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
           uiOpened: authSessionState.uiOpened
         });
         if (!authSessionState.uiOpened) {
-          beginSplashSync("Restaurando la sesión activa de EXPLORA…");
-          setBodyMode("explora-auth-checking");
+          openCachedAuthenticatedShell(persistentUser, "show-login-blocked");
         }
         return;
       }
@@ -5939,15 +5925,17 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       // - Si es una apertura nueva (proceso reconstruido por iOS/Android), NO se
       //   restaura ninguna vista persistida. Se mantiene el panel “Actualizando…”
       //   hasta tener datos confirmados de Firebase, evitando mostrar información vieja.
-      const preserveCurrentUI = Boolean(
+      let preserveCurrentUI = Boolean(
         authSessionState.uiOpened &&
         authSessionState.authenticatedUser?.uid === user.uid
       );
+      // Al restaurar una sesión persistente se abre inmediatamente la pantalla
+      // principal usando solamente identidad/perfil visual guardado. Los importes
+      // permanecen en “Actualizando…” hasta que Firestore confirme los datos reales.
       if (!preserveCurrentUI) {
-        beginSplashSync("Actualizando tu información. Esperá un momento…");
-        updateSplashSync(12, "Consultando los datos más recientes de Firebase…", "Actualizando EXPLORA");
-        setBodyMode("explora-auth-checking");
+        preserveCurrentUI = openCachedAuthenticatedShell(user, "auth-persistence-restored");
       }
+      if (!preserveCurrentUI) setBodyMode("explora-login-visible");
 
       let keepSyncVisible = false;
       try {
