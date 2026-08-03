@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4105-comprobantes-por-modulo-admin";
+  const VERSION = "explora-pago-home-v52-v4106-carga-verde-todas-tarjetas";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -85,7 +85,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     adminAmountEditRow:null,
     adminAmountEditBusy:false,
     busy:false,
-    refreshing:false
+    refreshing:false,
+    dataLoading:true,
+    realtimeGeneration:0,
+    realtimeReady:new Set()
   };
 
   const currency = value => new Intl.NumberFormat("es-AR", { style:"currency", currency:"ARS", maximumFractionDigits:0 }).format(Number(value) || 0).replace(/\s/g, "");
@@ -813,6 +816,37 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
   }
 
+  const REALTIME_COLLECTIONS = Object.freeze([
+    "billing_records", "gastos", "cierres_semanales", "deudas_choferes", "uber_weekly_closures", "deuda_pagos"
+  ]);
+
+  function beginFinancialDataLoading({ clearValues = true } = {}) {
+    state.dataLoading = true;
+    state.realtimeGeneration += 1;
+    state.realtimeReady = new Set();
+    if (clearValues) {
+      state.records = [];
+      state.expenses = [];
+      state.closures = [];
+      state.debts = [];
+      state.debtPayments = [];
+      state.uberWeeks = [];
+      state.latestSummary = null;
+      state.pendingClosure = null;
+    }
+    render();
+    return state.realtimeGeneration;
+  }
+
+  function markFinancialCollectionReady(collectionName, generation) {
+    if (generation !== state.realtimeGeneration) return;
+    state.realtimeReady.add(collectionName);
+    if (REALTIME_COLLECTIONS.every(name => state.realtimeReady.has(name))) {
+      state.dataLoading = false;
+      render();
+    }
+  }
+
   async function waitFirebase(timeout = 14000) {
     const started = Date.now();
     while (Date.now() - started < timeout) {
@@ -1024,6 +1058,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   async function refreshOpenData(reason = "manual-refresh") {
     if (!state.db || !state.user || state.refreshing) return;
     state.refreshing = true;
+    beginFinancialDataLoading({ clearValues:true });
     const refreshButton = $("payRefreshBtn");
     const originalText = refreshButton?.textContent || "Actualizar →";
     if (refreshButton) {
@@ -1087,7 +1122,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       state.tab = activeTab;
       state.view = activeView;
       render();
-      startRealtime(reason);
+      startRealtime(reason, { preserveConfirmed:true });
     } catch (error) {
       console.warn("EXPLORA_MANUAL_REFRESH", error?.code || error?.message || error);
       startRealtime(`${reason}-fallback`);
@@ -2146,7 +2181,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return Array.from(map.values());
   }
 
-  function listenCollection(collectionName, targetArray, uid) {
+  function listenCollection(collectionName, targetArray, uid, onReady = null) {
     try {
       const targetUid = safe(uid || getDriverUid());
       if (!targetUid) {
@@ -2154,12 +2189,20 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           state[targetArray] = snap.docs.map(d => ({ id:d.id, ...d.data() })).sort((a,b)=>rowMs(b)-rowMs(a));
           if (["billing_records", "gastos", "deudas_choferes", "deuda_pagos"].includes(collectionName)) registerTabAlertMovements(collectionName, state[targetArray]);
           render();
+          onReady?.();
         }, error => {
           console.warn(`EXPLORA_PAY_LISTENER_${collectionName}`, error?.code || error?.message);
+          onReady?.();
         });
       }
       const fields = ["driverUid", "choferUid", "uid", "ownerUid", "driverId", "choferId", "driver_id", "chofer_id", "userUid", "userId", "createdByUid", "ownerId", "conductorUid", "conductorId", "assignedDriverUid"];
       const snapshots = new Map();
+      const pendingFields = new Set(fields);
+      let readySent = false;
+      const fieldReady = field => {
+        pendingFields.delete(field);
+        if (!readySent && pendingFields.size === 0) { readySent = true; onReady?.(); }
+      };
       const publish = () => {
         const merged = new Map();
         for (const docs of snapshots.values()) {
@@ -2174,8 +2217,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           return onSnapshot(query(collection(state.db, collectionName), where(field, "==", targetUid), limit(250)), snap => {
             snapshots.set(field, snap.docs.map(d => ({ id:d.id, ...d.data() })));
             publish();
+            fieldReady(field);
           }, error => {
             console.warn(`EXPLORA_PAY_LISTENER_${collectionName}_${field}`, error?.code || error?.message);
+            fieldReady(field);
           });
         } catch (error) {
           console.warn(`EXPLORA_PAY_LISTENER_SETUP_${collectionName}_${field}`, error?.code || error?.message);
@@ -2189,9 +2234,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
   }
 
-  function startRealtime(reason = "start") {
+  function startRealtime(reason = "start", options = {}) {
     if (!state.db || !state.user) return;
     clearListeners();
+    const generation = options.preserveConfirmed === true
+      ? (state.dataLoading = false, state.realtimeGeneration += 1, state.realtimeReady = new Set(REALTIME_COLLECTIONS), state.realtimeGeneration)
+      : beginFinancialDataLoading({ clearValues:true });
+    const ready = collectionName => markFinancialCollectionReady(collectionName, generation);
     const uid = getDriverUid();
     if (isAdmin()) {
       fetchDrivers().then(() => {
@@ -2204,12 +2253,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       if (!uid) {
         state.pendingClosure = null;
         const unsubs = [
-          listenCollection("billing_records", "records", ""),
-          listenCollection("gastos", "expenses", ""),
-          listenCollection("cierres_semanales", "closures", ""),
-          listenCollection("deudas_choferes", "debts", ""),
-          listenCollection("uber_weekly_closures", "uberWeeks", ""),
-          listenCollection("deuda_pagos", "debtPayments", "")
+          listenCollection("billing_records", "records", "", () => ready("billing_records")),
+          listenCollection("gastos", "expenses", "", () => ready("gastos")),
+          listenCollection("cierres_semanales", "closures", "", () => ready("cierres_semanales")),
+          listenCollection("deudas_choferes", "debts", "", () => ready("deudas_choferes")),
+          listenCollection("uber_weekly_closures", "uberWeeks", "", () => ready("uber_weekly_closures")),
+          listenCollection("deuda_pagos", "debtPayments", "", () => ready("deuda_pagos"))
         ].filter(Boolean);
         state.unsubscribers.push(...unsubs);
         render();
@@ -2218,12 +2267,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       }
     }
     const unsubs = [
-      listenCollection("billing_records", "records", uid),
-      listenCollection("gastos", "expenses", uid),
-      listenCollection("cierres_semanales", "closures", uid),
-      listenCollection("deudas_choferes", "debts", uid),
-      listenCollection("uber_weekly_closures", "uberWeeks", uid),
-      listenCollection("deuda_pagos", "debtPayments", uid)
+      listenCollection("billing_records", "records", uid, () => ready("billing_records")),
+      listenCollection("gastos", "expenses", uid, () => ready("gastos")),
+      listenCollection("cierres_semanales", "closures", uid, () => ready("cierres_semanales")),
+      listenCollection("deudas_choferes", "debts", uid, () => ready("deudas_choferes")),
+      listenCollection("uber_weekly_closures", "uberWeeks", uid, () => ready("uber_weekly_closures")),
+      listenCollection("deuda_pagos", "debtPayments", uid, () => ready("deuda_pagos"))
     ].filter(Boolean);
     state.unsubscribers.push(...unsubs);
     console.info("EXPLORA_PAY_REALTIME", VERSION, reason, uid || "no-driver");
@@ -5259,6 +5308,20 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function renderMainCard(summary) {
     const amount = $("payMainAmount"), subtitle = $("payMainSubtitle"), pillLabel = $("payPillLabel"), pillAmount = $("payPillAmount"), extra = $("payExtraLines"), debtAliasHint = $("payDebtAliasHint"), expenseDebtReconciliation = $("payExpenseDebtReconciliation");
     if (!amount || !subtitle || !pillLabel || !pillAmount || !extra) return;
+    const mainCard = amount.closest(".pay-main-card");
+    if (mainCard) mainCard.classList.toggle("is-firestore-loading", !!state.dataLoading);
+    if (state.dataLoading) {
+      amount.textContent = "Actualizando…";
+      subtitle.textContent = "Consultando información actual en Firestore";
+      pillLabel.textContent = "Actualizando datos";
+      pillAmount.textContent = "Actualizando…";
+      extra.innerHTML = [
+        "Saldo actual", "Total del período", "Parte correspondiente", "Cierre del módulo"
+      ].map(label => `<div><span>${esc(label)}</span><strong>Actualizando…</strong></div>`).join("");
+      if (debtAliasHint) debtAliasHint.hidden = true;
+      if (expenseDebtReconciliation) { expenseDebtReconciliation.hidden = true; expenseDebtReconciliation.innerHTML = ""; }
+      return;
+    }
     if (debtAliasHint) debtAliasHint.hidden = activeClosureKind(state.tab) !== "pendientes" || isAdmin();
     if (expenseDebtReconciliation) {
       expenseDebtReconciliation.hidden = true;
@@ -5378,6 +5441,19 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function renderClosureStatus(summary) {
     const box = $("payClosureStatus"), text = $("payClosureStatusText"), action = $("payClosureActionBtn");
     const kind = activeClosureKind(state.tab);
+    if (state.dataLoading) {
+      if (action) {
+        action.hidden = false;
+        action.disabled = true;
+        action.setAttribute("aria-disabled", "true");
+        action.classList.remove("is-closure-ready", "is-debt-blocked");
+        action.classList.add("is-closure-locked");
+        const label = action.querySelector("span");
+        if (label) label.innerHTML = "Actualizando…";
+      }
+      if (box) { box.hidden = true; box.style.display = "none"; }
+      return;
+    }
     if (kind === "pendientes") {
       setPendingActionMode(true);
       const pending = tabSummary(summary, "pendientes");
