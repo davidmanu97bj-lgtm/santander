@@ -4318,6 +4318,22 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return "";
   }
 
+  function activityMatchesSelectedModule(row = {}) {
+    if (isAdmin()) return adminActivityMatches(row);
+
+    const tab = activeClosureKind(state.tab);
+
+    // Cada inicio de módulo muestra solamente sus propios comprobantes.
+    // Chofer es la única excepción: reúne efectivo y caja chica.
+    if (tab === "explora") return row.type === "payment" && row.method !== "cash";
+    if (tab === "chofer") return (row.type === "payment" && row.method === "cash") || row.type === "cashbox";
+    if (tab === "caja_chica") return row.type === "cashbox";
+    if (tab === "gastos") return row.type === "expense";
+    if (tab === "pendientes") return row.type === "debt" || row.type === "debt_payment";
+
+    return false;
+  }
+
   function adminActivityMatches(row = {}) {
     if (!isAdmin()) return true;
     const type = safe(state.adminActivityType);
@@ -4775,7 +4791,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         photoAmount:Math.max(number(row.amountDueFromDriver || 0), number(row.amountDueToDriver || 0), number(row.mainTotal || 0))
       });
     }
-    return rows.filter(adminActivityMatches).sort((a,b)=>b.at-a.at).slice(0, adminMode ? 60 : 12);
+    return rows.filter(activityMatchesSelectedModule).sort((a,b)=>b.at-a.at).slice(0, adminMode ? 60 : 12);
   }
 
   function historyScopeLabel(scope = state.historyScope) {
