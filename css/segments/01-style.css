@@ -3635,3 +3635,16 @@ input[type="search"]::-webkit-search-results-button,
 input[type="search"]::-webkit-search-results-decoration{
   display:none;
 }
+
+/* EXPLORA v4105 · estado inicial neutro, sin splash ni textos de carga */
+body.explora-auth-pending .app-shell,
+body.explora-auth-pending .main-bottom-nav,
+body.explora-auth-pending .profile-screen,
+body.explora-auth-pending .new-service-screen,
+body.explora-auth-pending .expense-screen,
+body.explora-auth-pending .receipts-screen,
+body.explora-auth-pending .explora-login,
+body.explora-auth-pending .explora-role-block {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
