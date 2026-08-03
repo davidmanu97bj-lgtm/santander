@@ -6543,7 +6543,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     window.ExploraActions["admin-facturacion"] = () => openAdminSharedModule("billing");
     window.ExploraActions["admin-colaboracion-bono"] = () => openAdminSharedModule("collaboration");
     window.ExploraActions["admin-gastos"] = () => openAdminSharedModule("expenses");
-    window.ExploraActions["admin-comprobantes"] = () => window.ExploraReceipts?.openAdminPayments?.() || window.ExploraReceipts?.openCategory?.("alias") || window.ExploraReceipts?.open?.({adminMode:true});
+    window.ExploraActions["admin-comprobantes"] = () => window.ExploraReceipts?.openAdminPayments?.() || window.ExploraReceipts?.openCategory?.("explora") || window.ExploraReceipts?.open?.({adminMode:true});
 
     $("adminSharedBackBtn")?.addEventListener("click", () => {
       if (adminSharedState.mode === "closure-detail") {
@@ -11368,16 +11368,79 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         return String(b.weeklyPeriodId||"").localeCompare(String(a.weeklyPeriodId||"")) || bd-ad;
       });
     }
+    function receiptModuleText(row = {}) {
+      return [row.category,row.type,row.receiptCategory,row.module,row.moduleKey,row.closureKind,row.closureType,row.payTab,row.kind,row.financialCategory,row.paymentMethod,row.metodoPago,row.receiptPaymentMethod,row.reason,row.sourceCollection].map(value => String(value || "").trim().toLowerCase()).join(" ");
+    }
+    function receiptModulePaymentMethod(row = {}) {
+      const text = receiptModuleText(row);
+      if (/cash|efectivo/.test(text)) return "cash";
+      if (/qr/.test(text)) return "qr";
+      if (/card|tarjeta|point/.test(text)) return "card";
+      if (/transfer|alias|mercado\s*pago|digital/.test(text)) return "transfer";
+      return "";
+    }
+    function receiptModuleIsCashbox(row = {}) {
+      return /caja[_\s-]*chica|cashbox|petty|repair[_\s-]*fund/.test(receiptModuleText(row));
+    }
+    function receiptModuleIsExpense(row = {}) {
+      return /(^|\s)(expense|gasto|gastos)(\s|$)/.test(receiptModuleText(row));
+    }
+    function receiptModuleIsDebt(row = {}) {
+      return /driver[_\s-]*debt|(^|\s)(debt|deuda|multas?|choques?)(\s|$)/.test(receiptModuleText(row));
+    }
+    function receiptModuleDedupeRows(rows = []) {
+      const deduped = new Map();
+      rows.forEach(row => {
+        const raw = row.raw || row;
+        const key = String(raw.recordId || raw.operationId || raw.closureId || raw.debtId || raw.id || receiptModuleKey(raw));
+        const previous = deduped.get(key);
+        if (!previous || (!previous.url && row.url)) deduped.set(key,row);
+      });
+      return [...deduped.values()].sort((a,b) => {
+        const ad = receiptModuleDateObject((a.raw||{}).receiptUploadedAt || (a.raw||{}).createdAt || (a.raw||{}).updatedAt)?.getTime() || 0;
+        const bd = receiptModuleDateObject((b.raw||{}).receiptUploadedAt || (b.raw||{}).createdAt || (b.raw||{}).updatedAt)?.getTime() || 0;
+        return bd-ad;
+      });
+    }
+    async function receiptModuleLoadSeparated(category) {
+      const indexName = window.ExploraCanonicalWeeklyClosure?.receiptIndexCollectionName?.() || "receipt_index";
+      if (category === "gastos") {
+        const indexed = (await receiptModuleReadMany([indexName,"receipt_index"], category)).filter(receiptModuleIsExpense);
+        const source = indexed.length ? indexed : await receiptModuleReadMany(["gastos"], category);
+        return receiptModuleDedupeRows(source.map(row => receiptModuleCommonRow(row,category,{title:row.categoryLabel || row.tipoLabel || row.expenseType || "Gasto"})));
+      }
+      if (category === "deudas") {
+        const indexed = (await receiptModuleReadMany([indexName,"receipt_index"], category)).filter(receiptModuleIsDebt);
+        const source = indexed.length ? indexed : await receiptModuleReadMany(["deudas_choferes","deuda_pagos","deuda_movimientos"], category);
+        return receiptModuleDedupeRows(source.map(row => receiptModuleCommonRow(row,category,{title:`Deuda: ${row.reasonLabel || row.reason || "Otro"}`})));
+      }
+      if (category === "explora") {
+        const [indexes,billing] = await Promise.all([
+          receiptModuleReadMany([indexName,"receipt_index"], category),
+          receiptModuleReadMany(["billing_records"], category)
+        ]);
+        const digitalIndexes = indexes.filter(row => ["qr","card","transfer"].includes(receiptModulePaymentMethod(row)) && !receiptModuleIsExpense(row) && !receiptModuleIsDebt(row) && !receiptModuleIsCashbox(row));
+        const indexedIds = new Set(digitalIndexes.map(row => String(row.recordId || row.operationId || "")).filter(Boolean));
+        const digitalFallback = billing.filter(row => ["qr","card","transfer"].includes(receiptModulePaymentMethod(row)) && !indexedIds.has(String(row.id || row.recordId || row.operationId || "")));
+        return receiptModuleDedupeRows([...digitalIndexes,...digitalFallback].map(row => receiptModuleCommonRow(row,category,{title:"Pago digital",categoryLabel:"Explora"})));
+      }
+      if (category === "caja_chica" || category === "chofer") {
+        const [indexes,billing,closures] = await Promise.all([
+          receiptModuleReadMany([indexName,"receipt_index"], category),
+          receiptModuleReadMany(["billing_records"], category),
+          receiptModuleReadMany(["cierres_semanales","cierresSemanales","cierres","pagos_semanales"], category)
+        ]);
+        const cashbox = [...indexes,...closures].filter(receiptModuleIsCashbox);
+        const cash = category === "chofer" ? billing.filter(row => receiptModulePaymentMethod(row) === "cash") : [];
+        const cashRows = cash.map(row => receiptModuleCommonRow(row,category,{title:"Cobro en efectivo",categoryLabel:"Chofer"}));
+        const cashboxRows = cashbox.map(row => receiptModuleCommonRow(row,category,{title:"Caja Chica",categoryLabel:"Caja Chica"}));
+        return receiptModuleDedupeRows(category === "chofer" ? [...cashRows,...cashboxRows] : cashboxRows);
+      }
+      return [];
+    }
     window.ExploraReceiptsData = {
       async load(category) {
-        if (category === "cierres") return receiptModuleLoadClosures();
-        const categoryMap = { deudas:["driver_debt","debt"], prestamos:["operational_loan","loan"], alias:["payment","alias_payment"], gastos:["expense"] };
-        const indexName = window.ExploraCanonicalWeeklyClosure?.receiptIndexCollectionName?.() || "receipt_index";
-        const indexed = (await receiptModuleReadMany([indexName,"receipt_index"], category)).filter(row => (categoryMap[category] || []).includes(String(row.category || row.type || "").toLowerCase()));
-        if (indexed.length) return indexed.map(row => receiptModuleCommonRow(row,category,{title:category === "deudas" ? "Deuda" : category === "prestamos" ? "Préstamo operativo" : category === "alias" ? "Pago cliente" : (row.categoryLabel || row.expenseType || "Gasto")}));
-        const fallbackCollections = {deudas:["deudas_choferes"],prestamos:["prestamos_operativos"],alias:["billing_records"],gastos:["gastos"]};
-        const fallback = await receiptModuleReadMany(fallbackCollections[category] || [], category);
-        return fallback.map(row => receiptModuleCommonRow(row,category,{title:category === "deudas" ? `Deuda: ${row.reasonLabel || row.reason || "Otro"}` : category === "prestamos" ? "Préstamo operativo" : category === "alias" ? "Pago cliente" : (row.tipoLabel || row.categoryLabel || row.expenseType || row.category || row.tipo || "Gasto")}));
+        return receiptModuleLoadSeparated(category);
       }
     };
 

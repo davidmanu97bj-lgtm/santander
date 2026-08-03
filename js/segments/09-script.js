@@ -4,15 +4,15 @@
   if(!screen)return;
   const $=id=>document.getElementById(id);
   const AR_TZ="America/Argentina/Cordoba";
-  const state={category:"deudas",rows:[],filter:"todos",search:"",driver:"",month:"",week:"",vehicle:"",loading:false,previousScrollY:0,cache:new Map(),editingRow:null,savingAmount:false,adminMode:false};
+  const state={category:"explora",rows:[],filter:"todos",search:"",driver:"",month:"",week:"",vehicle:"",loading:false,previousScrollY:0,cache:new Map(),editingRow:null,savingAmount:false,adminMode:false};
   const titles={
-    deudas:["DEUDAS","Comprobantes de multas, choques y otros cargos"],
-    prestamos:["PRÉSTAMOS","Comprobantes de préstamos operativos"],
-    alias:["PAGO CLIENTE","Transferencias y Alias de clientes"],
-    gastos:["GASTASTE","Comprobantes asociados a gastos"],
-    cierres:["COMPROBANTES SEMANALES","Ordenados por semana, estado y vehículo"]
+    explora:["EXPLORA","Transferencias, QR, tarjetas y pagos digitales"],
+    chofer:["CHOFER","Comprobantes de efectivo y Caja Chica"],
+    caja_chica:["CAJA CHICA","Comprobantes exclusivos de Caja Chica"],
+    gastos:["GASTOS","Comprobantes asociados a gastos"],
+    deudas:["DEUDAS","Comprobantes de deudas"]
   };
-  const emptyMessages={deudas:"No hay comprobantes de deudas.",prestamos:"No hay comprobantes de préstamos.",alias:"No hay comprobantes de pagos de clientes.",gastos:"No hay comprobantes de gastos.",cierres:"No hay cierres semanales para los filtros seleccionados."};
+  const emptyMessages={explora:"No hay comprobantes digitales de Explora.",chofer:"No hay comprobantes de efectivo ni Caja Chica.",caja_chica:"No hay comprobantes de Caja Chica.",gastos:"No hay comprobantes de gastos.",deudas:"No hay comprobantes de deudas."};
   const money=v=>new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0}).format(Number(v)||0).replace(/\s/g,"");
   const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const role=()=>String(window.ExploraSession?.role||window.ExploraSession?.rol||window.ExploraSession?.profile?.role||window.ExploraSession?.profile?.rol||window.ExploraSession?.profile?.tipoUsuario||window.ExploraAuthSession?.role||window.ExploraAuthSession?.rol||"").trim().toLowerCase();
@@ -21,7 +21,7 @@
   const isClosureAdmin=()=>isAdminView()&&state.category==="cierres";
   function setStatus(text="",error=false){const el=$("receiptsStatus");if(!el)return;el.textContent=text;el.className=`receipts-status${error?" err":""}`;}
   function open(options={}){if(options&&Object.prototype.hasOwnProperty.call(options,"adminMode"))state.adminMode=options.adminMode===true;state.previousScrollY=window.scrollY||0;screen.classList.add("is-open");screen.setAttribute("aria-hidden","false");screen.dataset.view="main";screen.dataset.adminMode=state.adminMode?"true":"false";window.lockPageScroll?.("receipts");window.ExploraMainNav?.setActive?.("comprobantes");syncAdminFilters();}
-  function openAdminPayments(){state.adminMode=true;open({adminMode:true});return load("alias",{force:true});}
+  function openAdminPayments(){state.adminMode=true;open({adminMode:true});return load("explora",{force:true});}
   function close(){screen.classList.remove("is-open");screen.setAttribute("aria-hidden","true");screen.dataset.view="main";screen.dataset.adminMode="false";state.adminMode=false;window.unlockPageScroll?.("receipts");window.ExploraMainNav?.setActive?.("inicio");requestAnimationFrame(()=>window.scrollTo(0,state.previousScrollY||0));}
   function normalizedState(row){return String(row.state||row.status||row.estado||"registrado").toLowerCase();}
   function rowRaw(row={}){return row.raw&&typeof row.raw==="object"?row.raw:row;}
@@ -108,7 +108,7 @@
     if(sourceCollection==="receipt_index"&&/^payment_/i.test(sourceId))return sourceId.replace(/^payment_/i,"");
     return sourceId;
   }
-  function canEditServiceAmount(){return state.adminMode===true&&state.category==="alias";}
+  function canEditServiceAmount(){return state.adminMode===true&&state.category==="explora";}
   function rowCard(row,index){
     const stateClass=normalizedState(row).replace(/[^a-z]/g,"");const hasFile=Boolean(row.url);
     const editButton=canEditServiceAmount(row)?`<button type="button" class="receipt-edit-amount" data-receipt-edit-index="${index}">MODIFICAR VALOR</button>`:"";
@@ -127,7 +127,7 @@
     rows.forEach(row=>{const key=String(row.driverUid||row.driverName||"sin-chofer");if(!drivers.has(key))drivers.set(key,{name:row.driverName||"Chofer",rows:[]});drivers.get(key).rows.push(row);});
     return [...drivers.entries()].sort((a,b)=>a[1].name.localeCompare(b[1].name,"es")).map(([,driver])=>{
       const months=new Map();driver.rows.forEach(row=>{const key=row.monthKey||"Sin mes";if(!months.has(key))months.set(key,[]);months.get(key).push(row);});
-      const expand=state.category==="alias"?" open":"";
+      const expand=state.category==="explora"?" open":"";
       const monthHtml=[...months.entries()].sort((a,b)=>String(b[0]).localeCompare(String(a[0]))).map(([month,monthRows])=>{
         const weeks=new Map();monthRows.forEach(row=>{const key=row.weeklyPeriodId||"Sin semana";if(!weeks.has(key))weeks.set(key,[]);weeks.get(key).push(row);});
         const weekHtml=[...weeks.entries()].map(([week,weekRows])=>`<details class="receipt-group-level receipt-group-week"${expand}><summary>SEMANA ${esc(week)} <span>${weekRows.length}</span></summary><div class="receipt-group-items">${weekRows.map(row=>rowCard(row,rows.indexOf(row))).join("")}</div></details>`).join("");
@@ -182,7 +182,7 @@
   function parseAmountInput(value){const digits=String(value??"").replace(/\D/g,"");const amount=Number(digits);return Number.isFinite(amount)?Math.round(amount):0;}
   function openAmountEditor(row){if(!canEditServiceAmount(row))return;state.editingRow=row;const backdrop=$("receiptAmountEditBackdrop"),input=$("receiptAmountEditInput");if(!backdrop||!input)return;$("receiptAmountEditDriver").textContent=row.driverName||"Chofer";$("receiptAmountEditCurrent").textContent=money(row.amount);input.value=formatAmountInput(row.amount);setAmountEditMessage("Verificá el nuevo monto antes de guardar.");backdrop.classList.add("is-open");backdrop.setAttribute("aria-hidden","false");window.lockPageScroll?.("receipt-amount-edit");setTimeout(()=>{input.focus();input.select?.();},80);}
   function closeAmountEditor(force=false){if(state.savingAmount&&!force)return;const backdrop=$("receiptAmountEditBackdrop");backdrop?.classList.remove("is-open");backdrop?.setAttribute("aria-hidden","true");state.editingRow=null;setAmountEditMessage("");window.unlockPageScroll?.("receipt-amount-edit");}
-  async function saveEditedAmount(){if(state.savingAmount||!state.editingRow)return;const row=state.editingRow,input=$("receiptAmountEditInput"),save=$("receiptAmountEditSave"),cancel=$("receiptAmountEditCancel");const amount=parseAmountInput(input?.value);const current=Math.round(Number(row.amount)||0);if(!(amount>0)){setAmountEditMessage("Ingresá un valor mayor a $0.","error");input?.focus();return;}if(amount===current){setAmountEditMessage("El nuevo valor es igual al actual.","error");input?.focus();return;}if(!window.ExploraReceiptEngine?.modifyServiceAmount){setAmountEditMessage("El módulo de corrección todavía no está disponible. Cerrá y volvé a abrir la app.","error");return;}state.savingAmount=true;if(save)save.disabled=true;if(cancel)cancel.disabled=true;if(input)input.disabled=true;setAmountEditMessage("Guardando corrección…");try{await window.ExploraReceiptEngine.modifyServiceAmount(row,amount);row.amount=amount;if(row.raw&&typeof row.raw==="object"){row.raw.amount=amount;row.raw.monto=amount;row.raw.valor=amount;row.raw.finalPrice=amount;}setAmountEditMessage("Valor corregido correctamente.","success");invalidate("alias");await load("alias",{force:true});setStatus(`Valor corregido a ${money(amount)}.`);setTimeout(()=>closeAmountEditor(true),450);}catch(error){console.error("RECEIPT_AMOUNT_EDIT",error);const code=String(error?.code||error?.message||"");const message=code.includes("NOT_FOUND")?"No se encontró el servicio original en facturación.":code.includes("AUTH")||code.includes("ADMIN")?"La sesión de administrador no tiene permiso para modificar este valor.":code.includes("INVALID")?"Ingresá un valor válido.":"No se pudo modificar el valor. Revisá la conexión e intentá nuevamente.";setAmountEditMessage(message,"error");}finally{state.savingAmount=false;if(save)save.disabled=false;if(cancel)cancel.disabled=false;if(input)input.disabled=false;}}
+  async function saveEditedAmount(){if(state.savingAmount||!state.editingRow)return;const row=state.editingRow,input=$("receiptAmountEditInput"),save=$("receiptAmountEditSave"),cancel=$("receiptAmountEditCancel");const amount=parseAmountInput(input?.value);const current=Math.round(Number(row.amount)||0);if(!(amount>0)){setAmountEditMessage("Ingresá un valor mayor a $0.","error");input?.focus();return;}if(amount===current){setAmountEditMessage("El nuevo valor es igual al actual.","error");input?.focus();return;}if(!window.ExploraReceiptEngine?.modifyServiceAmount){setAmountEditMessage("El módulo de corrección todavía no está disponible. Cerrá y volvé a abrir la app.","error");return;}state.savingAmount=true;if(save)save.disabled=true;if(cancel)cancel.disabled=true;if(input)input.disabled=true;setAmountEditMessage("Guardando corrección…");try{await window.ExploraReceiptEngine.modifyServiceAmount(row,amount);row.amount=amount;if(row.raw&&typeof row.raw==="object"){row.raw.amount=amount;row.raw.monto=amount;row.raw.valor=amount;row.raw.finalPrice=amount;}setAmountEditMessage("Valor corregido correctamente.","success");invalidate("explora");await load("explora",{force:true});setStatus(`Valor corregido a ${money(amount)}.`);setTimeout(()=>closeAmountEditor(true),450);}catch(error){console.error("RECEIPT_AMOUNT_EDIT",error);const code=String(error?.code||error?.message||"");const message=code.includes("NOT_FOUND")?"No se encontró el servicio original en facturación.":code.includes("AUTH")||code.includes("ADMIN")?"La sesión de administrador no tiene permiso para modificar este valor.":code.includes("INVALID")?"Ingresá un valor válido.":"No se pudo modificar el valor. Revisá la conexión e intentá nuevamente.";setAmountEditMessage(message,"error");}finally{state.savingAmount=false;if(save)save.disabled=false;if(cancel)cancel.disabled=false;if(input)input.disabled=false;}}
   function render(){
     const list=$("receiptsList"),rows=filterRows();if(!list)return;
     list.innerHTML=isClosureAdmin()?groupedClosureAdminHtml(rows):isAdminView()?groupedAdminHtml(rows):rows.map((row,index)=>rowCard(row,index)).join("");
