@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4103-uber-8-semanas";
+  const VERSION = "explora-pago-home-v52-v4105-comprobantes-por-modulo-admin";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -4319,19 +4319,19 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function activityMatchesSelectedModule(row = {}) {
-    if (isAdmin()) return adminActivityMatches(row);
-
     const tab = activeClosureKind(state.tab);
+    let moduleMatch = false;
 
-    // Cada inicio de módulo muestra solamente sus propios comprobantes.
+    // El filtro por módulo se aplica tanto al chofer como al administrador.
     // Chofer es la única excepción: reúne efectivo y caja chica.
-    if (tab === "explora") return row.type === "payment" && row.method !== "cash";
-    if (tab === "chofer") return (row.type === "payment" && row.method === "cash") || row.type === "cashbox";
-    if (tab === "caja_chica") return row.type === "cashbox";
-    if (tab === "gastos") return row.type === "expense";
-    if (tab === "pendientes") return row.type === "debt" || row.type === "debt_payment";
+    if (tab === "explora") moduleMatch = row.type === "payment" && row.method !== "cash";
+    else if (tab === "chofer") moduleMatch = (row.type === "payment" && row.method === "cash") || row.type === "cashbox";
+    else if (tab === "caja_chica") moduleMatch = row.type === "cashbox";
+    else if (tab === "gastos") moduleMatch = row.type === "expense" || row.type === "debt_expense_offset";
+    else if (tab === "pendientes") moduleMatch = row.type === "debt" || row.type === "debt_payment";
 
-    return false;
+    if (!moduleMatch) return false;
+    return !isAdmin() || adminActivityMatches(row);
   }
 
   function adminActivityMatches(row = {}) {
