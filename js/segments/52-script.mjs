@@ -3532,8 +3532,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const createdMs = uberDriverCreatedMs(uid);
     if (!(createdMs > 0)) return false;
     const createdWeek = uberWeekWindow(new Date(createdMs), 0);
-    const cutoffMs = createdWeek.start.getTime() + (7 * 7 * 24 * 60 * 60 * 1000);
-    return period.start.getTime() < cutoffMs;
+    const createdWeekStartMs = createdWeek.start.getTime();
+    const cutoffMs = createdWeekStartMs + (7 * 7 * 24 * 60 * 60 * 1000);
+    const periodStartMs = period.start.getTime();
+    // Solo semanas 1 a 7 desde el alta. Nunca habilitar semanas anteriores al ingreso.
+    return periodStartMs >= createdWeekStartMs && periodStartMs < cutoffMs;
   }
 
   function uberWeekDisplayLabel(period = uberWeekWindow()) {
