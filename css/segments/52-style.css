@@ -3644,3 +3644,18 @@ body.explora-pay-mode .pay-tabs{
 .pay-uber-inbox-card.is-overdue em{color:#a91f1f;background:#ffe1e1}
 .pay-uber-inbox-card.is-overdue p{margin:12px 0 0;color:#7f4040;font-size:13px;line-height:1.5}
 #payEfficiencyBtn.is-uber-overdue{box-shadow:0 0 0 2px rgba(188,38,38,.15)}
+
+/* v4106: todos los valores de las tarjetas quedan en verde hasta confirmación Firestore. */
+.pay-main-card.is-firestore-loading .pay-amount,
+.pay-main-card.is-firestore-loading .pay-liquid-pill strong,
+.pay-main-card.is-firestore-loading .pay-extra-lines strong,
+.pay-main-card.is-firestore-loading .pay-subtitle,
+.pay-main-card.is-firestore-loading .closure-liquidation-label {
+  color:#159447 !important;
+}
+.pay-main-card.is-firestore-loading .pay-amount,
+.pay-main-card.is-firestore-loading .pay-liquid-pill strong,
+.pay-main-card.is-firestore-loading .pay-extra-lines strong {
+  animation:exploraFirestorePulse 1.1s ease-in-out infinite alternate;
+}
+@keyframes exploraFirestorePulse { from { opacity:.55; } to { opacity:1; } }
