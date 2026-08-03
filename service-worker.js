@@ -1,7 +1,7 @@
 /* Compatibilidad validada: v4088-apertura-instantanea */
 /* EXPLORA PWA service worker · v2.5.6 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4105-comprobantes-por-modulo-admin`;
+const CACHE_NAME = `${CACHE_PREFIX}v4107-uber-sin-datos`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -162,3 +162,5 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4088 apertura instantánea + sincronización silenciosa al reanudar */
 
 /* cache bump: v4091 arranque autoritativo sin datos viejos */
+
+/* cache bump: v4107 cierre Uber sin datos */
