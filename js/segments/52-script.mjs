@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4112-reglas-sin-datos";
+  const VERSION = "explora-pago-home-v52-v4114-cierres-admin-global";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -2147,13 +2147,21 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function scopedQuery(collectionName, uid, max = 180) {
     const col = collection(state.db, collectionName);
-    if (isAdmin() && !uid) return query(col, limit(max));
+    if (isAdmin() && !uid) {
+      // Los cierres deben escucharse completos. Un limit() sin orderBy puede dejar fuera
+      // una solicitud nueva según el ID interno de Firestore, aunque el chofer la haya
+      // creado correctamente. Eso hacía que el administrador no viera Aceptar/Rechazar.
+      if (collectionName === "cierres_semanales") return query(col);
+      return query(col, limit(max));
+    }
     return query(col, where("driverUid", "==", uid || getDriverUid()));
   }
 
   async function getGlobalDocs(collectionName, max = 300) {
     try {
-      const snap = await getDocs(query(collection(state.db, collectionName), limit(max)));
+      const col = collection(state.db, collectionName);
+      const globalQuery = collectionName === "cierres_semanales" ? query(col) : query(col, limit(max));
+      const snap = await getDocs(globalQuery);
       return snap.docs.map(item => ({ id:item.id, ...item.data() }));
     } catch (error) {
       console.warn("EXPLORA_PAY_GLOBAL_READ", collectionName, error?.code || error?.message);
