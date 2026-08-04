@@ -631,7 +631,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function notificationDriverUid() {
-    if (isAdmin()) return safe(state.selectedDriverUid || "");
+    // La campana del administrador debe ser global: un cierre/comprobante nuevo
+    // tiene que avisarse aunque David esté viendo actualmente a otro chofer.
+    // Al abrir la notificación, openClosureFromNotification selecciona el chofer correcto.
+    if (isAdmin()) return "";
     return getOwnDriverUid();
   }
 
