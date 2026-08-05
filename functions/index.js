@@ -231,18 +231,33 @@ async function telegramSendPhoto(photoUrl, caption) {
   }
 }
 
-async function telegramProcessNotification({ kind, docId, data, eventId, caption }) {
+async function telegramSendText(text) {
+  const chatId = telegramSafeText(TELEGRAM_CHAT_ID.value());
+  if (!chatId) throw new Error("TELEGRAM_CHAT_ID no está configurado.");
+  return telegramApi("sendMessage", {
+    chat_id: chatId,
+    text: text.slice(0, 4096)
+  });
+}
+
+async function telegramProcessNotification({ kind, docId, data, eventId, caption, requirePhoto = true }) {
   const { claimed, ref } = await telegramClaimNotification(kind, docId, eventId);
   if (!claimed) return { skipped: true, reason: "already-processed-or-processing" };
   try {
-    const photoUrl = await telegramResolvePhotoUrl(kind, docId, data);
-    if (!photoUrl) throw new Error(`El documento ${kind}/${docId} no contiene una URL de foto.`);
-    const message = await telegramSendPhoto(photoUrl, caption);
+    let photoUrl = "";
+    let message = null;
+    if (requirePhoto) {
+      photoUrl = await telegramResolvePhotoUrl(kind, docId, data);
+      if (!photoUrl) throw new Error(`El documento ${kind}/${docId} no contiene una URL de foto.`);
+      message = await telegramSendPhoto(photoUrl, caption);
+    } else {
+      message = await telegramSendText(caption);
+    }
     await ref.set({
       status: "sent",
       telegramMessageId: message?.message_id || null,
       telegramChatId: telegramSafeText(message?.chat?.id),
-      photoUrl,
+      photoUrl: photoUrl || FieldValue.delete(),
       sentAt: FieldValue.serverTimestamp(),
       sentAtMs: Date.now(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -1649,7 +1664,9 @@ exports.applyDailyDebtPenalties = onSchedule({
   console.info("applyDailyDebtPenalties", { processed, skipped, scanned:snap.size, totalInterest, todayKey });
 });
 
-// Envía a Telegram cada cobro digital nuevo (tarjeta, QR o transferencia) con su foto.
+// Envía a Telegram cada cobro nuevo:
+// - digital (tarjeta, QR o transferencia), con foto;
+// - efectivo, sin foto pero con los datos de la operación.
 exports.notifyBillingRecordV2 = onDocumentCreated({
   document: "billing_records/{docId}",
   region: TELEGRAM_FUNCTION_REGION,
@@ -1659,17 +1676,24 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
   secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
 }, async event => {
   const data = event.data?.data() || {};
+  if (data.isSimulated === true || data.createdBySimulation === true || data.verificationMode === "simulation") {
+    return { skipped: true, reason: "simulation-record" };
+  }
   const method = telegramPaymentMethod(data);
-  if (!new Set(["card", "qr", "transfer"]).has(method.key)) {
-    return { skipped: true, reason: "not-digital", method: method.key };
+  const isDigital = new Set(["card", "qr", "transfer"]).has(method.key);
+  const isCash = method.key === "cash";
+  if (!isDigital && !isCash) {
+    return { skipped: true, reason: "unsupported-payment-method", method: method.key };
   }
 
   const docId = telegramSafeText(event.params?.docId || event.data?.id);
+  const notes = telegramSafeText(data.notes || data.detalle || data.descripcion || data.observaciones || data.serviceDescription);
   const caption = [
-    "COBRO DIGITAL REGISTRADO",
+    isCash ? "COBRO EN EFECTIVO REGISTRADO" : "COBRO DIGITAL REGISTRADO",
     `Chofer: ${telegramDriverName(data)}`,
     `Monto: ${telegramMoney(telegramAmount(data))}`,
     `Método: ${method.label}`,
+    ...(notes ? [`Detalle: ${notes.slice(0, 300)}`] : []),
     `Fecha: ${telegramDateLabel(data)}`,
     `Operación: ${docId}`
   ].join("\n");
@@ -1679,7 +1703,8 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
     docId,
     data,
     eventId: event.id,
-    caption
+    caption,
+    requirePhoto: isDigital
   });
 });
 
