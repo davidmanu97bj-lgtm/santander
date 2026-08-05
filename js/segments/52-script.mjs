@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4116-comprobante-cierre-admin";
+  const VERSION = "explora-pago-home-v52-v4117-cierres-admin-visibles";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -4476,10 +4476,16 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function activityMatchesSelectedModule(row = {}) {
+    // En la vista del administrador mandan exclusivamente los selectores
+    // “Filtrar por chofer” y “Filtrar por tipo”. No se debe volver a aplicar
+    // el módulo que quedó activo antes de entrar a Actividades, porque eso
+    // ocultaba especialmente los cierres solicitados por los choferes.
+    if (isAdmin()) return adminActivityMatches(row);
+
     const tab = activeClosureKind(state.tab);
     let moduleMatch = false;
 
-    // El filtro por módulo se aplica tanto al chofer como al administrador.
+    // Para el chofer se mantiene el filtro operativo por módulo.
     // Chofer es la única excepción: reúne efectivo y caja chica.
     if (tab === "explora") moduleMatch = row.type === "payment" && row.method !== "cash";
     else if (tab === "chofer") moduleMatch = (row.type === "payment" && row.method === "cash") || row.type === "cashbox";
@@ -4487,8 +4493,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     else if (tab === "gastos") moduleMatch = row.type === "expense" || row.type === "debt_expense_offset";
     else if (tab === "pendientes") moduleMatch = row.type === "debt" || row.type === "debt_payment";
 
-    if (!moduleMatch) return false;
-    return !isAdmin() || adminActivityMatches(row);
+    return moduleMatch;
   }
 
   function adminActivityMatches(row = {}) {
