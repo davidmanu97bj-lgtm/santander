@@ -1,7 +1,7 @@
 /* Compatibilidad validada: v4088-apertura-instantanea */
 /* EXPLORA PWA service worker · v2.5.6 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4117-comprobante-cierre-admin`;
+const CACHE_NAME = `${CACHE_PREFIX}v4118-whatsapp-cobros-gastos`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -42,7 +42,7 @@ const APP_SHELL = [
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
   './css/segments/52-style.css?v=4086-editar-valor-actividades-admin',
-  './js/segments/52-script.mjs?v=4086-editar-valor-actividades-admin',
+  './js/segments/52-script.mjs?v=4118-whatsapp-cobros-gastos',
   './assets/icono_eficiencia_km.png',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
