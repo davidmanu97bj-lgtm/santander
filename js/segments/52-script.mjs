@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4118-whatsapp-cobros-gastos";
+  const VERSION = "explora-pago-home-v52-v4119-whatsapp-on-success-tap";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -3032,7 +3032,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return lines.join("\n");
   }
 
-  function notifyOperationalWhatsapp(kind = "", row = {}) {
+  function notifyOperationalWhatsapp(kind = "", row = {}, options = {}) {
     try {
       if (isAdmin()) return false;
       const normalizedKind = safe(kind).toLowerCase();
@@ -3043,6 +3043,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       const text = normalizedKind === "expense"
         ? expenseOperationalWhatsappText(row)
         : billingOperationalWhatsappText(row);
+      if (options?.immediate) return openWhatsappToExplora(text);
       window.setTimeout(() => openWhatsappToExplora(text), 180);
       return true;
     } catch (error) {
@@ -3051,14 +3052,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
   }
 
-  window.addEventListener("explora:cobro-registrado", event => {
-    const row = event?.detail || {};
-    if (safe(row.source || "") !== "manual_billing") return;
-    notifyOperationalWhatsapp("billing", row);
-  });
-
-  window.addEventListener("explora:gasto-registrado", event => {
-    notifyOperationalWhatsapp("expense", event?.detail || {});
+  // API pública usada desde el botón ACEPTAR del modal de éxito.
+  // Ejecutarlo dentro del toque del usuario evita que iOS/Android bloqueen whatsapp:// o intent://.
+  window.ExploraOperationalWhatsapp = Object.freeze({
+    billing:(row = {}) => notifyOperationalWhatsapp("billing", row, { immediate:true }),
+    expense:(row = {}) => notifyOperationalWhatsapp("expense", row, { immediate:true })
   });
 
   function closureDriverWhatsappPhone(closure = {}) {

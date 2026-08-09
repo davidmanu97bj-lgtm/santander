@@ -2460,6 +2460,8 @@ const ExploraExpenseV202 = (() => {
         title:"¡EXITOSO!",
         message:"Gasto y comprobante registrados correctamente.",
         onAccept:() => {
+          try { window.ExploraOperationalWhatsapp?.expense?.(expenseUploadState.committedResult?.payload || {}); }
+          catch (error) { console.warn("EXPENSE_WHATSAPP", error); }
           resetForm();
           close();
           window.ExploraMainNav?.navigate?.("inicio");

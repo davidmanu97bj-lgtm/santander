@@ -377,7 +377,10 @@
     window.showExploraSuccess?.({
       title:"¡EXITOSO!",
       message:withReceipt?"Cobro y comprobante registrados correctamente.":"Cobro en efectivo registrado correctamente.",
-      onAccept:()=>{closeForm().then(closeScreen);}
+      onAccept:()=>{
+        try{window.ExploraOperationalWhatsapp?.billing?.(result);}catch(error){console.warn("BILLING_WHATSAPP",error);}
+        closeForm().then(closeScreen);
+      }
     });
   }
 
