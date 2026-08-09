@@ -1,7 +1,7 @@
 /* Compatibilidad validada: v4088-apertura-instantanea */
 /* EXPLORA PWA service worker · v2.5.6 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4118-whatsapp-cobros-gastos`;
+const CACHE_NAME = `${CACHE_PREFIX}v4119-whatsapp-on-success-tap`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -22,8 +22,8 @@ const APP_SHELL = [
   './css/segments/07-style.css?v=3921-billing-visual-fix',
   './js/segments/09-script.js?v=4086-editar-valor-actividades-admin',
   './js/segments/03-script.js?v=4075-sin-datos-anteriores',
-  './js/segments/07-script.js?v=3921-billing-visual-fix',
-  './js/segments/13-script.mjs?v=4086-editar-valor-actividades-admin',
+  './js/segments/07-script.js?v=4119-whatsapp-on-success-tap',
+  './js/segments/13-script.mjs?v=4119-whatsapp-on-success-tap',
   './css/segments/14-style.css?v=4023-activity-photo-viewer',
   './js/segments/14-script.mjs?v=4023-activity-photo-viewer',
   './js/segments/15-script.mjs?v=4054-menu-perfil-minimo-compacto',
@@ -42,7 +42,7 @@ const APP_SHELL = [
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
   './css/segments/52-style.css?v=4086-editar-valor-actividades-admin',
-  './js/segments/52-script.mjs?v=4118-whatsapp-cobros-gastos',
+  './js/segments/52-script.mjs?v=4119-whatsapp-on-success-tap',
   './assets/icono_eficiencia_km.png',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
