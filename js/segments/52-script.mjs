@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4117-cierres-admin-visibles";
+  const VERSION = "explora-pago-home-v52-v4118-whatsapp-cobros-gastos";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -2954,6 +2954,112 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function openWhatsappToExplora(text = "") {
     return openWhatsappToPhone(EXPLORA_WHATSAPP, text);
   }
+
+  // Avisos operativos del chofer -> WhatsApp de Explora.
+  // Se disparan únicamente después de que cobros/gastos confirman su escritura en Firestore.
+  const operationalWhatsappSent = new Set();
+
+  function operationalWhatsappReceiptUrl(row = {}) {
+    return safe(
+      row.whatsappPhotoUrl ||
+      row.notificationPhotoUrl ||
+      row.receiptUrl ||
+      row.comprobanteUrl ||
+      row.downloadURL ||
+      row.fileUrl ||
+      row.firebasePhotoUrl ||
+      ""
+    );
+  }
+
+  function operationalWhatsappDriverName(row = {}) {
+    return safe(row.driverName || row.choferNombre || row.nombreChofer || displayName() || "Chofer");
+  }
+
+  function billingOperationalWhatsappText(row = {}) {
+    const method = safe(row.paymentMethod || row.metodoPago || "cash").toLowerCase();
+    const methodLabel = ({ cash:"Efectivo", transfer:"Transferencia", card:"Tarjeta", qr:"Código QR" })[method] || method || "Cobro";
+    const amount = number(row.amount || row.monto || row.valor || row.finalPrice || 0);
+    const receiptUrl = operationalWhatsappReceiptUrl(row);
+    const lines = [
+      "*NUEVO COBRO EXPLORA*",
+      `Chofer: ${operationalWhatsappDriverName(row)}`,
+      `Medio: *${methodLabel}*`,
+      `Monto: *${currency(amount)}*`,
+      `Fecha: ${safe(row.fecha || "—")}`,
+      `Hora: ${safe(row.hora || "—")}`
+    ];
+    if (method !== "cash" && receiptUrl) {
+      lines.push("");
+      lines.push(`Ver comprobante: ${receiptUrl}`);
+    }
+    return lines.join("\n");
+  }
+
+  function expenseOperationalWhatsappText(row = {}) {
+    const type = safe(row.expenseType || row.tipo || row.category || "gasto").toLowerCase();
+    const typeLabel = ({
+      combustible:"Combustible", fuel:"Combustible",
+      lavado:"Lavado", wash:"Lavado",
+      peaje:"Peaje", toll:"Peaje",
+      estacionamiento:"Estacionamiento", parking:"Estacionamiento",
+      mantenimiento:"Mantenimiento", maintenance:"Mantenimiento",
+      otro:"Otro", otros:"Otros", other:"Otro"
+    })[type] || safe(row.expenseType || row.tipo || row.category || "Gasto");
+    const amount = number(row.amount || row.monto || row.valor || 0);
+    const receiptUrl = operationalWhatsappReceiptUrl(row);
+    const notes = safe(row.notes || row.nota || row.descripcion || "");
+    const date = row.fechaISO ? new Date(row.fechaISO) : null;
+    const dateText = date && !Number.isNaN(date.getTime())
+      ? date.toLocaleDateString("es-AR", { timeZone:AR_TZ })
+      : "—";
+    const timeText = date && !Number.isNaN(date.getTime())
+      ? date.toLocaleTimeString("es-AR", { timeZone:AR_TZ, hour:"2-digit", minute:"2-digit" })
+      : "—";
+    const lines = [
+      "*NUEVO GASTO EXPLORA*",
+      `Chofer: ${operationalWhatsappDriverName(row)}`,
+      `Tipo: *${typeLabel}*`,
+      `Monto: *${currency(amount)}*`,
+      `Fecha: ${dateText}`,
+      `Hora: ${timeText}`
+    ];
+    if (notes) lines.push(`Detalle: ${notes}`);
+    if (receiptUrl) {
+      lines.push("");
+      lines.push(`Ver comprobante: ${receiptUrl}`);
+    }
+    return lines.join("\n");
+  }
+
+  function notifyOperationalWhatsapp(kind = "", row = {}) {
+    try {
+      if (isAdmin()) return false;
+      const normalizedKind = safe(kind).toLowerCase();
+      const id = safe(row.operationId || row.billingId || row.expenseId || row.gastoId || row.id || "");
+      const dedupeKey = `${normalizedKind}:${id || Date.now()}`;
+      if (id && operationalWhatsappSent.has(dedupeKey)) return false;
+      if (id) operationalWhatsappSent.add(dedupeKey);
+      const text = normalizedKind === "expense"
+        ? expenseOperationalWhatsappText(row)
+        : billingOperationalWhatsappText(row);
+      window.setTimeout(() => openWhatsappToExplora(text), 180);
+      return true;
+    } catch (error) {
+      console.warn("EXPLORA_OPERATIONAL_WHATSAPP", error?.message || error);
+      return false;
+    }
+  }
+
+  window.addEventListener("explora:cobro-registrado", event => {
+    const row = event?.detail || {};
+    if (safe(row.source || "") !== "manual_billing") return;
+    notifyOperationalWhatsapp("billing", row);
+  });
+
+  window.addEventListener("explora:gasto-registrado", event => {
+    notifyOperationalWhatsapp("expense", event?.detail || {});
+  });
 
   function closureDriverWhatsappPhone(closure = {}) {
     const uid = safe(closure.driverUid || closure.choferUid || closure.uid || getDriverUid());
