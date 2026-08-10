@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4120-sin-km-sin-eficiencia";
+  const VERSION = "explora-pago-home-v52-v4121-km-hard-off";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -863,7 +863,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     throw new Error("Firebase no está disponible para Explora Pago Home.");
   }
 
+  function purgeLegacyClosureKmUi() {
+    try {
+      document.querySelectorAll("#payClosureKmField,.pay-closure-km-field,#payClosureKmInput,#payClosureKmHint").forEach(node => node.remove());
+    } catch (_) {}
+  }
+
   function installShell() {
+    // Hard-off: aunque haya quedado DOM de una versión anterior, KM no forma parte del cierre.
+    purgeLegacyClosureKmUi();
     if ($("exploraPagoDashboard")) return;
     const shell = document.querySelector(".dashboard-shell-real");
     if (!shell) return;
@@ -6000,6 +6008,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function renderClosureModal() {
+    // Hard-off adicional para instalaciones/PWA que conserven DOM legado.
+    purgeLegacyClosureKmUi();
     renderDriverSelect();
     const title = $("payClosureTitle"), subtitle = $("payClosureSubtitle"), summary = $("payClosureSummary"), fileField = $("payClosureFileField"), debtField = $("payDebtPaymentField"), debtInput = $("payDebtPaymentAmountInput"), debtHint = $("payDebtPaymentHint"), submit = $("payClosureSubmit"), cancel = $("payClosureCancel"), reject = $("payClosureReject");
     const actions = submit?.closest(".pay-closure-actions");
