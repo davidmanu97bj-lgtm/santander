@@ -1,7 +1,7 @@
 /* Compatibilidad validada: v4088-apertura-instantanea */
 /* EXPLORA PWA service worker · v2.5.6 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4119-whatsapp-on-success-tap`;
+const CACHE_NAME = `${CACHE_PREFIX}v4120-sin-km-sin-eficiencia`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -41,9 +41,8 @@ const APP_SHELL = [
   './css/segments/50-style.css?v=4080-reset-datos-chofer',
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
-  './css/segments/52-style.css?v=4086-editar-valor-actividades-admin',
-  './js/segments/52-script.mjs?v=4119-whatsapp-on-success-tap',
-  './assets/icono_eficiencia_km.png',
+  './css/segments/52-style.css?v=4120-sin-km-sin-eficiencia',
+  './js/segments/52-script.mjs?v=4120-sin-km-sin-eficiencia',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
   './icons/favicon-v2411.svg',
