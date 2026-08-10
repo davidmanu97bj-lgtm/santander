@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4119-whatsapp-on-success-tap";
+  const VERSION = "explora-pago-home-v52-v4120-sin-km-sin-eficiencia";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -1021,14 +1021,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       <div class="pay-efficiency-backdrop" id="payEfficiencyBackdrop" aria-hidden="true">
         <section class="pay-efficiency-modal" role="dialog" aria-modal="true" aria-labelledby="payEfficiencyTitle">
           <header><div><h2 id="payEfficiencyTitle">Cierre Uber semanal</h2><p>Declaración semanal de ganancias Uber.</p></div><button class="pay-efficiency-close" id="payEfficiencyClose" type="button" aria-label="Cerrar">×</button></header>
-          <div class="pay-efficiency-body" id="payEfficiencyBody"><div class="pay-efficiency-loading">Calculando eficiencia…</div></div>
+          <div class="pay-efficiency-body" id="payEfficiencyBody"><div class="pay-efficiency-loading">Cargando Uber…</div></div>
         </section>
       </div>
       <div class="pay-closure-backdrop" id="payClosureBackdrop" aria-hidden="true">
         <section class="pay-closure-modal" role="dialog" aria-modal="true" aria-labelledby="payClosureTitle">
           <header><div><h2 id="payClosureTitle">Cierre a demanda</h2><p id="payClosureSubtitle">Pedí o confirmá un cierre cuando sea necesario.</p></div><button class="pay-closure-close" id="payClosureClose" type="button" aria-label="Cerrar">×</button></header>
           <div class="pay-closure-field" id="payClosureDriverField" hidden><label for="payClosureDriverSelect">Chofer</label><select id="payClosureDriverSelect"><option value="">Cargando choferes…</option></select></div>
-          <div class="pay-closure-field pay-closure-km-field" id="payClosureKmField" hidden><label for="payClosureKmInput">KM actual del auto</label><input id="payClosureKmInput" type="number" inputmode="numeric" min="0" step="1" placeholder="Ej: 100200" /><small id="payClosureKmHint">Este KM cierra el período de eficiencia y será el inicio del próximo.</small></div>
           <div class="pay-closure-summary" id="payClosureSummary"></div>
           <div class="pay-closure-field" id="payDebtPaymentField" hidden><label for="payDebtPaymentAmountInput">Monto a pagar</label><input id="payDebtPaymentAmountInput" type="text" inputmode="numeric" autocomplete="off" placeholder="$ 0" /><small id="payDebtPaymentHint">El pago reduce la deuda pendiente actual.</small></div>
           <div class="pay-closure-field" id="payClosureFileField" hidden><label for="payClosureReceiptInput">Comprobante de transferencia</label><input id="payClosureReceiptInput" type="file" accept="image/*,application/pdf" /></div>
@@ -1281,8 +1280,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     $("payEfficiencyBody")?.addEventListener("click", event => {
       const action = event.target?.closest?.("[data-pay-efficiency-action]")?.dataset?.payEfficiencyAction || "";
       if (action === "close") closeEfficiencyModal();
-      if (action === "save-initial-km") saveInitialKmFromEfficiency().catch(error => setEfficiencyFormMessage(error?.message || "No se pudo guardar el KM inicial.", "error"));
-      if (action === "save-current-km") saveCurrentKmFromEfficiency().catch(error => setEfficiencyFormMessage(error?.message || "No se pudo guardar el KM actual.", "error"));
       if (action === "attach-uber-week") {
         const weekId = safe(event.target.closest("[data-uber-week-id]")?.dataset?.uberWeekId);
         const period = uberLastEightWeeks().find(item => safe(item.weekId) === weekId);
@@ -2460,7 +2457,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const toDriver = number(closure.amountDueToDriver || 0);
     const proof = closureHasProof(closure);
     if (closureIsCompleted(closure) || closureIsRejected(closure)) return "none";
-    if (!isAdmin() && closureNeedsDriverKm(closure)) return "driver_km";
     if (isAdmin()) {
       const targetUid = notificationDriverUid();
       if (targetUid && !closureBelongsToDriver(closure, targetUid)) return "none";
@@ -2518,127 +2514,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
 
-  function parseKmValue(raw) {
-    if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-    const text = safe(raw);
-    if (!text) return 0;
-    const digits = text.replace(/[^0-9]/g, "");
-    const parsed = Number(digits || text.replace(/[^0-9.,-]/g, "").replace(/,/g, "."));
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-
-  function kmNumberFrom(row = {}, fields = []) {
-    for (const field of fields) {
-      const raw = row?.[field];
-      if (raw === null || raw === undefined || raw === "") continue;
-      const parsed = parseKmValue(raw);
-      if (Number.isFinite(parsed) && parsed >= 0) return parsed;
-    }
-    return 0;
-  }
-
-  const KM_INITIAL_FIELDS = ["kmInicialPeriodo", "kmInicioPeriodo", "kmInicial", "kmInicio", "currentEfficiencyPeriodStartKm", "efficiencyPeriodStartKm", "odometerStart", "mileageStart", "initialKm", "startKm", "kilometrajeInicial"];
-  const KM_CURRENT_FIELDS = ["kmActual", "kmActualDeclarado", "kmActualPeriodo", "kilometrajeActual", "kmDeclarado", "lastKnownKm", "odometer", "odometerKm", "mileageCurrent", "currentKm", "lastKm", "ultimoKm", "kmFinal", "kmFinalPeriodo", "kilometrajeFinal"];
-  const KM_FINAL_FIELDS = ["kmFinalPeriodo", "kmFinal", "kmActual", "kmActualDeclarado", "kmActualCierre", "kilometrajeActual", "kmDeclarado", "lastKnownKm", "odometer", "odometerKm", "mileageFinal", "finalKm", "currentKm"];
-
-  function validBillingClosuresFor(uid = "", rows = state.closures) {
-    const targetUid = safe(uid);
-    return (rows || [])
-      .filter(row => {
-        const mode = safe(row.closureMode || row.periodType).toLowerCase();
-        return mode === "on_demand" || row.billingClosure === true || isBillingClosureKind(closureKindOf(row));
-      })
-      .filter(row => row.billingClosure === true || isBillingClosureKind(closureKindOf(row)))
-      .filter(row => !targetUid || closureBelongsToDriver(row, targetUid))
-      .filter(row => !closureInvalidatesCutoff(row))
-      .sort((a,b)=>closureCutMs(b)-closureCutMs(a) || rowMs(b)-rowMs(a));
-  }
-
-  function latestBillingClosureFor(uid = "", rows = state.closures, beforeMs = 0) {
-    return validBillingClosuresFor(uid, rows)
-      .filter(row => !beforeMs || closureCutMs(row) < beforeMs)
-      [0] || null;
-  }
-
-  function kmFinalSeedFromClosure(row = {}) {
-    return kmNumberFrom(row || {}, KM_FINAL_FIELDS.concat(["efficiencyNextKmInitial", "kmInicialNuevoPeriodo", "nextKmInitial", "proximoKmInicial", "ultimoKmCierre"]));
-  }
-
-  function latestBillingClosureWithKmFinal(uid = "", rows = state.closures, beforeMs = 0) {
-    return validBillingClosuresFor(uid, rows)
-      .filter(row => !beforeMs || closureCutMs(row) < beforeMs)
-      .filter(row => kmFinalSeedFromClosure(row) > 0)
-      [0] || null;
-  }
-
-  function profileKmSeed(profile = {}) {
-    return kmNumberFrom(profile || {}, KM_INITIAL_FIELDS.concat(KM_CURRENT_FIELDS).concat(["lastKnownKm", "ultimoKmCierre", "kmInicialNuevoPeriodo", "efficiencyNextKmInitial"]));
-  }
-
-  function hasKmInitialSeedForDriver(uid = getDriverUid(), closures = state.closures, profile = driverProfileForEfficiency(uid)) {
-    const targetUid = safe(uid);
-    if (kmFinalSeedFromClosure(latestBillingClosureWithKmFinal(targetUid, closures)) > 0) return true;
-    return profileKmSeed(profile || {}) > 0;
-  }
-
-  function kmInitialForOpenPeriod(uid = getDriverUid(), closures = state.closures, profile = state.profile) {
-    // Regla clave: el KM final del último cierre válido pasa automáticamente a ser
-    // el KM inicial del período nuevo. Por eso el botón "Cargar KM inicial" solo
-    // debe aparecer cuando el chofer nunca cargó ningún KM.
-    const targetUid = safe(uid);
-    const latestWithKm = latestBillingClosureWithKmFinal(targetUid, closures);
-    const fromClosure = kmFinalSeedFromClosure(latestWithKm);
-    if (fromClosure > 0) return fromClosure;
-    return profileKmSeed(profile || {});
-  }
-
-  function kmInitialForClosure(closure = {}) {
-    const uid = safe(closure.driverUid || closure.choferUid || closure.uid || getDriverUid());
-    const cut = closureCutMs(closure) || Date.now();
-    const previousWithKm = latestBillingClosureWithKmFinal(uid, state.closures, cut);
-    const fromPrevious = kmFinalSeedFromClosure(previousWithKm);
-    if (fromPrevious > 0) return fromPrevious;
-    const driverProfile = (state.drivers.find(driver => driver.uid === uid)?.profile) || (uid === getOwnDriverUid() ? state.profile : {});
-    return profileKmSeed(driverProfile || {});
-  }
-
-  function closureNeedsDriverKm(closure = {}) {
-    if (!closure || closureIsCompleted(closure)) return false;
-    if (!isBillingClosureKind(closureKindOf(closure))) return false;
-    const requestedByRole = safe(closure.requestedByRole || closure.solicitadoPorRol || closure.requestedRole).toLowerCase();
-    const explicitlyPending = closure.kmPendienteChofer === true || closure.eficienciaPendienteDatos === true || /pendiente.*km|km.*pendiente/i.test(safe(closure.statusLabel || closure.estado || closure.status));
-    const hasFinal = kmNumberFrom(closure, KM_FINAL_FIELDS.concat(["kmRecorridos"]));
-    return requestedByRole !== "driver" && (explicitlyPending || !hasFinal);
-  }
-
-  function driverProfileForEfficiency(uid = getDriverUid()) {
-    const targetUid = safe(uid);
-    if (!targetUid || targetUid === getOwnDriverUid()) return state.profile || {};
-    return state.drivers.find(driver => driver.uid === targetUid)?.profile || {};
-  }
-
-  function currentKmForEfficiency(uid = getDriverUid(), records = state.records, profile = driverProfileForEfficiency(uid), kmInicial = 0) {
-    const initial = Number(kmInicial || 0);
-    const values = [kmNumberFrom(profile || {}, KM_CURRENT_FIELDS)]
-      .concat((records || []).map(row => kmNumberFrom(row, KM_CURRENT_FIELDS)))
-      .filter(value => value > 0)
-      .sort((a,b)=>b-a);
-    const current = values[0] || 0;
-    // El último KM final guardado en un cierre pasa a ser el KM inicial del período abierto.
-    // No debe interpretarse como "KM actual" ni disparar un formulario manual al abrir eficiencia.
-    if (initial > 0 && current <= initial) return 0;
-    return current;
-  }
-
-  function lastKnownKmForValidation(uid = getDriverUid()) {
-    const targetUid = safe(uid);
-    const profile = driverProfileForEfficiency(targetUid);
-    const fromProfile = kmNumberFrom(profile || {}, KM_CURRENT_FIELDS.concat(["lastKnownKm", "currentEfficiencyPeriodStartKm"]));
-    const fromClosure = kmNumberFrom(latestBillingClosureFor(targetUid, state.closures) || {}, KM_FINAL_FIELDS.concat(["kmInicialNuevoPeriodo", "efficiencyNextKmInitial"]));
-    return Math.max(fromProfile || 0, fromClosure || 0);
-  }
-
-  function updateLocalDriverKmState(uid = getDriverUid(), fields = {}) {
+  function updateLocalDriverProfileState(uid = getDriverUid(), fields = {}) {
     const targetUid = safe(uid);
     if (!targetUid) return;
     if (targetUid === getOwnDriverUid()) state.profile = { ...(state.profile || {}), ...fields };
@@ -3239,7 +3115,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     };
     setProfileMessage("Guardando…");
     try {
-      await updateDriverEfficiencyState(getOwnDriverUid(), fields);
+      await updateDriverProfileState(getOwnDriverUid(), fields);
       state.profile = { ...(state.profile || {}), ...fields };
       setProfileMessage("Perfil guardado.", "ok");
       setTimeout(closeDriverProfileModal, 650);
@@ -3248,7 +3124,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
   }
 
-  async function updateDriverEfficiencyState(uid = getDriverUid(), rawFields = {}) {
+  async function updateDriverProfileState(uid = getDriverUid(), rawFields = {}) {
     if (!state.db) throw new Error("No hay conexión con Firestore.");
     const targetUid = safe(uid);
     if (!targetUid) throw new Error("No se pudo identificar el chofer.");
@@ -3257,316 +3133,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     for (const candidate of candidates) {
       try {
         await updateDoc(doc(state.db, candidate.collectionName, candidate.id), rawFields);
-        updateLocalDriverKmState(targetUid, Object.fromEntries(Object.entries(rawFields).filter(([, value]) => typeof value !== "function")));
+        updateLocalDriverProfileState(targetUid, Object.fromEntries(Object.entries(rawFields).filter(([, value]) => typeof value !== "function")));
         return true;
       } catch (error) {
         lastError = error;
       }
     }
-    throw lastError || new Error("No se pudo guardar el KM del chofer.");
-  }
-
-  async function saveInitialKmFromEfficiency() {
-    const input = $("payEfficiencyKmInitialInput");
-    const km = parseKmValue(input?.value || "");
-    if (!Number.isFinite(km) || km <= 0) throw new Error("El KM inicial debe ser numérico y mayor a cero.");
-    const uid = getDriverUid();
-    const lastKnown = lastKnownKmForValidation(uid);
-    if (lastKnown > 0 && km < lastKnown) throw new Error("El KM inicial no puede ser menor al último KM declarado.");
-    const nowMs = Date.now();
-    const fields = {
-      lastKnownKm:Number(km),
-      currentEfficiencyPeriodStartKm:Number(km),
-      currentEfficiencyPeriodStartAt:serverTimestamp(),
-      currentEfficiencyPeriodStartAtMs:nowMs,
-      kmInicialPeriodo:Number(km),
-      kmActual:Number(km),
-      kmInitialSeedLoaded:true,
-      efficiencyKmSeeded:true,
-      kmInicialCargadoUnaVez:true,
-      kmUpdatedAt:serverTimestamp(),
-      kmUpdatedAtMs:nowMs
-    };
-    setEfficiencyFormMessage("Guardando KM inicial…");
-    await updateDriverEfficiencyState(uid, fields);
-    updateLocalDriverKmState(uid, { ...fields, currentEfficiencyPeriodStartAtMs:nowMs, kmUpdatedAtMs:nowMs });
-    setEfficiencyFormMessage("KM inicial guardado.", "ok");
-    renderEfficiencyButton();
-    setTimeout(renderEfficiencyModal, 450);
-  }
-
-  async function saveCurrentKmFromEfficiency() {
-    const input = $("payEfficiencyKmCurrentInput");
-    const km = parseKmValue(input?.value || "");
-    if (!Number.isFinite(km) || km <= 0) throw new Error("El KM actual debe ser numérico y mayor a cero.");
-    const uid = getDriverUid();
-    const kmInicial = kmInitialForOpenPeriod(uid, state.closures, driverProfileForEfficiency(uid));
-    if (!(kmInicial > 0)) throw new Error("Primero cargá KM inicial del auto.");
-    if (km < kmInicial) throw new Error("El KM actual no puede ser menor al KM inicial.");
-    const nowMs = Date.now();
-    const fields = {
-      lastKnownKm:Number(km),
-      kmActual:Number(km),
-      kmActualDeclarado:Number(km),
-      kmUpdatedAt:serverTimestamp(),
-      kmUpdatedAtMs:nowMs
-    };
-    setEfficiencyFormMessage("Guardando KM actual…");
-    await updateDriverEfficiencyState(uid, fields);
-    updateLocalDriverKmState(uid, { ...fields, kmUpdatedAtMs:nowMs });
-    setEfficiencyFormMessage("KM actual guardado.", "ok");
-    await refreshEfficiencyOwnData(true);
-    setTimeout(renderEfficiencyModal, 450);
-  }
-
-  function ownEfficiencyValueFromClosure(row = {}) {
-    const billing = moneyNumber(row.eficienciaFacturacion ?? row.totalFacturado ?? row.gross ?? row.facturacion ?? row.billingTotal ?? row.totalCobrado ?? row.montoFinal);
-    const kmInicial = kmNumberFrom(row, KM_INITIAL_FIELDS);
-    const kmFinal = kmNumberFrom(row, KM_FINAL_FIELDS);
-    const storedKm = number(row.kmRecorridos ?? row.kmDeclarados ?? row.kmDriven ?? row.kilometrosRecorridos);
-    const kmRecorridos = storedKm > 0 ? storedKm : (kmFinal > 0 && kmInicial > 0 ? kmFinal - kmInicial : 0);
-    if (!(billing > 0 && kmInicial > 0 && kmFinal > 0 && kmRecorridos > 0)) return 0;
-    const direct = moneyNumber(row.eficienciaPorKm ?? row.efficiencyPerKm ?? row.efficiencyPerKmValue ?? row.eficienciaActual ?? row.efficiency);
-    return direct > 0 ? direct : billing / kmRecorridos;
-  }
-
-  function ownEfficiencyReferenceForDriver(uid = getDriverUid(), closures = state.closures, beforeMs = 0) {
-    const valid = validBillingClosuresFor(uid, closures)
-      .filter(row => !beforeMs || closureCutMs(row) < beforeMs)
-      .map(row => ({ row, value:ownEfficiencyValueFromClosure(row) }))
-      .filter(item => item.value > 0)
-      .sort((a,b)=>closureCutMs(b.row)-closureCutMs(a.row) || rowMs(b.row)-rowMs(a.row));
-    const lastFive = valid.slice(0, 5);
-    if (!lastFive.length) return { value:0, count:0, mode:"none" };
-    const total = lastFive.reduce((sum, item) => sum + Number(item.value || 0), 0);
-    return { value:total / lastFive.length, count:lastFive.length, mode:"promedio_ultimos_5" };
-  }
-
-  function efficiencyToneFromDelta(deltaPct = NaN, hasReference = false) {
-    if (!hasReference || !Number.isFinite(Number(deltaPct))) return { tone:"mid", label:"Base", level:"Primer cierre guardado" };
-    if (deltaPct >= -5) return { tone:"good", label:"Mejoró", level:"Igual o mejor que su promedio propio" };
-    if (deltaPct >= -15) return { tone:"mid", label:"Normal", level:"Leve baja contra su promedio propio" };
-    if (deltaPct >= -30) return { tone:"bad", label:"Bajó", level:"Por debajo de su promedio propio" };
-    return { tone:"alert", label:"Alerta", level:"Muy por debajo de su promedio propio" };
-  }
-
-  function efficiencyToneCss(tone = "mid") {
-    if (tone === "good") return "efficiency-good";
-    if (tone === "bad") return "efficiency-bad";
-    if (tone === "alert") return "efficiency-alert";
-    return "efficiency-mid";
-  }
-
-  function billingAmountFromClosure(row = {}) {
-    const direct = moneyNumber(row.eficienciaFacturacion ?? row.totalFacturado ?? row.gross ?? row.grossBeforeCashbox ?? row.facturacion ?? row.billingTotal ?? row.totalCobrado ?? row.montoFinal);
-    if (direct > 0) return direct;
-    return moneyNumber(row.cashInDriver) + moneyNumber(row.exploraCash ?? row.nonCashInExplora);
-  }
-
-  function efficiencyRawHistoryRowsForDriver(uid = getDriverUid(), closures = state.closures) {
-    const targetUid = safe(uid);
-    return validBillingClosuresFor(targetUid, closures)
-      .map(row => {
-        const cutMs = closureCutMs(row) || rowMs(row) || Date.now();
-        const kmInicial = kmNumberFrom(row, KM_INITIAL_FIELDS);
-        const kmFinal = kmFinalSeedFromClosure(row);
-        const storedKm = number(row.kmRecorridos ?? row.kmDeclarados ?? row.kmDriven ?? row.kilometrosRecorridos);
-        const kmRecorridos = storedKm > 0 ? storedKm : (kmFinal > 0 && kmInicial > 0 ? kmFinal - kmInicial : 0);
-        const facturacion = billingAmountFromClosure(row);
-        const storedPerKm = moneyNumber(row.eficienciaPorKm ?? row.efficiencyPerKm ?? row.efficiencyPerKmValue ?? row.eficienciaActual ?? row.efficiency);
-        const perKm = storedPerKm > 0 ? storedPerKm : (facturacion > 0 && kmRecorridos > 0 ? facturacion / kmRecorridos : 0);
-        return { row, id:safe(row.id || row.closureId || `${targetUid}_${cutMs}`), cutMs, dateLabel:dateShort(cutMs), kmInicial, kmFinal, kmRecorridos, facturacion, perKm };
-      })
-      .filter(item => item.facturacion > 0 && item.kmInicial > 0 && item.kmFinal > 0 && item.kmRecorridos > 0 && item.perKm > 0)
-      .sort((a,b)=>a.cutMs-b.cutMs);
-  }
-
-  function normalizeStoredEfficiencyHistory(profile = {}) {
-    const raw = Array.isArray(profile?.efficiencyLast5Closures) ? profile.efficiencyLast5Closures : [];
-    const sorted = raw.map((item, index) => {
-      const cutMs = Number(item.cutMs || item.fechaMs || item.dateMs || 0) || Date.now() + index;
-      const kmRecorridos = number(item.kmRecorridos || item.km || item.kilometros || 0);
-      const facturacion = moneyNumber(item.facturacion || item.total || item.monto || 0);
-      const perKm = moneyNumber(item.perKm || item.eficienciaPorKm || 0) || (facturacion > 0 && kmRecorridos > 0 ? facturacion / kmRecorridos : 0);
-      return {
-        id:safe(item.id || `stored_${cutMs}_${index}`),
-        cutMs,
-        dateLabel:safe(item.dateLabel || item.fecha || dateShort(cutMs)),
-        kmRecorridos,
-        facturacion,
-        perKm
-      };
-    }).filter(item => item.kmRecorridos > 0 && item.facturacion > 0 && item.perKm > 0)
-      .sort((a,b)=>Number(a.cutMs || 0)-Number(b.cutMs || 0));
-    const previousEntries = [];
-    return sorted.map(item => {
-      const referenceEntries = previousEntries.slice(-5);
-      const referenceAvg = referenceEntries.length
-        ? referenceEntries.reduce((sum, entry) => sum + Number(entry.perKm || 0), 0) / referenceEntries.length
-        : 0;
-      const deltaPct = referenceAvg > 0 ? ((item.perKm - referenceAvg) / referenceAvg) * 100 : NaN;
-      const result = efficiencyToneFromDelta(deltaPct, referenceAvg > 0);
-      previousEntries.push(item);
-      return {
-        ...item,
-        referenceAvg,
-        referenceCount:referenceEntries.length,
-        tone:result.tone,
-        label:result.label,
-        level:result.level,
-        deltaPct
-      };
-    }).slice(-5);
-  }
-
-  function efficiencyHistoryForDriver(uid = getDriverUid(), closures = state.closures, profile = driverProfileForEfficiency(uid)) {
-    const raw = efficiencyRawHistoryRowsForDriver(uid, closures);
-    const previousEntries = [];
-    const computed = raw.map(item => {
-      const referenceEntries = previousEntries.slice(-5);
-      const referenceAvg = referenceEntries.length
-        ? referenceEntries.reduce((sum, entry) => sum + Number(entry.perKm || 0), 0) / referenceEntries.length
-        : 0;
-      const deltaPct = referenceAvg > 0 ? ((item.perKm - referenceAvg) / referenceAvg) * 100 : NaN;
-      const result = efficiencyToneFromDelta(deltaPct, referenceAvg > 0);
-      const entry = {
-        ...item,
-        tone:result.tone,
-        label:result.label,
-        level:result.level,
-        deltaPct,
-        referenceAvg,
-        referenceCount:referenceEntries.length
-      };
-      previousEntries.push(item);
-      return entry;
-    });
-    if (computed.length) return computed.slice(-5);
-    return normalizeStoredEfficiencyHistory(profile || {});
-  }
-
-  function efficiencyHistoryForStorage(uid = getDriverUid(), closures = state.closures, profile = driverProfileForEfficiency(uid)) {
-    return efficiencyHistoryForDriver(uid, closures, profile).map(item => ({
-      id:safe(item.id),
-      cutMs:Number(item.cutMs || 0),
-      dateLabel:safe(item.dateLabel || dateShort(item.cutMs)),
-      kmRecorridos:Number(item.kmRecorridos || 0),
-      facturacion:Number(item.facturacion || 0),
-      perKm:Number(item.perKm || 0),
-      referenceAvg:Number(item.referenceAvg || 0),
-      referenceCount:Number(item.referenceCount || 0),
-      tone:safe(item.tone || "mid"),
-      label:safe(item.label || "Cierre"),
-      deltaPct:Number.isFinite(Number(item.deltaPct)) ? Number(item.deltaPct) : null
-    }));
-  }
-
-  function efficiencyStatusFromOwn({ hasCurrent = false, reference = 0, deltaPct = NaN } = {}) {
-    if (!hasCurrent || !(reference > 0) || !Number.isFinite(deltaPct)) return { label:"Faltan datos", level:"Pendiente de datos", css:"efficiency-missing", tone:"missing" };
-    const result = efficiencyToneFromDelta(deltaPct, true);
-    return { label:result.label, level:result.level, css:efficiencyToneCss(result.tone), tone:result.tone };
-  }
-
-  function efficiencyStatusFromHistory({ history = [], kmSeedLoaded = false } = {}) {
-    const latest = history[history.length - 1] || null;
-    if (latest) {
-      const tone = safe(latest.tone || "mid");
-      const label = latest.label === "Base" ? "Primer cierre" : safe(latest.label || "Eficiencia");
-      const level = latest.level || (latest.referenceAvg > 0 ? "Contra promedio propio" : "Primer cierre guardado");
-      return { label, level, css:efficiencyToneCss(tone), tone };
-    }
-    if (kmSeedLoaded) return { label:"Sin cierres", level:"KM inicial cargado", css:"efficiency-mid", tone:"mid" };
-    return { label:"Cargar KM inicial", level:"Chofer nuevo o sin KM", css:"efficiency-missing", tone:"missing" };
-  }
-
-  function efficiencyMissingReason({ facturacion = 0, kmInicial = 0, kmActual = 0, kmRecorridos = 0, reference = 0 } = {}) {
-    if (!(kmInicial > 0)) return "Falta cargar KM inicial.";
-    if (kmActual > 0 && kmActual < kmInicial) return "El KM actual no puede ser menor al KM inicial.";
-    if (!(facturacion > 0)) return "Falta facturación cargada.";
-    if (!(kmActual > 0) || !(kmRecorridos > 0)) return "KM inicial cargado. El KM final se declara al pedir cierre de facturación.";
-    if (!(reference > 0)) return "Falta historial propio suficiente para comparar.";
-    return "";
-  }
-
-  function buildEfficiencyForDriver({ uid = getDriverUid(), name = displayName(), records = state.records, closures = state.closures, profile = driverProfileForEfficiency(uid) } = {}) {
-    const targetUid = safe(uid);
-    const driverClosures = (closures || []).filter(row => !targetUid || closureBelongsToDriver(row, targetUid));
-    const kmInicial = kmInitialForOpenPeriod(targetUid, driverClosures, profile);
-    const kmSeedLoaded = hasKmInitialSeedForDriver(targetUid, driverClosures, profile);
-    const history = efficiencyHistoryForDriver(targetUid, driverClosures, profile);
-    const latest = history[history.length - 1] || null;
-    const reference = latest?.referenceAvg > 0 ? latest.referenceAvg : 0;
-    const status = efficiencyStatusFromHistory({ history, kmSeedLoaded });
-    return {
-      uid:targetUid,
-      name,
-      kmInicial,
-      kmSeedLoaded,
-      history,
-      latestEfficiencyEntry:latest,
-      previousEfficiencyEntry:null,
-      facturacion:latest?.facturacion || 0,
-      kmRecorridos:latest?.kmRecorridos || 0,
-      eficiencia:latest?.perKm || 0,
-      referenciaPropia:reference,
-      diferenciaPct:Number.isFinite(Number(latest?.deltaPct)) ? Number(latest.deltaPct) : NaN,
-      missingReason:kmSeedLoaded ? "" : "Falta cargar KM inicial.",
-      missingReasons:kmSeedLoaded ? [] : ["Falta cargar KM inicial."],
-      status
-    };
-  }
-
-  function currentEfficiencySnapshot() {
-    if (isAdmin() && !getDriverUid()) {
-      return { status:{ label:"Seleccioná chofer", level:"Sin chofer seleccionado", css:"efficiency-missing", tone:"missing" }, missingReason:"Seleccioná un chofer.", missingReasons:["Seleccioná un chofer."], kmInicial:0, kmSeedLoaded:false, history:[], latestEfficiencyEntry:null, facturacion:0, kmRecorridos:0, eficiencia:0, referenciaPropia:0, diferenciaPct:NaN, name:"" };
-    }
-    return buildEfficiencyForDriver({ uid:getDriverUid(), name:displayName() });
-  }
-
-  async function refreshEfficiencyOwnData(force = false) {
-    if (!force && state.efficiency.loadedAt && Date.now() - state.efficiency.loadedAt < 15000) return;
-    const uid = getDriverUid();
-    if (!uid) {
-      state.efficiency.loadedAt = Date.now();
-      renderEfficiencyButton();
-      if ($("payEfficiencyBackdrop")?.classList.contains("is-open")) renderEfficiencyModal();
-      return;
-    }
-    state.efficiency.loading = true;
-    state.efficiency.error = "";
-    try {
-      // La eficiencia se recalcula con datos reales actuales del chofer seleccionado/logueado.
-      // No compara ni consulta datos de otros choferes para armar el resultado.
-      const [records, expenses, closures, debts, debtPayments, uberWeeks] = await Promise.all([
-        getScopedDocs("billing_records", uid),
-        getScopedDocs("gastos", uid),
-        getScopedDocs("cierres_semanales", uid),
-        getScopedDocs("deudas_choferes", uid),
-        getScopedDocs("deuda_pagos", uid)
-      ]);
-      state.records = records.sort((a,b)=>rowMs(b)-rowMs(a));
-      state.expenses = expenses.sort((a,b)=>rowMs(b)-rowMs(a));
-      state.closures = closures.sort((a,b)=>rowMs(b)-rowMs(a));
-      state.debts = debts.sort((a,b)=>debtCreatedMs(b)-debtCreatedMs(a));
-      state.debtPayments = debtPayments.sort((a,b)=>rowMs(b)-rowMs(a));
-      if (isAdmin()) {
-        await fetchDrivers().catch(()=>{});
-        const selected = state.drivers.find(driver => driver.uid === uid);
-        if (selected) state.selectedDriverName = selected.name || state.selectedDriverName;
-      } else {
-        await fetchDrivers().catch(()=>{});
-        const own = state.drivers.find(driver => driver.uid === uid || driver.id === state.profileDocumentId);
-        if (own?.profile) state.profile = { ...(state.profile || {}), ...own.profile };
-      }
-      state.latestSummary = computeSummary();
-      state.efficiency.loadedAt = Date.now();
-    } catch (error) {
-      state.efficiency.error = safe(error?.code || error?.message || "No se pudo actualizar la eficiencia propia.");
-    } finally {
-      state.efficiency.loading = false;
-      renderEfficiencyButton();
-      if ($("payEfficiencyBackdrop")?.classList.contains("is-open")) renderEfficiencyModal();
-    }
+    throw lastError || new Error("No se pudo guardar el perfil del chofer.");
   }
 
   function uberWeekWindow(now = new Date(), offset = 0) {
@@ -3783,70 +3356,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     button.title = text;
   }
 
-  function signedPercent(value) {
-    if (!Number.isFinite(value)) return "—";
-    const sign = value > 0 ? "+" : "";
-    return `${sign}${value.toFixed(1).replace(".", ",")}%`;
-  }
-
-  function efficiencyMoneyPerKm(value) {
-    return value > 0 ? `${currency(value)} / km` : "—";
-  }
-
-  function efficiencyHeadlineDelta(snapshot = {}) {
-    if (snapshot.status?.tone === "missing" || !(snapshot.referenciaPropia > 0)) return "";
-    return `${signedPercent(snapshot.diferenciaPct)} contra tu promedio propio`;
-  }
-
-  function efficiencyResultText(snapshot = {}) {
-    const tone = snapshot.status?.tone || "missing";
-    if (tone === "missing") return snapshot.missingReason || "Faltan datos";
-    if (tone === "mid") return "Resultado: Se mantiene";
-    const label = tone === "good" ? "Mejoró" : "Bajó";
-    return `Resultado: ${label} ${Math.abs(snapshot.diferenciaPct || 0).toFixed(1).replace(".", ",")}%`;
-  }
-
   function setEfficiencyFormMessage(message = "", type = "") {
     const box = $("payEfficiencyFormMessage");
     if (!box) return;
     box.textContent = message;
     box.className = `pay-efficiency-form-message ${type ? `is-${type}` : ""}`.trim();
-  }
-
-  function renderInitialKmForm(snapshot = {}) {
-    const lastKnown = lastKnownKmForValidation(snapshot.uid || getDriverUid());
-    const minText = lastKnown > 0 ? `Debe ser mayor o igual al último KM conocido: ${Math.round(lastKnown)}.` : "Cargá el KM actual para iniciar el período de eficiencia.";
-    return `
-      <div class="pay-efficiency-initial-card">
-        <strong>Cargar KM inicial del auto</strong>
-        <p>Este dato abre tu período de eficiencia. No bloquea registrar cobros.</p>
-        <label for="payEfficiencyKmInitialInput">KM inicial actual</label>
-        <input id="payEfficiencyKmInitialInput" type="number" inputmode="numeric" min="${esc(lastKnown > 0 ? Math.floor(lastKnown) : 0)}" step="1" placeholder="Ej: 100000" />
-        <small>${esc(minText)}</small>
-        <div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status"></div>
-        <div class="pay-efficiency-form-actions">
-          <button class="pay-efficiency-secondary" data-pay-efficiency-action="close" type="button">Cargar después</button>
-          <button class="pay-efficiency-primary" data-pay-efficiency-action="save-initial-km" type="button">Cargar KM inicial</button>
-        </div>
-      </div>`;
-  }
-
-  function renderCurrentKmForm(snapshot = {}) {
-    const minKm = Math.max(Number(snapshot.kmInicial || 0), lastKnownKmForValidation(snapshot.uid || getDriverUid()) || 0);
-    const minText = minKm > 0 ? `Debe ser mayor o igual al KM inicial: ${Math.round(minKm)}.` : "Declará el KM actual para calcular la eficiencia.";
-    return `
-      <div class="pay-efficiency-initial-card pay-efficiency-current-card">
-        <strong>Cargar KM actual</strong>
-        <p>Este dato permite calcular los kilómetros recorridos del período abierto.</p>
-        <label for="payEfficiencyKmCurrentInput">KM actual del auto</label>
-        <input id="payEfficiencyKmCurrentInput" type="number" inputmode="numeric" min="${esc(minKm > 0 ? Math.floor(minKm) : 0)}" step="1" placeholder="Ej: 100300" />
-        <small>${esc(minText)}</small>
-        <div class="pay-efficiency-form-message" id="payEfficiencyFormMessage" role="status"></div>
-        <div class="pay-efficiency-form-actions">
-          <button class="pay-efficiency-secondary" data-pay-efficiency-action="close" type="button">Cargar después</button>
-          <button class="pay-efficiency-primary" data-pay-efficiency-action="save-current-km" type="button">Guardar KM actual</button>
-        </div>
-      </div>`;
   }
 
   function uberWeeklyStatusLabel(row = {}) {
@@ -4241,20 +3755,17 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       if (action === "admin_waiting_driver") title = `Esperando comprobante de ${driver}`;
       if (action === "driver_review") title = "Explora envió comprobante";
       if (action === "driver_waiting_admin") title = "Esperando comprobante de Explora";
-      if (action === "driver_km") title = "Cargar KM actual";
       const subtitle = `${closureTitle(kind)} · ${closureResultText(row)}`;
-      const status = action === "driver_km"
-        ? "Cargar KM"
-        : action === "driver_upload" || action === "admin_upload"
-          ? "Cargar comprobante"
-          : action === "admin_review"
+      const status = action === "driver_upload" || action === "admin_upload"
+        ? "Cargar comprobante"
+        : action === "admin_review"
           ? "Revisar comprobante"
           : action === "driver_review"
             ? "Ver comprobante"
             : action === "admin_waiting_driver" || action === "driver_waiting_admin"
               ? "Esperando comprobante"
               : "Ver detalle";
-      const helper = action === "driver_km" ? "Declará el KM actual para completar la eficiencia del período." : action === "admin_upload" || action === "driver_upload" ? "Resolvé tu situación" : closureStatusText(row);
+      const helper = action === "admin_upload" || action === "driver_upload" ? "Resolvé tu situación" : closureStatusText(row);
       return `<button class="pay-notification-row" data-pay-notification-closure="${esc(row.id)}" type="button">
         <span class="pay-notification-icon">${notificationIcon(kind)}</span>
         <span class="pay-notification-copy"><strong>${esc(title)}</strong><small>${esc(helper)}</small><em>${esc(subtitle)}</em></span>
@@ -6490,7 +6001,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
   function renderClosureModal() {
     renderDriverSelect();
-    const title = $("payClosureTitle"), subtitle = $("payClosureSubtitle"), summary = $("payClosureSummary"), fileField = $("payClosureFileField"), debtField = $("payDebtPaymentField"), debtInput = $("payDebtPaymentAmountInput"), debtHint = $("payDebtPaymentHint"), kmField = $("payClosureKmField"), kmInput = $("payClosureKmInput"), kmHint = $("payClosureKmHint"), submit = $("payClosureSubmit"), cancel = $("payClosureCancel"), reject = $("payClosureReject");
+    const title = $("payClosureTitle"), subtitle = $("payClosureSubtitle"), summary = $("payClosureSummary"), fileField = $("payClosureFileField"), debtField = $("payDebtPaymentField"), debtInput = $("payDebtPaymentAmountInput"), debtHint = $("payDebtPaymentHint"), submit = $("payClosureSubmit"), cancel = $("payClosureCancel"), reject = $("payClosureReject");
     const actions = submit?.closest(".pay-closure-actions");
     if (!title || !subtitle || !summary || !fileField || !submit || !cancel) return;
     const closure = state.modalClosure;
@@ -6499,8 +6010,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const latest = tabSummary(modalBase, kind);
     fileField.hidden = true;
     if (debtField) debtField.hidden = true;
-    if (kmField) kmField.hidden = true;
-    if (kmInput) kmInput.required = false;
     cancel.textContent = "Cancelar";
     cancel.hidden = false;
     submit.hidden = false;
@@ -6567,7 +6076,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       if (debtField) debtField.hidden = false;
       if (debtHint) debtHint.textContent = `Saldo actual: ${currency(pending.remainingAmount || 0)}. Se descuenta primero la deuda más antigua.`;
       if (debtInput) debtInput.max = String(Math.floor(pending.remainingAmount || 0));
-      if (kmField) kmField.hidden = true;
       submit.disabled = !(pending.remainingAmount > 0) || isAdmin();
       submit.textContent = "Confirmar pago";
       cancel.textContent = "Volver";
@@ -6590,18 +6098,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         reject.textContent = safe(closure.requestedByRole).toLowerCase() === "driver" ? "No aceptar cierre" : "Anular cierre";
       }
       if (actions) actions.classList.toggle("has-reject", rejectable);
-      const kmNeeded = action === "driver_km";
       const uploadNeeded = (action === "driver_upload" || action === "admin_upload") && !proof && !completed;
       fileField.hidden = !uploadNeeded;
-      if (kmField) kmField.hidden = !kmNeeded;
-      if (kmInput) {
-        kmInput.required = kmNeeded;
-        kmInput.value = kmNeeded ? "" : kmInput.value;
-        const kmMin = kmInitialForClosure(closure);
-        if (kmMin > 0) kmInput.min = String(Math.floor(kmMin));
-        else kmInput.removeAttribute("min");
-        if (kmHint) kmHint.textContent = kmMin > 0 ? `Debe ser mayor o igual al KM inicial ${Math.round(kmMin)}.` : "Este KM cierra el período de eficiencia y será el inicio del próximo.";
-      }
       summary.innerHTML = closureDetailSummary(closure, kind, isAdmin());
       const noSubmitNeeded = (completed || proof) && !["admin_review", "driver_review"].includes(action);
       if (noSubmitNeeded) {
@@ -6611,11 +6109,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 
       if (state.modalMode === "confirm") {
         title.textContent = closureRequesterText(closure);
-        if (action === "driver_km") {
-          subtitle.textContent = "Explora pidió el cierre de facturación. Cargá el KM actual del auto para completar la eficiencia del período.";
-          submit.disabled = false;
-          submit.textContent = "Guardar KM actual";
-        } else if (action === "driver_waiting_admin") {
+        if (action === "driver_waiting_admin") {
           subtitle.textContent = "El cierre fue enviado al administrador. Cuando el pago se complete, Explora cargará la foto del comprobante y cerrará el período.";
           submit.disabled = true;
           submit.textContent = "Esperando administrador";
@@ -6660,24 +6154,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (adminPayNow) {
       const fileLabel = fileField.querySelector("label");
       if (fileLabel) fileLabel.textContent = "Comprobante obligatorio";
-    }
-    // El KM de facturación lo declara solamente el chofer.
-    // Si el admin pide cierre desde el tablero, no se le pide KM al admin:
-    // el cierre queda pendiente para que el chofer declare el KM al abrir su menú o resolver el cierre.
-    const requestShowsKm = !isAdmin() && isBillingClosureKind(kind);
-    const requestNeedsKm = requestShowsKm;
-    if (kmField) kmField.hidden = !requestShowsKm;
-    if (kmInput) {
-      kmInput.required = requestNeedsKm;
-      kmInput.value = requestShowsKm ? "" : kmInput.value;
-      if (requestShowsKm) {
-        const kmMin = kmInitialForOpenPeriod(getDriverUid(), state.closures, state.profile);
-        if (kmMin > 0) kmInput.min = String(Math.floor(kmMin));
-        else kmInput.removeAttribute("min");
-        if (kmHint) kmHint.textContent = kmMin > 0 ? `Debe ser mayor o igual al último KM declarado ${Math.round(kmMin)}.` : "Primero cargá KM inicial desde Eficiencia Operativa.";
-      } else {
-        kmInput.removeAttribute("min");
-      }
     }
     if (kind === "caja_chica") {
       summary.innerHTML = `<article><span>Efectivo base</span><strong>${currency(latest.gross || 0)}</strong></article><article><span>Caja chica 5%</span><strong>${currency(latest.cashboxTotal || 0)}</strong></article><article><span>En poder del chofer</span><strong>${currency(latest.cashboxInDriver || 0)}</strong></article><article class="closure-payment-result settlement-result-green"><span class="closure-liquidation-label">Chofer debe liquidar a Explora</span><strong>${currency(latest.amountFromDriver || 0)}</strong></article>`;
@@ -6771,7 +6247,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     try {
       if (state.modalMode === "debt-expense-offset") await submitDebtExpenseOffset();
       else if (state.modalMode === "debt-payment") await submitDebtPayment();
-      else if (state.modalMode === "confirm" && state.modalClosure && closureActionForViewer(state.modalClosure) === "driver_km") await driverSubmitClosureKm(state.modalClosure);
       else if (state.modalMode === "confirm" && state.modalClosure) await driverConfirmClosure(state.modalClosure);
       else if (state.modalMode === "admin-review" && state.modalClosure && isAdmin()) await adminSubmitClosure(state.modalClosure);
       else if (state.modalMode === "admin-pay-now" && isAdmin()) await adminCreateAndCloseClosure();
@@ -6791,106 +6266,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }
   }
 
-
-  function readClosureKmInput({ initialKm = 0, required = true } = {}) {
-    const raw = safe($("payClosureKmInput")?.value || "");
-    if (!raw) {
-      if (required) throw new Error("Cargá el KM actual del auto.");
-      return 0;
-    }
-    const km = parseKmValue(raw);
-    if (!Number.isFinite(km)) throw new Error("El KM actual debe ser numérico.");
-    if (km <= 0) throw new Error("El KM actual debe ser mayor a cero.");
-    if (initialKm > 0 && km < initialKm) throw new Error("El KM actual no puede ser menor al último KM declarado.");
-    return km;
-  }
-
-  function efficiencySummaryFromClosure(closure = {}) {
-    return {
-      gross:moneyNumber(closure.eficienciaFacturacion ?? closure.totalFacturado ?? closure.gross ?? closure.grossBeforeCashbox ?? closure.facturacion ?? closure.billingTotal ?? closure.cashInDriver ?? 0),
-      records:new Array(Math.max(0, Number(closure.eficienciaServicios || closure.includedBillingIds?.length || 0)))
-    };
-  }
-
-  function efficiencyPayloadFromKm({ kmActual = 0, kmInicial = 0, summary = state.latestSummary || computeSummary(), pending = false, uid = getDriverUid(), beforeMs = 0 } = {}) {
-    const facturacion = moneyNumber(summary.gross ?? summary.totalFacturado ?? summary.billingTotal ?? 0);
-    const servicios = Number((summary.billingRecords || summary.records || []).length || summary.eficienciaServicios || 0);
-    const kmRecorridos = kmActual > 0 && kmInicial > 0 ? Math.max(0, kmActual - kmInicial) : 0;
-    const hasCurrent = facturacion > 0 && kmInicial > 0 && kmActual > 0 && kmRecorridos > 0;
-    const eficienciaPorKm = hasCurrent ? facturacion / kmRecorridos : 0;
-    const reference = ownEfficiencyReferenceForDriver(uid, state.closures, beforeMs);
-    const diferenciaPct = hasCurrent && reference.value > 0 ? ((eficienciaPorKm - reference.value) / reference.value) * 100 : NaN;
-    const status = efficiencyStatusFromOwn({ hasCurrent, reference:reference.value, deltaPct:diferenciaPct });
-    return {
-      kmActual:Number(kmActual || 0),
-      lastKnownKm:Number(kmActual || 0),
-      kmInicialPeriodo:Number(kmInicial || 0),
-      kmFinalPeriodo:Number(kmActual || 0),
-      kmRecorridos:Number(kmRecorridos || 0),
-      eficienciaFacturacion:Number(facturacion || 0),
-      eficienciaServicios:Number(servicios || 0),
-      eficienciaPorKm:Number(eficienciaPorKm || 0),
-      eficienciaEstado:status.label,
-      eficienciaDiferenciaPct:Number.isFinite(diferenciaPct) ? Number(diferenciaPct) : null,
-      eficienciaReferenciaPropia:Number(reference.value || 0),
-      eficienciaReferenciaConteo:Number(reference.count || 0),
-      eficienciaReferenciaModo:reference.mode || "none",
-      efficiencyReferenceAverage:Number(reference.value || 0),
-      efficiencyReferenceCount:Number(reference.count || 0),
-      efficiencyReferenceMode:reference.mode || "none",
-      efficiencyTone:status.tone || "missing",
-      efficiencyLabel:status.label || "Faltan datos",
-      eficienciaPendienteDatos:!!pending || !hasCurrent,
-      eficienciaUpdatedAt:serverTimestamp(),
-      eficienciaUpdatedAtMs:Date.now(),
-      kmInicialNuevoPeriodo:Number(kmActual || 0),
-      efficiencyNextKmInitial:Number(kmActual || 0),
-      currentEfficiencyPeriodStartKm:Number(kmActual || 0),
-      kmInitialSeedLoaded: kmActual > 0 || kmInicial > 0,
-      efficiencyKmSeeded: kmActual > 0 || kmInicial > 0,
-      kmInicialCargadoUnaVez: kmActual > 0 || kmInicial > 0
-    };
-  }
-
-  async function driverSubmitClosureKm(closure = {}) {
-    if (!closure?.id) throw new Error("No se pudo identificar el cierre.");
-    const uid = safe(closure.driverUid || closure.choferUid || closure.uid || getDriverUid());
-    const initialKm = kmInitialForClosure(closure);
-    if (!(initialKm > 0)) throw new Error("Primero se necesita un KM inicial válido para medir eficiencia.");
-    const kmActual = readClosureKmInput({ initialKm, required:true });
-    const summary = efficiencySummaryFromClosure(closure);
-    const efficiencyPayload = efficiencyPayloadFromKm({ kmActual, kmInicial:initialKm, summary, pending:false, uid, beforeMs:closureCutMs(closure) || Date.now() });
-    const updatedClosure = { ...closure, ...efficiencyPayload, kmPendienteChofer:false, status:safe(closure.status || "requested"), estado:safe(closure.estado || "solicitado"), statusLabel:"KM actual declarado por chofer", updatedAtMs:Date.now() };
-    await updateDoc(doc(state.db, "cierres_semanales", closure.id), {
-      ...efficiencyPayload,
-      kmPendienteChofer:false,
-      status:safe(closure.status || "requested"),
-      estado:safe(closure.estado || "solicitado"),
-      statusLabel:"KM actual declarado por chofer",
-      kmDeclaredByUid:state.auth?.currentUser?.uid || "",
-      kmDeclaredByName:displayName(),
-      kmDeclaredAt:serverTimestamp(),
-      kmDeclaredAtMs:Date.now(),
-      updatedAt:serverTimestamp()
-    });
-    state.closures = [updatedClosure, ...state.closures.filter(row => row.id !== closure.id)];
-    updateDriverEfficiencyState(uid, {
-      lastKnownKm:Number(kmActual || 0),
-      currentEfficiencyPeriodStartKm:Number(kmActual || 0),
-      currentEfficiencyPeriodStartAt:serverTimestamp(),
-      currentEfficiencyPeriodStartAtMs:Date.now(),
-      kmInicialPeriodo:Number(kmActual || 0),
-      kmActual:Number(kmActual || 0),
-      kmInitialSeedLoaded:true,
-      efficiencyKmSeeded:true,
-      kmInicialCargadoUnaVez:true,
-      lastEfficiencyPerKm:Number(efficiencyPayload.eficienciaPorKm || 0),
-      averageOwnEfficiencyPerKm:Number(efficiencyPayload.eficienciaReferenciaPropia || 0),
-      efficiencyLast5Closures:efficiencyHistoryForStorage(uid, state.closures),
-      kmUpdatedAt:serverTimestamp(),
-      kmUpdatedAtMs:Date.now()
-    }).catch(error => console.warn("EXPLORA_PAY_DRIVER_KM_STATE", error?.code || error?.message));
-  }
 
   async function requestClosure() {
     const user = state.auth?.currentUser;
@@ -6919,20 +6294,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const moduleKey = mapModuleKey(kind) || kind;
     const periodId = `${targetUid}_${moduleKey}_${Number(summary.resetMs || 0)}_${cutoffAtMs}`;
     console.log("[CIERRE] pedir cierre", { driverUid:targetUid, moduleKey, periodId });
-    let kmInitial = 0, kmActual = 0;
     const isBillingRequest = isBillingClosureKind(kind);
-    let billingKmPending = false;
-    if (isBillingRequest) {
-      kmInitial = kmInitialForOpenPeriod(targetUid, state.closures, isAdmin() ? driverProfileForEfficiency(targetUid) : state.profile);
-      if (isAdmin()) {
-        // El admin solo solicita el cierre. El KM queda pendiente para que lo declare el chofer.
-        billingKmPending = true;
-        kmActual = 0;
-      } else {
-        if (!(kmInitial > 0)) throw new Error("Primero cargá KM inicial del auto desde Eficiencia Operativa.");
-        kmActual = readClosureKmInput({ initialKm:kmInitial, required:true });
-      }
-    }
     const recordIds = (summary.records || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
     const cashboxGeneratedBillingIds = (summary.cashboxGeneratedRecords || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
     const cashboxEligibleBillingIds = (summary.cashboxEligibleRecords || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
@@ -6985,8 +6347,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       whatsappNoticeTo:isAdmin() ? safe(paymentPayload.driverPaymentPhone || driverPaymentProfileForUid(targetUid).phone) : EXPLORA_WHATSAPP_DISPLAY,
       whatsappNoticeTargetRole:isAdmin() ? "driver" : "admin",
       whatsappNoticeText:whatsappText,
-      ...(isBillingRequest && !isAdmin() ? efficiencyPayloadFromKm({ kmActual, kmInicial:kmInitial, summary, pending:billingKmPending, uid:targetUid, beforeMs:cutoffAtMs }) : {}),
-      ...(isBillingRequest && isAdmin() && billingKmPending ? { kmPendienteChofer:true, eficienciaPendienteDatos:true, kmTaskStatus:"pending_driver_km", statusLabel:`${closureTitle(kind)} solicitado · KM pendiente del chofer` } : {}),
       gross:Number(summary.gross || 0),
       expenseTotal:Number(summary.expenseTotal || 0),
       expenseAmountToDriverBeforeDebt:Number(summary.expenseAmountToDriverBeforeDebt || 0),
@@ -7044,24 +6404,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       }
     } else {
       openWhatsappToExplora(whatsappText);
-    }
-    if (isBillingRequest && !isAdmin() && kmActual > 0) {
-      updateDriverEfficiencyState(targetUid, {
-        lastKnownKm:Number(kmActual || 0),
-        currentEfficiencyPeriodStartKm:Number(kmActual || 0),
-        currentEfficiencyPeriodStartAt:serverTimestamp(),
-        currentEfficiencyPeriodStartAtMs:Date.now(),
-        kmInicialPeriodo:Number(kmActual || 0),
-        kmActual:Number(kmActual || 0),
-        kmInitialSeedLoaded:true,
-        efficiencyKmSeeded:true,
-        kmInicialCargadoUnaVez:true,
-        lastEfficiencyPerKm:Number(payload.eficienciaPorKm || 0),
-        averageOwnEfficiencyPerKm:Number(payload.eficienciaReferenciaPropia || 0),
-        efficiencyLast5Closures:efficiencyHistoryForStorage(targetUid, state.closures),
-        kmUpdatedAt:serverTimestamp(),
-        kmUpdatedAtMs:Date.now()
-      }).catch(error => console.warn("EXPLORA_PAY_REQUEST_KM_STATE", error?.code || error?.message));
     }
     render();
     return { ...payload, id:created.id, createdAtMs:cutoffAtMs, updatedAtMs:cutoffAtMs };
@@ -7236,7 +6578,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     forceHomeLanding();
     render();
     startRealtime("session");
-    setTimeout(() => refreshEfficiencyOwnData(false).catch(()=>{}), 700);
   }
 
   async function boot() {
