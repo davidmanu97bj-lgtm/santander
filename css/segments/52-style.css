@@ -3598,3 +3598,6 @@ body.explora-pay-mode .pay-tabs{
 .pay-uber-inbox-card.is-no-data{border-color:rgba(92,102,120,.22);background:#f5f6f8}
 .pay-uber-inbox-card.is-no-data em{color:#596273;background:#e4e7ec}
 .pay-uber-inbox-card.is-no-data p{margin:12px 0 0;color:#646d7d;font-size:13px}
+
+/* v4121 · KM de cierre eliminado de forma definitiva. No afecta Cierre Uber semanal. */
+#payClosureKmField,.pay-closure-km-field,#payClosureKmInput,#payClosureKmHint{display:none!important;visibility:hidden!important;pointer-events:none!important}
