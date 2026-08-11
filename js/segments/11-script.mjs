@@ -305,31 +305,109 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       }
     }
 
-    const splashSyncState = { progress: 0, timer: null, active: false, detail: "", finishing:false };
+    const splashSyncState = {
+      progress: 0,
+      visualProgress: 0,
+      targetProgress: 0,
+      raf: 0,
+      startedAt: 0,
+      lastFrameAt: 0,
+      active: false,
+      detail: "",
+      finishing: false,
+      finishResolve: null
+    };
 
-    function setSplashSyncProgress(progress = 0, title = "Cargando EXPLORA", detail = "Actualizando información…") {
-      const safeProgress = Math.max(0, Math.min(100, Math.round(Number(progress || 0))));
-      splashSyncState.progress = Math.max(splashSyncState.progress || 0, safeProgress);
+    function paintSplashSyncProgress(progress = 0, title = "Cargando EXPLORA", detail = "Actualizando información…") {
+      const safeProgress = Math.max(0, Math.min(100, Number(progress || 0)));
+      splashSyncState.visualProgress = safeProgress;
       const titleElement = $("exploraSyncTitle");
       const detailElement = $("exploraSyncDetail");
       const ringElement = $("exploraSyncRing");
       if (titleElement) titleElement.textContent = title || "Cargando EXPLORA";
       if (detailElement) detailElement.textContent = detail || "Actualizando información…";
-      if (ringElement) ringElement.style.setProperty("--sync-angle", `${splashSyncState.progress * 3.6}deg`);
+      if (ringElement) ringElement.style.setProperty("--sync-angle", `${(safeProgress * 3.6).toFixed(3)}deg`);
+    }
+
+    function stopSplashSyncAnimation() {
+      if (splashSyncState.raf) cancelAnimationFrame(splashSyncState.raf);
+      splashSyncState.raf = 0;
+      splashSyncState.lastFrameAt = 0;
+    }
+
+    function runSplashSyncAnimation(now = performance.now()) {
+      if (!splashSyncState.active) {
+        splashSyncState.raf = 0;
+        return;
+      }
+      const previous = splashSyncState.lastFrameAt || now;
+      const dt = Math.min(48, Math.max(0, now - previous));
+      splashSyncState.lastFrameAt = now;
+      const elapsed = Math.max(0, now - (splashSyncState.startedAt || now));
+
+      // Mientras Firestore sigue trabajando, el aro avanza siempre de forma continua.
+      // Los hitos reales de sincronización solo aceleran el avance; nunca producen saltos visuales.
+      const timeFloor = Math.min(96.8, 4 + 92.8 * (1 - Math.exp(-elapsed / 4200)));
+      const requestedFloor = Math.min(97.2, Number(splashSyncState.targetProgress || 0));
+      const desired = splashSyncState.finishing ? 100 : Math.max(timeFloor, requestedFloor);
+      const current = Number(splashSyncState.visualProgress || 0);
+      const gap = Math.max(0, desired - current);
+      let next = current;
+
+      if (splashSyncState.finishing) {
+        // Al confirmarse la sincronización real, completa únicamente el pequeño tramo restante.
+        next = Math.min(100, current + Math.max(0.55, gap * 0.22));
+      } else if (gap > 0.001) {
+        // Interpolación dependiente del tiempo: suave incluso en pantallas de 60/120 Hz.
+        const blend = 1 - Math.exp(-dt / 260);
+        next = current + gap * blend;
+      } else {
+        // Nunca queda visualmente congelado mientras todavía se sincroniza.
+        next = Math.min(97.2, current + (dt * 0.0018));
+      }
+
+      splashSyncState.progress = Math.max(splashSyncState.progress || 0, next);
+      paintSplashSyncProgress(next, "Cargando EXPLORA", splashSyncState.detail);
+
+      if (splashSyncState.finishing && next >= 99.94) {
+        splashSyncState.progress = 100;
+        paintSplashSyncProgress(100, "Cargando EXPLORA", "Información actualizada. Abriendo EXPLORA…");
+        const resolve = splashSyncState.finishResolve;
+        splashSyncState.finishResolve = null;
+        splashSyncState.raf = 0;
+        if (resolve) resolve();
+        return;
+      }
+      splashSyncState.raf = requestAnimationFrame(runSplashSyncAnimation);
+    }
+
+    function setSplashSyncProgress(progress = 0, title = "Cargando EXPLORA", detail = "Actualizando información…") {
+      const safeProgress = Math.max(0, Math.min(100, Number(progress || 0)));
+      splashSyncState.targetProgress = Math.max(splashSyncState.targetProgress || 0, safeProgress);
+      splashSyncState.detail = detail || splashSyncState.detail || "Actualizando información…";
+      const titleElement = $("exploraSyncTitle");
+      const detailElement = $("exploraSyncDetail");
+      if (titleElement) titleElement.textContent = title || "Cargando EXPLORA";
+      if (detailElement) detailElement.textContent = splashSyncState.detail;
+      if (splashSyncState.active && !splashSyncState.raf) splashSyncState.raf = requestAnimationFrame(runSplashSyncAnimation);
     }
 
     function beginSplashSync(detail = "Actualizando información…") {
       splashHidden = false;
+      stopSplashSyncAnimation();
       splashSyncState.active = true;
       splashSyncState.finishing = false;
       splashSyncState.progress = 0;
+      splashSyncState.visualProgress = 0;
+      splashSyncState.targetProgress = 0;
+      splashSyncState.startedAt = performance.now();
       splashSyncState.detail = detail || "Actualizando información…";
-      if (splashSyncState.timer) clearInterval(splashSyncState.timer);
-      splashSyncState.timer = null;
+      splashSyncState.finishResolve = null;
       const splash = $("exploraSplash");
       if (splash) { splash.setAttribute("aria-hidden", "false"); splash.style.pointerEvents = "auto"; }
       document.body.classList.remove("explora-splash-hidden");
-      setSplashSyncProgress(0, "Cargando EXPLORA", splashSyncState.detail);
+      paintSplashSyncProgress(0, "Cargando EXPLORA", splashSyncState.detail);
+      splashSyncState.raf = requestAnimationFrame(runSplashSyncAnimation);
     }
 
     async function finishSplashSync() {
@@ -337,12 +415,13 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       if (splashSyncState.finishing) return;
       splashSyncState.finishing = true;
       splashSyncState.active = true;
-      setSplashSyncProgress(100, "Cargando EXPLORA", "Información actualizada. Abriendo EXPLORA…");
-      await delay(260);
+      splashSyncState.targetProgress = 100;
+      splashSyncState.detail = "Información actualizada. Abriendo EXPLORA…";
+      if (!splashSyncState.raf) splashSyncState.raf = requestAnimationFrame(runSplashSyncAnimation);
+      await new Promise(resolve => { splashSyncState.finishResolve = resolve; });
       splashSyncState.active = false;
       splashSyncState.finishing = false;
-      if (splashSyncState.timer) clearInterval(splashSyncState.timer);
-      splashSyncState.timer = null;
+      stopSplashSyncAnimation();
       return hideSplashSafely();
     }
 
