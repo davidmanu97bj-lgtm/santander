@@ -1,7 +1,7 @@
 /* Compatibilidad validada: v4088-apertura-instantanea */
 /* EXPLORA PWA service worker · v2.5.6 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4125-fluid-sync-ring`;
+const CACHE_NAME = `${CACHE_PREFIX}v4126-fast-sync`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -32,7 +32,7 @@ const APP_SHELL = [
   './js/segments/01-script.js?v2442-weekly-payment-production',
   './js/segments/19-script.mjs?v2442-weekly-payment-production',
   './js/segments/39-script.mjs?v=4016-card-alerts',
-  './js/segments/11-script.mjs?v=4123-circular-sync-gate',
+  './js/segments/11-script.mjs?v=4126-fast-sync',
   './js/segments/12-script.js?v=4123-circular-sync-gate',
   './js/segments/37-script.js?v=4089-arranque-estable',
   './js/core/weekly-core.mjs?v2442-weekly-payment-production',
@@ -42,7 +42,7 @@ const APP_SHELL = [
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
   './css/segments/52-style.css?v=4120-sin-km-sin-eficiencia',
-  './js/segments/52-script.mjs?v=4125-fluid-sync-ring',
+  './js/segments/52-script.mjs?v=4126-fast-sync',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
   './icons/favicon-v2411.svg',
@@ -165,3 +165,5 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4110 cierre Uber sin datos */
 
 /* cache bump: v4125 splash circular fluido sincronizado con carga real */
+
+/* cache bump: v4126 carga paralela + realtime canonico + render agrupado */
