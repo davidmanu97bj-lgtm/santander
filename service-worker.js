@@ -1,7 +1,7 @@
 /* Compatibilidad validada: v4088-apertura-instantanea */
 /* EXPLORA PWA service worker · v2.5.6 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4121-km-hard-off`;
+const CACHE_NAME = `${CACHE_PREFIX}v4122-circular-sync-gate`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -18,7 +18,7 @@ const APP_SHELL = [
   './css/segments/01-style.css?v=4062-login-sin-autofill-session-restore',
   './css/segments/46-style.css',
   './css/segments/53-style.css?v=4086-editar-valor-actividades-admin',
-  './css/segments/47-style.css?v=4065-sync-before-dashboard',
+  './css/segments/47-style.css?v=4122-circular-sync-gate',
   './css/segments/07-style.css?v=3921-billing-visual-fix',
   './js/segments/09-script.js?v=4086-editar-valor-actividades-admin',
   './js/segments/03-script.js?v=4075-sin-datos-anteriores',
@@ -32,8 +32,8 @@ const APP_SHELL = [
   './js/segments/01-script.js?v2442-weekly-payment-production',
   './js/segments/19-script.mjs?v2442-weekly-payment-production',
   './js/segments/39-script.mjs?v=4016-card-alerts',
-  './js/segments/11-script.mjs?v=4089-arranque-estable',
-  './js/segments/12-script.js?v=4065-sync-before-dashboard',
+  './js/segments/11-script.mjs?v=4122-circular-sync-gate',
+  './js/segments/12-script.js?v=4122-circular-sync-gate',
   './js/segments/37-script.js?v=4089-arranque-estable',
   './js/core/weekly-core.mjs?v2442-weekly-payment-production',
   './css/segments/45-style.css?v=2440-weekly-closure-cash-record-recovery',
@@ -163,3 +163,5 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4091 arranque autoritativo sin datos viejos */
 
 /* cache bump: v4110 cierre Uber sin datos */
+
+/* cache bump: v4122 splash circular verde + primera pintura autoritativa */
