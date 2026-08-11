@@ -244,3 +244,28 @@ body.explora-auth-checking .explora-splash{opacity:1;visibility:visible;pointer-
 @media (prefers-reduced-motion:reduce){
   .explora-sync-ring,.explora-sync-ring span{transition:none!important}
 }
+
+
+/* EXPLORA v4123 · compuerta autoritativa total: no existe dashboard visible debajo del splash */
+body.explora-auth-checking .app-shell,
+body.explora-auth-checking #mainBottomNav,
+body.explora-auth-checking .main-bottom-nav,
+body.explora-auth-checking .explora-pay-home,
+body.explora-auth-checking .driver-dashboard,
+body.explora-auth-checking .admin-dashboard {
+  visibility:hidden!important;
+  opacity:0!important;
+  pointer-events:none!important;
+}
+body.explora-auth-checking .explora-splash {
+  display:flex!important;
+  opacity:1!important;
+  visibility:visible!important;
+  pointer-events:auto!important;
+  z-index:2147483646!important;
+}
+body.explora-auth-checking.explora-splash-hidden .explora-splash {
+  display:flex!important;
+  opacity:1!important;
+  visibility:visible!important;
+}
