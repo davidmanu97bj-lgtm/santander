@@ -198,7 +198,7 @@ body.explora-role-blocked .explora-sync-panel{display:none!important;}
   border-radius:50%;
   background:conic-gradient(#49dc7d var(--sync-angle),rgba(73,220,125,.13) 0deg);
   box-shadow:0 0 28px rgba(73,220,125,.12);
-  transition:background .18s linear;
+  transition:none;
 }
 .explora-sync-ring::before{
   content:"";
@@ -221,7 +221,7 @@ body.explora-role-blocked .explora-sync-panel{display:none!important;}
   box-shadow:0 0 14px rgba(101,241,151,.75);
   transform-origin:4px 28px;
   transform:rotate(var(--sync-angle));
-  transition:transform .18s linear;
+  transition:none;
 }
 .explora-sync-title{
   display:block;
