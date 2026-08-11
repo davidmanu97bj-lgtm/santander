@@ -393,6 +393,15 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     }
 
     function beginSplashSync(detail = "Actualizando información…") {
+      // v4125: una apertura de sesión = una sola animación. Si el splash ya está
+      // trabajando para esta apertura, solo actualizamos el texto y jamás volvemos a 0°.
+      if (splashSyncState.active && !splashHidden) {
+        splashSyncState.detail = detail || splashSyncState.detail || "Actualizando información…";
+        const detailElement = $("exploraSyncDetail");
+        if (detailElement) detailElement.textContent = splashSyncState.detail;
+        if (!splashSyncState.raf) splashSyncState.raf = requestAnimationFrame(runSplashSyncAnimation);
+        return;
+      }
       splashHidden = false;
       stopSplashSyncAnimation();
       splashSyncState.active = true;
@@ -735,23 +744,22 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       hideSplashSafely();
     }
 
-    function showDriverApp() {
-      /* Un login anterior o un modal abortado no debe dejar la aplicación congelada. */
+    async function showDriverApp() {
+      /* v4125: el dashboard se prepara detrás del splash, pero no se hace visible
+         hasta que sincronización + aro de 360° hayan terminado por completo. */
       window.unlockAllPageScroll?.();
       authSessionState.authenticatedUser = exploraSession.authUser || auth.currentUser || null;
       authSessionState.profile = exploraSession.profile || null;
       authSessionState.role = "chofer";
       authSessionState.uiOpened = true;
-      setBodyMode("explora-authenticated");
       document.body.classList.remove("explora-shared-admin");
       renderDashboardByRole?.({ role: "chofer", profile: exploraSession.profile || {} });
       const weeklySnapshot = window.ExploraWeeklyEngine?.getState?.();
       if (weeklySnapshot?.loaded && !weeklySnapshot?.loading) window.ExploraFastCache?.renderWeeklySnapshot?.(weeklySnapshot);
-      finishSplashSync();
+      await finishSplashSync();
+      setBodyMode("explora-authenticated");
       if (window.ExploraMainNav) window.ExploraMainNav.setActive("inicio");
       restoreLastDriverScreen();
-      // La apertura ya esperó la sincronización autoritativa. No se restauran
-      // snapshots visuales anteriores porque producirían un parpadeo con saldos viejos.
       queueMicrotask(() => {
         window.ExploraDerivations?.startForCurrentSession?.().catch?.((error)=>console.warn("[EXPLORA derivaciones] start", error?.code || error?.message));
         if (typeof window.ExploraLoadWeeklySession === "function") {
@@ -3938,10 +3946,10 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
 
       if (role === "admin") {
         loginDevDiagnostic("ACCESS_ADMIN", {});
-        showAdminApp();
+        await showAdminApp();
       } else {
         loginDevDiagnostic("ACCESS_DRIVER", {});
-        showDriverApp();
+        await showDriverApp();
       }
       exploraSession.authReady = true;
       const sessionDetail = { uid: authUser.uid, role, generation: sessionGeneration, profileResolved: true, sessionInitialized: true };
@@ -5031,7 +5039,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       return renderDriverDashboardRole();
     }
 
-    function showAdminApp() {
+    async function showAdminApp() {
       window.unlockAllPageScroll?.();
       window.ExploraDerivations?.stopSession?.();
       const user = auth.currentUser;
@@ -5042,10 +5050,10 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       authSessionState.profile = exploraSession.profile || null;
       authSessionState.role = "admin";
       authSessionState.uiOpened = true;
-      setBodyMode("explora-authenticated");
       document.body.classList.add("explora-shared-admin");
       renderDashboardByRole({ role:"admin", profile:exploraSession.profile || {} });
-      finishSplashSync();
+      await finishSplashSync();
+      setBodyMode("explora-authenticated");
       window.ExploraMainNav?.setActive("inicio");
     }
 

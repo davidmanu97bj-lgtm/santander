@@ -6595,7 +6595,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   async function refreshSession(user) {
-    state.user = user || state.auth?.currentUser || null;
+    const nextUser = user || state.auth?.currentUser || null;
+    const nextUid = safe(nextUser?.uid);
+    const currentUid = safe(state.user?.uid);
+    const alreadyListeningSameSession = Boolean(
+      nextUid && currentUid === nextUid && state.unsubscribers.length > 0
+    );
+    state.user = nextUser;
     const session = window.ExploraSession || {};
     state.role = safe(session.role || session.profile?.role || session.profile?.rol || "driver").toLowerCase() || "driver";
     state.profile = session.profile || {};
@@ -6607,7 +6613,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     state.previousDetailsOpen = { caja_chica:false, gastos:false, explora:false, chofer:false };
     forceHomeLanding();
     render();
-    startRealtime("session");
+    // v4125: onAuthStateChanged + session-opened + fallback podían arrancar
+    // tres veces los mismos listeners. Eso reiniciaba dataLoading y mostraba
+    // "Preparando…" después del splash. Para el mismo UID conservamos la
+    // sincronización ya confirmada y solo actualizamos perfil/rol.
+    if (!alreadyListeningSameSession) startRealtime("session");
   }
 
   async function boot() {
