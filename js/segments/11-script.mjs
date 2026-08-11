@@ -3766,7 +3766,20 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         } catch (weeklyError) {
           loginDevDiagnostic("DASHBOARD_PREFLIGHT_SKIPPED", { code: weeklyError && (weeklyError.message || weeklyError.code) || "unknown" });
         }
-        updateSplashSync(94, "Datos del chofer listos. Preparando menú…");
+        updateSplashSync(88, "Sincronizando cierre, gastos, caja chica y deudas…");
+        try {
+          const started = Date.now();
+          while (!window.ExploraPagoHome?.waitUntilReady && Date.now() - started < 6000) {
+            await delay(60);
+          }
+          if (!window.ExploraPagoHome?.waitUntilReady) throw new Error("PAGO_HOME_MODULE_NOT_READY");
+          await window.ExploraPagoHome.waitUntilReady({ uid:authUser.uid, timeout:15000 });
+        } catch (financialError) {
+          // En arranque frío no abrimos una interfaz parcial. La recuperación de
+          // sesión superior reintentará manteniendo el splash visible.
+          throw Object.assign(new Error("FINANCIAL_PREFLIGHT_NOT_READY"), { cause:financialError });
+        }
+        updateSplashSync(96, "Toda la información está actualizada. Abriendo EXPLORA…");
         return;
       }
 
@@ -4792,10 +4805,10 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       const weeklyFresh=Boolean(window.ExploraFastCache?.isFresh?.("dashboard_weekly_billing",weeklyCtx)||window.ExploraFastCache?.isFresh?.("dashboard_weekly_expenses",weeklyCtx));
       const hydratedWeekly=weeklyFresh&&window.ExploraFastCache?.hydrateDashboard?.(weeklyCtx);
       if(!hydratedWeekly){
-        $("dashboardWeeklyRevenue") && ($("dashboardWeeklyRevenue").textContent = "Actualizando…");
-        $("dashboardWeeklyRevenueMeta") && ($("dashboardWeeklyRevenueMeta").textContent = "Sincronizando datos actuales");
-        $("dashboardWeeklyExpenses") && ($("dashboardWeeklyExpenses").textContent = "Actualizando…");
-        $("dashboardWeeklyExpensesMeta") && ($("dashboardWeeklyExpensesMeta").textContent = "Sincronizando datos actuales");
+        $("dashboardWeeklyRevenue") && ($("dashboardWeeklyRevenue").textContent = "—");
+        $("dashboardWeeklyRevenueMeta") && ($("dashboardWeeklyRevenueMeta").textContent = "Datos en preparación");
+        $("dashboardWeeklyExpenses") && ($("dashboardWeeklyExpenses").textContent = "—");
+        $("dashboardWeeklyExpensesMeta") && ($("dashboardWeeklyExpensesMeta").textContent = "Datos en preparación");
       }
       $("dashboardReceiptsMeta") && ($("dashboardReceiptsMeta").textContent = "Ver y gestionar comprobantes");
       $("dashboardTripsCount") && ($("dashboardTripsCount").textContent = hydratedWeekly ? $("dashboardTripsCount").textContent : "…");
@@ -5937,6 +5950,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       // Si la interfaz ya estaba viva en memoria puede conservarse; en un arranque nuevo
       // se bloquea la primera pintura con el splash hasta terminar la sincronización real.
       const preserveCurrentUI = Boolean(
+        authSessionState.bootCompleted &&
         authSessionState.uiOpened &&
         authSessionState.authenticatedUser?.uid === user.uid
       );

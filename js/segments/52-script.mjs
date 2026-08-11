@@ -847,7 +847,22 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (REALTIME_COLLECTIONS.every(name => state.realtimeReady.has(name))) {
       state.dataLoading = false;
       render();
+      try {
+        window.dispatchEvent(new CustomEvent("explora:pago-home-ready", { detail:{ uid:state.user?.uid || "", generation } }));
+      } catch (_) {}
     }
+  }
+
+  async function waitUntilFinancialReady({ uid = "", timeout = 15000 } = {}) {
+    const targetUid = safe(uid || state.user?.uid || state.auth?.currentUser?.uid);
+    const started = Date.now();
+    while (Date.now() - started < Math.max(1000, Number(timeout || 15000))) {
+      const activeUid = safe(state.user?.uid || state.auth?.currentUser?.uid);
+      if (targetUid && activeUid && targetUid !== activeUid) throw new Error("PAGO_HOME_SESSION_REPLACED");
+      if (activeUid && !state.dataLoading && REALTIME_COLLECTIONS.every(name => state.realtimeReady.has(name))) return true;
+      await new Promise(resolve => setTimeout(resolve, 60));
+    }
+    throw new Error("PAGO_HOME_READY_TIMEOUT");
   }
 
   async function waitFirebase(timeout = 14000) {
@@ -2241,12 +2256,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           });
         } catch (error) {
           console.warn(`EXPLORA_PAY_LISTENER_SETUP_${collectionName}_${field}`, error?.code || error?.message);
+          fieldReady(field);
           return null;
         }
       }).filter(Boolean);
       return () => unsubs.forEach(unsub => { try { unsub?.(); } catch (_) {} });
     } catch (error) {
       console.warn(`EXPLORA_PAY_LISTENER_SETUP_${collectionName}`, error?.code || error?.message);
+      onReady?.();
       return null;
     }
   }
@@ -5047,13 +5064,16 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const mainCard = amount.closest(".pay-main-card");
     if (mainCard) mainCard.classList.toggle("is-firestore-loading", !!state.dataLoading);
     if (state.dataLoading) {
-      amount.textContent = "Actualizando…";
-      subtitle.textContent = "Consultando información actual en Firestore";
-      pillLabel.textContent = "Actualizando datos";
-      pillAmount.textContent = "Actualizando…";
+      /* v4123: nunca pintar el estado verde "Actualizando" dentro del dashboard.
+         El arranque autoritativo queda cubierto por el splash; si hay una
+         resincronización en caliente se conservan placeholders neutros. */
+      amount.textContent = "—";
+      subtitle.textContent = "Sincronizando información";
+      pillLabel.textContent = "Datos en preparación";
+      pillAmount.textContent = "—";
       extra.innerHTML = [
         "Saldo actual", "Total del período", "Parte correspondiente", "Cierre del módulo"
-      ].map(label => `<div><span>${esc(label)}</span><strong>Actualizando…</strong></div>`).join("");
+      ].map(label => `<div><span>${esc(label)}</span><strong>—</strong></div>`).join("");
       if (debtAliasHint) debtAliasHint.hidden = true;
       if (expenseDebtReconciliation) { expenseDebtReconciliation.hidden = true; expenseDebtReconciliation.innerHTML = ""; }
       return;
@@ -5185,7 +5205,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         action.classList.remove("is-closure-ready", "is-debt-blocked");
         action.classList.add("is-closure-locked");
         const label = action.querySelector("span");
-        if (label) label.innerHTML = "Actualizando…";
+        if (label) label.innerHTML = "Preparando…";
       }
       if (box) { box.hidden = true; box.style.display = "none"; }
       return;
@@ -6625,7 +6645,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   else boot();
   window.ExploraActions = window.ExploraActions || {};
   window.ExploraActions["admin-cierres"] = () => showPayView("admin-cierres");
-  window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen });
+  window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen, waitUntilReady:waitUntilFinancialReady, isReady:()=>!state.dataLoading && REALTIME_COLLECTIONS.every(name=>state.realtimeReady.has(name)) });
 })();
 
 /* v4052: Histórico con rangos correctos, selector mensual, consultas paralelas con timeout. */
