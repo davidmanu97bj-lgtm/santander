@@ -1151,7 +1151,12 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
 
     async function getDriverPeriodDocs(collectionName, period, uid, options = {}) {
       const merged = new Map();
-      const requests = weeklyScopedQueryRequests(collectionName,uid);
+      const canonicalOnly = options.canonicalOnly === true;
+      const name = String(collectionName || "").toLowerCase();
+      const canonicalRequests = name === "derivaciones"
+        ? [{field:"emisorUid", value:String(uid||"").trim()}, {field:"receptorUid", value:String(uid||"").trim()}]
+        : [{field:"driverUid", value:String(uid||"").trim()}];
+      const requests = canonicalOnly ? canonicalRequests.filter(item=>item.value) : weeklyScopedQueryRequests(collectionName,uid);
       const attempts = await Promise.allSettled(requests.map(({field,value}) =>
         getDocs(query(collection(db, collectionName), where(field, "==", value)))
       ));
@@ -2764,8 +2769,9 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       const ownDriverScope = Boolean(driverUid && driverUid === String(auth.currentUser?.uid || "").trim() && !isAdminRole(exploraSession.profile?.role || exploraSession.role || ""));
       const names = ["viajes","derivaciones","gastos","prestamos"];
       const collections = ["billing_records","derivaciones","gastos",OPERATIONAL_LOAN_COLLECTION];
+      const startupCanonical = options.canonicalOnly === true;
       const settled = await Promise.allSettled(collections.map(name => ownDriverScope
-        ? getDriverPeriodDocs(name, period, driverUid, { throwOnError:true })
+        ? getDriverPeriodDocs(name, period, driverUid, { throwOnError:true, canonicalOnly:startupCanonical })
         : getPeriodDocs(name, period, { allowLegacyScan, throwOnError:true })
       ));
       const sources = { viajes:[], derivaciones:[], gastos:[], prestamos:[], sourceQueriesComplete:true, driverScoped:ownDriverScope };
@@ -2794,7 +2800,8 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       if (weeklyState.reconcilePromise) return weeklyState.reconcilePromise;
       weeklyState.reconcilePromise = (async () => {
         const strictReason=/canonical|closure|expense-created|gasto|billing-created|cobro/i.test(String(reason||""));
-        const sources = await loadWeeklySources(period, { driverUid:uid, allowLegacyScan: reason === "manual-refresh" || strictReason, strict:strictReason || window.__exploraStrictWeeklyClosureBuild === true });
+        const startupCanonical = /session-preopen-sync|session-open|startup|initial-load/i.test(String(reason || ""));
+        const sources = await loadWeeklySources(period, { driverUid:uid, allowLegacyScan: reason === "manual-refresh" || strictReason, strict:strictReason || window.__exploraStrictWeeklyClosureBuild === true, canonicalOnly:startupCanonical && !strictReason });
         const snapshot = await buildDriverWeeklySnapshot(uid, period, sources);
         const applied=applySnapshotToWeeklyState(snapshot, { ...sources, reason });
         if(!applied)return weeklyState.snapshot || snapshot;
@@ -3829,44 +3836,56 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     async function preloadFreshDashboardDataBeforeOpen(role, authUser, profile, loaded) {
       if (!authUser?.uid) return;
       if (role === "chofer") {
-        updateSplashSync(58, "Actualizando vehículo asignado y datos del chofer…");
-        try {
-          const vehicle = await profileWithTimeout(loadDriverVehicle(profile, loaded.profileDocumentId), 4200, "VEHICLE_PREFLIGHT_TIMEOUT");
-          if (auth.currentUser?.uid === authUser.uid) {
-            exploraSession.vehicle = vehicle;
-            exploraSession.vehicleId = vehicle?.id || "";
-            exploraAccessState.vehicle = vehicle;
-            renderDriverHeader(profile, vehicle);
-            renderProfileVehicleAssignment(profile, vehicle);
-          }
-        } catch (vehicleError) {
-          loginDevDiagnostic("VEHICLE_PREFLIGHT_SKIPPED", { code: vehicleError && (vehicleError.message || vehicleError.code) || "unknown" });
-        }
+        updateSplashSync(58, "Sincronizando datos de EXPLORA…");
 
-        updateSplashSync(76, "Actualizando saldos, actividades y cierre semanal…");
+        // v4126: toda la ruta crítica arranca en paralelo. Antes el vehículo se
+        // esperaba primero, luego semana/cierre y recién después el módulo financiero.
+        // Eso sumaba latencias de red. Ahora pagamos solo la consulta más lenta.
+        const vehicleTask = (async () => {
+          try {
+            const vehicle = await profileWithTimeout(loadDriverVehicle(profile, loaded.profileDocumentId), 4200, "VEHICLE_PREFLIGHT_TIMEOUT");
+            if (auth.currentUser?.uid === authUser.uid) {
+              exploraSession.vehicle = vehicle;
+              exploraSession.vehicleId = vehicle?.id || "";
+              exploraAccessState.vehicle = vehicle;
+              renderDriverHeader(profile, vehicle);
+              renderProfileVehicleAssignment(profile, vehicle);
+            }
+            return vehicle;
+          } catch (vehicleError) {
+            loginDevDiagnostic("VEHICLE_PREFLIGHT_SKIPPED", { code: vehicleError && (vehicleError.message || vehicleError.code) || "unknown" });
+            return null;
+          }
+        })();
+
         try { window.ExploraFastCache?.invalidate?.("dashboard_weekly_billing", { uid:authUser.uid, role:"chofer", weeklyPeriodId:getActiveWeeklyPeriod().id }); } catch (_) {}
         try { window.ExploraFastCache?.invalidate?.("dashboard_weekly_expenses", { uid:authUser.uid, role:"chofer", weeklyPeriodId:getActiveWeeklyPeriod().id }); } catch (_) {}
-        try {
-          const weeklyPromise = window.ExploraWeeklyEngine?.loadOnce?.({ force:true, reason:"session-preopen-sync" }) || loadWeeklyEngine({ force:true, reason:"session-preopen-sync" });
-          const closurePromise = Promise.resolve(refreshDriverPaymentStatus({ force:true })).catch(() => null);
-          await profileWithTimeout(Promise.allSettled([weeklyPromise, closurePromise]), 7200, "DASHBOARD_PREFLIGHT_TIMEOUT");
-        } catch (weeklyError) {
-          loginDevDiagnostic("DASHBOARD_PREFLIGHT_SKIPPED", { code: weeklyError && (weeklyError.message || weeklyError.code) || "unknown" });
-        }
-        updateSplashSync(88, "Sincronizando cierre, gastos, caja chica y deudas…");
-        try {
-          const started = Date.now();
-          while (!window.ExploraPagoHome?.waitUntilReady && Date.now() - started < 6000) {
-            await delay(60);
+
+        const weeklyTask = (async () => {
+          try {
+            const weeklyPromise = window.ExploraWeeklyEngine?.loadOnce?.({ force:true, reason:"session-preopen-sync" }) || loadWeeklyEngine({ force:true, reason:"session-preopen-sync" });
+            const closurePromise = Promise.resolve(refreshDriverPaymentStatus({ force:true })).catch(() => null);
+            await profileWithTimeout(Promise.allSettled([weeklyPromise, closurePromise]), 7200, "DASHBOARD_PREFLIGHT_TIMEOUT");
+            return true;
+          } catch (weeklyError) {
+            loginDevDiagnostic("DASHBOARD_PREFLIGHT_SKIPPED", { code: weeklyError && (weeklyError.message || weeklyError.code) || "unknown" });
+            return false;
           }
+        })();
+
+        const financialTask = (async () => {
+          const started = Date.now();
+          while (!window.ExploraPagoHome?.waitUntilReady && Date.now() - started < 6000) await delay(30);
           if (!window.ExploraPagoHome?.waitUntilReady) throw new Error("PAGO_HOME_MODULE_NOT_READY");
-          await window.ExploraPagoHome.waitUntilReady({ uid:authUser.uid, timeout:15000 });
-        } catch (financialError) {
-          // En arranque frío no abrimos una interfaz parcial. La recuperación de
-          // sesión superior reintentará manteniendo el splash visible.
-          throw Object.assign(new Error("FINANCIAL_PREFLIGHT_NOT_READY"), { cause:financialError });
+          return window.ExploraPagoHome.waitUntilReady({ uid:authUser.uid, timeout:12000 });
+        })();
+
+        updateSplashSync(76, "Actualizando saldos, actividad, gastos y cierres…");
+        const results = await Promise.allSettled([vehicleTask, weeklyTask, financialTask]);
+        if (results[2].status === "rejected") {
+          throw Object.assign(new Error("FINANCIAL_PREFLIGHT_NOT_READY"), { cause:results[2].reason });
         }
-        updateSplashSync(96, "Toda la información está actualizada. Abriendo EXPLORA…");
+        updateSplashSync(96, "Información sincronizada. Abriendo EXPLORA…");
         return;
       }
 

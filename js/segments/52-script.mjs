@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4121-km-hard-off";
+  const VERSION = "explora-pago-home-v52-v4126-fast-realtime";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -90,6 +90,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     realtimeGeneration:0,
     realtimeReady:new Set()
   };
+
+  let financialRenderRaf = 0;
+  function scheduleFinancialRender() {
+    if (financialRenderRaf) return;
+    financialRenderRaf = requestAnimationFrame(() => {
+      financialRenderRaf = 0;
+      render();
+    });
+  }
 
   const currency = value => new Intl.NumberFormat("es-AR", { style:"currency", currency:"ARS", maximumFractionDigits:0 }).format(Number(value) || 0).replace(/\s/g, "");
   const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -2220,47 +2229,30 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         return onSnapshot(scopedQuery(collectionName, targetUid), snap => {
           state[targetArray] = snap.docs.map(d => ({ id:d.id, ...d.data() })).sort((a,b)=>rowMs(b)-rowMs(a));
           if (["billing_records", "gastos", "deudas_choferes", "deuda_pagos"].includes(collectionName)) registerTabAlertMovements(collectionName, state[targetArray]);
-          render();
+          scheduleFinancialRender();
           onReady?.();
         }, error => {
           console.warn(`EXPLORA_PAY_LISTENER_${collectionName}`, error?.code || error?.message);
           onReady?.();
         });
       }
-      const fields = ["driverUid", "choferUid", "uid", "ownerUid", "driverId", "choferId", "driver_id", "chofer_id", "userUid", "userId", "createdByUid", "ownerId", "conductorUid", "conductorId", "assignedDriverUid"];
-      const snapshots = new Map();
-      const pendingFields = new Set(fields);
+
+      // v4126: ruta crítica canónica. Todos los movimientos nuevos de EXPLORA
+      // guardan driverUid; usar 14 alias-listeners por colección generaba hasta
+      // 84 listeners simultáneos, múltiples renders y mucha latencia/jank en iPhone.
+      // Un listener canónico por colección deja el arranque en solo 6 listeners.
+      const canonicalQuery = query(collection(state.db, collectionName), where("driverUid", "==", targetUid), limit(300));
       let readySent = false;
-      const fieldReady = field => {
-        pendingFields.delete(field);
-        if (!readySent && pendingFields.size === 0) { readySent = true; onReady?.(); }
-      };
-      const publish = () => {
-        const merged = new Map();
-        for (const docs of snapshots.values()) {
-          for (const item of docs) merged.set(item.id, item);
-        }
-        state[targetArray] = Array.from(merged.values()).sort((a,b)=>rowMs(b)-rowMs(a));
+      const unsub = onSnapshot(canonicalQuery, snap => {
+        state[targetArray] = snap.docs.map(d => ({ id:d.id, ...d.data() })).sort((a,b)=>rowMs(b)-rowMs(a));
         if (["billing_records", "gastos", "deudas_choferes", "deuda_pagos"].includes(collectionName)) registerTabAlertMovements(collectionName, state[targetArray]);
-        render();
-      };
-      const unsubs = fields.map(field => {
-        try {
-          return onSnapshot(query(collection(state.db, collectionName), where(field, "==", targetUid), limit(250)), snap => {
-            snapshots.set(field, snap.docs.map(d => ({ id:d.id, ...d.data() })));
-            publish();
-            fieldReady(field);
-          }, error => {
-            console.warn(`EXPLORA_PAY_LISTENER_${collectionName}_${field}`, error?.code || error?.message);
-            fieldReady(field);
-          });
-        } catch (error) {
-          console.warn(`EXPLORA_PAY_LISTENER_SETUP_${collectionName}_${field}`, error?.code || error?.message);
-          fieldReady(field);
-          return null;
-        }
-      }).filter(Boolean);
-      return () => unsubs.forEach(unsub => { try { unsub?.(); } catch (_) {} });
+        scheduleFinancialRender();
+        if (!readySent) { readySent = true; onReady?.(); }
+      }, error => {
+        console.warn(`EXPLORA_PAY_LISTENER_${collectionName}_driverUid`, error?.code || error?.message);
+        if (!readySent) { readySent = true; onReady?.(); }
+      });
+      return unsub;
     } catch (error) {
       console.warn(`EXPLORA_PAY_LISTENER_SETUP_${collectionName}`, error?.code || error?.message);
       onReady?.();
