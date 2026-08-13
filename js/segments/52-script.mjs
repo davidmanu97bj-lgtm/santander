@@ -2907,16 +2907,29 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     if (!normalizedPhone) return false;
     const message = String(text || "");
     const { isAndroid } = whatsappRuntimePlatform();
+    const encodedText = encodeURIComponent(message);
 
-    // V4132 Android: el lanzamiento ya NO ocurre automáticamente después de
-    // una operación async. Se presenta un enlace intent: visible que el usuario
-    // toca directamente. Ese toque aporta la user activation que Chrome exige
-    // para abrir aplicaciones externas desde una PWA.
+    // V4133 Android APK/PWA: no usar whatsapp:// ni intent:// después de una
+    // escritura async. Esos esquemas pueden ser bloqueados por Chrome/WebView
+    // al perderse la activación del toque original. Una navegación HTTPS normal
+    // sí puede ejecutarse automáticamente y Android la delega a WhatsApp cuando
+    // la app está instalada/asociada. Se usa la misma pestaña para no dejar
+    // ventanas intermedias abiertas.
     if (isAndroid) {
-      return showAndroidWhatsappHandoff(normalizedPhone, message);
+      const androidUrl = `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`;
+      try {
+        window.location.assign(androidUrl);
+        return true;
+      } catch (_) {
+        try {
+          window.location.href = androidUrl;
+          return true;
+        } catch (__) {
+          return false;
+        }
+      }
     }
 
-    const encodedText = encodeURIComponent(message);
     const targetUrl = `https://api.whatsapp.com/send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
     try {
       const link = document.createElement("a");
