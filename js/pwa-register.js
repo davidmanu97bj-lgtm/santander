@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v4090 · arranque sin información vieja */
+/* EXPLORA PWA registration · v4135 · cierres WhatsApp iOS/Android */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4134-billing-closure-whatsapp';
+  const BUILD = 'v4135-closure-whatsapp-ios-android';
 
   const clearLegacyCaches = async () => {
     try {
