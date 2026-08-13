@@ -2818,12 +2818,42 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function openWhatsappToPhone(phone = "", text = "") {
     const normalizedPhone = normalizeWhatsappPhone(phone);
     if (!normalizedPhone) return false;
-    const encodedText = encodeURIComponent(text || "");
+    const message = String(text || "");
+    const { isAndroid } = whatsappRuntimePlatform();
 
-    // V4130: solo HTTPS, abierto fuera de la navegación interna de la PWA.
-    // Esto evita que Android WebView intente interpretar whatsapp:// o intent://.
+    // V4131 Android: NO navegar a WhatsApp por URL.
+    // Algunos WebView/PWA convierten incluso enlaces HTTPS oficiales en
+    // whatsapp:// internamente y terminan en ERR_UNKNOWN_URL_SCHEME.
+    // En Android usamos el panel nativo de compartir del sistema, que no
+    // depende de whatsapp://, intent:// ni de redirecciones de api.whatsapp.com.
+    if (isAndroid) {
+      const shareText = message || `Enviar por WhatsApp a +${normalizedPhone}`;
+      if (typeof navigator.share === "function") {
+        try {
+          navigator.share({ text: shareText }).catch((error) => {
+            if (error?.name !== "AbortError") {
+              try { navigator.clipboard?.writeText?.(shareText); } catch (_) {}
+            }
+          });
+          return true;
+        } catch (_) {}
+      }
+
+      // Android antiguo sin Web Share: copiar el mensaje y no intentar abrir
+      // ningún esquema personalizado, evitando por completo la pantalla de error.
+      try {
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(shareText).catch(() => {});
+          window.alert(`Mensaje copiado. Abrí WhatsApp y envialo a +${normalizedPhone}.`);
+          return true;
+        }
+      } catch (_) {}
+      return false;
+    }
+
+    // iOS/escritorio: conservar enlace HTTPS oficial.
+    const encodedText = encodeURIComponent(message);
     const targetUrl = `https://api.whatsapp.com/send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
-
     try {
       const link = document.createElement("a");
       link.href = targetUrl;
