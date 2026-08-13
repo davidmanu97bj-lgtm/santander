@@ -1,7 +1,7 @@
 /* Compatibilidad validada: v4088-apertura-instantanea */
 /* EXPLORA PWA service worker · v2.5.6 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4131-android-native-share`;
+const CACHE_NAME = `${CACHE_PREFIX}v4132-android-user-gesture-intent`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -42,7 +42,7 @@ const APP_SHELL = [
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
   './css/segments/52-style.css?v=4120-sin-km-sin-eficiencia',
-  './js/segments/52-script.mjs?v=4131-android-native-share',
+  './js/segments/52-script.mjs?v=4132-android-user-gesture-intent',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
   './icons/favicon-v2411.svg',
@@ -170,4 +170,4 @@ self.addEventListener('message', (event) => {
 
 /* cache bump: v4128 WhatsApp HTTPS universal; elimina deep-links custom whatsapp:// e intent:// */
 
-/* cache bump: v4131 Android Web Share sin esquemas personalizados */
+/* cache bump: v4132 Android intent por gesto real del usuario */
