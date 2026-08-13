@@ -2815,43 +2815,107 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return { isAndroid, isIOS };
   }
 
+  function showAndroidWhatsappHandoff(phone = "", text = "") {
+    const normalizedPhone = normalizeWhatsappPhone(phone);
+    if (!normalizedPhone) return false;
+    const message = String(text || "");
+    const encodedText = encodeURIComponent(message);
+
+    // Chrome para Android solo permite lanzar una app externa mediante intent:
+    // cuando existe un gesto REAL del usuario. Los avisos de Explora ocurren
+    // después de escrituras async en Firestore, por lo que el gesto original
+    // ya se perdió. Mostramos un botón real para recuperar ese gesto.
+    const intentUrl = `intent://send/?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}#Intent;scheme=whatsapp;package=com.whatsapp;end`;
+
+    document.getElementById('exploraWhatsappAndroidHandoff')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'exploraWhatsappAndroidHandoff';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.style.cssText = [
+      'position:fixed','inset:0','z-index:2147483647','display:flex',
+      'align-items:center','justify-content:center','padding:20px',
+      'background:rgba(0,0,0,.62)','font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif'
+    ].join(';');
+
+    const card = document.createElement('div');
+    card.style.cssText = [
+      'width:min(92vw,420px)','background:#fff','border-radius:18px','padding:22px',
+      'box-shadow:0 18px 55px rgba(0,0,0,.35)','color:#171717','text-align:center'
+    ].join(';');
+
+    const title = document.createElement('div');
+    title.textContent = 'Mensaje listo';
+    title.style.cssText = 'font-size:20px;font-weight:750;margin-bottom:8px';
+
+    const body = document.createElement('div');
+    body.textContent = `Tocá “Abrir WhatsApp” para enviarlo a +${normalizedPhone}.`;
+    body.style.cssText = 'font-size:14px;line-height:1.4;color:#555;margin-bottom:18px';
+
+    const open = document.createElement('a');
+    open.href = intentUrl;
+    open.target = '_blank';
+    open.rel = 'noopener noreferrer external';
+    open.textContent = 'Abrir WhatsApp';
+    open.style.cssText = [
+      'display:block','width:100%','box-sizing:border-box','padding:14px 16px',
+      'border-radius:12px','background:#168a48','color:#fff','font-size:16px',
+      'font-weight:750','text-decoration:none','margin-bottom:10px'
+    ].join(';');
+    open.addEventListener('click', () => {
+      try { navigator.clipboard?.writeText?.(message); } catch (_) {}
+      setTimeout(() => overlay.remove(), 1200);
+    }, { once: true });
+
+    const share = document.createElement('button');
+    share.type = 'button';
+    share.textContent = 'Compartir mensaje';
+    share.style.cssText = [
+      'display:block','width:100%','padding:12px 16px','border-radius:12px',
+      'border:1px solid #d8d8d8','background:#fff','color:#222','font-size:15px',
+      'font-weight:650','margin-bottom:8px'
+    ].join(';');
+    share.addEventListener('click', async () => {
+      try {
+        if (typeof navigator.share === 'function') {
+          await navigator.share({ text: message });
+          overlay.remove();
+          return;
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+      }
+      try { await navigator.clipboard?.writeText?.(message); } catch (_) {}
+      share.textContent = 'Mensaje copiado';
+    });
+
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Cerrar';
+    cancel.style.cssText = 'border:0;background:transparent;color:#666;padding:8px 12px;font-size:14px';
+    cancel.addEventListener('click', () => overlay.remove());
+
+    card.append(title, body, open, share, cancel);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    return true;
+  }
+
   function openWhatsappToPhone(phone = "", text = "") {
     const normalizedPhone = normalizeWhatsappPhone(phone);
     if (!normalizedPhone) return false;
     const message = String(text || "");
     const { isAndroid } = whatsappRuntimePlatform();
 
-    // V4131 Android: NO navegar a WhatsApp por URL.
-    // Algunos WebView/PWA convierten incluso enlaces HTTPS oficiales en
-    // whatsapp:// internamente y terminan en ERR_UNKNOWN_URL_SCHEME.
-    // En Android usamos el panel nativo de compartir del sistema, que no
-    // depende de whatsapp://, intent:// ni de redirecciones de api.whatsapp.com.
+    // V4132 Android: el lanzamiento ya NO ocurre automáticamente después de
+    // una operación async. Se presenta un enlace intent: visible que el usuario
+    // toca directamente. Ese toque aporta la user activation que Chrome exige
+    // para abrir aplicaciones externas desde una PWA.
     if (isAndroid) {
-      const shareText = message || `Enviar por WhatsApp a +${normalizedPhone}`;
-      if (typeof navigator.share === "function") {
-        try {
-          navigator.share({ text: shareText }).catch((error) => {
-            if (error?.name !== "AbortError") {
-              try { navigator.clipboard?.writeText?.(shareText); } catch (_) {}
-            }
-          });
-          return true;
-        } catch (_) {}
-      }
-
-      // Android antiguo sin Web Share: copiar el mensaje y no intentar abrir
-      // ningún esquema personalizado, evitando por completo la pantalla de error.
-      try {
-        if (navigator.clipboard?.writeText) {
-          navigator.clipboard.writeText(shareText).catch(() => {});
-          window.alert(`Mensaje copiado. Abrí WhatsApp y envialo a +${normalizedPhone}.`);
-          return true;
-        }
-      } catch (_) {}
-      return false;
+      return showAndroidWhatsappHandoff(normalizedPhone, message);
     }
 
-    // iOS/escritorio: conservar enlace HTTPS oficial.
     const encodedText = encodeURIComponent(message);
     const targetUrl = `https://api.whatsapp.com/send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
     try {
