@@ -2819,25 +2819,19 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const normalizedPhone = normalizeWhatsappPhone(phone);
     if (!normalizedPhone) return false;
     const encodedText = encodeURIComponent(text || "");
-    const query = `phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
-    const { isAndroid, isIOS } = whatsappRuntimePlatform();
 
-    // Android PWA/Chrome: no navegar a intent://. En varios WebView/PWA ese esquema
-    // se interpreta como una URL web y termina en net::ERR_UNKNOWN_URL_SCHEME.
-    // wa.me es HTTPS y Android lo delega a WhatsApp mediante App Links cuando está instalado.
-    // iOS conserva el deep link directo que ya funciona correctamente.
-    const targetUrl = isAndroid
-      ? `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`
-      : isIOS
-        ? `whatsapp://send?${query}`
-        : `https://web.whatsapp.com/send?${query}`;
+    // Enlace HTTPS universal. No usamos whatsapp:// ni intent:// porque algunas PWA/WebView
+    // de Android intentan navegar esos esquemas dentro del navegador y muestran
+    // net::ERR_UNKNOWN_URL_SCHEME. wa.me permite que Android/iOS resuelvan WhatsApp
+    // mediante App/Universal Links sin depender de detectar correctamente el user-agent.
+    const targetUrl = `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`;
 
     try {
-      window.location.href = targetUrl;
+      window.location.assign(targetUrl);
       return true;
     } catch (_) {
       try {
-        window.location.assign(targetUrl);
+        window.location.href = targetUrl;
         return true;
       } catch (__) {
         return false;
@@ -2947,7 +2941,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   // API pública usada desde el botón ACEPTAR del modal de éxito.
-  // Ejecutarlo dentro del toque del usuario evita que iOS/Android bloqueen whatsapp:// o intent://.
+  // Ejecutarlo dentro del toque del usuario mantiene la apertura vinculada al gesto del usuario.
   window.ExploraOperationalWhatsapp = Object.freeze({
     billing:(row = {}) => notifyOperationalWhatsapp("billing", row, { immediate:true }),
     expense:(row = {}) => notifyOperationalWhatsapp("expense", row, { immediate:true })
