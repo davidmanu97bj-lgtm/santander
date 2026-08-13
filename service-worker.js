@@ -1,7 +1,7 @@
 /* Compatibilidad validada: v4088-apertura-instantanea */
 /* EXPLORA PWA service worker · v2.5.6 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4132-android-user-gesture-intent`;
+const CACHE_NAME = `${CACHE_PREFIX}v4133-android-auto-whatsapp-https`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -171,3 +171,5 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4128 WhatsApp HTTPS universal; elimina deep-links custom whatsapp:// e intent:// */
 
 /* cache bump: v4132 Android intent por gesto real del usuario */
+
+/* cache bump: v4133 Android WhatsApp automático por HTTPS App Link */
