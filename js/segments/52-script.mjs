@@ -2822,11 +2822,12 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const query = `phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
     const { isAndroid, isIOS } = whatsappRuntimePlatform();
 
-    // Móvil: abrir exclusivamente la aplicación instalada. No se usa wa.me,
-    // api.whatsapp.com ni browser_fallback_url, por lo que no existe una página
-    // intermedia de WhatsApp Web entre Explora y la app nativa.
+    // Android PWA/Chrome: no navegar a intent://. En varios WebView/PWA ese esquema
+    // se interpreta como una URL web y termina en net::ERR_UNKNOWN_URL_SCHEME.
+    // wa.me es HTTPS y Android lo delega a WhatsApp mediante App Links cuando está instalado.
+    // iOS conserva el deep link directo que ya funciona correctamente.
     const targetUrl = isAndroid
-      ? `intent://send?${query}#Intent;scheme=whatsapp;package=com.whatsapp;end`
+      ? `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`
       : isIOS
         ? `whatsapp://send?${query}`
         : `https://web.whatsapp.com/send?${query}`;
