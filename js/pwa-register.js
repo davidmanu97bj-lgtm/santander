@@ -3,7 +3,7 @@
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4131-android-native-share';
+  const BUILD = 'v4132-android-user-gesture-intent';
 
   const clearLegacyCaches = async () => {
     try {
