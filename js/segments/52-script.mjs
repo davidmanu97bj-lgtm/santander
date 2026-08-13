@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4134-billing-closure-whatsapp";
+  const VERSION = "explora-pago-home-v52-v4135-closure-whatsapp-ios-android";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -2902,50 +2902,102 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return true;
   }
 
-  function openWhatsappToPhone(phone = "", text = "") {
-    const normalizedPhone = normalizeWhatsappPhone(phone);
-    if (!normalizedPhone) return false;
-    const message = String(text || "");
-    const { isAndroid } = whatsappRuntimePlatform();
-    const encodedText = encodeURIComponent(message);
+  // V4135 · puente de WhatsApp para cierres iOS + Android.
+  // El cierre escribe/sube datos de forma async. iOS Safari y algunos APK/WebView
+  // bloquean una ventana externa creada recién DESPUÉS de esos await. Por eso el
+  // botón de cierre reserva una ventana durante el gesto real del usuario y, una
+  // vez confirmado Firebase, esa misma ventana se navega a wa.me.
+  let preparedClosureWhatsappWindow = null;
+  let preparedClosureWhatsappAtMs = 0;
 
-    // V4133 Android APK/PWA: no usar whatsapp:// ni intent:// después de una
-    // escritura async. Esos esquemas pueden ser bloqueados por Chrome/WebView
-    // al perderse la activación del toque original. Una navegación HTTPS normal
-    // sí puede ejecutarse automáticamente y Android la delega a WhatsApp cuando
-    // la app está instalada/asociada. Se usa la misma pestaña para no dejar
-    // ventanas intermedias abiertas.
-    if (isAndroid) {
-      const androidUrl = `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`;
-      try {
-        window.location.assign(androidUrl);
-        return true;
-      } catch (_) {
-        try {
-          window.location.href = androidUrl;
-          return true;
-        } catch (__) {
-          return false;
-        }
-      }
+  function clearPreparedClosureWhatsappWindow({ close = false } = {}) {
+    const popup = preparedClosureWhatsappWindow;
+    preparedClosureWhatsappWindow = null;
+    preparedClosureWhatsappAtMs = 0;
+    if (close && popup) {
+      try { if (!popup.closed) popup.close(); } catch (_) {}
     }
+  }
 
-    const targetUrl = `https://api.whatsapp.com/send?phone=${normalizedPhone}${encodedText ? `&text=${encodedText}` : ""}`;
+  function prepareClosureWhatsappWindowFromGesture() {
+    clearPreparedClosureWhatsappWindow({ close:true });
     try {
-      const link = document.createElement("a");
-      link.href = targetUrl;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer external";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      const popup = window.open("about:blank", "_blank");
+      if (!popup || popup.closed) return false;
+      preparedClosureWhatsappWindow = popup;
+      preparedClosureWhatsappAtMs = Date.now();
+      try {
+        popup.document.title = "EXPLORA · WhatsApp";
+        popup.document.body.innerHTML = '<main style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:24px;text-align:center"><strong>EXPLORA</strong><p>Procesando cierre…</p></main>';
+      } catch (_) {}
+      return true;
+    } catch (_) {
+      clearPreparedClosureWhatsappWindow();
+      return false;
+    }
+  }
+
+  function usePreparedClosureWhatsappWindow(targetUrl = "") {
+    const popup = preparedClosureWhatsappWindow;
+    const age = Date.now() - Number(preparedClosureWhatsappAtMs || 0);
+    clearPreparedClosureWhatsappWindow();
+    if (!popup || age > 120000) {
+      try { if (popup && !popup.closed) popup.close(); } catch (_) {}
+      return false;
+    }
+    try {
+      if (popup.closed) return false;
+      popup.location.replace(targetUrl);
+      try { popup.focus(); } catch (_) {}
       return true;
     } catch (_) {
       try {
-        window.open(targetUrl, "_blank", "noopener,noreferrer");
+        popup.location.href = targetUrl;
         return true;
       } catch (__) {
+        try { popup.close(); } catch (___) {}
         return false;
+      }
+    }
+  }
+
+  function openWhatsappToPhone(phone = "", text = "") {
+    const normalizedPhone = normalizeWhatsappPhone(phone);
+    if (!normalizedPhone) {
+      clearPreparedClosureWhatsappWindow({ close:true });
+      return false;
+    }
+    const message = String(text || "");
+    const encodedText = encodeURIComponent(message);
+    const targetUrl = `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`;
+
+    // Primer camino: ventana reservada directamente por el toque en PEDIR/CONFIRMAR
+    // CIERRE. Funciona aunque después haya await de Firestore/Storage.
+    if (usePreparedClosureWhatsappWindow(targetUrl)) return true;
+
+    // Fallback universal iOS/Android/PWA/APK: navegación en la misma vista. No usa
+    // popups tardíos ni api.whatsapp.com, que Safari puede bloquear tras un await.
+    try {
+      window.location.assign(targetUrl);
+      return true;
+    } catch (_) {
+      try {
+        window.location.href = targetUrl;
+        return true;
+      } catch (__) {
+        // Último recurso para navegadores de escritorio.
+        try {
+          const link = document.createElement("a");
+          link.href = targetUrl;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer external";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          return true;
+        } catch (___) {
+          return false;
+        }
       }
     }
   }
@@ -6367,6 +6419,22 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       openDebtExpenseOffsetMode();
       return;
     }
+
+    // Debe ejecutarse ANTES del primer await y dentro del click real. De esta
+    // manera iOS Safari y Android APK/PWA permiten que el cierre termine abriendo
+    // WhatsApp aun cuando Firebase tarde en confirmar la operación.
+    const closureSubmitMode = safe(state.modalMode);
+    const adminReviewNeedsWhatsapp = closureSubmitMode === "admin-review"
+      && isAdmin()
+      && state.modalClosure
+      && (number(state.modalClosure.amountDueFromDriver || 0) > 0 || number(state.modalClosure.amountDueToDriver || 0) > 0)
+      && !closureHasProof(state.modalClosure);
+    const closureModeMayNotifyWhatsapp = closureSubmitMode === "admin-pay-now"
+      || adminReviewNeedsWhatsapp
+      || !["debt-expense-offset", "debt-payment", "confirm", "admin-review"].includes(closureSubmitMode);
+    if (closureModeMayNotifyWhatsapp) prepareClosureWhatsappWindowFromGesture();
+    else clearPreparedClosureWhatsappWindow({ close:true });
+
     state.busy = true;
     setModalMessage("Procesando…");
     const submit = $("payClosureSubmit");
@@ -6382,6 +6450,8 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       setModalMessage("Listo.", "ok");
       setTimeout(closeClosureModal, 700);
     } catch (error) {
+      // Si el cierre falla, nunca dejamos la ventana puente abierta en blanco.
+      clearPreparedClosureWhatsappWindow({ close:true });
       console.error("EXPLORA_PAY_CLOSURE", error);
       const rawMessage = safe(error?.message || "");
       const friendlyMessage = /missing or insufficient permissions|permission-denied/i.test(rawMessage)
