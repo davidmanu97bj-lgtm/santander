@@ -2818,22 +2818,37 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   function openWhatsappToPhone(phone = "", text = "") {
     const normalizedPhone = normalizeWhatsappPhone(phone);
     if (!normalizedPhone) return false;
-    const encodedText = encodeURIComponent(text || "");
 
-    // Enlace HTTPS universal. No usamos whatsapp:// ni intent:// porque algunas PWA/WebView
-    // de Android intentan navegar esos esquemas dentro del navegador y muestran
-    // net::ERR_UNKNOWN_URL_SCHEME. wa.me permite que Android/iOS resuelvan WhatsApp
-    // mediante App/Universal Links sin depender de detectar correctamente el user-agent.
-    const targetUrl = `https://wa.me/${normalizedPhone}${encodedText ? `?text=${encodedText}` : ""}`;
+    // V4129: usar SOLO un enlace HTTPS oficial de WhatsApp.
+    // No usar whatsapp:// ni intent:// porque algunos Android/PWA/WebView
+    // intentan renderizarlos como una URL web y devuelven ERR_UNKNOWN_URL_SCHEME.
+    const query = new URLSearchParams({
+      phone: normalizedPhone,
+      text: safe(text),
+      type: "phone_number",
+      app_absent: "0"
+    }).toString();
+    const url = `https://api.whatsapp.com/send/?${query}`;
 
     try {
-      window.location.assign(targetUrl);
+      // Un <a> HTTPS real funciona mejor que asignar un esquema personalizado
+      // desde una PWA instalada. Android puede resolver el App Link hacia
+      // WhatsApp; si no lo hace, abre la página oficial sin error de esquema.
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer external";
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      window.setTimeout(() => link.remove(), 0);
       return true;
-    } catch (_) {
+    } catch (error) {
+      console.warn("EXPLORA_WHATSAPP_HTTPS_OPEN", error?.message || error);
       try {
-        window.location.href = targetUrl;
+        window.location.assign(url);
         return true;
-      } catch (__) {
+      } catch (_) {
         return false;
       }
     }
@@ -2941,7 +2956,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   // API pública usada desde el botón ACEPTAR del modal de éxito.
-  // Ejecutarlo dentro del toque del usuario mantiene la apertura vinculada al gesto del usuario.
+  // Ejecutarlo dentro del toque del usuario ayuda a que Android/iOS resuelvan el enlace HTTPS oficial hacia WhatsApp.
   window.ExploraOperationalWhatsapp = Object.freeze({
     billing:(row = {}) => notifyOperationalWhatsapp("billing", row, { immediate:true }),
     expense:(row = {}) => notifyOperationalWhatsapp("expense", row, { immediate:true })
