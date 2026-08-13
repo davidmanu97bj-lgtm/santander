@@ -1,7 +1,7 @@
 /* Compatibilidad validada: v4088-apertura-instantanea */
 /* EXPLORA PWA service worker · v2.5.6 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4134-billing-closure-whatsapp`;
+const CACHE_NAME = `${CACHE_PREFIX}v4135-closure-whatsapp-ios-android`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -42,7 +42,7 @@ const APP_SHELL = [
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
   './css/segments/52-style.css?v=4120-sin-km-sin-eficiencia',
-  './js/segments/52-script.mjs?v=4132-android-user-gesture-intent',
+  './js/segments/52-script.mjs?v=4135-closure-whatsapp-ios-android',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
   './icons/favicon-v2411.svg',
@@ -175,3 +175,5 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4133 Android WhatsApp automático por HTTPS App Link */
 
 /* cache bump: v4134 cierres de facturación mantienen aviso WhatsApp */
+
+/* cache bump: v4135 cierre WhatsApp iOS/Android conserva gesto + cache coherente */
