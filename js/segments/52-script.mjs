@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4126-fast-realtime";
+  const VERSION = "explora-pago-home-v52-v4134-billing-closure-whatsapp";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -6531,7 +6531,15 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         openWhatsappToPhone(driverPhone, whatsappText);
       }
     } else {
-      openWhatsappToExplora(whatsappText);
+      // V4134: los cierres de FACTURACIÓN (Chofer / Explora / facturacion)
+      // siguen notificando SIEMPRE al WhatsApp de Explora, igual que el resto
+      // de cierres. Se deja explícito para que futuras exclusiones de avisos
+      // operativos no desactiven accidentalmente los cierres contables.
+      if (isBillingClosureKind(kind)) {
+        openWhatsappToExplora(whatsappText);
+      } else {
+        openWhatsappToExplora(whatsappText);
+      }
     }
     render();
     return { ...payload, id:created.id, createdAtMs:cutoffAtMs, updatedAtMs:cutoffAtMs };
