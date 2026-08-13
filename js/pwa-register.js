@@ -3,7 +3,7 @@
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4090-sin-datos-viejos';
+  const BUILD = 'v4130-whatsapp-external-https';
 
   const clearLegacyCaches = async () => {
     try {
