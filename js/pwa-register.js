@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v4135 · cierres WhatsApp iOS/Android */
+/* EXPLORA PWA registration · v4137 · Telegram grupal */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4135-closure-whatsapp-ios-android';
+  const BUILD = 'v4137-telegram-group';
 
   const clearLegacyCaches = async () => {
     try {
