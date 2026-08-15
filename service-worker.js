@@ -1,7 +1,7 @@
 /* Compatibilidad validada: v4088-apertura-instantanea */
 /* EXPLORA PWA service worker · v2.5.6 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4135-closure-whatsapp-ios-android`;
+const CACHE_NAME = `${CACHE_PREFIX}v4137-telegram-group`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -176,4 +176,4 @@ self.addEventListener('message', (event) => {
 
 /* cache bump: v4134 cierres de facturación mantienen aviso WhatsApp */
 
-/* cache bump: v4135 cierre WhatsApp iOS/Android conserva gesto + cache coherente */
+/* cache bump: v4137 avisos operativos al grupo de Telegram + WhatsApp desactivado */
