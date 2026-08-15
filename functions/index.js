@@ -35,6 +35,8 @@ const TELEGRAM_NOTIFICATIONS_COLLECTION = "telegram_notifications";
 const TELEGRAM_FUNCTION_REGION = "us-central1";
 const TELEGRAM_PROCESSING_LEASE_MS = 10 * 60 * 1000;
 
+// WhatsApp operativo deshabilitado: todas las notificaciones solicitadas salen por Telegram.
+
 function telegramSafeText(value) {
   return String(value ?? "").replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -163,8 +165,9 @@ function telegramNotificationDocId(kind, docId) {
   return `${kind}_${docId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 300);
 }
 
-async function telegramClaimNotification(kind, docId, eventId) {
-  const ref = db.collection(TELEGRAM_NOTIFICATIONS_COLLECTION).doc(telegramNotificationDocId(kind, docId));
+async function telegramClaimNotification(kind, notificationKey, sourceCollection, sourceDocumentId, eventId) {
+  const key = telegramSafeText(notificationKey || sourceDocumentId);
+  const ref = db.collection(TELEGRAM_NOTIFICATIONS_COLLECTION).doc(telegramNotificationDocId(kind, key));
   const nowMs = Date.now();
   const claimed = await db.runTransaction(async transaction => {
     const snap = await transaction.get(ref);
@@ -173,8 +176,8 @@ async function telegramClaimNotification(kind, docId, eventId) {
     if (current.status === "processing" && Number(current.updatedAtMs || 0) > nowMs - TELEGRAM_PROCESSING_LEASE_MS) return false;
     transaction.set(ref, {
       type: kind,
-      sourceDocumentId: docId,
-      sourceCollection: kind === "billing" ? "billing_records" : "gastos",
+      sourceDocumentId: telegramSafeText(sourceDocumentId),
+      sourceCollection: telegramSafeText(sourceCollection),
       eventId: telegramSafeText(eventId),
       status: "processing",
       attempts: FieldValue.increment(1),
@@ -240,15 +243,31 @@ async function telegramSendText(text) {
   });
 }
 
-async function telegramProcessNotification({ kind, docId, data, eventId, caption, requirePhoto = true }) {
-  const { claimed, ref } = await telegramClaimNotification(kind, docId, eventId);
+async function telegramProcessNotification({
+  kind,
+  docId,
+  notificationKey = docId,
+  sourceCollection = kind === "billing" ? "billing_records" : kind === "expense" ? "gastos" : "",
+  sourceDocumentId = docId,
+  data,
+  eventId,
+  caption,
+  requirePhoto = true
+}) {
+  const { claimed, ref } = await telegramClaimNotification(
+    kind,
+    notificationKey,
+    sourceCollection,
+    sourceDocumentId,
+    eventId
+  );
   if (!claimed) return { skipped: true, reason: "already-processed-or-processing" };
   try {
     let photoUrl = "";
     let message = null;
     if (requirePhoto) {
-      photoUrl = await telegramResolvePhotoUrl(kind, docId, data);
-      if (!photoUrl) throw new Error(`El documento ${kind}/${docId} no contiene una URL de foto.`);
+      photoUrl = await telegramResolvePhotoUrl(kind, sourceDocumentId, data);
+      if (!photoUrl) throw new Error(`El documento ${sourceCollection || kind}/${sourceDocumentId} no contiene una URL de foto.`);
       message = await telegramSendPhoto(photoUrl, caption);
     } else {
       message = await telegramSendText(caption);
@@ -276,6 +295,66 @@ async function telegramProcessNotification({ kind, docId, data, eventId, caption
     }, { merge: true }).catch(() => {});
     throw error;
   }
+}
+
+
+function closureTelegramAllowed(data = {}) {
+  const role = telegramSafeText(data.requestedByRole || data.createdByRole).toLowerCase();
+  if (role && role !== "driver" && role !== "chofer") return false;
+  const keys = [
+    data.closureKind, data.closureType, data.moduleKey, data.closureModuleKey,
+    data.payTab, data.homeModule, data.requestModule, data.originModule
+  ].map(value => telegramSafeText(value).toLowerCase().replace(/[\s-]+/g, "_"));
+  const allowed = new Set(["chofer", "explora", "facturacion", "billing", "gastos", "gasto", "expenses", "caja_chica", "cashbox"]);
+  return data.billingClosure === true || data.autoClosesCashbox === true || keys.some(key => allowed.has(key));
+}
+
+function closureTelegramText(data = {}, docId = "") {
+  const kind = telegramSafeText(data.closureKind || data.closureType || data.moduleKey || data.payTab || "cierre");
+  const amountFromDriver = Number(data.amountDueFromDriver || 0);
+  const amountToDriver = Number(data.amountDueToDriver || 0);
+  const result = amountFromDriver > 0.49
+    ? `Chofer debe pagar ${telegramMoney(amountFromDriver)}`
+    : amountToDriver > 0.49
+      ? `Explora debe pagar ${telegramMoney(amountToDriver)}`
+      : "Sin saldo a liquidar";
+  return [
+    "PEDIDO DE CIERRE EXPLORA",
+    `Chofer: ${telegramDriverName(data)}`,
+    `Tipo: ${kind || "cierre"}`,
+    `Resultado: ${result}`,
+    `Total facturado: ${telegramMoney(data.gross || data.grossAmount || 0)}`,
+    `Gastos: ${telegramMoney(data.expenseTotal || 0)}`,
+    `Caja chica: ${telegramMoney(data.cashboxTotal || data.cashboxGeneratedTotal || 0)}`,
+    `Fecha: ${telegramDateLabel(data)}`,
+    `Operación: ${docId}`
+  ].join("\n");
+}
+
+function uberTelegramText(data = {}, docId = "") {
+  const review = telegramSafeText(data.reviewStatus || data.status).toLowerCase();
+  const noData = data.noData === true || review === "no_data";
+  if (noData) {
+    return [
+      "CIERRE UBER SIN DATOS",
+      `Chofer: ${telegramDriverName(data)}`,
+      `Semana: ${telegramSafeText(data.weekLabel || data.weekId || "—")}`,
+      "Estado: cerrada sin datos por el chofer.",
+      `Fecha: ${telegramDateLabel(data)}`,
+      `Operación: ${docId}`
+    ].join("\n");
+  }
+  return [
+    "NUEVO COMPROBANTE UBER",
+    `Chofer: ${telegramDriverName(data)}`,
+    `Semana cargada: ${telegramSafeText(data.weekLabel || data.weekId || "—")}`,
+    `Total Uber: ${telegramMoney(data.totalAmount || data.grossAmount || 0)}`,
+    `Deudas (50%): ${telegramMoney(data.debtAmount || data.exploraShare || 0)}`,
+    `Caja chica Uber (5%): ${telegramMoney(data.cashboxAmount || data.uberCashboxAmount || 0)}`,
+    "Estado: pendiente de revisión en Explora.",
+    `Fecha: ${telegramDateLabel(data)}`,
+    `Operación: ${docId}`
+  ].join("\n");
 }
 
 const PROTECTED_ROOT_COLLECTIONS = new Set([
@@ -1739,3 +1818,96 @@ exports.notifyExpenseV2 = onDocumentCreated({
   });
 });
 
+// Telegram grupal · cierres solicitados por chofer: gastos, caja chica y facturación.
+exports.notifyClosureTelegramGroupV1 = onDocumentCreated({
+  document: "cierres_semanales/{docId}",
+  region: TELEGRAM_FUNCTION_REGION,
+  memory: "256MiB",
+  timeoutSeconds: 120,
+  retry: true,
+  secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
+}, async event => {
+  const data = event.data?.data() || {};
+  if (!closureTelegramAllowed(data)) return { skipped: true, reason: "not-a-driver-operational-closure" };
+  const docId = telegramSafeText(event.params?.docId || event.data?.id);
+  return telegramProcessNotification({
+    kind: "closure",
+    docId,
+    sourceCollection: "cierres_semanales",
+    sourceDocumentId: docId,
+    data,
+    eventId: event.id,
+    caption: closureTelegramText(data, docId),
+    requirePhoto: false
+  });
+});
+
+// Telegram grupal · cierre semanal de Uber. onDocumentWritten permite volver a avisar
+// si un cierre rechazado es corregido y reenviado con el mismo ID.
+exports.notifyUberClosureTelegramGroupV1 = onDocumentWritten({
+  document: "uber_weekly_closures/{docId}",
+  region: TELEGRAM_FUNCTION_REGION,
+  memory: "256MiB",
+  timeoutSeconds: 120,
+  retry: true,
+  secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
+}, async event => {
+  const before = event.data?.before?.exists ? (event.data.before.data() || {}) : {};
+  const after = event.data?.after?.exists ? (event.data.after.data() || {}) : null;
+  if (!after) return { skipped: true, reason: "deleted" };
+  const role = telegramSafeText(after.createdByRole).toLowerCase();
+  if (role && role !== "driver" && role !== "chofer") return { skipped: true, reason: "not-driver-created" };
+  const review = telegramSafeText(after.reviewStatus || after.status).toLowerCase();
+  const isPending = review === "pending" || review === "pending_review";
+  const isNoData = after.noData === true || review === "no_data";
+  if (!isPending && !isNoData) return { skipped: true, reason: "not-submitted" };
+
+  const beforeReview = telegramSafeText(before.reviewStatus || before.status).toLowerCase();
+  const beforeReceipt = telegramSafeText(before.receiptUrl || before.notificationPhotoUrl);
+  const afterReceipt = telegramSafeText(after.receiptUrl || after.notificationPhotoUrl);
+  const firstWrite = !event.data?.before?.exists;
+  const resubmitted = !firstWrite && (
+    beforeReview !== review ||
+    beforeReceipt !== afterReceipt ||
+    Number(before.updatedAtMs || 0) !== Number(after.updatedAtMs || 0)
+  );
+  if (!firstWrite && !resubmitted) return { skipped: true, reason: "no-new-submission" };
+
+  const docId = telegramSafeText(event.params?.docId || event.data?.after?.id);
+  const revisionKey = `${docId}_${Number(after.updatedAtMs || after.createdAtMs || Date.now())}`;
+  return telegramProcessNotification({
+    kind: "uber",
+    docId,
+    notificationKey: revisionKey,
+    sourceCollection: "uber_weekly_closures",
+    sourceDocumentId: docId,
+    data: after,
+    eventId: event.id,
+    caption: uberTelegramText(after, docId),
+    requirePhoto: !isNoData
+  });
+});
+
+
+// Compatibilidad de despliegue: conserva los nombres de las funciones WhatsApp anteriores
+// pero las vuelve NO-OP. Así, un deploy normal reemplaza cualquier versión activa que
+// todavía pudiera estar enviando mensajes por WhatsApp.
+exports.notifyBillingWhatsappGroupV1 = onDocumentCreated({
+  document: "billing_records/{docId}",
+  region: TELEGRAM_FUNCTION_REGION
+}, async () => ({ skipped: true, reason: "whatsapp-disabled-use-telegram-group" }));
+
+exports.notifyExpenseWhatsappGroupV1 = onDocumentCreated({
+  document: "gastos/{docId}",
+  region: TELEGRAM_FUNCTION_REGION
+}, async () => ({ skipped: true, reason: "whatsapp-disabled-use-telegram-group" }));
+
+exports.notifyClosureWhatsappGroupV1 = onDocumentCreated({
+  document: "cierres_semanales/{docId}",
+  region: TELEGRAM_FUNCTION_REGION
+}, async () => ({ skipped: true, reason: "whatsapp-disabled-use-telegram-group" }));
+
+exports.notifyUberClosureWhatsappGroupV1 = onDocumentWritten({
+  document: "uber_weekly_closures/{docId}",
+  region: TELEGRAM_FUNCTION_REGION
+}, async () => ({ skipped: true, reason: "whatsapp-disabled-use-telegram-group" }));
