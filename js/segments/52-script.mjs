@@ -9,10 +9,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4135-closure-whatsapp-ios-android";
+  const VERSION = "explora-pago-home-v52-v4137-telegram-group";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
+  // v4137: WhatsApp operativo queda deshabilitado.
+  // Cobros, gastos y cierres se notifican desde Cloud Functions al grupo de Telegram.
+  const LEGACY_DIRECT_WHATSAPP_ENABLED = false;
   const EXPLORA_CUIT = "20-40411688-7";
   const EXPLORA_ALIAS = "mp.explora";
   const EXPLORA_ADMIN_UIDS = new Set(["2LziyTTdFcZzSOhK3hLbAKs2U4s2"]);
@@ -2752,7 +2755,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     };
   }
 
-  function closureWhatsappText({ kind = state.tab, summary = {}, targetName = displayName(), targetUid = getDriverUid(), requestedBy = displayName() } = {}) {
+  function closureTelegramNoticeText({ kind = state.tab, summary = {}, targetName = displayName(), targetUid = getDriverUid(), requestedBy = displayName() } = {}) {
     const result = closureAmountLine(summary);
     const driverPayment = driverPaymentProfileForUid(targetUid);
     const k = activeClosureKind(kind);
@@ -2920,6 +2923,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function prepareClosureWhatsappWindowFromGesture() {
+    if (!LEGACY_DIRECT_WHATSAPP_ENABLED) return false;
     clearPreparedClosureWhatsappWindow({ close:true });
     try {
       const popup = window.open("about:blank", "_blank");
@@ -2962,6 +2966,10 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
   }
 
   function openWhatsappToPhone(phone = "", text = "") {
+    if (!LEGACY_DIRECT_WHATSAPP_ENABLED) {
+      clearPreparedClosureWhatsappWindow({ close:true });
+      return false;
+    }
     const normalizedPhone = normalizeWhatsappPhone(phone);
     if (!normalizedPhone) {
       clearPreparedClosureWhatsappWindow({ close:true });
@@ -3478,21 +3486,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     }).filter(item => item.missing.length);
   }
 
-  function uberWeeklyWhatsappText({ driverName, weekLabel, total, debtAmount, cashboxAmount, receiptUrl }) {
-    return [
-      "*NUEVO COMPROBANTE UBER*",
-      "",
-      `Chofer: ${driverName || "Sin nombre"}`,
-      `Semana cargada: ${weekLabel}`,
-      `Total Uber: ${currency(total)}`,
-      `Deudas (50%): ${currency(debtAmount)}`,
-      `Caja chica Uber (5%): ${currency(cashboxAmount)}`,
-      "",
-      `Ver foto: ${receiptUrl}`,
-      "",
-      "Estado: pendiente de revisión en Explora."
-    ].join("\n");
-  }
 
   function renderEfficiencyButton() {
     const button = $("payEfficiencyBtn");
@@ -3841,20 +3834,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
         tx.set(doc(state.db, "deudas_choferes", debtId), { debtId, id:debtId, driverUid, choferUid:driverUid, driverId:driverUid, driverName, type:"uber_weekly", debtType:"uber_weekly", concept:`Uber semanal · ${weekLabel}`, description:`50% de ganancias Uber (${currency(total)}). Caja chica Uber 5%: ${currency(cashboxAmount)}`, totalAmount:share, amount:share, remainingAmount:share, saldoPendiente:share, paidAmount:0, amountPaid:0, status:"pending", debtStatus:"pending", reviewStatus:"pending", sourceModule:"uber_weekly", uberClosureId:closureId, uberGrossAmount:total, uberCashboxRate:.05, uberCashboxAmount:cashboxAmount, receiptUrl:proof.url, receiptPath:proof.path, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, updatedAt:serverTimestamp(), updatedAtMs:nowMs, version:VERSION }, { merge:false });
         tx.set(doc(state.db, "notificaciones", `uber_review_${closureId}`), { notificationId:`uber_review_${closureId}`, type:"uber_weekly_review", category:"uber", driverUid, choferUid:driverUid, driverName, closureId, debtId, title:"CIERRE UBER PARA REVISIÓN", message:`${driverName} informó ${currency(total)}. ${currency(share)} irá a Deudas y ${currency(cashboxAmount)} a Caja chica Uber.`, amount:total, exploraShare:share, cashboxAmount, uberCashboxAmount:cashboxAmount, driverNetAmount, receiptUrl:proof.url, notificationPhotoUrl:proof.url, telegramPhotoUrl:proof.url, read:false, acknowledged:false, createdByUid:driverUid, createdByRole:"driver", createdAt:serverTimestamp(), createdAtMs:nowMs, version:VERSION }, { merge:false });
       });
-      const whatsappText = uberWeeklyWhatsappText({
-        driverName,
-        weekLabel,
-        total,
-        debtAmount: share,
-        cashboxAmount,
-        receiptUrl: proof.url
-      });
       state.uberWeeks = [{ id:closureId, closureId, weekId:period.weekId, weekLabel, weekStartMs:period.start.getTime(), weekEndMs:period.end.getTime(), weekDisplayEndMs:period.displayEnd.getTime(), driverUid, driverName, grossAmount:total, exploraShare:share, debtAmount:share, cashboxAmount, uberCashboxAmount:cashboxAmount, driverNetAmount, receiptUrl:proof.url, reviewStatus:"pending", status:"pending_review", createdAtMs:nowMs }, ...(state.uberWeeks||[]).filter(x=>safe(x.id)!==closureId)];
       state.uberWeeklyFile = null;
       state.uberSelectedWeekId = "";
       renderEfficiencyButton();
       renderEfficiencyModal();
-      window.setTimeout(() => openWhatsappToExplora(whatsappText), 180);
     } finally { state.uberWeeklyBusy=false; }
   }
 
@@ -6487,7 +6471,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     requireClosureAllowed(kind, fullSummary);
     const summary = tabSummary(fullSummary, kind);
     const paymentPayload = closurePaymentDataForPayload(targetUid, summary);
-    const whatsappText = closureWhatsappText({ kind, summary, targetName, targetUid, requestedBy:isAdmin() ? accountName() : displayName() });
+    const telegramText = closureTelegramNoticeText({ kind, summary, targetName, targetUid, requestedBy:isAdmin() ? accountName() : displayName() });
     const cutoffAtMs = Date.now();
     const moduleKey = mapModuleKey(kind) || kind;
     const periodId = `${targetUid}_${moduleKey}_${Number(summary.resetMs || 0)}_${cutoffAtMs}`;
@@ -6542,9 +6526,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       requestedByName:isAdmin() ? accountName() : displayName(),
       requestedByRole:isAdmin() ? "admin" : "driver",
       ...paymentPayload,
-      whatsappNoticeTo:isAdmin() ? safe(paymentPayload.driverPaymentPhone || driverPaymentProfileForUid(targetUid).phone) : EXPLORA_WHATSAPP_DISPLAY,
-      whatsappNoticeTargetRole:isAdmin() ? "driver" : "admin",
-      whatsappNoticeText:whatsappText,
+      telegramNoticeText:telegramText,
       gross:Number(summary.gross || 0),
       expenseTotal:Number(summary.expenseTotal || 0),
       expenseAmountToDriverBeforeDebt:Number(summary.expenseAmountToDriverBeforeDebt || 0),
@@ -6593,24 +6575,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     };
     const created = await addDoc(collection(state.db, "cierres_semanales"), payload);
     state.closures = [{ ...payload, id:created.id, createdAtMs:cutoffAtMs, updatedAtMs:cutoffAtMs }, ...state.closures.filter(row => row.id !== created.id)];
-    if (isAdmin()) {
-      // Si Explora solo pide el cierre, también se abre WhatsApp al número cargado por el chofer.
-      // En admin-pay-now no se manda este aviso previo para evitar duplicar: ahí se notifica luego con el comprobante.
-      if (state.modalMode !== "admin-pay-now") {
-        const driverPhone = safe(paymentPayload.driverPaymentPhone || driverPaymentProfileForUid(targetUid).phone);
-        openWhatsappToPhone(driverPhone, whatsappText);
-      }
-    } else {
-      // V4134: los cierres de FACTURACIÓN (Chofer / Explora / facturacion)
-      // siguen notificando SIEMPRE al WhatsApp de Explora, igual que el resto
-      // de cierres. Se deja explícito para que futuras exclusiones de avisos
-      // operativos no desactiven accidentalmente los cierres contables.
-      if (isBillingClosureKind(kind)) {
-        openWhatsappToExplora(whatsappText);
-      } else {
-        openWhatsappToExplora(whatsappText);
-      }
-    }
+    // V4137: el aviso operativo se envía exclusivamente por Telegram desde Cloud Functions.
     render();
     return { ...payload, id:created.id, createdAtMs:cutoffAtMs, updatedAtMs:cutoffAtMs };
   }
