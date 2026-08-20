@@ -1088,9 +1088,9 @@
 </div>
 <div aria-hidden="true" class="receipt-amount-edit-backdrop" id="receiptAmountEditBackdrop">
 <section aria-labelledby="receiptAmountEditTitle" aria-modal="true" class="receipt-amount-edit-modal" role="dialog">
-<p class="receipt-amount-edit-kicker">ADMINISTRADOR · SERVICIO</p>
-<h2 id="receiptAmountEditTitle">MODIFICAR VALOR</h2>
-<p class="receipt-amount-edit-description">Corregí el monto cargado. El cambio actualizará la facturación y los cálculos financieros del servicio.</p>
+<p class="receipt-amount-edit-kicker">ADMINISTRADOR · COMPROBANTE</p>
+<h2 id="receiptAmountEditTitle">EDITAR COMPROBANTE</h2>
+<p class="receipt-amount-edit-description">Corregí el importe cargado. Los cálculos financieros y los cierres relacionados se actualizarán automáticamente.</p>
 <div class="receipt-amount-edit-summary">
 <span>CHOFER</span><strong id="receiptAmountEditDriver">—</strong>
 <span>VALOR ACTUAL</span><strong id="receiptAmountEditCurrent">$0</strong>
@@ -1101,7 +1101,7 @@
 <div aria-live="assertive" class="receipt-amount-edit-message" id="receiptAmountEditMessage"></div>
 <div class="receipt-amount-edit-actions">
 <button class="receipt-amount-edit-cancel" id="receiptAmountEditCancel" type="button">CANCELAR</button>
-<button class="receipt-amount-edit-save" id="receiptAmountEditSave" type="button">GUARDAR VALOR</button>
+<button class="receipt-amount-edit-save" id="receiptAmountEditSave" type="button">GUARDAR CAMBIO</button>
 </div>
 </section>
 </div>
@@ -1323,16 +1323,16 @@
 <script id="exploraReceiptUIV197" src="js/segments/06-script.js"></script>
 <script id="exploraBillingV188" src="js/segments/07-script.js?v=4119-whatsapp-on-success-tap"></script>
 <script id="exploraPerformanceNavigationV210" src="js/segments/08-script.js"></script>
-<link href="css/segments/53-style.css?v=4086-editar-valor-actividades-admin" rel="stylesheet"/>
-<script id="exploraReceiptsV247" src="js/segments/09-script.js?v=4086-editar-valor-actividades-admin"></script>
+<link href="css/segments/53-style.css?v=4144-receipts-edit-delete" rel="stylesheet"/>
+<script id="exploraReceiptsV247" src="js/segments/09-script.js?v=4144-receipts-edit-delete"></script>
 <script id="exploraProductionPolicyV251" src="js/segments/10-script.js"></script>
-<script src="js/segments/11-script.mjs?v=4143-billing-driver-payment" type="module"></script>
+<script src="js/segments/11-script.mjs?v=4144-receipts-edit-delete" type="module"></script>
 <!-- EXPLORA v160: motor semanal unificado + splash seguro + históricos financieros -->
 <link href="css/segments/32-style.css?v=2445-finance-nav-fix" rel="stylesheet"/>
 <script id="exploraSplashEmergencyPatch" src="js/segments/12-script.js?v=4122-circular-sync-gate"></script>
-<script id="exploraUnifiedWeeklyFinanceModule" src="js/segments/13-script.mjs?v=4143-billing-driver-payment" type="module"></script>
+<script id="exploraUnifiedWeeklyFinanceModule" src="js/segments/13-script.mjs?v=4144-receipts-edit-delete" type="module"></script>
 <script id="exploraDebtNotificationsV189" src="js/segments/14-script.mjs?v=4023-activity-photo-viewer" type="module"></script>
-<script id="exploraAdminDebtLaunchV190" src="js/segments/15-script.mjs?v=4143-billing-driver-payment" type="module"></script>
+<script id="exploraAdminDebtLaunchV190" src="js/segments/15-script.mjs?v=4144-receipts-edit-delete" type="module"></script>
 <!-- EXPLORA v256 · derivaciones recibidas primero, pestañas separadas y flujo operativo estable -->
 <script id="exploraDerivationsModule" src="js/segments/16-script.mjs" type="module"></script>
 <!-- legacy disabled: derivation ranking renderer / js/segments/17-script.js -->
@@ -1407,8 +1407,8 @@
 <script id="exploraGlobalClockAppWideSync" src="js/segments/42-script.js"></script>
 <link href="css/segments/47-style.css?v=4126-fast-sync" rel="stylesheet"/>
 <link href="css/segments/48-style.css?v=2412-ranking-mobile" rel="stylesheet"/>
-<link href="css/segments/52-style.css?v=4143-billing-driver-payment" rel="stylesheet"/>
-<script id="exploraPagoHomeOnDemandClosure" src="js/segments/52-script.mjs?v=4143-billing-driver-payment" type="module"></script>
-<script defer="" id="explora-pwa-registration" src="js/pwa-register.js?v=4143-billing-driver-payment"></script>
+<link href="css/segments/52-style.css?v=4144-receipts-edit-delete" rel="stylesheet"/>
+<script id="exploraPagoHomeOnDemandClosure" src="js/segments/52-script.mjs?v=4144-receipts-edit-delete" type="module"></script>
+<script defer="" id="explora-pwa-registration" src="js/pwa-register.js?v=4144-receipts-edit-delete"></script>
 </body>
 </html>
