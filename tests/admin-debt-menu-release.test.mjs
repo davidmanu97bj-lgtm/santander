@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const root = new URL("../", import.meta.url);
 const read = relative => readFile(new URL(relative, root), "utf8");
-const build = "v4143-billing-driver-payment";
+const build = "v4144-receipts-edit-delete";
 const assetVersion = build.slice(1);
 
 const [index, serviceWorker, register, debtMenu, payHome, telegramFunctions, storageRules] = await Promise.all([
