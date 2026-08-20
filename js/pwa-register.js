@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v4137 · Telegram grupal */
+/* EXPLORA PWA registration · v4141 · Deudas y pagos admin */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4137-telegram-group';
+  const BUILD = 'v4141-deudas-pagos-admin';
 
   const clearLegacyCaches = async () => {
     try {
