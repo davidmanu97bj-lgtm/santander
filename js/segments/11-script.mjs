@@ -5720,7 +5720,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
       screen.setAttribute("aria-hidden", "true");
       window.unlockPageScroll?.("admin-shared");
       window.unlockPageScroll?.("admin-debt");
-      document.body.classList.remove("explora-admin-drivers-white");
+      document.body.classList.remove("explora-admin-drivers-white", "explora-admin-debts-white");
       adminSharedState.mode = "home";
       adminSharedState.selectedDriverKey = "";
       clearAdminReceiptSelection();

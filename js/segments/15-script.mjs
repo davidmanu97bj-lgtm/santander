@@ -1,9 +1,18 @@
 
-import { collection, getDocs, query, where, doc, getDoc, limit, writeBatch, setDoc, serverTimestamp, deleteField } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { collection, getDocs, query, where, doc, getDoc, limit, writeBatch, setDoc, serverTimestamp, deleteField, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { ref as storageRef, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
+import {
+  adminDebtBalance,
+  adminDebtRowsForDriver,
+  allocateAdminDebtPayment,
+  normalizeAdminDebtOperation,
+  normalizeAdminDebtTender,
+  previewAdminDebtLedger
+} from "../core/admin-debt-ledger-core.mjs?v=4141-deudas-pagos-admin";
 let F=window.ExploraFirebase||{},db=F.db||null,auth=F.auth||null,storage=F.storage||null;const $=id=>document.getElementById(id);
 async function ensureDebtFirebase(timeoutMs=12000){const started=Date.now();while(Date.now()-started<timeoutMs){F=window.ExploraFirebase||F||{};db=F.db||db;auth=F.auth||auth;storage=F.storage||storage;if(db&&auth)return{db,auth,storage};await new Promise(resolve=>setTimeout(resolve,50));}throw makeDebtError("INITIALIZING_ADMIN_DEBT","FIREBASE_NOT_READY","Firebase todavía no está disponible para Deudas.");}
-const state={reason:"",installments:1,receiptFile:null,busy:false,saving:false,uploading:false,opened:false,drivers:new Map(),vehicles:new Map(),debts:new Map(),selectedVehicle:null,editingDebtId:"",diagnostic:null};
+const state={operation:"debt",paymentMethod:"cash",reason:"other",installments:1,receiptFile:null,busy:false,saving:false,uploading:false,opened:false,drivers:new Map(),vehicles:new Map(),debts:new Map(),selectedVehicle:null,editingDebtId:"",diagnostic:null};
 let debtSaveInProgress=false;
 const ADMIN_ROLES=new Set(["admin","administrador","owner","superadmin"]);
 const esc=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
@@ -13,7 +22,7 @@ const money=value=>new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS
 const normalizeRole=value=>String(value||"").trim().toLowerCase();
 const formatBytes=value=>{const bytes=Number(value||0);if(!(bytes>0))return"—";if(bytes<1024)return`${bytes} B`;if(bytes<1024*1024)return`${Math.round(bytes/1024)} KB`;return`${(bytes/(1024*1024)).toFixed(2)} MB`;};
 const storageBucket=()=>String(storage?.app?.options?.storageBucket||F.app?.options?.storageBucket||"").replace(/^gs:\/\//,"")||"—";
-const DEBT_REASON_LABELS={fine:"Multa",crash:"Choque",personal_loan:"Préstamo",advance:"Adelanto"};
+const DEBT_REASON_LABELS={fine:"Multa",crash:"Choque",personal_loan:"Préstamo",advance:"Adelanto",other:"Deuda del chofer"};
 const DEBT_REASON_OPTIONS=Object.keys(DEBT_REASON_LABELS);
 const PLACEHOLDER_DRIVER_TOKENS=new Set(["usuario","user","chofer usuario","usuario chofer","chofer-usuario"]);
 function isPlaceholderDriverProfile(profile={},id=""){const fields=[id,profile.id,profile.uid,profile.authUid,profile.firebaseUid,profile.userId,profile.usuario,profile.username,profile.nombre,profile.nombreCompleto,profile.displayName,profile.name];return fields.some(value=>PLACEHOLDER_DRIVER_TOKENS.has(clean(value).toLowerCase()));}
@@ -69,9 +78,79 @@ function setSelectedVehicleById(id){const raw=state.vehicles.get(clean(id));stat
 async function syncSelectedVehicle(){const uid=clean($("adminDebtDriver")?.value),box=$("adminDebtVehicle"),select=$("adminDebtVehicleSelect");state.selectedVehicle=null;if(!uid){if(box)box.textContent="Selecciona un chofer";if(select)select.value="";updateDebtSummary();return;}if(box)box.textContent="Buscando vehículo asignado…";try{state.selectedVehicle=await resolveDriverVehicle(state.drivers.get(uid)||{});if(select)select.value=state.selectedVehicle?.id||"";if(box)box.textContent=state.selectedVehicle?`${state.selectedVehicle.label} · ${state.selectedVehicle.plate||"Sin patente"}`:"Sin vehículo asignado; puedes seleccionar el involucrado";}catch(error){console.error("ADMIN_DEBT_VEHICLE_LOOKUP_FAILED",error);if(box)box.textContent="No se pudo consultar el vehículo";}updateDebtSummary();}
 function clearReceipt(){window.ExploraReceiptEngine?.resetUploadState?.("driverDebt");state.receiptFile=null;const input=$("driverDebtReceiptInput");if(input)input.value="";window.ExploraReceiptUI?.clear?.({previewId:"adminDebtReceiptPreview",thumbId:"adminDebtReceiptPreviewThumb",nameId:"adminDebtReceiptPreviewName",metaId:"adminDebtReceiptPreviewMeta"});updateDebtSummary();}
 function selectReceipt(file){const message=$("adminDebtMessage");if(!file)return;try{const selected=window.ExploraReceiptEngine?.selectUploadFile?.(file,"driverDebt",{allowPdf:true});state.receiptFile=selected.file;const rendered=window.ExploraReceiptUI?.render?.({previewId:"adminDebtReceiptPreview",thumbId:"adminDebtReceiptPreviewThumb",nameId:"adminDebtReceiptPreviewName",metaId:"adminDebtReceiptPreviewMeta",file,previewUrl:selected.previewUrl});if(!rendered&&String(file.type||"").toLowerCase().includes("pdf")){const preview=$("adminDebtReceiptPreview"),thumb=$("adminDebtReceiptPreviewThumb"),name=$("adminDebtReceiptPreviewName"),meta=$("adminDebtReceiptPreviewMeta");if(preview)preview.hidden=false;if(thumb){thumb.removeAttribute("src");thumb.alt="PDF";thumb.dataset.fileType="pdf";}if(name)name.textContent=file.name||"Archivo PDF";if(meta)meta.textContent=`PDF · ${Math.max(1,Math.round(Number(file.size||0)/1024))} KB`;}if(message&&!state.diagnostic){message.textContent="";message.className="admin-shared-status";}updateDebtSummary();window.scrollToReceiptSubmitButton?.($("adminDebtSubmit"));}catch(error){const runtime=baseRuntime();runtime.stage="FORM_VALIDATION";showDebtFailure(makeDebtError("FORM_VALIDATION","INVALID_RECEIPT_FILE",String(error?.message||"").includes("TOO_LARGE")?"El archivo es demasiado pesado.":"Selecciona una imagen o PDF válido.",error),runtime);}}
-function updateDebtSummary({recalculateWeekly=false}={}){const amount=parseAmount($("adminDebtAmount")?.value);state.installments=1;const installmentInput=$("adminDebtInstallmentCount"),weeklyInput=$("adminDebtWeeklyAmount");if(installmentInput)installmentInput.value="1";if(weeklyInput)weeklyInput.value=amount>0?formatAmount(amount):"";const box=$("adminDebtSummary"),button=$("adminDebtSubmit"),editing=state.editingDebtId?state.debts.get(state.editingDebtId)||{}:null,paid=Math.max(0,Number(editing?.paidAmount||0)),remaining=Math.max(0,amount-paid);if(box)box.innerHTML=`<div><span>Deuda total</span><strong>${money(amount)}</strong></div><div><span>Saldo actual</span><strong>${money(remaining||amount)}</strong></div><div><span>Interés</span><strong>Después de 15 días</strong></div><div><span>Vehículo</span><strong>${esc(state.selectedVehicle?.plate||"—")}</strong></div>`;const valid=Boolean(clean($("adminDebtDriver")?.value)&&state.reason&&$("adminDebtDate")?.value&&clean($("adminDebtDescription")?.value)&&amount>0);if(button)button.disabled=state.busy||!valid;}
+function debtRowsArray(){return[...state.debts.values()];}
+function selectedDriverDebtBalance(){return adminDebtBalance(debtRowsArray(),clean($("adminDebtDriver")?.value));}
+function todayDebtDate(){return new Intl.DateTimeFormat("en-CA",{timeZone:"America/Argentina/Cordoba",year:"numeric",month:"2-digit",day:"2-digit"}).format(window.ExploraOperationalClock?.getNow?.()||new Date());}
+function setDebtPaymentMethod(method="cash"){
+  state.paymentMethod=normalizeAdminDebtTender(method);
+  document.querySelectorAll("[data-debt-payment-method]").forEach(button=>{
+    const selected=button.dataset.debtPaymentMethod===state.paymentMethod;
+    button.classList.toggle("is-selected",selected);
+    button.setAttribute("aria-pressed",selected?"true":"false");
+  });
+  updateDebtSummary();
+}
+function setDebtOperation(operation="debt",{clear=false}={}){
+  const next=normalizeAdminDebtOperation(operation);
+  const changed=next!==state.operation;
+  state.operation=next;state.reason="other";state.editingDebtId="";
+  document.querySelectorAll("[data-debt-operation]").forEach(button=>{
+    const selected=button.dataset.debtOperation===next;
+    button.classList.toggle("is-selected",selected);
+    button.setAttribute("aria-pressed",selected?"true":"false");
+  });
+  const form=$("adminDebtForm");if(form)form.dataset.debtOperation=next;
+  const methodField=$("adminDebtPaymentMethodField");if(methodField)methodField.hidden=next!=="payment";
+  const note=$("adminDebtOperationNote");if(note)note.innerHTML=next==="payment"
+    ? "<strong>Pago del chofer</strong><span>Explora reconoce el 100 % recibido y lo descuenta de la deuda más antigua.</span>"
+    : "<strong>Deuda del chofer</strong><span>El chofer queda a cargo del 100 % y debe pagar a Explora.</span>";
+  const descriptionLabel=$("adminDebtDescriptionLabel");if(descriptionLabel)descriptionLabel.textContent=next==="payment"?"MOTIVO DEL PAGO":"DETALLE O MOTIVO";
+  const amountLabel=$("adminDebtAmountLabel");if(amountLabel)amountLabel.textContent=next==="payment"?"TOTAL O IMPORTE PAGADO":"TOTAL O IMPORTE";
+  const attachmentState=$("adminDebtAttachmentState");if(attachmentState)attachmentState.textContent=next==="payment"&&state.paymentMethod==="transfer"?"OBLIGATORIO PARA TRANSFERENCIA":"OPCIONAL · SI APLICA";
+  if(clear&&changed){if($("adminDebtAmount"))$("adminDebtAmount").value="";if($("adminDebtDescription"))$("adminDebtDescription").value="";clearReceipt();}
+  updateDebtSummary();
+}
+function updateDebtSummary(){
+  const driverUid=clean($("adminDebtDriver")?.value),amount=parseAmount($("adminDebtAmount")?.value),description=clean($("adminDebtDescription")?.value);
+  const currentBalance=driverUid?selectedDriverDebtBalance():0;
+  const preview=previewAdminDebtLedger({operation:state.operation,currentBalance,amount});
+  const receiptState=window.ExploraReceiptEngine?.getState?.("driverDebt")||{};
+  const receiptCandidate=receiptState.file||state.receiptFile;
+  const hasReceipt=receiptCandidate instanceof File||receiptCandidate instanceof Blob;
+  const transferReceiptRequired=state.operation==="payment"&&state.paymentMethod==="transfer";
+  const valid=Boolean(driverUid&&description&&preview.valid&&(!transferReceiptRequired||hasReceipt));
+  const box=$("adminDebtSummary"),button=$("adminDebtSubmit"),methodField=$("adminDebtPaymentMethodField");
+  if(methodField)methodField.hidden=state.operation!=="payment";
+  const attachmentState=$("adminDebtAttachmentState");if(attachmentState)attachmentState.textContent=transferReceiptRequired?"OBLIGATORIO PARA TRANSFERENCIA":"OPCIONAL · SI APLICA";
+  const movementLabel=state.operation==="payment"?"Pago reconocido":"Nueva deuda";
+  let resultLabel=preview.resultLabel;
+  if(!driverUid)resultLabel="Elegí un chofer para calcular el saldo";
+  else if(state.operation==="payment"&&!(currentBalance>0))resultLabel="El chofer no tiene deuda pendiente";
+  else if(preview.exceedsBalance)resultLabel=`El pago no puede superar ${money(currentBalance)}`;
+  if(box)box.innerHTML=`<div><span>Deuda actual</span><strong>${money(currentBalance)}</strong></div><div><span>${esc(movementLabel)}</span><strong>${state.operation==="payment"?"−":"+"}${money(amount)}</strong></div><div><span>Deuda después</span><strong>${money(preview.balanceAfter)}</strong></div><div class="debt-summary-direction"><span>Quién paga a quién</span><strong>${esc(resultLabel)}</strong></div>`;
+  if(button){button.disabled=state.busy||!valid;button.textContent=state.operation==="payment"?"REGISTRAR PAGO DEL CHOFER":"REGISTRAR DEUDA DEL CHOFER";}
+}
 function diagnosticMarkup(){return`<section id="adminDebtDiagnostic" class="debt-diagnostic" hidden aria-live="polite"><div class="debt-diagnostic-head"><div><strong>EXPLORA - ERROR DEUDA PARA CHOFER</strong><small>El diagnóstico permanecerá visible hasta que lo cierres.</small></div><button id="adminDebtDiagnosticClose" class="debt-diagnostic-close" type="button" aria-label="Cerrar diagnóstico">×</button></div><div id="adminDebtDiagnosticGrid" class="debt-diagnostic-grid"></div><button id="adminDebtDiagnosticCopy" class="debt-diagnostic-copy" type="button">COPIAR ERROR</button></section>`;}
-async function openDebt(){await ensureDebtFirebase();const screen=$("adminSharedScreen"),content=$("adminSharedContent");if(!screen||!content)return;window.ExploraAdminShared?.close?.();document.body.classList.add("explora-admin-debts-white");screen.classList.add("is-open");screen.setAttribute("aria-hidden","false");window.lockPageScroll?.("admin-debt");$("adminSharedTitle").textContent="DEUDAS";$("adminSharedSubtitle").textContent="Crear o editar deudas del chofer";$("adminSharedPeriodTabs").hidden=true;$("adminSharedReceiptTabs").hidden=true;$("adminSharedStatus").textContent="Cargando choferes…";const [drivers,vehicles,debts]=await Promise.all([activeDrivers().catch(error=>{console.error("ADMIN_DEBT_DRIVERS_LOAD_FAILED",error);return[];}),activeVehicles().catch(error=>{console.error("ADMIN_DEBT_VEHICLES_LOAD_FAILED",error);return[];}),activeDebts().catch(error=>{console.error("ADMIN_DEBT_LIST_LOAD_FAILED",error);return[];})]);$("adminSharedStatus").textContent=drivers.length?"":"No hay choferes activos.";content.innerHTML=`<form id="adminDebtForm" class="debt-form" novalidate><div class="debt-field debt-field--driver"><label for="adminDebtDriver">CHOFER</label><select id="adminDebtDriver"><option value="">Selecciona un chofer</option>${drivers.map(profile=>`<option value="${esc(profile.uid||profile.authUid||profile.id)}">${esc(profile.nombre||profile.nombreCompleto||profile.usuario||profile.id)}</option>`).join("")}</select></div><div class="debt-field debt-field--vehicle"><label for="adminDebtVehicleSelect">VEHÍCULO RELACIONADO</label><select id="adminDebtVehicleSelect"><option value="">Sin vehículo relacionado</option>${vehicles.map(vehicle=>{const v=vehicleLabel(vehicle);return`<option value="${esc(v.id)}">${esc(v.label)} · ${esc(v.plate||"Sin patente")}</option>`;}).join("")}</select><div id="adminDebtVehicle" class="debt-vehicle-readonly">Selecciona un chofer</div></div><div class="debt-field debt-field--type"><label>TIPO</label><div class="debt-reason-grid"><button type="button" class="debt-choice" data-debt-reason="fine">MULTA</button><button type="button" class="debt-choice" data-debt-reason="crash">CHOQUE</button><button type="button" class="debt-choice" data-debt-reason="personal_loan">PRÉSTAMO</button><button type="button" class="debt-choice" data-debt-reason="advance">ADELANTO</button></div></div><div class="debt-field debt-field--date"><label for="adminDebtDate">FECHA</label><input id="adminDebtDate" type="date"></div><div class="debt-field debt-field--description"><label for="adminDebtDescription">MOTIVO O DESCRIPCIÓN</label><textarea id="adminDebtDescription" maxlength="320" placeholder="Detalle breve"></textarea></div><div class="debt-field debt-field--amount"><label for="adminDebtAmount">IMPORTE TOTAL</label><input id="adminDebtAmount" inputmode="numeric" autocomplete="off" placeholder="$ 0"></div><input id="adminDebtInstallmentCount" type="hidden" value="1"><input id="adminDebtWeeklyAmount" type="hidden" value=""><div class="debt-info-note"><strong>Sin cuotas fijas</strong><span>El chofer reduce la deuda con pagos. Si pasan 15 días sin regularizar, el saldo puede incrementarse por interés.</span></div><div class="debt-field debt-field--attachment"><label>ARCHIVO ADJUNTO <span class="debt-attachment-optional">OPCIONAL · IMAGEN O PDF</span></label>${window.ExploraReceiptUI.markup({triggerId:"adminDebtReceiptBtn",previewId:"adminDebtReceiptPreview",thumbId:"adminDebtReceiptPreviewThumb",nameId:"adminDebtReceiptPreviewName",metaId:"adminDebtReceiptPreviewMeta",removeId:"adminDebtReceiptPreviewRemove",heading:"Archivo adjunto"})}</div><div class="debt-field debt-field--notes"><label for="adminDebtNotes">OBSERVACIONES DEL ADMINISTRADOR</label><textarea id="adminDebtNotes" maxlength="320" placeholder="Observaciones opcionales"></textarea></div><div id="adminDebtEditBanner" class="admin-debt-edit-banner" hidden><span>Editando deuda existente</span><button id="adminDebtCancelEdit" type="button">Cancelar edición</button></div><div id="adminDebtSummary" class="debt-summary"></div><div id="adminDebtMessage" class="admin-shared-status" role="status"></div>${diagnosticMarkup()}<button id="adminDebtSubmit" class="admin-primary-btn admin-debt-submit" type="submit" disabled>REGISTRAR DEUDA</button></form><section class="admin-debt-existing"><div class="admin-debt-existing-head"><div><h3>REGISTROS EXISTENTES</h3><small>Seleccioná una deuda para editarla</small></div><span>${debts.filter(row=>!isPlaceholderDriverProfile({id:row.driverUid||row.choferUid||row.driverId||row.uid,nombre:row.driverName||row.choferNombre||row.nombreChofer},row.id)).length}</span></div><div id="adminDebtExistingList">${debtAdminListMarkup(debts)}</div></section>`;state.reason="";state.installments=1;state.selectedVehicle=null;state.editingDebtId="";state.opened=true;state.diagnostic=null;clearReceipt();const today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Argentina/Cordoba",year:"numeric",month:"2-digit",day:"2-digit"}).format(window.ExploraOperationalClock?.getNow?.()||new Date());if($("adminDebtDate"))$("adminDebtDate").value=today;updateDebtSummary({recalculateWeekly:true});}
+async function openDebt(options={}){
+  await ensureDebtFirebase();
+  const screen=$("adminSharedScreen"),content=$("adminSharedContent");if(!screen||!content)return;
+  window.ExploraAdminShared?.close?.();document.body.classList.add("explora-admin-debts-white");
+  screen.classList.add("is-open");screen.setAttribute("aria-hidden","false");screen.scrollTop=0;window.lockPageScroll?.("admin-debt");
+  $("adminSharedTitle").textContent="DEUDAS";$("adminSharedSubtitle").textContent="Registrar deuda o pago del chofer";
+  $("adminSharedPeriodTabs").hidden=true;$("adminSharedReceiptTabs").hidden=true;$("adminSharedStatus").textContent="Cargando choferes…";
+  const [drivers,debts]=await Promise.all([
+    activeDrivers().catch(error=>{console.error("ADMIN_DEBT_DRIVERS_LOAD_FAILED",error);return[];}),
+    activeDebts().catch(error=>{console.error("ADMIN_DEBT_LIST_LOAD_FAILED",error);return[];})
+  ]);
+  $("adminSharedStatus").textContent=drivers.length?"":"No hay choferes activos.";
+  content.innerHTML=`<section class="admin-debt-operation-picker" aria-label="Movimiento de deuda"><button type="button" data-debt-operation="debt" aria-pressed="true"><span>DEUDA DEL CHOFER</span><small>Suma 100 % a cargo del chofer</small></button><button type="button" data-debt-operation="payment" aria-pressed="false"><span>PAGO DEL CHOFER</span><small>Explora reconoce 100 % del pago</small></button></section><form id="adminDebtForm" class="debt-form debt-ledger-form" data-debt-operation="debt" novalidate><div id="adminDebtOperationNote" class="debt-info-note debt-ledger-operation-note"></div><div class="debt-field debt-field--driver"><label for="adminDebtDriver">ELEGIR CHOFER</label><select id="adminDebtDriver"><option value="">Selecciona un chofer</option>${drivers.map(profile=>`<option value="${esc(profile.uid||profile.authUid||profile.id)}">${esc(profile.nombre||profile.nombreCompleto||profile.usuario||profile.id)}</option>`).join("")}</select></div><div class="debt-field debt-field--amount"><label id="adminDebtAmountLabel" for="adminDebtAmount">TOTAL O IMPORTE</label><input id="adminDebtAmount" inputmode="numeric" autocomplete="off" placeholder="$ 0"></div><div id="adminDebtPaymentMethodField" class="debt-field debt-field--payment-method" hidden><label>EFECTIVO O TRANSFERENCIA</label><div class="admin-debt-payment-methods" role="group" aria-label="Medio del pago"><button type="button" data-debt-payment-method="cash" class="is-selected" aria-pressed="true">EFECTIVO</button><button type="button" data-debt-payment-method="transfer" aria-pressed="false">TRANSFERENCIA</button></div></div><div class="debt-field debt-field--description"><label id="adminDebtDescriptionLabel" for="adminDebtDescription">DETALLE O MOTIVO</label><textarea id="adminDebtDescription" maxlength="320" placeholder="Escribe el motivo"></textarea></div><div class="debt-field debt-field--attachment"><label>AGREGAR COMPROBANTE <span id="adminDebtAttachmentState" class="debt-attachment-optional">OPCIONAL · SI APLICA</span></label>${window.ExploraReceiptUI.markup({triggerId:"adminDebtReceiptBtn",previewId:"adminDebtReceiptPreview",thumbId:"adminDebtReceiptPreviewThumb",nameId:"adminDebtReceiptPreviewName",metaId:"adminDebtReceiptPreviewMeta",removeId:"adminDebtReceiptPreviewRemove",heading:"Comprobante"})}</div><input id="adminDebtDate" type="hidden" value="${esc(todayDebtDate())}"><input id="adminDebtInstallmentCount" type="hidden" value="1"><input id="adminDebtWeeklyAmount" type="hidden" value=""><div id="adminDebtSummary" class="debt-summary debt-ledger-summary"></div><div id="adminDebtMessage" class="admin-shared-status" role="status" aria-live="polite"></div>${diagnosticMarkup()}<button id="adminDebtSubmit" class="admin-primary-btn admin-debt-submit" type="submit" disabled>REGISTRAR DEUDA DEL CHOFER</button></form>`;
+  state.installments=1;state.selectedVehicle=null;state.editingDebtId="";state.opened=true;state.diagnostic=null;state.paymentMethod="cash";
+  clearReceipt();
+  const requestedDriver=clean(options?.driverUid||"");if(requestedDriver&&$("adminDebtDriver")){const select=$("adminDebtDriver");if([...select.options].some(option=>option.value===requestedDriver))select.value=requestedDriver;}
+  setDebtPaymentMethod(options?.paymentMethod||"cash");
+  setDebtOperation(options?.mode||options?.operation||"debt");
+  updateDebtSummary();
+}
 
 function setDebtReason(reason){state.reason=DEBT_REASON_OPTIONS.includes(clean(reason))?clean(reason):"";document.querySelectorAll("[data-debt-reason]").forEach(button=>button.classList.toggle("is-selected",button.dataset.debtReason===state.reason));}
 function beginDebtEdit(debtId){const row=state.debts.get(clean(debtId));if(!row)return;state.editingDebtId=row.id;clearReceipt();const driverUid=clean(row.driverUid||row.choferUid||row.driverId||row.uid),driverSelect=$("adminDebtDriver"),vehicleSelect=$("adminDebtVehicleSelect");if(driverSelect){if(driverUid&&![...driverSelect.options].some(option=>option.value===driverUid)){const option=document.createElement("option");option.value=driverUid;option.textContent=clean(row.driverName||row.choferNombre||driverUid||"Chofer");driverSelect.appendChild(option);}driverSelect.value=driverUid;driverSelect.disabled=true;}const vehicleId=clean(row.vehicleId||row.originalVehicleId||row.vehiculoId);if(vehicleSelect){vehicleSelect.value=vehicleId;vehicleSelect.disabled=true;}setSelectedVehicleById(vehicleId);setDebtReason(DEBT_REASON_OPTIONS.includes(clean(row.reason||row.type))?clean(row.reason||row.type):(clean(row.reasonLabel).toLowerCase().includes("choque")?"crash":clean(row.reasonLabel).toLowerCase().includes("préstamo")||clean(row.reasonLabel).toLowerCase().includes("prestamo")?"personal_loan":clean(row.reasonLabel).toLowerCase().includes("adelanto")?"advance":"fine"));if($("adminDebtDate"))$("adminDebtDate").value=clean(row.incidentDate).slice(0,10);if($("adminDebtDescription"))$("adminDebtDescription").value=clean(row.description||row.notes);if($("adminDebtAmount"))$("adminDebtAmount").value=formatAmount(String(Math.max(0,Number(row.totalAmount||row.amount||0))));if($("adminDebtInstallmentCount"))$("adminDebtInstallmentCount").value="1";if($("adminDebtWeeklyAmount"))$("adminDebtWeeklyAmount").value=formatAmount(String(Math.max(0,Number(row.remainingAmount||row.saldoPendiente||row.totalAmount||row.amount||0))));if($("adminDebtNotes"))$("adminDebtNotes").value=clean(row.adminNotes||row.notes);const banner=$("adminDebtEditBanner");if(banner)banner.hidden=false;const button=$("adminDebtSubmit");if(button)button.textContent="GUARDAR CAMBIOS";const message=$("adminDebtMessage");if(message){message.textContent="Puedes editar datos administrativos. Los pagos ya aplicados se mantienen como descuentos de la deuda.";message.className="admin-shared-status";}updateDebtSummary();$("adminDebtForm")?.scrollIntoView?.({behavior:"smooth",block:"start"});}
@@ -89,55 +168,94 @@ async function copyDebtDiagnostic(){if(!state.diagnostic)return;const text=diagn
 function closeDebtDiagnostic(){const panel=$("adminDebtDiagnostic");if(panel)panel.hidden=true;state.diagnostic=null;const message=$("adminDebtMessage");if(message){message.textContent="";message.className="admin-shared-status";}}
 function showDebtFailure(error,runtime){const normalized=classifyDebtError(error,runtime);runtime.timeoutActive=false;if(String(normalized.internalCode||"").includes("TIMEOUT")){runtime.cancelAttempted=true;runtime.taskState="failed";}if(normalized.debtStage==="STORAGE_UPLOAD")runtime.taskState="failed";if(error?.debtRollbackAttempted)runtime.rollbackAttempted=true;if(error?.debtRollbackSucceeded!==undefined)runtime.rollbackSucceeded=Boolean(error.debtRollbackSucceeded);const data=buildDebtDiagnostic(normalized,runtime);state.diagnostic=data;const message=$("adminDebtMessage");if(message){message.textContent=normalized.userMessage||normalized.message;message.className="admin-shared-status is-error";}renderDebtDiagnostic(data);return normalized;}
 function handleDebtStage(stage,detail,runtime,button){if(stage==="ADMIN_VALIDATED"){runtime.stage="ADMIN_ROLE_CHECK";return;}if(stage==="PROCESS_FILE"){runtime.stage="IMAGE_PROCESS";button.textContent="PREPARANDO COMPROBANTE…";return;}if(stage==="UPLOAD_START"){runtime.stage="STORAGE_UPLOAD";runtime.path=String(detail?.path||runtime.path||"");runtime.processed={mimeType:detail?.mimeType,size:detail?.size};runtime.percent=0;runtime.taskState=String(detail?.taskState||"starting");runtime.timeoutActive=true;state.uploading=true;button.textContent="SUBIENDO COMPROBANTE 0 %";return;}if(stage==="UPLOAD_PROGRESS"){runtime.stage="STORAGE_UPLOAD";runtime.percent=Number(detail?.percent||0);runtime.taskState=String(detail?.taskState||"running");runtime.path=String(detail?.path||runtime.path||"");runtime.processed={mimeType:detail?.mimeType,size:detail?.size};button.textContent=`SUBIENDO COMPROBANTE ${runtime.percent} %`;return;}if(stage==="UPLOAD_STATE"){runtime.taskState=String(detail?.taskState||runtime.taskState||"running");return;}if(stage==="UPLOAD_COMPLETE"){runtime.stage="GET_DOWNLOAD_URL";runtime.percent=100;runtime.taskState="success";runtime.timeoutActive=false;runtime.storageConfirmed=true;runtime.urlObtained=true;state.uploading=false;button.textContent="OBTENIENDO URL…";return;}if(stage==="DOWNLOAD_URL_CONFIRMED"){runtime.stage="FIRESTORE_WRITE";runtime.storageConfirmed=true;runtime.urlObtained=Boolean(detail?.urlObtained);button.textContent="REGISTRANDO DEUDA…";return;}if(stage==="FIRESTORE_WRITE"){runtime.stage="FIRESTORE_WRITE";button.textContent="REGISTRANDO DEUDA…";return;}if(stage==="ROLLBACK_START"){runtime.stage="ROLLBACK";runtime.rollbackAttempted=true;button.textContent="REVERTIENDO ARCHIVO…";return;}if(stage==="ROLLBACK_COMPLETE"){runtime.stage="ROLLBACK";runtime.rollbackAttempted=true;runtime.rollbackSucceeded=Boolean(detail?.success);return;}if(stage==="COMPLETED"){runtime.stage="COMPLETED";runtime.firestoreConfirmed=true;runtime.storageConfirmed=true;runtime.urlObtained=true;runtime.timeoutActive=false;runtime.taskState="success";}}
-async function submitDriverDebt(event){
-  event.preventDefault();
-  if(debtSaveInProgress)return;
-  const button=$("adminDebtSubmit"),runtime=baseRuntime(),editingDebtId=clean(state.editingDebtId);
-  debtSaveInProgress=true;state.busy=true;state.saving=true;state.uploading=false;
-  button.disabled=true;button.setAttribute("aria-busy","true");button.textContent="VALIDANDO SESIÓN…";
+function createDebtPaymentId(driverUid){return`debtpay_${String(driverUid||"driver").replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,42)}_${Date.now()}_${globalThis.crypto?.randomUUID?.().slice(0,8)||Math.random().toString(36).slice(2,10)}`.slice(0,120);}
+function selectedDriverIdentity(){
+  const driverUid=clean($("adminDebtDriver")?.value),selected=$("adminDebtDriver")?.selectedOptions?.[0],profile=state.drivers.get(driverUid)||{};
+  const driverName=clean(profile.nombre||profile.nombreCompleto||profile.usuario||profile.displayName||selected?.textContent||"Chofer");
+  return{driverUid,driverName,profile};
+}
+function debtReceiptData(receipt=null){return{url:clean(receipt?.receiptUrl||receipt?.fileUrl||receipt?.downloadUrl||""),path:clean(receipt?.receiptPath||receipt?.filePath||""),name:clean(receipt?.receiptFileName||receipt?.fileName||"Comprobante"),mimeType:clean(receipt?.receiptMimeType||receipt?.mimeType||"")};}
+async function uploadAdminDebtPaymentReceipt({session,driverUid,paymentId,amount,file,onStage}){
+  if(!(file instanceof File||file instanceof Blob))return null;
+  if(typeof window.motorCargaComprobanteGasto!=="function")throw makeDebtError("STORAGE_UPLOAD","DEBT_PAYMENT_UPLOAD_ENGINE_MISSING","No está disponible la carga del comprobante.");
+  return window.motorCargaComprobanteGasto({
+    file,context:"driverDebt",ownerUid:String(session.uid||""),driverUid,recordId:paymentId,
+    weeklyPeriodId:window.ExploraWeeklyEngine?.getActiveWeeklyPeriod?.().id||"",
+    destinationPath:`deudas/${driverUid}/${paymentId}/comprobante.{extension}`,allowPdf:true,
+    uploadedByUid:session.uid,uploadedByRole:session.role||"admin",category:"driver_debt_payment",
+    metadata:{paymentId,driverUid,amount:String(amount),module:"DEUDAS",type:"admin_debt_payment",receiptCategory:"deuda_pago",paymentMethod:state.paymentMethod},
+    onStage
+  });
+}
+async function rollbackDebtReceipt(path=""){if(!path||!storage)return false;try{await deleteObject(storageRef(storage,path));return true;}catch(_){return false;}}
+function clearDebtMovementInputs(){
+  if($("adminDebtAmount"))$("adminDebtAmount").value="";
+  if($("adminDebtDescription"))$("adminDebtDescription").value="";
+  setDebtPaymentMethod("cash");clearReceipt();updateDebtSummary();
+}
+function showDebtSuccess(message){const box=$("adminDebtMessage");if(box){box.textContent=message;box.className="admin-shared-status is-ok";}setTimeout(()=>{const current=$("adminDebtMessage");if(current?.classList.contains("is-ok")){current.textContent="";current.className="admin-shared-status";}},4200);}
+async function submitNewDriverDebt({session,runtime,button}){
+  const{driverUid,driverName}=selectedDriverIdentity(),totalAmount=parseAmount($("adminDebtAmount")?.value),description=clean($("adminDebtDescription")?.value),incidentDate=todayDebtDate();
+  const receiptState=window.ExploraReceiptEngine?.getState?.("driverDebt")||{},receiptFile=receiptState.file||state.receiptFile||null;
+  await activeDebts();
+  const previousBalance=adminDebtBalance(debtRowsArray(),driverUid),newBalance=previousBalance+totalAmount;
+  Object.assign(runtime,{stage:"FORM_VALIDATION",driverUid,driverName,amount:totalAmount,installments:1,file:receiptFile,processed:receiptState.processedFile||null});
+  if(!driverUid)throw makeDebtError("FORM_VALIDATION","DRIVER_REQUIRED","Selecciona un chofer.");
+  if(!description)throw makeDebtError("FORM_VALIDATION","DESCRIPTION_REQUIRED","Ingresa el detalle o motivo.");
+  if(!(totalAmount>0))throw makeDebtError("FORM_VALIDATION","AMOUNT_REQUIRED","Ingresa un total o importe válido.");
+  runtime.debtId=createDebtId(driverUid);button.textContent=receiptFile?"PREPARANDO COMPROBANTE…":"REGISTRANDO DEUDA…";
+  if(typeof window.ExploraCreateDriverDebt!=="function")throw makeDebtError("FIRESTORE_WRITE","DEBT_CREATE_ENGINE_MISSING","No está disponible el registro de deuda.");
+  await window.ExploraCreateDriverDebt({
+    debtId:runtime.debtId,driverUid,driverName,vehicleId:"",vehiclePlate:"",reason:"other",reasonLabel:"Deuda del chofer",
+    incidentDate,description,totalAmount,installmentCount:1,weeklyInstallmentAmount:totalAmount,receiptFile,
+    notes:description,adminNotes:description,previousBalance,newBalance,payerRole:"driver",payeeRole:"explora",
+    paymentDirection:"driver_to_explora",driverResponsibilityRate:1,createdByName:clean(session.profile?.nombre||session.profile?.nombreCompleto||session.profile?.displayName||session.email||"Administrador"),validatedAdminSession:session,
+    onStage:(stage,detail)=>handleDebtStage(stage,detail,runtime,button)
+  });
+  await refreshAdminDebts();window.invalidateReceiptCache?.("deudas");window.invalidateWeeklyFinancialEngine?.("debt-created");
+  clearDebtMovementInputs();showDebtSuccess(`Deuda registrada. ${driverName} debe pagar a Explora ${money(newBalance)}.`);
+}
+async function submitDriverDebtPayment({session,runtime,button}){
+  const{driverUid,driverName}=selectedDriverIdentity(),amount=parseAmount($("adminDebtAmount")?.value),description=clean($("adminDebtDescription")?.value);
+  const paymentMethod=normalizeAdminDebtTender(state.paymentMethod),receiptState=window.ExploraReceiptEngine?.getState?.("driverDebt")||{},receiptFile=receiptState.file||state.receiptFile||null;
+  await activeDebts();
+  const pendingRows=adminDebtRowsForDriver(debtRowsArray(),driverUid),currentBalance=adminDebtBalance(debtRowsArray(),driverUid);
+  Object.assign(runtime,{stage:"FORM_VALIDATION",driverUid,driverName,amount,installments:1,file:receiptFile,processed:receiptState.processedFile||null});
+  if(!driverUid)throw makeDebtError("FORM_VALIDATION","DRIVER_REQUIRED","Selecciona un chofer.");
+  if(!(currentBalance>0))throw makeDebtError("FORM_VALIDATION","NO_ACTIVE_DEBT","El chofer no tiene deuda pendiente.");
+  if(!description)throw makeDebtError("FORM_VALIDATION","DESCRIPTION_REQUIRED","Ingresa el motivo del pago.");
+  if(!(amount>0))throw makeDebtError("FORM_VALIDATION","AMOUNT_REQUIRED","Ingresa el total o importe pagado.");
+  if(amount>currentBalance)throw makeDebtError("FORM_VALIDATION","PAYMENT_EXCEEDS_DEBT",`El pago no puede superar la deuda actual de ${money(currentBalance)}.`);
+  if(paymentMethod==="transfer"&&!(receiptFile instanceof File||receiptFile instanceof Blob))throw makeDebtError("FORM_VALIDATION","TRANSFER_RECEIPT_REQUIRED","Agrega el comprobante de la transferencia.");
+  const paymentId=createDebtPaymentId(driverUid);runtime.debtId=pendingRows[0]?.id||pendingRows[0]?.debtId||"";
+  let receipt=null,receiptInfo={url:"",path:"",name:"",mimeType:""};
   try{
-    runtime.session=await validateDebtAdminSession();runtime.stage="ADMIN_ROLE_CHECK";
-    const existing=editingDebtId?state.debts.get(editingDebtId)||{}:{};
-    const driverUid=clean(existing.driverUid||existing.choferUid||existing.driverId||$("adminDebtDriver")?.value);
-    const selected=$("adminDebtDriver")?.selectedOptions?.[0],driverProfile=state.drivers.get(driverUid)||{};
-    const driverName=clean(existing.driverName||driverProfile.nombre||driverProfile.nombreCompleto||driverProfile.usuario||selected?.textContent||"Chofer");
-    const totalAmount=parseAmount($("adminDebtAmount")?.value),installmentCount=1,weeklyInstallmentAmount=totalAmount;
-    const incidentDate=clean($("adminDebtDate")?.value),description=clean($("adminDebtDescription")?.value),notes=clean($("adminDebtNotes")?.value);
-    const receiptState=window.ExploraReceiptEngine?.getState?.("driverDebt"),receiptFile=receiptState?.file||state.receiptFile||null;
-    Object.assign(runtime,{stage:"FORM_VALIDATION",driverUid,driverName,debtId:editingDebtId,amount:totalAmount,installments:1,file:receiptFile,processed:receiptState?.processedFile||null});
-    if(!driverUid)throw makeDebtError("FORM_VALIDATION","DRIVER_REQUIRED","Selecciona un chofer.");
-    if(!state.reason)throw makeDebtError("FORM_VALIDATION","DEBT_REASON_REQUIRED","Selecciona Multa, Choque, Préstamo o Adelanto.");
-    if(!incidentDate)throw makeDebtError("FORM_VALIDATION","INCIDENT_DATE_REQUIRED","Selecciona la fecha.");
-    if(!description)throw makeDebtError("FORM_VALIDATION","DESCRIPTION_REQUIRED","Ingresa el motivo o descripción.");
-    if(!(totalAmount>0))throw makeDebtError("FORM_VALIDATION","AMOUNT_REQUIRED","Ingresa un importe total válido.");
-    runtime.debtId=editingDebtId||createDebtId(driverUid);
-    button.textContent=receiptFile?"PREPARANDO ARCHIVO…":editingDebtId?"GUARDANDO CAMBIOS…":"REGISTRANDO DEUDA…";
-    const labels=DEBT_REASON_LABELS;
-    const payload={
-      debtId:runtime.debtId,driverUid,driverName,
-      vehicleId:clean(existing.vehicleId||state.selectedVehicle?.id||""),vehiclePlate:clean(existing.vehiclePlate||state.selectedVehicle?.plate||""),
-      reason:state.reason,reasonLabel:labels[state.reason],incidentDate,description,totalAmount,installmentCount,weeklyInstallmentAmount,
-      receiptFile,notes,adminNotes:notes,validatedAdminSession:runtime.session,onStage:(stage,detail)=>handleDebtStage(stage,detail,runtime,button)
-    };
-    if(editingDebtId){
-      if(typeof window.ExploraUpdateDriverDebt!=="function")throw makeDebtError("FIRESTORE_WRITE","DEBT_UPDATE_ENGINE_MISSING","No está disponible el editor de multas y choques.");
-      await window.ExploraUpdateDriverDebt(payload);
-    }else{
-      await window.ExploraCreateDriverDebt(payload);
-    }
-    runtime.firestoreConfirmed=true;runtime.stage="COMPLETED";
-    window.invalidateReceiptCache?.("deudas");window.invalidateWeeklyFinancialEngine?.(editingDebtId?"debt-updated":"debt-created");
-    const successLabel=labels[state.reason]||"Deuda";
-    await refreshAdminDebts();
-    cancelDebtEdit();
-    const message=$("adminDebtMessage");if(message){message.textContent=editingDebtId?"Cambios guardados correctamente.":`${successLabel} registrada correctamente.`;message.className="admin-shared-status is-ok";}
-    setTimeout(()=>{const current=$("adminDebtMessage");if(current?.classList.contains("is-ok")){current.textContent="";current.className="admin-shared-status";}},2600);
-  }catch(error){console.error(editingDebtId?"ADMIN_DEBT_UPDATE":"ADMIN_DEBT_CREATE",error);showDebtFailure(error,runtime);}
-  finally{
-    debtSaveInProgress=false;state.busy=false;state.saving=false;state.uploading=false;
-    button.removeAttribute("aria-busy");button.textContent=state.editingDebtId?"GUARDAR CAMBIOS":"REGISTRAR DEUDA";
-    updateDebtSummary();window.unlockPageScroll?.("debt-upload");
-  }
+    if(receiptFile){button.textContent="SUBIENDO COMPROBANTE…";receipt=await uploadAdminDebtPaymentReceipt({session,driverUid,paymentId,amount,file:receiptFile,onStage:(stage,detail)=>handleDebtStage(stage,detail,runtime,button)});receiptInfo=debtReceiptData(receipt);}
+    button.textContent="REGISTRANDO PAGO…";runtime.stage="FIRESTORE_WRITE";
+    const nowMs=Date.now(),candidateRefs=pendingRows.map(row=>({id:clean(row.id||row.debtId),ref:doc(db,"deudas_choferes",clean(row.id||row.debtId))})).filter(item=>item.id);
+    let committedPlan=null;
+    await runTransaction(db,async transaction=>{
+      const currentRows=[];
+      for(const item of candidateRefs){const snap=await transaction.get(item.ref);if(snap.exists())currentRows.push({id:snap.id,...snap.data()});}
+      const driverRows=adminDebtRowsForDriver(currentRows,driverUid),plan=allocateAdminDebtPayment(driverRows,amount);committedPlan=plan;
+      for(const allocation of plan.allocations){const target=candidateRefs.find(item=>item.id===allocation.debtId);if(!target)throw new Error("PAYMENT_DEBT_REFERENCE_MISSING");transaction.update(target.ref,{remainingAmount:allocation.newBalance,saldoPendiente:allocation.newBalance,paidAmount:allocation.paidAmount,amountPaid:allocation.paidAmount,status:allocation.status,debtStatus:allocation.status,lastPaymentAt:serverTimestamp(),lastPaymentAtMs:nowMs,lastPaymentMethod:paymentMethod,lastPaymentRegisteredByRole:"admin",updatedAt:serverTimestamp(),updatedAtMs:nowMs,sourceModule:"pendientes"});}
+      const adminName=clean(session.profile?.nombre||session.profile?.nombreCompleto||session.profile?.displayName||session.email||"Administrador"),methodLabel=paymentMethod==="transfer"?"transferencia":"efectivo";
+      const paymentPayload={paymentId,id:paymentId,driverUid,choferUid:driverUid,driverId:driverUid,driverName,debtId:plan.allocations[0]?.debtId||"",allocations:plan.allocations,amount,monto:amount,previousBalance:plan.previousBalance,newBalance:plan.newBalance,debtReductionMethod:"admin_payment",paymentMethod,method:paymentMethod,payerRole:"driver",payeeRole:"explora",paymentDirection:"driver_to_explora",recognizedByExplora:true,recognizedAmount:amount,recognitionRate:1,reason:description,description,notes:description,registeredByAdmin:true,registrationOrigin:"admin_debt_menu",receiptRequired:paymentMethod==="transfer",receiptStatus:receiptInfo.url?"uploaded":"not_required",receiptUrl:receiptInfo.url,comprobanteUrl:receiptInfo.url,notificationPhotoUrl:receiptInfo.url,telegramPhotoUrl:receiptInfo.url,receiptPath:receiptInfo.path,receiptName:receiptInfo.name,receiptMimeType:receiptInfo.mimeType,status:"applied",estado:"aplicado",sourceModule:"pendientes",adminAcknowledged:true,acknowledged:true,adminAccepted:true,accepted:true,read:true,createdByUid:session.uid,createdByRole:"admin",createdByName:adminName,createdAt:serverTimestamp(),createdAtMs:nowMs,updatedAt:serverTimestamp(),updatedAtMs:nowMs,version:"v4141-deudas-pagos-admin"};
+      transaction.set(doc(db,"deuda_pagos",paymentId),paymentPayload,{merge:false});
+      transaction.set(doc(db,"deuda_movimientos",`movement_${paymentId}`),{movementId:`movement_${paymentId}`,type:"payment",driverUid,driverName,debtId:paymentPayload.debtId,paymentId,amount,previousBalance:plan.previousBalance,newBalance:plan.newBalance,paymentMethod,payerRole:"driver",payeeRole:"explora",paymentDirection:"driver_to_explora",reason:description,description,registeredByAdmin:true,recognizedByExplora:true,receiptUrl:receiptInfo.url,receiptPath:receiptInfo.path,createdByUid:session.uid,createdByRole:"admin",createdAt:serverTimestamp(),createdAtMs:nowMs,sourceModule:"pendientes",version:"v4141-deudas-pagos-admin"},{merge:false});
+      transaction.set(doc(db,"notificaciones",`debt_payment_${paymentId}`),{notificationId:`debt_payment_${paymentId}`,type:"admin_debt_payment",category:"pendientes",driverUid,driverName,paymentId,debtId:paymentPayload.debtId,title:"PAGO DEL CHOFER REGISTRADO",message:`Explora reconoció tu pago de ${money(amount)} en ${methodLabel}. Deuda anterior ${money(plan.previousBalance)} · deuda actual ${money(plan.newBalance)}.`,reason:description,description,receiptUrl:receiptInfo.url,receiptPath:receiptInfo.path,amount,previousBalance:plan.previousBalance,newBalance:plan.newBalance,paymentMethod,read:false,acknowledged:false,createdByUid:session.uid,createdByRole:"admin",createdAt:serverTimestamp(),createdAtMs:nowMs,updatedAt:serverTimestamp(),updatedAtMs:nowMs,version:"v4141-deudas-pagos-admin"},{merge:false});
+    });
+    runtime.firestoreConfirmed=true;runtime.stage="COMPLETED";await refreshAdminDebts();window.invalidateReceiptCache?.("deudas");window.invalidateWeeklyFinancialEngine?.("admin-debt-payment");
+    clearDebtMovementInputs();const balanceAfter=committedPlan?.newBalance??Math.max(0,currentBalance-amount);showDebtSuccess(balanceAfter>0?`Pago reconocido. ${driverName} todavía debe a Explora ${money(balanceAfter)}.`:`Pago reconocido. La deuda de ${driverName} quedó saldada.`);
+  }catch(error){if(receiptInfo.path){error.debtRollbackAttempted=true;error.debtRollbackSucceeded=await rollbackDebtReceipt(receiptInfo.path);}throw error;}
+}
+async function submitDriverDebt(event){
+  event.preventDefault();if(debtSaveInProgress)return;
+  const button=$("adminDebtSubmit"),runtime=baseRuntime();debtSaveInProgress=true;state.busy=true;state.saving=true;state.uploading=false;
+  button.disabled=true;button.setAttribute("aria-busy","true");button.textContent="VALIDANDO SESIÓN…";
+  try{runtime.session=await validateDebtAdminSession();runtime.stage="ADMIN_ROLE_CHECK";if(state.operation==="payment")await submitDriverDebtPayment({session:runtime.session,runtime,button});else await submitNewDriverDebt({session:runtime.session,runtime,button});}
+  catch(error){console.error(state.operation==="payment"?"ADMIN_DEBT_PAYMENT_CREATE":"ADMIN_DEBT_CREATE",error);showDebtFailure(error,runtime);}
+  finally{debtSaveInProgress=false;state.busy=false;state.saving=false;state.uploading=false;button.removeAttribute("aria-busy");updateDebtSummary();window.unlockPageScroll?.("debt-upload");}
 }
 
 const APP_RESET_TIMEOUT_MS=120000;
@@ -179,9 +297,9 @@ function resetSummary(result){const collections=Object.entries(result.collection
 async function executeLaunch(){const button=$("launchExecuteBtn");if(button?.dataset.mode==="close"){closeLaunch();return;}if(state.busy)return;state.busy=true;if(button){button.disabled=true;button.textContent="REINICIANDO…";}const cancel=$("launchCancelBtn");if(cancel)cancel.hidden=true;configureLaunchPanel({status:"warning",title:"REINICIO OPERATIVO EN CURSO",badge:"PROCESANDO",copy:"<p>Eliminando datos operativos y reconstruyendo el estado limpio.</p>",message:"No cierres esta ventana mientras se completa el proceso.",buttonText:"REINICIANDO…",buttonMode:"execute",showCancel:false});const started=performance.now();try{window.ExploraPerformanceEngine?.showDiagnostic?.("APP_RESET","APP_RESET_STARTED",new Error("Inicio de reinicio operativo total."),{eventType:"WARNING",functionName:"executeLaunch",firestorePath:"colecciones operativas",query:"getDocs + writeBatch",result:"INICIADO",silent:true});const result=await resetOperationalCycle(),summary=resetSummary(result);if(result.result==="APP_RESET_COMPLETED"){configureLaunchPanel({status:"success",title:"REINICIO OPERATIVO COMPLETADO",badge:"SUCCESS",copy:"<p>EXPLORA quedó lista para comenzar una nueva semana operativa.</p>",details:summary,message:"APP_RESET_COMPLETED",messageType:"is-ok",buttonText:"OK",buttonMode:"close",showCancel:false});window.ExploraPerformanceEngine?.showDiagnostic?.("FINALIZE_RESET","APP_RESET_COMPLETED",new Error("Reinicio operativo completado."),{eventType:"SUCCESS",functionName:"executeLaunch",weeklyPeriodId:result.weeklyPeriodId,firestorePath:"colecciones operativas",query:"getDocs + writeBatch",collection:"múltiples",collectionsReset:Object.entries(result.collections).map(([name,count])=>`${name}: ${count}`).join(" | "),documentsAffected:result.documentsAffected,executionMs:result.executionMs,result:result.result,silent:true});}else{const warningError=resetError("FINALIZE_RESET","APP_RESET_PARTIAL","El reinicio finalizó con advertencias. Revisá el diagnóstico para identificar los datos pendientes.",null,{failures:result.failures});configureLaunchPanel({status:"warning",title:"REINICIO OPERATIVO PARCIAL",badge:"WARNING",copy:"<p>Se eliminaron los datos accesibles, pero quedaron operaciones pendientes de revisión.</p>",details:summary,message:"APP_RESET_PARTIAL",messageType:"is-error",buttonText:"OK",buttonMode:"close",showCancel:false});window.ExploraPerformanceEngine?.showDiagnostic?.("FINALIZE_RESET","APP_RESET_PARTIAL",warningError,{eventType:"WARNING",functionName:"executeLaunch",weeklyPeriodId:result.weeklyPeriodId,firestorePath:"colecciones operativas",query:"getDocs + writeBatch",collection:(result.failures||[]).map(item=>item.collection).join(", ")||"—",collectionsReset:Object.entries(result.collections).map(([name,count])=>`${name}: ${count}`).join(" | "),documentsAffected:result.documentsAffected,executionMs:result.executionMs,result:result.result,failures:(result.failures||[]).map(item=>`${item.stage}/${item.collection}/${item.code}: ${item.message}`).join(" | ")});}}catch(error){const executionMs=Math.round(performance.now()-started),stage=error?.resetStage||"FINALIZE_RESET",code=error?.internalCode||error?.code||"APP_RESET_DELETE_FAILED",path=String(error?.resetDetail?.collectionName||error?.resetCollection||error?.collectionName||"colecciones operativas");console.error("APP_RESET_FAILED",error);configureLaunchPanel({status:"error",title:"REINICIO OPERATIVO NO COMPLETADO",badge:"ERROR",copy:"<p>El reinicio no pudo finalizar. El diagnóstico técnico permanece visible para copiarlo.</p>",details:`Colección / ruta: ${path}\nTiempo de ejecución: ${executionMs} ms\nEstado: ${code}`,message:`${code} · ${error?.message||"No se pudo completar el reinicio."}`,messageType:"is-error",buttonText:"CERRAR",buttonMode:"close",showCancel:false});window.ExploraPerformanceEngine?.showDiagnostic?.(stage,code,error,{eventType:"ERROR",functionName:"executeLaunch",firestorePath:path,query:"getDocs + writeBatch",collection:path,documentsAffected:error?.resetDetail?.documentsAffected??"—",executionMs,result:code});}finally{state.busy=false;if(button)button.disabled=false;}}
 window.ExploraAdminTools={openDebt,openLaunch,closeLaunch};window.ExploraActions=window.ExploraActions||{};window.ExploraActions["admin-deuda"]=openDebt;
 /* EXPLORA v257: listener legado de LANZAR APP desactivado; controla ExploraOperationalResetV257. */
-document.addEventListener("click",event=>{if(!state.opened)return;if(event.target.closest?.("#adminDebtDiagnosticClose")){closeDebtDiagnostic();return;}if(event.target.closest?.("#adminDebtDiagnosticCopy")){copyDebtDiagnostic();return;}const edit=event.target.closest?.("[data-admin-edit-debt]");if(edit){beginDebtEdit(edit.dataset.adminEditDebt);return;}const editSelected=event.target.closest?.("[data-admin-edit-selected-debt]");if(editSelected){const selectedId=clean($("adminDebtExistingSelect")?.value);if(selectedId)beginDebtEdit(selectedId);return;}if(event.target.closest?.("#adminDebtCancelEdit")){cancelDebtEdit();return;}const reason=event.target.closest?.("[data-debt-reason]");if(reason){setDebtReason(reason.dataset.debtReason);updateDebtSummary();return;}if(event.target.closest?.("#adminDebtReceiptBtn")){$("driverDebtReceiptInput")?.click();return;}if(event.target.closest?.("#adminDebtReceiptPreviewRemove")){clearReceipt();return;}});
-document.addEventListener("input",event=>{if(!state.opened)return;if(event.target?.id==="adminDebtAmount"){event.target.value=formatAmount(event.target.value);updateDebtSummary({recalculateWeekly:true});}else if(event.target?.id==="adminDebtWeeklyAmount"){event.target.value=formatAmount(event.target.value);updateDebtSummary();}else if(["adminDebtDate","adminDebtDescription","adminDebtNotes"].includes(event.target?.id))updateDebtSummary();});
-document.addEventListener("change",event=>{if(!state.opened)return;if(event.target?.id==="adminDebtDriver")syncSelectedVehicle();if(event.target?.id==="adminDebtVehicleSelect")setSelectedVehicleById(event.target.value);if(event.target?.id==="driverDebtReceiptInput")selectReceipt(event.target.files?.[0]);});
+document.addEventListener("click",event=>{if(!state.opened)return;if(event.target.closest?.("#adminDebtDiagnosticClose")){closeDebtDiagnostic();return;}if(event.target.closest?.("#adminDebtDiagnosticCopy")){copyDebtDiagnostic();return;}const operation=event.target.closest?.("[data-debt-operation]");if(operation){setDebtOperation(operation.dataset.debtOperation,{clear:true});return;}const paymentMethod=event.target.closest?.("[data-debt-payment-method]");if(paymentMethod){setDebtPaymentMethod(paymentMethod.dataset.debtPaymentMethod);return;}if(event.target.closest?.("#adminDebtReceiptBtn")){$("driverDebtReceiptInput")?.click();return;}if(event.target.closest?.("#adminDebtReceiptPreviewRemove")){clearReceipt();return;}});
+document.addEventListener("input",event=>{if(!state.opened)return;if(event.target?.id==="adminDebtAmount"){event.target.value=formatAmount(event.target.value);updateDebtSummary();}else if(event.target?.id==="adminDebtDescription")updateDebtSummary();});
+document.addEventListener("change",event=>{if(!state.opened)return;if(event.target?.id==="adminDebtDriver")updateDebtSummary();if(event.target?.id==="driverDebtReceiptInput")selectReceipt(event.target.files?.[0]);});
 document.addEventListener("submit",event=>{if(event.target?.id==="adminDebtForm")submitDriverDebt(event);});
 
 /* v4042: Deudas responsive iOS/Android; cuotas semanales ocultas; selector compacto activo. */

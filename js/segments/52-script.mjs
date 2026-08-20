@@ -1,6 +1,7 @@
 import { collection, query, where, limit, onSnapshot, getDocs, getDoc, addDoc, setDoc, doc, updateDoc, deleteDoc, runTransaction, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../core/admin-debt-payment-core.mjs?v=4141-deudas-pagos-admin";
 
 (() => {
   "use strict";
@@ -9,7 +10,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4137-telegram-group";
+  const VERSION = "explora-pago-home-v52-v4141-deudas-pagos-admin";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -71,6 +72,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     modalKind:"",
     modalClosure:null,
     modalFile:null,
+    adminDebtPaymentMethod:"cash",
     debtPaymentBusy:false,
     previousDetailsOpen:{ chofer:false, explora:false, gastos:false, caja_chica:false, pendientes:false },
     tabAlerts:{ chofer:0, explora:0, gastos:0, caja_chica:0, pendientes:0 },
@@ -575,6 +577,18 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return row.expenseOffset === true || row.usedExpenseBalance === true || debtPaymentMethodOf(row) === "expense_offset";
   }
 
+  function debtPaymentTenderOf(row = {}) {
+    const raw = safe(row.paymentMethod || row.method || row.paymentChannel).toLowerCase();
+    if (/transfer|alias|transf/.test(raw)) return "transfer";
+    if (/cash|efectivo/.test(raw)) return "cash";
+    return "";
+  }
+
+  function debtPaymentTenderLabel(row = {}) {
+    const method = debtPaymentTenderOf(row);
+    return method === "transfer" ? "Transferencia" : method === "cash" ? "Efectivo" : "Efectivo o transferencia";
+  }
+
   function expenseDebtAdjustmentRows(rows = state.debtPayments, resetMs = 0) {
     const cutoff = Number(resetMs || 0);
     return debtPaymentRows(rows).filter(row => {
@@ -1065,6 +1079,14 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           <div class="pay-closure-field" id="payClosureDriverField" hidden><label for="payClosureDriverSelect">Chofer</label><select id="payClosureDriverSelect"><option value="">Cargando choferes…</option></select></div>
           <div class="pay-closure-summary" id="payClosureSummary"></div>
           <div class="pay-closure-field" id="payDebtPaymentField" hidden><label for="payDebtPaymentAmountInput">Monto a pagar</label><input id="payDebtPaymentAmountInput" type="text" inputmode="numeric" autocomplete="off" placeholder="$ 0" /><small id="payDebtPaymentHint">El pago reduce la deuda pendiente actual.</small></div>
+          <div class="pay-closure-field pay-debt-tender-field" id="payDebtPaymentMethodField" hidden>
+            <label>Medio de entrega</label>
+            <div class="pay-debt-tender-methods" role="group" aria-label="Medio de entrega del chofer">
+              <button class="pay-debt-tender-method is-selected" data-debt-payment-method="cash" type="button" aria-pressed="true">EFECTIVO</button>
+              <button class="pay-debt-tender-method" data-debt-payment-method="transfer" type="button" aria-pressed="false">TRANSFERENCIA</button>
+            </div>
+            <small id="payDebtPaymentMethodHint">Confirmás que recibiste el efectivo del chofer.</small>
+          </div>
           <div class="pay-closure-field" id="payClosureFileField" hidden><label for="payClosureReceiptInput">Comprobante de transferencia</label><input id="payClosureReceiptInput" type="file" accept="image/*,application/pdf" /></div>
           <div class="pay-closure-message" id="payClosureMessage"></div>
           <div class="pay-closure-actions"><button class="pay-closure-danger" id="payClosureReject" type="button" hidden>No aceptar cierre</button><button class="pay-closure-secondary" id="payClosureCancel" type="button">Cancelar</button><button class="pay-closure-primary" id="payClosureSubmit" type="button">Pedir cierre</button></div>
@@ -1362,7 +1384,21 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       renderUberWeeklyCalculation();
     });
     $("payClosureReceiptInput")?.addEventListener("change", event => { state.modalFile = event.target?.files?.[0] || null; renderClosureModal(); });
-    $("payDebtPaymentAmountInput")?.addEventListener("input", event => { if (window.formatCurrencyInput) event.target.value = window.formatCurrencyInput(event.target.value); });
+    $("payDebtPaymentAmountInput")?.addEventListener("input", event => {
+      if (window.formatCurrencyInput) event.target.value = window.formatCurrencyInput(event.target.value);
+      if (state.modalMode === "admin-debt-payment") updateAdminDebtPaymentPreview();
+    });
+    $("payDebtPaymentMethodField")?.addEventListener("click", event => {
+      const button = event.target?.closest?.("[data-debt-payment-method]");
+      if (!button || state.modalMode !== "admin-debt-payment") return;
+      state.adminDebtPaymentMethod = normalizeAdminDebtPaymentMethod(button.dataset.debtPaymentMethod);
+      state.modalFile = null;
+      const fileInput = $("payClosureReceiptInput");
+      if (fileInput) fileInput.value = "";
+      setModalMessage("");
+      renderClosureModal();
+      updateAdminDebtPaymentPreview();
+    });
     $("payClosureSummary")?.addEventListener("click", event => {
       const button = event.target?.closest?.("[data-debt-reduction-method]");
       if (!button) return;
@@ -1680,7 +1716,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       return [
         { title:"Mi perfil", detail:"Alias, CUIT y celular", action:"abrir-perfil", icon:"user" },
         { title:"Comprobantes Uber", detail:overdueUberDrivers ? `${overdueUberDrivers} chofer${overdueUberDrivers === 1 ? "" : "es"} con semana vencida` : (pendingUber ? `${pendingUber} cierre${pendingUber === 1 ? "" : "s"} en revisión` : "Aceptar o rechazar cierres semanales"), action:"admin-uber-closures", icon:"receipt" },
-        { title:"Deudas", detail:"Multas, choques y adelantos", action:"admin-multas", icon:"alert" },
+        { title:"Deudas", detail:"Deuda o pago del chofer", action:"admin-multas", icon:"alert" },
         { title:"Salir", detail:"Cerrar sesión", action:"salir", icon:"logout", tone:"danger" }
       ];
     }
@@ -4368,6 +4404,13 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       .sort((a,b)=>rowMs(b)-rowMs(a))[0] || null;
   }
 
+  function latestDebtPaymentForDriver(uid = "") {
+    const targetUid = safe(uid);
+    if (!targetUid) return null;
+    return debtPaymentRows(driverRowsFor(state.debtPayments, targetUid))
+      .sort((a,b)=>rowMs(b)-rowMs(a))[0] || null;
+  }
+
   function adminClosureMetricHtml(label = "", value = 0) {
     return `<div class="pay-admin-closure-metric"><span>${esc(label)}</span><strong>${esc(currency(value || 0))}</strong></div>`;
   }
@@ -4430,11 +4473,16 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     return adminClosureActionHtml({ uid, kind, action:"none", label, tone:"locked", disabled:true });
   }
 
-  function adminDebtAction(uid = "") {
+  function adminDebtAction(uid = "", summary = adminDriverSummaryFromState(uid)) {
     const payment = adminDebtReductionForDriver(uid);
-    if (!payment) return adminClosureActionHtml({ uid, kind:"pendientes", action:"none", label:"Sin reducción de deuda", tone:"locked", disabled:true });
-    const amount = amountOf(payment);
-    return adminClosureActionHtml({ uid, kind:"pendientes", action:"accept-debt", id:safe(payment.id || payment.paymentId), label:`Chofer redujo deuda · aceptar${amount > 0 ? ` ${currency(amount)}` : ""}`, tone:"red" });
+    if (payment) {
+      const amount = amountOf(payment);
+      return adminClosureActionHtml({ uid, kind:"pendientes", action:"accept-debt", id:safe(payment.id || payment.paymentId), label:`Chofer redujo deuda · aceptar${amount > 0 ? ` ${currency(amount)}` : ""}`, tone:"red" });
+    }
+    const pending = summary.pendientes || tabSummary(summary, "pendientes");
+    const balance = Math.max(0, number(pending.remainingAmount || summary.pendingDebtTotal || 0));
+    if (!(balance > 0.49)) return adminClosureActionHtml({ uid, kind:"pendientes", action:"none", label:"Sin deuda pendiente", tone:"locked", disabled:true });
+    return adminClosureActionHtml({ uid, kind:"pendientes", action:"register-debt-payment", label:"Registrar pago", tone:"primary" });
   }
 
   function adminClosureModuleHtml({ kind = "", title = "", subtitle = "", metrics = [], actionHtml = "" } = {}) {
@@ -4454,7 +4502,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const gastos = tabSummary(summary, "gastos");
     const caja = tabSummary(summary, "caja_chica");
     const pendientes = summary.pendientes || tabSummary(summary, "pendientes");
-    const debtPayment = adminDebtReductionForDriver(uid);
+    const debtPayment = latestDebtPaymentForDriver(uid);
     const debtPaymentAmount = debtPayment ? amountOf(debtPayment) : 0;
     const modules = [
       adminClosureModuleHtml({
@@ -4502,7 +4550,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
           adminClosureMetricHtml("Pagado", pendientes.totalPaid || 0),
           adminClosureMetricHtml("Última reducción", debtPaymentAmount || 0)
         ],
-        actionHtml:adminDebtAction(uid)
+        actionHtml:adminDebtAction(uid, summary)
       })
     ];
     // Caja chica ya está incluida en el resultado final de Chofer/Explora; no volver a sumarla.
@@ -4579,6 +4627,16 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       return;
     }
     setAdminBoardDriver(uid);
+    if (action === "register-debt-payment") {
+      state.latestSummary = adminDriverSummaryFromState(uid);
+      if (typeof window.ExploraAdminTools?.openDebt === "function") {
+        showPayView("inicio");
+        await window.ExploraAdminTools.openDebt({ mode:"payment", driverUid:uid });
+      } else {
+        openAdminDebtPaymentModal(uid);
+      }
+      return;
+    }
     if (action === "admin-pay-now") {
       state.latestSummary = adminDriverSummaryFromState(uid);
       await openClosureModal("admin-pay-now", null, kind);
@@ -4692,15 +4750,17 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       if (!(amount > 0)) continue;
       const debtPaymentHasPhoto = rowHasAttachment(row);
       const fromExpenses = debtPaymentUsesExpenses(row);
+      const registeredByAdmin = row.registeredByAdmin === true || safe(row.createdByRole).toLowerCase() === "admin";
+      const tenderLabel = debtPaymentTenderLabel(row);
       const originalExpenseDue = number(row.expenseAmountBeforeOffset || row.expenseBalanceBefore || 0);
       const finalExpenseDue = number(row.expenseAmountAfterOffset || row.expenseBalanceAfter || Math.max(0, originalExpenseDue - amount));
       rows.push({
         at, type:fromExpenses ? "debt_expense_offset" : "debt_payment", source:row, driverName:driverNameForRow(row),
-        title:`${dateTimeShort(at)} · ${fromExpenses ? "Ajuste de deuda con saldo de Gastos" : "Reducción de deuda"}`,
-        meta:fromExpenses ? "Compensación automática sin comprobante" : safe(row.driverName || row.choferNombre || "Comprobante cargado"),
+        title:`${dateTimeShort(at)} · ${fromExpenses ? "Ajuste de deuda con saldo de Gastos" : registeredByAdmin ? "Entrega registrada por Explora" : "Reducción de deuda"}`,
+        meta:fromExpenses ? "Compensación automática sin comprobante" : registeredByAdmin ? `${tenderLabel} · confirmado por administrador` : safe(row.driverName || row.choferNombre || "Comprobante cargado"),
         detail:fromExpenses
           ? `Explora debía liquidar ${currency(originalExpenseDue)} · chofer utilizó ${currency(amount)} para achicar deuda · Explora debe liquidar ${currency(finalExpenseDue)}`
-          : `Pago aplicado: ${currency(amount)} · saldo nuevo ${currency(row.newBalance || 0)}`,
+          : `Pago aplicado: ${currency(amount)} · medio: ${tenderLabel.toLowerCase()} · saldo nuevo ${currency(row.newBalance || 0)}`,
         amount, positive:true,
         hasPhoto:!fromExpenses && debtPaymentHasPhoto,
         photoKey:!fromExpenses && debtPaymentHasPhoto ? activityPhotoKey("debt_payment", row) : "",
@@ -5637,6 +5697,80 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       </div>`;
   }
 
+  function pendingDebtsForDriver(uid = getDriverUid()) {
+    const targetUid = safe(uid);
+    if (!targetUid) return summarizePendingDebts([]);
+    return summarizePendingDebts(driverRowsFor(state.debts, targetUid));
+  }
+
+  function adminDebtPaymentPreviewHtml(pending = pendingDebtsForDriver(), amount = 0) {
+    const preview = previewAdminDebtPayment(pending.remainingAmount || 0, amount);
+    return `
+      <article><span>Chofer</span><strong>${esc(state.selectedDriverName || "Chofer")}</strong></article>
+      <article><span>Deuda antes</span><strong id="payAdminDebtBalanceBefore">${esc(currency(preview.balanceBefore))}</strong></article>
+      <article><span>Entrega a registrar</span><strong id="payAdminDebtPaymentAmount">${esc(currency(preview.amount))}</strong></article>
+      <article class="closure-payment-result settlement-result-green" id="payAdminDebtPaymentResult">
+        <span id="payAdminDebtPaymentResultLabel">${esc(preview.resultLabel)}</span>
+        <strong id="payAdminDebtBalanceAfter">${esc(currency(preview.balanceAfter))}</strong>
+      </article>
+      <div class="pay-closure-alert" id="payAdminDebtPaymentPreviewHint">El movimiento se descuenta primero de la deuda más antigua y queda guardado en el historial.</div>`;
+  }
+
+  function updateAdminDebtPaymentPreview() {
+    if (state.modalMode !== "admin-debt-payment") return;
+    const pending = pendingDebtsForDriver();
+    const amount = moneyNumber($("payDebtPaymentAmountInput")?.value || 0);
+    const preview = previewAdminDebtPayment(pending.remainingAmount || 0, amount);
+    const method = normalizeAdminDebtPaymentMethod(state.adminDebtPaymentMethod);
+    const receiptFile = state.modalFile || $("payClosureReceiptInput")?.files?.[0] || null;
+    const hasReceipt = typeof File !== "undefined" && receiptFile instanceof File && receiptFile.size > 0;
+    const beforeNode = $("payAdminDebtBalanceBefore");
+    const amountNode = $("payAdminDebtPaymentAmount");
+    const afterNode = $("payAdminDebtBalanceAfter");
+    const labelNode = $("payAdminDebtPaymentResultLabel");
+    const hintNode = $("payAdminDebtPaymentPreviewHint");
+    const submit = $("payClosureSubmit");
+    if (beforeNode) beforeNode.textContent = currency(preview.balanceBefore);
+    if (amountNode) amountNode.textContent = currency(preview.amount);
+    if (afterNode) afterNode.textContent = currency(preview.balanceAfter);
+    if (labelNode) labelNode.textContent = preview.resultLabel;
+    if (hintNode) {
+      hintNode.textContent = preview.exceedsBalance
+        ? `El monto supera la deuda actual de ${currency(preview.balanceBefore)}.`
+        : method === "transfer"
+          ? "La transferencia requiere comprobante. El pago se aplica primero a la deuda más antigua."
+          : "Confirmás que Explora recibió este efectivo. El pago se aplica primero a la deuda más antigua.";
+      hintNode.classList.toggle("is-error", preview.exceedsBalance);
+    }
+    if (submit) submit.disabled = !preview.valid || (method === "transfer" && !hasReceipt);
+  }
+
+  function openAdminDebtPaymentModal(uid = getDriverUid()) {
+    if (state.busy || !isAdmin()) return;
+    const targetUid = safe(uid || getDriverUid());
+    const driver = state.drivers.find(item => safe(item.uid || item.id) === targetUid);
+    if (!targetUid || !driver) throw new Error("No se pudo identificar al chofer.");
+    state.selectedDriverUid = targetUid;
+    state.selectedDriverName = driver.name || state.selectedDriverName || "Chofer";
+    const pending = pendingDebtsForDriver(targetUid);
+    if (!(pending.remainingAmount > 0.49)) throw new Error("El chofer no tiene deuda pendiente.");
+    state.modalMode = "admin-debt-payment";
+    state.modalKind = "pendientes";
+    state.modalClosure = null;
+    state.modalFile = null;
+    state.adminDebtPaymentMethod = "cash";
+    const amountInput = $("payDebtPaymentAmountInput");
+    const fileInput = $("payClosureReceiptInput");
+    if (amountInput) amountInput.value = "";
+    if (fileInput) fileInput.value = "";
+    document.body?.classList.add("pay-closure-modal-open");
+    $("payClosureBackdrop")?.classList.add("is-open");
+    $("payClosureBackdrop")?.setAttribute("aria-hidden", "false");
+    setModalMessage("");
+    renderClosureModal();
+    window.setTimeout(() => amountInput?.focus?.(), 80);
+  }
+
   function openDebtPaymentModal() {
     if (state.busy) return;
     const pending = summarizePendingDebts();
@@ -6075,6 +6209,246 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     render();
   }
 
+  async function submitAdminDebtPayment() {
+    const user = state.auth?.currentUser;
+    if (!user?.uid) throw new Error("No hay sesión activa.");
+    if (!isAdmin()) throw new Error("Solo el administrador puede registrar una entrega recibida.");
+    const driverUid = getDriverUid();
+    if (!driverUid) throw new Error("No se pudo identificar al chofer.");
+    const pending = pendingDebtsForDriver(driverUid);
+    const currentBalance = moneyNumber(pending.remainingAmount || 0);
+    if (!(currentBalance > 0)) throw new Error("El chofer no tiene deuda pendiente.");
+    const amount = moneyNumber($("payDebtPaymentAmountInput")?.value || 0);
+    if (!(amount > 0)) throw new Error("Ingresá el monto recibido.");
+    if (amount > currentBalance) throw new Error(`El monto no puede superar la deuda actual de ${currency(currentBalance)}.`);
+    const paymentMethod = normalizeAdminDebtPaymentMethod(state.adminDebtPaymentMethod);
+    const file = state.modalFile || $("payClosureReceiptInput")?.files?.[0] || null;
+    if (paymentMethod === "transfer" && (!(file instanceof File) || !(file.size > 0))) {
+      throw new Error("Cargá el comprobante de la transferencia.");
+    }
+
+    const paymentId = debtPaymentId(driverUid);
+    const receipt = paymentMethod === "transfer"
+      ? await uploadDebtPaymentReceipt({ driverUid, paymentId, file, amount })
+      : { url:"", path:"", ext:"" };
+    const nowMs = Date.now();
+    const driverName = state.selectedDriverName || driverNameForRow(pending.activeDebts?.[0] || {}) || "Chofer";
+    const oldestDebt = pending.activeDebts?.[0] || null;
+    const allocations = [];
+    let transactionPreviousBalance = currentBalance;
+    let transactionNewBalance = Math.max(0, currentBalance - amount);
+    let uberDebtPaidAmount = 0;
+    let uberCashboxReferenced = 0;
+
+    await runTransaction(state.db, async transaction => {
+      let remainingToApply = amount;
+      let previousBalance = 0;
+      const debtRefs = (pending.activeDebts || [])
+        .map(row => ({ row, id:safe(row.id || row.debtId) }))
+        .filter(item => item.id)
+        .map(item => ({ row:item.row, ref:doc(state.db, "deudas_choferes", item.id) }));
+      const currentRows = [];
+      for (const item of debtRefs) {
+        const snap = await transaction.get(item.ref);
+        if (!snap.exists()) continue;
+        const data = { id:snap.id, ...snap.data() };
+        if (!debtIsActive(data)) continue;
+        if (driverUidOf(data) !== driverUid && !closureBelongsToDriver(data, driverUid)) continue;
+        currentRows.push({ ref:item.ref, row:data });
+        previousBalance += debtRemainingAmount(data);
+      }
+      currentRows.sort((a,b)=>debtCreatedMs(a.row)-debtCreatedMs(b.row));
+      if (!(previousBalance > 0)) throw new Error("La deuda ya no está activa.");
+      if (amount > previousBalance) throw new Error("El saldo cambió. Actualizá y volvé a intentar.");
+
+      for (const item of currentRows) {
+        if (!(remainingToApply > 0)) break;
+        const before = debtRemainingAmount(item.row);
+        if (!(before > 0)) continue;
+        const applied = Math.min(before, remainingToApply);
+        const after = Math.max(0, before - applied);
+        const paid = debtPaidAmount(item.row) + applied;
+        const status = after <= 0.49 ? "paid" : safe(item.row.status || item.row.debtStatus || "pending");
+        allocations.push({
+          debtId:item.ref.id,
+          type:debtTypeOf(item.row),
+          typeLabel:debtTypeLabel(item.row),
+          amount:applied,
+          previousBalance:before,
+          newBalance:after
+        });
+        transaction.update(item.ref, {
+          remainingAmount:after,
+          saldoPendiente:after,
+          paidAmount:paid,
+          amountPaid:paid,
+          status,
+          debtStatus:status,
+          lastPaymentAt:serverTimestamp(),
+          lastPaymentAtMs:nowMs,
+          lastPaymentMethod:paymentMethod,
+          lastPaymentRegisteredByRole:"admin",
+          updatedAt:serverTimestamp(),
+          updatedAtMs:nowMs,
+          sourceModule:"pendientes"
+        });
+        remainingToApply = Math.max(0, remainingToApply - applied);
+      }
+
+      const newBalance = Math.max(0, previousBalance - amount);
+      transactionPreviousBalance = previousBalance;
+      transactionNewBalance = newBalance;
+      uberDebtPaidAmount = allocations
+        .filter(item => safe(item.type) === "uber_weekly")
+        .reduce((sum,item)=>sum + moneyNumber(item.amount), 0);
+      uberCashboxReferenced = Math.round(uberDebtPaidAmount * 10) / 100;
+      const methodLabel = paymentMethod === "transfer" ? "transferencia" : "efectivo";
+      const paymentPayload = {
+        paymentId,
+        id:paymentId,
+        driverUid,
+        choferUid:driverUid,
+        driverId:driverUid,
+        driverName,
+        debtId:safe(oldestDebt?.id || oldestDebt?.debtId || allocations[0]?.debtId || ""),
+        allocations,
+        amount,
+        monto:amount,
+        previousBalance,
+        newBalance,
+        debtReductionMethod:"admin_payment",
+        paymentMethod,
+        method:paymentMethod,
+        payerRole:"driver",
+        payeeRole:"explora",
+        paymentDirection:"driver_to_explora",
+        registeredByAdmin:true,
+        registrationOrigin:"admin_closure_board",
+        receiptRequired:paymentMethod === "transfer",
+        receiptStatus:paymentMethod === "transfer" ? "uploaded" : "not_required",
+        receiptUrl:receipt.url,
+        comprobanteUrl:receipt.url,
+        receiptPath:receipt.path,
+        uberDebtPaidAmount,
+        uberCashboxReferenced,
+        cashboxReceiptNote:uberCashboxReferenced > 0 ? `Este pago de deuda está asociado a ${currency(uberCashboxReferenced)} de Caja chica Uber.` : "",
+        status:"applied",
+        estado:"aplicado",
+        sourceModule:"pendientes",
+        adminAcknowledged:true,
+        acknowledged:true,
+        adminAccepted:true,
+        accepted:true,
+        read:true,
+        createdByUid:user.uid,
+        createdByRole:"admin",
+        createdByName:accountName(),
+        createdAt:serverTimestamp(),
+        createdAtMs:nowMs,
+        updatedAt:serverTimestamp(),
+        updatedAtMs:nowMs,
+        version:VERSION
+      };
+      transaction.set(doc(state.db, "deuda_pagos", paymentId), paymentPayload, { merge:false });
+      transaction.set(doc(state.db, "deuda_movimientos", `movement_${paymentId}`), {
+        movementId:`movement_${paymentId}`,
+        type:"payment",
+        driverUid,
+        driverName,
+        debtId:paymentPayload.debtId,
+        paymentId,
+        amount,
+        previousBalance,
+        newBalance,
+        paymentMethod,
+        payerRole:"driver",
+        payeeRole:"explora",
+        registeredByAdmin:true,
+        receiptUrl:receipt.url,
+        receiptPath:receipt.path,
+        uberDebtPaidAmount,
+        uberCashboxReferenced,
+        createdByUid:user.uid,
+        createdByRole:"admin",
+        createdAt:serverTimestamp(),
+        createdAtMs:nowMs,
+        sourceModule:"pendientes",
+        version:VERSION
+      }, { merge:false });
+      transaction.set(doc(state.db, "notificaciones", `debt_payment_${paymentId}`), {
+        notificationId:`debt_payment_${paymentId}`,
+        type:"admin_debt_payment",
+        category:"pendientes",
+        driverUid,
+        driverName,
+        paymentId,
+        debtId:paymentPayload.debtId,
+        title:"ENTREGA REGISTRADA POR EXPLORA",
+        message:`Explora registró que entregaste ${currency(amount)} en ${methodLabel}. Saldo anterior ${currency(previousBalance)} · saldo nuevo ${currency(newBalance)}.`,
+        receiptUrl:receipt.url,
+        receiptPath:receipt.path,
+        amount,
+        previousBalance,
+        newBalance,
+        paymentMethod,
+        read:false,
+        acknowledged:false,
+        createdByUid:user.uid,
+        createdByRole:"admin",
+        createdAt:serverTimestamp(),
+        createdAtMs:nowMs,
+        updatedAt:serverTimestamp(),
+        updatedAtMs:nowMs,
+        version:VERSION
+      }, { merge:false });
+    });
+
+    state.debtPayments = [{
+      id:paymentId,
+      paymentId,
+      driverUid,
+      driverName,
+      amount,
+      previousBalance:transactionPreviousBalance,
+      newBalance:transactionNewBalance,
+      debtReductionMethod:"admin_payment",
+      paymentMethod,
+      method:paymentMethod,
+      registeredByAdmin:true,
+      adminAcknowledged:true,
+      acknowledged:true,
+      adminAccepted:true,
+      accepted:true,
+      read:true,
+      receiptUrl:receipt.url,
+      receiptPath:receipt.path,
+      uberDebtPaidAmount,
+      uberCashboxReferenced,
+      createdByRole:"admin",
+      createdAtMs:nowMs,
+      allocations
+    }, ...state.debtPayments];
+    state.debts = state.debts.map(row => {
+      const allocation = allocations.find(item => item.debtId === safe(row.id || row.debtId));
+      if (!allocation) return row;
+      const paid = debtPaidAmount(row) + allocation.amount;
+      const status = allocation.newBalance <= 0.49 ? "paid" : safe(row.status || row.debtStatus || "pending");
+      return {
+        ...row,
+        remainingAmount:allocation.newBalance,
+        saldoPendiente:allocation.newBalance,
+        paidAmount:paid,
+        amountPaid:paid,
+        status,
+        debtStatus:status,
+        lastPaymentMethod:paymentMethod,
+        updatedAtMs:nowMs
+      };
+    });
+    state.latestSummary = adminDriverSummaryFromState(driverUid);
+    render();
+  }
+
   function modalSummaryBase(kind = state.modalKind || state.tab) {
     if (isAdmin() && getDriverUid()) return adminDriverSummaryFromState(getDriverUid());
     return state.latestSummary || computeSummary();
@@ -6111,8 +6485,11 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     state.modalClosure = null;
     state.modalMode = "";
     state.modalKind = "";
+    state.adminDebtPaymentMethod = "cash";
     const debtAmountInput = $("payDebtPaymentAmountInput");
+    const receiptInput = $("payClosureReceiptInput");
     if (debtAmountInput) debtAmountInput.value = "";
+    if (receiptInput) receiptInput.value = "";
     state.busy = false;
   }
 
@@ -6165,7 +6542,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     // Hard-off adicional para instalaciones/PWA que conserven DOM legado.
     purgeLegacyClosureKmUi();
     renderDriverSelect();
-    const title = $("payClosureTitle"), subtitle = $("payClosureSubtitle"), summary = $("payClosureSummary"), fileField = $("payClosureFileField"), debtField = $("payDebtPaymentField"), debtInput = $("payDebtPaymentAmountInput"), debtHint = $("payDebtPaymentHint"), submit = $("payClosureSubmit"), cancel = $("payClosureCancel"), reject = $("payClosureReject");
+    const title = $("payClosureTitle"), subtitle = $("payClosureSubtitle"), summary = $("payClosureSummary"), fileField = $("payClosureFileField"), debtField = $("payDebtPaymentField"), methodField = $("payDebtPaymentMethodField"), debtInput = $("payDebtPaymentAmountInput"), debtHint = $("payDebtPaymentHint"), submit = $("payClosureSubmit"), cancel = $("payClosureCancel"), reject = $("payClosureReject");
     const actions = submit?.closest(".pay-closure-actions");
     if (!title || !subtitle || !summary || !fileField || !submit || !cancel) return;
     const closure = state.modalClosure;
@@ -6174,6 +6551,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     const latest = tabSummary(modalBase, kind);
     fileField.hidden = true;
     if (debtField) debtField.hidden = true;
+    if (methodField) methodField.hidden = true;
     cancel.textContent = "Cancelar";
     cancel.hidden = false;
     submit.hidden = false;
@@ -6243,6 +6621,38 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       submit.disabled = !(pending.remainingAmount > 0) || isAdmin();
       submit.textContent = "Confirmar pago";
       cancel.textContent = "Volver";
+      return;
+    }
+
+    if (state.modalMode === "admin-debt-payment") {
+      const pending = pendingDebtsForDriver();
+      const paymentMethod = normalizeAdminDebtPaymentMethod(state.adminDebtPaymentMethod);
+      const enteredAmount = moneyNumber(debtInput?.value || 0);
+      title.textContent = `Registrar entrega de ${state.selectedDriverName || "chofer"}`;
+      subtitle.textContent = "Confirmá el dinero que el chofer entregó a Explora. Se descontará de su deuda en una operación auditable.";
+      summary.innerHTML = adminDebtPaymentPreviewHtml(pending, enteredAmount);
+      if (debtField) debtField.hidden = false;
+      if (debtHint) debtHint.textContent = `Deuda actual: ${currency(pending.remainingAmount || 0)}. No se permite registrar más que el saldo pendiente.`;
+      if (debtInput) debtInput.max = String(Math.floor(pending.remainingAmount || 0));
+      if (methodField) {
+        methodField.hidden = false;
+        methodField.querySelectorAll("[data-debt-payment-method]").forEach(button => {
+          const selected = normalizeAdminDebtPaymentMethod(button.dataset.debtPaymentMethod) === paymentMethod;
+          button.classList.toggle("is-selected", selected);
+          button.setAttribute("aria-pressed", selected ? "true" : "false");
+        });
+        const methodHint = $("payDebtPaymentMethodHint");
+        if (methodHint) methodHint.textContent = paymentMethod === "transfer"
+          ? "Adjuntá el comprobante para confirmar la transferencia."
+          : "Confirmás que Explora recibió el efectivo del chofer.";
+      }
+      fileField.hidden = paymentMethod !== "transfer";
+      const fileLabel = fileField.querySelector("label");
+      if (fileLabel) fileLabel.textContent = "Comprobante de transferencia obligatorio";
+      submit.textContent = "Registrar entrega";
+      submit.className = "pay-closure-primary";
+      cancel.textContent = "Cancelar";
+      updateAdminDebtPaymentPreview();
       return;
     }
 
@@ -6415,7 +6825,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
       && !closureHasProof(state.modalClosure);
     const closureModeMayNotifyWhatsapp = closureSubmitMode === "admin-pay-now"
       || adminReviewNeedsWhatsapp
-      || !["debt-expense-offset", "debt-payment", "confirm", "admin-review"].includes(closureSubmitMode);
+      || !["debt-expense-offset", "debt-payment", "admin-debt-payment", "confirm", "admin-review"].includes(closureSubmitMode);
     if (closureModeMayNotifyWhatsapp) prepareClosureWhatsappWindowFromGesture();
     else clearPreparedClosureWhatsappWindow({ close:true });
 
@@ -6427,6 +6837,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
     try {
       if (state.modalMode === "debt-expense-offset") await submitDebtExpenseOffset();
       else if (state.modalMode === "debt-payment") await submitDebtPayment();
+      else if (state.modalMode === "admin-debt-payment" && isAdmin()) await submitAdminDebtPayment();
       else if (state.modalMode === "confirm" && state.modalClosure) await driverConfirmClosure(state.modalClosure);
       else if (state.modalMode === "admin-review" && state.modalClosure && isAdmin()) await adminSubmitClosure(state.modalClosure);
       else if (state.modalMode === "admin-pay-now" && isAdmin()) await adminCreateAndCloseClosure();
