@@ -3762,3 +3762,19 @@ body.explora-admin-debts-white .debt-ledger-form .admin-shared-status.is-ok{
   body.explora-admin-debts-white .debt-ledger-summary{grid-template-columns:1fr!important;}
   body.explora-admin-debts-white .debt-ledger-summary .debt-summary-direction{grid-column:1!important;}
 }
+
+/* v4143 · Toques nativos iPhone y alcance exclusivo de Facturación */
+body.explora-admin-debts-white .admin-debt-payment-methods button,
+body.explora-admin-debts-white #adminDebtReceiptBtn{
+  pointer-events:auto!important;
+  touch-action:manipulation!important;
+  -webkit-tap-highlight-color:transparent;
+}
+body.explora-admin-debts-white .debt-ledger-summary .debt-summary-scope{
+  grid-column:1/-1!important;
+  background:#f4fbf6!important;
+  border-color:#cfe8d5!important;
+}
+body.explora-admin-debts-white .debt-ledger-summary .debt-summary-scope strong{
+  color:#23753d!important;
+}
