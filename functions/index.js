@@ -1318,6 +1318,14 @@ function financialMethodOf(data = {}) {
   return raw || "cash";
 }
 
+function financialIsBillingSettlementPayment(data = {}) {
+  const type = normalized(data.type || data.operationType || data.movementType);
+  const source = normalized(data.sourceModule || data.category || data.module);
+  return data.affectsBillingSettlement === true ||
+    type === "admin_billing_settlement_payment" ||
+    (type === "driver_payment" && /factur|billing/.test(source));
+}
+
 function financialDriverValues(data = {}) {
   return FINANCIAL_DRIVER_FIELDS.map(field => text(data[field])).filter(Boolean);
 }
@@ -1410,6 +1418,11 @@ function financialBillingClosurePatch(closure = {}, movement = {}, { cashboxOnly
   const cashboxPending = autoClosesCashbox ? Math.max(0, cashboxGenerated - alreadyCompensated) : cashboxEligibleAmount;
   const cashboxOffsetApplied = autoClosesCashbox ? cashboxPending : (netBeforeCashboxToDriver > 0 ? Math.min(netBeforeCashboxToDriver, cashboxEligibleAmount) : 0);
   const netToDriver = netBeforeCashboxToDriver - cashboxOffsetApplied;
+  const settlementPaymentTotal = Math.max(0, financialNumber(closure.billingSettlementPaymentTotal));
+  const netAfterDriverPayments = netToDriver + settlementPaymentTotal;
+  const amountFromDriver = Math.max(0, -netAfterDriverPayments);
+  const amountToDriver = Math.max(0, netAfterDriverPayments);
+  const payerRole = amountFromDriver > .49 ? "driver" : amountToDriver > .49 ? "admin" : "balanced";
   return {
     gross, grossBeforeCashbox:gross, cashInDriver:cash, cashGrossInDriver:cash,
     exploraCash:digital, nonCashInExplora:digital, nonCashGrossInExplora:digital,
@@ -1426,9 +1439,14 @@ function financialBillingClosurePatch(closure = {}, movement = {}, { cashboxOnly
     cashboxIncludedInSettlement:autoClosesCashbox ? cashboxPending : financialNumber(closure.cashboxIncludedInSettlement || 0),
     cashboxInDriver:autoClosesCashbox ? cashboxPending : Math.max(0, cashboxEligibleAmount - cashboxOffsetApplied),
     cashboxInExplora:autoClosesCashbox ? 0 : cashboxOffsetApplied,
-    netSettlementToDriver:netToDriver,
-    amountDueFromDriver:Math.max(0, -netToDriver), amountFromDriver:Math.max(0, -netToDriver),
-    amountDueToDriver:Math.max(0, netToDriver), amountToDriver:Math.max(0, netToDriver)
+    billingNetBeforeDriverPayments:netToDriver,
+    billingSettlementPaymentTotal:settlementPaymentTotal,
+    netSettlementToDriver:netAfterDriverPayments,
+    amountDueFromDriver:amountFromDriver, amountFromDriver,
+    amountDueToDriver:amountToDriver, amountToDriver,
+    pendingPayerRole:payerRole,
+    receiptRequiredFrom:payerRole,
+    paymentDirection:payerRole === "driver" ? "driver_to_explora" : payerRole === "admin" ? "explora_to_driver" : "balanced"
   };
 }
 
@@ -1446,6 +1464,32 @@ function financialCashboxClosurePatch(closure = {}, movement = {}) {
   };
 }
 
+function financialBillingSettlementClosurePatch(closure = {}, movement = {}) {
+  const amount = financialAmountOf(movement);
+  const previousPaymentTotal = Math.max(0, financialNumber(closure.billingSettlementPaymentTotal));
+  const paymentTotal = Math.max(0, previousPaymentTotal - amount);
+  const previousNet = financialNumber(closure.netSettlementToDriver);
+  const netBeforePayments = Number.isFinite(Number(closure.billingNetBeforeDriverPayments))
+    ? financialNumber(closure.billingNetBeforeDriverPayments)
+    : previousNet - previousPaymentTotal;
+  const netToDriver = netBeforePayments + paymentTotal;
+  const amountFromDriver = Math.max(0, -netToDriver);
+  const amountToDriver = Math.max(0, netToDriver);
+  const payerRole = amountFromDriver > .49 ? "driver" : amountToDriver > .49 ? "admin" : "balanced";
+  return {
+    billingSettlementPaymentTotal:paymentTotal,
+    billingNetBeforeDriverPayments:netBeforePayments,
+    netSettlementToDriver:netToDriver,
+    amountDueFromDriver:amountFromDriver,
+    amountFromDriver,
+    amountDueToDriver:amountToDriver,
+    amountToDriver,
+    pendingPayerRole:payerRole,
+    receiptRequiredFrom:payerRole,
+    paymentDirection:payerRole === "driver" ? "driver_to_explora" : payerRole === "admin" ? "explora_to_driver" : "balanced"
+  };
+}
+
 function financialExpenseClosurePatch(closure = {}, movement = {}) {
   const { amount, driverPart, exploraPart } = financialExpenseParts(movement);
   const total = Math.max(0, financialNumber(closure.expenseTotal ?? closure.mainTotal ?? closure.gross) - amount);
@@ -1453,19 +1497,25 @@ function financialExpenseClosurePatch(closure = {}, movement = {}) {
   const oldExplora = financialNumber(closure.exploraExpenseShare ?? closure.amountDueToDriver);
   const newDriver = Math.max(0, oldDriver - driverPart);
   const newExplora = Math.max(0, oldExplora - exploraPart);
+  const debtOffset = Math.min(newExplora, Math.max(0, financialNumber(closure.expenseDebtOffsetApplied)));
+  const amountToDriver = Math.max(0, newExplora - debtOffset);
   return {
     expenseTotal:total, mainTotal:total, gross:total,
     driverExpenseShare:newDriver, exploraExpenseShare:newExplora,
+    expenseAmountToDriverBeforeDebt:newExplora,
+    expenseDebtOffsetApplied:debtOffset,
+    expenseAmountToDriverAfterDebt:amountToDriver,
     amountDueFromDriver:0, amountFromDriver:0,
-    amountDueToDriver:newExplora, amountToDriver:newExplora,
-    netSettlementToDriver:newExplora
+    amountDueToDriver:amountToDriver, amountToDriver,
+    netSettlementToDriver:amountToDriver
   };
 }
 
 async function financialAdjustClosures({ type, driverUid, documentId, movement, adminUid }) {
-  const includeField = type === "gasto" ? "includedExpenseIds" : "includedBillingIds";
+  const settlementPayment = type === "cobro" && financialIsBillingSettlementPayment(movement);
+  const includeField = type === "gasto" ? "includedExpenseIds" : settlementPayment ? "includedBillingSettlementPaymentIds" : "includedBillingIds";
   const docsMap = new Map();
-  for (const field of (type === "gasto" ? [includeField] : [includeField, "includedCashboxIds"])) {
+  for (const field of (type === "gasto" || settlementPayment ? [includeField] : [includeField, "includedCashboxIds"])) {
     const found = await financialRelatedClosures(driverUid, documentId, field);
     found.forEach(docSnap => docsMap.set(docSnap.id, docSnap));
   }
@@ -1478,12 +1528,14 @@ async function financialAdjustClosures({ type, driverUid, documentId, movement, 
     const inBillingIds = Array.isArray(closure.includedBillingIds) && closure.includedBillingIds.map(text).includes(text(documentId));
     const inCashboxIds = Array.isArray(closure.includedCashboxIds) && closure.includedCashboxIds.map(text).includes(text(documentId));
     if (type === "gasto" && kind === "gastos") patch = financialExpenseClosurePatch(closure, movement);
-    if (type === "cobro" && financialIsBillingClosure(kind)) patch = financialBillingClosurePatch(closure, movement, { cashboxOnly:!inBillingIds && inCashboxIds });
+    if (settlementPayment && financialIsBillingClosure(kind)) patch = financialBillingSettlementClosurePatch(closure, movement);
+    else if (type === "cobro" && financialIsBillingClosure(kind)) patch = financialBillingClosurePatch(closure, movement, { cashboxOnly:!inBillingIds && inCashboxIds });
     if (type === "caja_chica" && financialIsBillingClosure(kind) && financialMethodOf(movement) === "cash") patch = financialBillingClosurePatch(closure, movement, { cashboxOnly:true });
     if ((type === "cobro" || type === "caja_chica") && kind === "caja_chica" && financialMethodOf(movement) === "cash") patch = financialCashboxClosurePatch(closure, movement);
     if (!patch) continue;
     const primaryIds = Array.isArray(closure[includeField]) ? closure[includeField].map(text) : [];
     const removesPrimaryMovement = (type !== "caja_chica" || kind === "caja_chica") && primaryIds.includes(text(documentId));
+    const decrementsIncludedCount = removesPrimaryMovement && !settlementPayment;
     const remainingIds = removesPrimaryMovement ? financialRemoveArrayItem(closure[includeField], documentId) : closure[includeField];
     const generatedIds = Array.isArray(closure.includedCashboxGeneratedBillingIds)
       ? financialRemoveArrayItem(closure.includedCashboxGeneratedBillingIds, documentId)
@@ -1500,7 +1552,7 @@ async function financialAdjustClosures({ type, driverUid, documentId, movement, 
       ...(generatedIds !== undefined ? { includedCashboxGeneratedBillingIds:generatedIds } : {}),
       ...(eligibleIds !== undefined ? { includedCashboxEligibleBillingIds:eligibleIds } : {}),
       ...(cashboxIds !== undefined ? { includedCashboxIds:cashboxIds } : {}),
-      includedCount:removesPrimaryMovement ? Math.max(0, Number(closure.includedCount || 0) - 1) : Number(closure.includedCount || 0),
+      includedCount:decrementsIncludedCount ? Math.max(0, Number(closure.includedCount || 0) - 1) : Number(closure.includedCount || 0),
       adminAdjusted:true,
       adminAdjustedReason:type === "caja_chica" ? "Caja chica excluida manualmente" : "Movimiento eliminado manualmente",
       adminAdjustedAt:FieldValue.serverTimestamp(),
@@ -1515,6 +1567,44 @@ async function financialAdjustClosures({ type, driverUid, documentId, movement, 
   return adjusted;
 }
 
+async function financialReceiptIndexDocuments(documentId = "", type = "") {
+  const id = text(documentId);
+  if (!id) return [];
+  const found = new Map();
+  const canonicalIds = type === "gasto" ? [`expense_${id}`, `gasto_${id}`] : [`payment_${id}`, `billing_${id}`];
+  for (const receiptId of canonicalIds) {
+    const snap = await db.collection("receipt_index").doc(receiptId).get().catch(() => null);
+    if (snap?.exists) found.set(snap.id, snap);
+  }
+  for (const field of ["recordId", "relatedDocumentId", "operationId"]) {
+    const snap = await db.collection("receipt_index").where(field, "==", id).limit(30).get().catch(error => {
+      console.warn("[admin financial delete] receipt index query skipped", field, error?.code || error?.message || error);
+      return null;
+    });
+    snap?.docs?.forEach(item => found.set(item.id, item));
+  }
+  return [...found.values()];
+}
+
+async function financialDeleteStorageArtifacts(rows = [], counters = { deletedFiles:0 }) {
+  const paths = new Set();
+  for (const row of rows) {
+    const data = row?.data && typeof row.data === "function" ? row.data() || {} : row || {};
+    for (const candidate of collectStorageCandidates(data)) {
+      const path = storagePathFromCandidate(candidate);
+      if (path) paths.add(path);
+    }
+  }
+  for (const path of paths) {
+    try {
+      await bucket.file(path).delete({ ignoreNotFound:true });
+      counters.deletedFiles += 1;
+    } catch (error) {
+      if (error?.code !== 404 && error?.code !== "404") console.warn("[admin financial delete] storage skip", path, error?.code || error?.message || error);
+    }
+  }
+}
+
 exports.adminDeleteFinancialMovement = onCall({ region:"southamerica-east1", timeoutSeconds:180, memory:"512MiB" }, async request => {
   const adminUid = await assertAdmin(request);
   const type = normalized(request.data?.type);
@@ -1527,8 +1617,9 @@ exports.adminDeleteFinancialMovement = onCall({ region:"southamerica-east1", tim
   const collectionName = type === "gasto" ? "gastos" : "billing_records";
   const ref = db.collection(collectionName).doc(documentId);
   const snap = await ref.get();
-  if (!snap.exists) throw new HttpsError("not-found", "El movimiento ya no existe en Firestore.");
-  const data = snap.data() || {};
+  const receiptIndexes = type === "caja_chica" ? [] : await financialReceiptIndexDocuments(documentId, type);
+  if (!snap.exists && !receiptIndexes.length) throw new HttpsError("not-found", "El movimiento ya no existe en Firestore.");
+  const data = snap.exists ? (snap.data() || {}) : ({ id:documentId, ...(receiptIndexes[0]?.data() || {}) });
   if (!(await financialBelongsToDriver(data, driverUid))) throw new HttpsError("permission-denied", "El movimiento no pertenece al chofer seleccionado.");
   if (type === "caja_chica" && financialMethodOf(data) !== "cash") throw new HttpsError("failed-precondition", "Solo los cobros en efectivo generan caja chica.");
 
@@ -1545,16 +1636,19 @@ exports.adminDeleteFinancialMovement = onCall({ region:"southamerica-east1", tim
       updatedAt:FieldValue.serverTimestamp(), updatedAtMs:Date.now(), updatedByUid:adminUid
     }, { merge:true });
   } else {
-    await deleteStorageForDocument(data, counters).catch(error => console.warn("[admin financial delete] storage skip", error?.code || error?.message || error));
-    await ref.delete();
+    await financialDeleteStorageArtifacts([data, ...receiptIndexes], counters);
+    const batch = db.batch();
+    if (snap.exists) batch.delete(ref);
+    receiptIndexes.forEach(item => batch.delete(item.ref));
+    await batch.commit();
   }
 
   await auditRef.set({
     action:"admin_delete_financial_movement", type, collectionName, documentId, driverUid,
     adminUid, reason, amount:financialAmountOf(data), method:financialMethodOf(data), closuresAdjusted,
-    deletedFiles:counters.deletedFiles || 0, createdAt:FieldValue.serverTimestamp(), createdAtMs:Date.now()
+    deletedFiles:counters.deletedFiles || 0, deletedReceiptIndexes:receiptIndexes.length, createdAt:FieldValue.serverTimestamp(), createdAtMs:Date.now()
   }, { merge:true }).catch(() => {});
-  return { ok:true, type, collectionName, documentId, driverUid, closuresAdjusted, deletedFiles:counters.deletedFiles || 0 };
+  return { ok:true, type, collectionName, documentId, driverUid, closuresAdjusted, deletedFiles:counters.deletedFiles || 0, deletedReceiptIndexes:receiptIndexes.length };
 });
 
 
