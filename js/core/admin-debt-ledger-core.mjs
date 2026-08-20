@@ -1,4 +1,4 @@
-export const ADMIN_DEBT_LEDGER_VERSION = "v4141-deudas-pagos-admin";
+export const ADMIN_DEBT_LEDGER_VERSION = "v4142-debt-transfer-receipt-fix";
 
 const money = value => {
   const parsed = Number(value);
