@@ -314,7 +314,7 @@
 <svg aria-hidden="true" viewbox="0 0 24 24"><path d="M7 7h10"></path><path d="m14 4 3 3-3 3"></path><path d="M17 17H7"></path><path d="m10 14-3 3 3 3"></path></svg><span><b>DERIVACIONES</b><small>Auditoría semanal</small></span>
 </button>
 <button aria-label="Abrir deudas" class="admin-action-button admin-action-button--danger" data-action="admin-multas" type="button">
-<svg aria-hidden="true" viewbox="0 0 24 24"><path d="M12 3 3 20h18Z"></path><path d="M12 9v5"></path><path d="M12 17h.01"></path></svg><span><b>DEUDAS</b><small>Multas, choques y adelantos</small></span>
+<svg aria-hidden="true" viewbox="0 0 24 24"><path d="M12 3 3 20h18Z"></path><path d="M12 9v5"></path><path d="M12 17h.01"></path></svg><span><b>DEUDAS</b><small>Deuda o pago del chofer</small></span>
 </button>
 <button aria-label="Registrar préstamo personal" class="admin-action-button" data-action="admin-prestamo-personal" type="button">
 <svg aria-hidden="true" viewbox="0 0 24 24"><path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z"></path><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"></path><path d="M17 11v6M14 14h6"></path></svg><span><b>PRÉSTAMO PERSONAL</b><small>100 % a cargo del chofer</small></span>
@@ -1326,13 +1326,13 @@
 <link href="css/segments/53-style.css?v=4086-editar-valor-actividades-admin" rel="stylesheet"/>
 <script id="exploraReceiptsV247" src="js/segments/09-script.js?v=4086-editar-valor-actividades-admin"></script>
 <script id="exploraProductionPolicyV251" src="js/segments/10-script.js"></script>
-<script src="js/segments/11-script.mjs?v=4126-fast-sync" type="module"></script>
+<script src="js/segments/11-script.mjs?v=4141-deudas-pagos-admin" type="module"></script>
 <!-- EXPLORA v160: motor semanal unificado + splash seguro + históricos financieros -->
 <link href="css/segments/32-style.css?v=2445-finance-nav-fix" rel="stylesheet"/>
 <script id="exploraSplashEmergencyPatch" src="js/segments/12-script.js?v=4122-circular-sync-gate"></script>
-<script id="exploraUnifiedWeeklyFinanceModule" src="js/segments/13-script.mjs?v=4119-whatsapp-on-success-tap" type="module"></script>
+<script id="exploraUnifiedWeeklyFinanceModule" src="js/segments/13-script.mjs?v=4141-deudas-pagos-admin" type="module"></script>
 <script id="exploraDebtNotificationsV189" src="js/segments/14-script.mjs?v=4023-activity-photo-viewer" type="module"></script>
-<script id="exploraAdminDebtLaunchV190" src="js/segments/15-script.mjs?v=4061-chequeo-deudas-mas-chofer" type="module"></script>
+<script id="exploraAdminDebtLaunchV190" src="js/segments/15-script.mjs?v=4141-deudas-pagos-admin" type="module"></script>
 <!-- EXPLORA v256 · derivaciones recibidas primero, pestañas separadas y flujo operativo estable -->
 <script id="exploraDerivationsModule" src="js/segments/16-script.mjs" type="module"></script>
 <!-- legacy disabled: derivation ranking renderer / js/segments/17-script.js -->
@@ -1407,8 +1407,8 @@
 <script id="exploraGlobalClockAppWideSync" src="js/segments/42-script.js"></script>
 <link href="css/segments/47-style.css?v=4126-fast-sync" rel="stylesheet"/>
 <link href="css/segments/48-style.css?v=2412-ranking-mobile" rel="stylesheet"/>
-<link href="css/segments/52-style.css?v=4121-km-hard-off" rel="stylesheet"/>
-<script id="exploraPagoHomeOnDemandClosure" src="js/segments/52-script.mjs?v=4137-telegram-group" type="module"></script>
-<script defer="" id="explora-pwa-registration" src="js/pwa-register.js?v=4137-telegram-group"></script>
+<link href="css/segments/52-style.css?v=4141-deudas-pagos-admin" rel="stylesheet"/>
+<script id="exploraPagoHomeOnDemandClosure" src="js/segments/52-script.mjs?v=4141-deudas-pagos-admin" type="module"></script>
+<script defer="" id="explora-pwa-registration" src="js/pwa-register.js?v=4141-deudas-pagos-admin"></script>
 </body>
 </html>

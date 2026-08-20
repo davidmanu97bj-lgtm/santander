@@ -1,7 +1,7 @@
 /* Compatibilidad validada: v4088-apertura-instantanea */
-/* EXPLORA PWA service worker · v2.5.6 */
+/* EXPLORA PWA service worker · v2.5.7 */
 const CACHE_PREFIX = 'explora-pwa-';
-const CACHE_NAME = `${CACHE_PREFIX}v4137-telegram-group`;
+const CACHE_NAME = `${CACHE_PREFIX}v4141-deudas-pagos-admin`;
 
 const LEGACY_MILEAGE_STUB = `
 const noop=()=>{};const asyncTrue=async()=>true;
@@ -23,16 +23,16 @@ const APP_SHELL = [
   './js/segments/09-script.js?v=4086-editar-valor-actividades-admin',
   './js/segments/03-script.js?v=4075-sin-datos-anteriores',
   './js/segments/07-script.js?v=4119-whatsapp-on-success-tap',
-  './js/segments/13-script.mjs?v=4119-whatsapp-on-success-tap',
+  './js/segments/13-script.mjs?v=4141-deudas-pagos-admin',
   './css/segments/14-style.css?v=4023-activity-photo-viewer',
   './js/segments/14-script.mjs?v=4023-activity-photo-viewer',
-  './js/segments/15-script.mjs?v=4054-menu-perfil-minimo-compacto',
+  './js/segments/15-script.mjs?v=4141-deudas-pagos-admin',
   './css/segments/32-style.css?v=2445-finance-nav-fix',
   './css/segments/38-style.css?v=2445-finance-nav-fix',
   './js/segments/01-script.js?v2442-weekly-payment-production',
   './js/segments/19-script.mjs?v2442-weekly-payment-production',
   './js/segments/39-script.mjs?v=4016-card-alerts',
-  './js/segments/11-script.mjs?v=4126-fast-sync',
+  './js/segments/11-script.mjs?v=4141-deudas-pagos-admin',
   './js/segments/12-script.js?v=4123-circular-sync-gate',
   './js/segments/37-script.js?v=4089-arranque-estable',
   './js/core/weekly-core.mjs?v2442-weekly-payment-production',
@@ -41,8 +41,10 @@ const APP_SHELL = [
   './css/segments/50-style.css?v=4080-reset-datos-chofer',
   './css/segments/02-style.css?v=3911-logo-real-header',
   './css/segments/51-style.css?v=4016-card-alerts',
-  './css/segments/52-style.css?v=4120-sin-km-sin-eficiencia',
-  './js/segments/52-script.mjs?v=4135-closure-whatsapp-ios-android',
+  './css/segments/52-style.css?v=4141-deudas-pagos-admin',
+  './js/core/admin-debt-payment-core.mjs?v=4141-deudas-pagos-admin',
+  './js/core/admin-debt-ledger-core.mjs?v=4141-deudas-pagos-admin',
+  './js/segments/52-script.mjs?v=4141-deudas-pagos-admin',
   './js/segments/44-script.mjs?v=2456-personal-record-server-authoritative',
   './manifest.webmanifest?v=2411',
   './icons/favicon-v2411.svg',
@@ -177,3 +179,7 @@ self.addEventListener('message', (event) => {
 /* cache bump: v4134 cierres de facturación mantienen aviso WhatsApp */
 
 /* cache bump: v4137 avisos operativos al grupo de Telegram + WhatsApp desactivado */
+
+/* cache bump: v4139 administrador registra entregas de deuda */
+
+/* cache bump: v4141 menú único deudas/pagos + limpieza forzada del caché iPhone */
