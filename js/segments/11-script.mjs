@@ -11505,6 +11505,11 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     function receiptModuleIsDebt(row = {}) {
       return /driver[_\s-]*debt|(^|\s)(debt|deuda|multas?|choques?)(\s|$)/.test(receiptModuleText(row));
     }
+    function receiptModuleIsBillingSettlementPayment(row = {}) {
+      const type = String(row.type || row.operationType || row.movementType || "").trim().toLowerCase();
+      const source = String(row.sourceModule || row.category || row.module || "").trim().toLowerCase();
+      return row.affectsBillingSettlement === true || type === "admin_billing_settlement_payment" || (type === "driver_payment" && /factur|billing/.test(source));
+    }
     function receiptModuleDedupeRows(rows = []) {
       const deduped = new Map();
       rows.forEach(row => {
@@ -11522,9 +11527,14 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     async function receiptModuleLoadSeparated(category) {
       const indexName = window.ExploraCanonicalWeeklyClosure?.receiptIndexCollectionName?.() || "receipt_index";
       if (category === "gastos") {
-        const indexed = (await receiptModuleReadMany([indexName,"receipt_index"], category)).filter(receiptModuleIsExpense);
-        const source = indexed.length ? indexed : await receiptModuleReadMany(["gastos"], category);
-        return receiptModuleDedupeRows(source.map(row => receiptModuleCommonRow(row,category,{title:row.categoryLabel || row.tipoLabel || row.expenseType || "Gasto"})));
+        const [allIndexes,expenses] = await Promise.all([
+          receiptModuleReadMany([indexName,"receipt_index"], category),
+          receiptModuleReadMany(["gastos"], category)
+        ]);
+        const indexed = allIndexes.filter(receiptModuleIsExpense);
+        const indexedIds = new Set(indexed.map(row => String(row.recordId || row.relatedDocumentId || row.operationId || "")).filter(Boolean));
+        const fallback = expenses.filter(row => !indexedIds.has(String(row.id || row.recordId || row.expenseId || row.gastoId || row.operationId || "")));
+        return receiptModuleDedupeRows([...indexed,...fallback].map(row => receiptModuleCommonRow(row,category,{title:row.categoryLabel || row.tipoLabel || row.expenseType || "Gasto"})));
       }
       if (category === "deudas") {
         const indexed = (await receiptModuleReadMany([indexName,"receipt_index"], category)).filter(receiptModuleIsDebt);
@@ -11539,7 +11549,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         const digitalIndexes = indexes.filter(row => ["qr","card","transfer"].includes(receiptModulePaymentMethod(row)) && !receiptModuleIsExpense(row) && !receiptModuleIsDebt(row) && !receiptModuleIsCashbox(row));
         const indexedIds = new Set(digitalIndexes.map(row => String(row.recordId || row.operationId || "")).filter(Boolean));
         const digitalFallback = billing.filter(row => ["qr","card","transfer"].includes(receiptModulePaymentMethod(row)) && !indexedIds.has(String(row.id || row.recordId || row.operationId || "")));
-        return receiptModuleDedupeRows([...digitalIndexes,...digitalFallback].map(row => receiptModuleCommonRow(row,category,{title:"Pago digital",categoryLabel:"Explora"})));
+        return receiptModuleDedupeRows([...digitalIndexes,...digitalFallback].map(row => receiptModuleCommonRow(row,category,{title:receiptModuleIsBillingSettlementPayment(row)?"Pago del chofer":"Pago digital",categoryLabel:"Explora"})));
       }
       if (category === "caja_chica" || category === "chofer") {
         const [indexes,billing,closures] = await Promise.all([
@@ -11549,7 +11559,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
         ]);
         const cashbox = [...indexes,...closures].filter(receiptModuleIsCashbox);
         const cash = category === "chofer" ? billing.filter(row => receiptModulePaymentMethod(row) === "cash") : [];
-        const cashRows = cash.map(row => receiptModuleCommonRow(row,category,{title:"Cobro en efectivo",categoryLabel:"Chofer"}));
+        const cashRows = cash.map(row => receiptModuleCommonRow(row,category,{title:receiptModuleIsBillingSettlementPayment(row)?"Pago del chofer":"Cobro en efectivo",categoryLabel:"Chofer"}));
         const cashboxRows = cashbox.map(row => receiptModuleCommonRow(row,category,{title:"Caja Chica",categoryLabel:"Caja Chica"}));
         return receiptModuleDedupeRows(category === "chofer" ? [...cashRows,...cashboxRows] : cashboxRows);
       }

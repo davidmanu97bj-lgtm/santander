@@ -2,6 +2,12 @@
 import { collection, doc, getDocs, query, where, limit, setDoc, runTransaction, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 import { installmentPlan } from "../core/driver-debt-core.mjs";
+import {
+  financialReceiptKind,
+  financialReceiptDocumentId,
+  isBillingSettlementPayment,
+  expenseAmountCorrectionPatch
+} from "../core/financial-receipt-actions-core.mjs?v=4144-receipts-edit-delete";
 
 const fb = window.ExploraFirebase || {};
 const auth = fb.auth;
@@ -651,7 +657,7 @@ async function billingCorrectionClosureRefs(operationId = "") {
   if (!id) return [];
   const map = new Map();
   const failures = [];
-  for (const field of ["includedBillingIds", "includedCashboxIds", "includedCashboxGeneratedBillingIds", "includedCashboxEligibleBillingIds"]) {
+  for (const field of ["includedBillingIds", "includedBillingSettlementPaymentIds", "includedCashboxIds", "includedCashboxGeneratedBillingIds", "includedCashboxEligibleBillingIds"]) {
     try {
       const snap = await getDocs(query(collection(db, "cierres_semanales"), where(field, "array-contains", id), limit(250)));
       snap.forEach(item => map.set(item.id, doc(db, "cierres_semanales", item.id)));
@@ -669,8 +675,9 @@ async function billingCorrectionClosureRefs(operationId = "") {
 function billingCorrectionClosurePatch(closure = {}, billingData = {}, operationId = "", previousAmount = 0, newAmount = 0) {
   const kind = billingCorrectionClosureKind(closure);
   const inBilling = billingCorrectionArrayIncludes(closure, "includedBillingIds", operationId);
+  const inSettlementPayments = billingCorrectionArrayIncludes(closure, "includedBillingSettlementPaymentIds", operationId);
   const inCashbox = ["includedCashboxIds", "includedCashboxGeneratedBillingIds", "includedCashboxEligibleBillingIds"].some(field => billingCorrectionArrayIncludes(closure, field, operationId));
-  if (!inBilling && !inCashbox) return null;
+  if (!inBilling && !inSettlementPayments && !inCashbox) return null;
   const delta = billingCorrectionNumber(newAmount) - billingCorrectionNumber(previousAmount);
   if (!delta) return null;
   const method = billingCorrectionMethod(billingData);
@@ -690,6 +697,30 @@ function billingCorrectionClosurePatch(closure = {}, billingData = {}, operation
     version:"v4086-admin-activity-edit"
   };
 
+  if (kind === "facturacion" && inSettlementPayments && isBillingSettlementPayment(billingData)) {
+    const previousPaymentTotal = Math.max(0, billingCorrectionNumber(closure.billingSettlementPaymentTotal));
+    const paymentTotal = Math.max(0, previousPaymentTotal + delta);
+    const previousNet = billingCorrectionNumber(closure.netSettlementToDriver);
+    const netBeforePayments = billingCorrectionNumber(closure.billingNetBeforeDriverPayments, previousNet - previousPaymentTotal);
+    const netToDriver = netBeforePayments + paymentTotal;
+    const amountFromDriver = Math.max(0, -netToDriver);
+    const amountToDriver = Math.max(0, netToDriver);
+    const payerRole = amountFromDriver > .49 ? "driver" : amountToDriver > .49 ? "admin" : "balanced";
+    return {
+      billingSettlementPaymentTotal:paymentTotal,
+      billingNetBeforeDriverPayments:netBeforePayments,
+      netSettlementToDriver:netToDriver,
+      amountDueFromDriver:amountFromDriver,
+      amountFromDriver,
+      amountDueToDriver:amountToDriver,
+      amountToDriver,
+      pendingPayerRole:payerRole,
+      receiptRequiredFrom:payerRole,
+      paymentDirection:payerRole === "driver" ? "driver_to_explora" : payerRole === "admin" ? "explora_to_driver" : "balanced",
+      ...adjustmentMeta
+    };
+  }
+
   if (kind === "facturacion") {
     const cashboxOnly = !inBilling && inCashbox;
     const oldCash = billingCorrectionNumber(closure.cashInDriver ?? closure.cashGrossInDriver ?? closure.driverActualCash);
@@ -706,7 +737,11 @@ function billingCorrectionClosurePatch(closure = {}, billingData = {}, operation
     const alreadyCompensated = autoClosesCashbox ? Math.max(0, billingCorrectionNumber(closure.cashboxAlreadyCompensated || 0)) : 0;
     const cashboxPending = autoClosesCashbox ? Math.max(0, cashboxGenerated - alreadyCompensated) : null;
     const settlement = billingCorrectionSettlement({ cash, digital, eligibleGross, rate:cashboxRate, cashboxAmount:cashboxPending });
-    const payerRole = settlement.amountFromDriver > .49 ? "driver" : settlement.amountToDriver > .49 ? "admin" : "balanced";
+    const settlementPaymentTotal = Math.max(0, billingCorrectionNumber(closure.billingSettlementPaymentTotal));
+    const netAfterDriverPayments = settlement.netToDriver + settlementPaymentTotal;
+    const amountFromDriver = Math.max(0, -netAfterDriverPayments);
+    const amountToDriver = Math.max(0, netAfterDriverPayments);
+    const payerRole = amountFromDriver > .49 ? "driver" : amountToDriver > .49 ? "admin" : "balanced";
     return {
       gross:settlement.gross,
       grossBeforeCashbox:settlement.gross,
@@ -732,11 +767,13 @@ function billingCorrectionClosurePatch(closure = {}, billingData = {}, operation
       cashboxIncludedInSettlement:autoClosesCashbox ? settlement.cashboxGenerated : billingCorrectionNumber(closure.cashboxIncludedInSettlement || 0),
       cashboxInDriver:autoClosesCashbox ? settlement.cashboxGenerated : settlement.cashboxRemainingInDriver,
       cashboxInExplora:autoClosesCashbox ? 0 : settlement.cashboxOffsetApplied,
-      netSettlementToDriver:settlement.netToDriver,
-      amountDueFromDriver:settlement.amountFromDriver,
-      amountFromDriver:settlement.amountFromDriver,
-      amountDueToDriver:settlement.amountToDriver,
-      amountToDriver:settlement.amountToDriver,
+      billingNetBeforeDriverPayments:settlement.netToDriver,
+      billingSettlementPaymentTotal:settlementPaymentTotal,
+      netSettlementToDriver:netAfterDriverPayments,
+      amountDueFromDriver:amountFromDriver,
+      amountFromDriver,
+      amountDueToDriver:amountToDriver,
+      amountToDriver,
       pendingPayerRole:payerRole,
       receiptRequiredFrom:payerRole,
       paymentDirection:payerRole === "driver" ? "driver_to_explora" : payerRole === "admin" ? "explora_to_driver" : "balanced",
@@ -778,12 +815,8 @@ async function modifyServiceAmount(receipt = {}, requestedAmount = 0) {
   const operationId = receiptBillingOperationId(receipt);
   if (!operationId) throw Object.assign(new Error("BILLING_OPERATION_INVALID"), { code:"BILLING_OPERATION_INVALID" });
 
-  const raw = receipt?.raw && typeof receipt.raw === "object" ? receipt.raw : receipt;
   const billingReference = doc(db, "billing_records", operationId);
-  const canonicalIndexId = receiptIndexId("payment", operationId);
-  const visibleIndexId = String(raw.sourceCollection || "") === "receipt_index" && raw.id ? String(raw.id) : canonicalIndexId;
-  const indexIds = [...new Set([visibleIndexId, canonicalIndexId].filter(Boolean))];
-  const indexReferences = indexIds.map(id => doc(db, "receipt_index", id));
+  const indexReferences = await financialReceiptIndexReferences(receipt, "cobro", operationId);
   const closureCandidates = await billingCorrectionClosureRefs(operationId);
   const auditId = stableId("billing_amount_edit", auth.currentUser.uid);
   const auditReference = doc(db, "admin_audit", auditId);
@@ -817,7 +850,7 @@ async function modifyServiceAmount(receipt = {}, requestedAmount = 0) {
       amountCorrectedAt:serverTimestamp(),
       updatedAt:serverTimestamp()
     };
-    ["totalAmount","importe","price","total"].forEach(key => { if (Object.prototype.hasOwnProperty.call(billingData,key)) billingUpdate[key]=newAmount; });
+    ["totalAmount","importe","price","total","recognizedAmount","settlementAmount","paidAmount"].forEach(key => { if (Object.prototype.hasOwnProperty.call(billingData,key)) billingUpdate[key]=newAmount; });
     transaction.update(billingReference, billingUpdate);
 
     indexSnapshots.forEach((snapshot,index) => {
@@ -842,8 +875,8 @@ async function modifyServiceAmount(receipt = {}, requestedAmount = 0) {
     });
 
     transaction.set(auditReference, {
-      type:"billing_amount_correction",
-      action:"modify_service_amount",
+      type:isBillingSettlementPayment(billingData) ? "billing_settlement_payment_amount_correction" : "billing_amount_correction",
+      action:isBillingSettlementPayment(billingData) ? "modify_driver_billing_payment_amount" : "modify_service_amount",
       collection:"billing_records",
       recordId:operationId,
       operationId,
@@ -865,7 +898,7 @@ async function modifyServiceAmount(receipt = {}, requestedAmount = 0) {
     window.invalidateWeeklyFinancialEngine?.("billing-amount-corrected");
     window.ExploraWeeklyEngine?.invalidate?.("billing-amount-corrected", { refresh:true });
     window.ExploraAdminShared?.invalidate?.();
-    window.invalidateReceiptCache?.("alias");
+    ["explora","chofer","caja_chica"].forEach(category => window.invalidateReceiptCache?.(category));
     ["dashboard_weekly_billing","billing_ranking","goal_bubbles","performance_bundle","admin_summary"].forEach(name => window.ExploraFastCache?.invalidate?.(name));
     window.dispatchEvent(new CustomEvent("explora:cobro-modificado", { detail:{ operationId, previousAmount, newAmount, editedByUid:auth.currentUser.uid } }));
     await Promise.allSettled([
@@ -876,6 +909,196 @@ async function modifyServiceAmount(receipt = {}, requestedAmount = 0) {
     console.warn("BILLING_AMOUNT_CORRECTION_REFRESH", refreshError?.code || refreshError?.message || refreshError);
   }
   return { operationId, previousAmount, newAmount, closureUpdates };
+}
+
+async function expenseCorrectionClosureRefs(operationId = "") {
+  const id = String(operationId || "").trim();
+  if (!id) return [];
+  try {
+    const snap = await getDocs(query(collection(db, "cierres_semanales"), where("includedExpenseIds", "array-contains", id), limit(250)));
+    return snap.docs.map(item => ({ id:item.id, reference:doc(db, "cierres_semanales", item.id) }));
+  } catch (error) {
+    console.warn("EXPENSE_AMOUNT_CORRECTION_CLOSURE_QUERY", error?.code || error?.message || error);
+    throw Object.assign(new Error("EXPENSE_CLOSURE_LOOKUP_FAILED"), { code:"EXPENSE_CLOSURE_LOOKUP_FAILED", cause:error });
+  }
+}
+
+function financialReceiptIndexIds(receipt = {}, kind = "", operationId = "") {
+  const raw = receipt?.raw && typeof receipt.raw === "object" ? receipt.raw : receipt;
+  const visibleId = String(raw.sourceCollection || "").toLowerCase() === "receipt_index" ? String(raw.id || "").trim() : "";
+  const canonicalId = receiptIndexId(kind === "gasto" ? "expense" : "payment", operationId);
+  return [...new Set([visibleId, canonicalId].filter(Boolean))];
+}
+
+async function financialReceiptIndexReferences(receipt = {}, kind = "", operationId = "") {
+  const references = new Map();
+  financialReceiptIndexIds(receipt, kind, operationId).forEach(id => references.set(id, doc(db, "receipt_index", id)));
+  for (const field of ["recordId","relatedDocumentId","operationId"]) {
+    try {
+      const snap = await getDocs(query(collection(db, "receipt_index"), where(field, "==", operationId), limit(30)));
+      snap.forEach(item => references.set(item.id, doc(db, "receipt_index", item.id)));
+    } catch (error) {
+      console.warn("FINANCIAL_RECEIPT_INDEX_QUERY", field, error?.code || error?.message || error);
+    }
+  }
+  return [...references.values()];
+}
+
+async function modifyExpenseAmount(receipt = {}, requestedAmount = 0) {
+  if (!auth?.currentUser?.uid) throw Object.assign(new Error("AUTH_REQUIRED"), { code:"AUTH_REQUIRED" });
+  const newAmount = parseCurrencyInput(requestedAmount);
+  if (!(newAmount > 0)) throw Object.assign(new Error("EXPENSE_AMOUNT_INVALID"), { code:"EXPENSE_AMOUNT_INVALID" });
+  const operationId = financialReceiptDocumentId(receipt);
+  if (!operationId) throw Object.assign(new Error("EXPENSE_OPERATION_INVALID"), { code:"EXPENSE_OPERATION_INVALID" });
+
+  const expenseReference = doc(db, "gastos", operationId);
+  const indexReferences = await financialReceiptIndexReferences(receipt, "gasto", operationId);
+  const closureCandidates = await expenseCorrectionClosureRefs(operationId);
+  const auditReference = doc(db, "admin_audit", stableId("expense_amount_edit", auth.currentUser.uid));
+  let previousAmount = 0;
+  const closureUpdates = [];
+
+  await runTransaction(db, async transaction => {
+    const expenseSnapshot = await transaction.get(expenseReference);
+    const indexSnapshots = [];
+    for (const reference of indexReferences) indexSnapshots.push(await transaction.get(reference));
+    const closureSnapshots = [];
+    for (const candidate of closureCandidates) closureSnapshots.push({ ...candidate, snapshot:await transaction.get(candidate.reference) });
+    if (!expenseSnapshot.exists()) throw Object.assign(new Error("EXPENSE_RECORD_NOT_FOUND"), { code:"EXPENSE_RECORD_NOT_FOUND" });
+
+    const expenseData = expenseSnapshot.data() || {};
+    previousAmount = billingAmountFromData(expenseData);
+    if (!(previousAmount >= 0)) throw Object.assign(new Error("EXPENSE_PREVIOUS_AMOUNT_INVALID"), { code:"EXPENSE_PREVIOUS_AMOUNT_INVALID" });
+    if (previousAmount === newAmount) return;
+
+    const correctionCount = Math.max(0, Number(expenseData.amountCorrectionCount || 0)) + 1;
+    const expenseUpdate = {
+      amount:newAmount,
+      monto:newAmount,
+      previousAmount,
+      amountBeforeCorrection:previousAmount,
+      amountCorrectionCount:correctionCount,
+      amountCorrectedByUid:auth.currentUser.uid,
+      amountCorrectedByRole:"admin",
+      amountCorrectedAt:serverTimestamp(),
+      updatedAt:serverTimestamp(),
+      updatedAtMs:Date.now()
+    };
+    ["valor","totalAmount","importe","price","total"].forEach(key => { if (Object.prototype.hasOwnProperty.call(expenseData,key)) expenseUpdate[key]=newAmount; });
+    transaction.update(expenseReference, expenseUpdate);
+
+    indexSnapshots.forEach((snapshot,index) => {
+      if (!snapshot.exists()) return;
+      transaction.update(indexReferences[index], {
+        amount:newAmount,
+        previousAmount:billingAmountFromData(snapshot.data() || {}) || previousAmount,
+        amountCorrectedByUid:auth.currentUser.uid,
+        amountCorrectedByRole:"admin",
+        amountCorrectedAt:serverTimestamp(),
+        updatedAt:serverTimestamp()
+      });
+    });
+
+    closureUpdates.length = 0;
+    closureSnapshots.forEach(candidate => {
+      if (!candidate.snapshot.exists()) return;
+      const patch = expenseAmountCorrectionPatch({
+        closure:candidate.snapshot.data() || {},
+        movement:expenseData,
+        documentId:operationId,
+        previousAmount,
+        newAmount
+      });
+      if (!patch) return;
+      const correctionPatch = {
+        ...patch,
+        adminAdjusted:true,
+        adminAdjustedReason:"Valor de gasto corregido",
+        amountCorrectionRecordId:operationId,
+        amountCorrectionPrevious:previousAmount,
+        amountCorrectionNew:newAmount,
+        amountCorrectionDifference:newAmount - previousAmount,
+        amountCorrectedByUid:auth.currentUser.uid,
+        amountCorrectedByRole:"admin",
+        amountCorrectedAt:serverTimestamp(),
+        updatedAt:serverTimestamp(),
+        updatedAtMs:Date.now(),
+        version:"v4144-receipts-edit-delete"
+      };
+      transaction.update(candidate.reference, correctionPatch);
+      closureUpdates.push({ id:candidate.id, patch:correctionPatch });
+    });
+
+    transaction.set(auditReference, {
+      type:"expense_amount_correction",
+      action:"modify_expense_amount",
+      collection:"gastos",
+      recordId:operationId,
+      operationId,
+      driverUid:String(expenseData.driverUid || expenseData.choferUid || expenseData.uid || receipt.driverUid || ""),
+      driverName:String(expenseData.driverName || expenseData.choferNombre || receipt.driverName || "Chofer"),
+      previousAmount,
+      newAmount,
+      difference:newAmount - previousAmount,
+      adjustedClosureCount:closureUpdates.length,
+      adjustedClosureIds:closureUpdates.map(item => item.id),
+      weeklyPeriodId:String(expenseData.weeklyPeriodId || expenseData.periodoSemanalId || receipt.weeklyPeriodId || ""),
+      editedByUid:auth.currentUser.uid,
+      editedByRole:"admin",
+      createdAt:serverTimestamp()
+    });
+  });
+
+  try {
+    window.invalidateWeeklyFinancialEngine?.("expense-amount-corrected");
+    window.ExploraWeeklyEngine?.invalidate?.("expense-amount-corrected", { refresh:true });
+    window.ExploraAdminShared?.invalidate?.();
+    window.invalidateReceiptCache?.("gastos");
+    window.dispatchEvent(new CustomEvent("explora:gasto-modificado", { detail:{ operationId, previousAmount, newAmount, editedByUid:auth.currentUser.uid } }));
+    await Promise.allSettled([
+      window.ExploraWeeklyEngine?.refresh?.({ force:true, reason:"expense-amount-corrected" }),
+      window.ExploraPagoHome?.refreshOpenData?.("expense-amount-corrected")
+    ]);
+  } catch (refreshError) {
+    console.warn("EXPENSE_AMOUNT_CORRECTION_REFRESH", refreshError?.code || refreshError?.message || refreshError);
+  }
+  return { operationId, previousAmount, newAmount, closureUpdates };
+}
+
+async function modifyFinancialAmount(receipt = {}, requestedAmount = 0) {
+  const kind = financialReceiptKind(receipt);
+  if (kind === "gasto") return modifyExpenseAmount(receipt, requestedAmount);
+  if (kind === "cobro") return modifyServiceAmount(receipt, requestedAmount);
+  throw Object.assign(new Error("FINANCIAL_RECEIPT_NOT_EDITABLE"), { code:"FINANCIAL_RECEIPT_NOT_EDITABLE" });
+}
+
+async function deleteFinancialMovement(receipt = {}) {
+  if (!auth?.currentUser?.uid) throw Object.assign(new Error("AUTH_REQUIRED"), { code:"AUTH_REQUIRED" });
+  if (!isReceiptAdminSession()) throw Object.assign(new Error("ADMIN_REQUIRED"), { code:"ADMIN_REQUIRED" });
+  const kind = financialReceiptKind(receipt);
+  const documentId = financialReceiptDocumentId(receipt);
+  const raw = receipt?.raw && typeof receipt.raw === "object" ? receipt.raw : receipt;
+  const driverUid = String(raw.driverUid || raw.choferUid || raw.uid || raw.ownerUid || receipt.driverUid || "").trim();
+  if (!kind || !documentId || !driverUid) throw Object.assign(new Error("FINANCIAL_RECEIPT_IDENTITY_INVALID"), { code:"FINANCIAL_RECEIPT_IDENTITY_INVALID" });
+  const payload = { type:kind, documentId, driverUid, reason:"Eliminado desde Comprobantes por el administrador" };
+
+  let result;
+  if (typeof window.ExploraAdminFinancialMovements?.deleteMovement === "function") {
+    result = await window.ExploraAdminFinancialMovements.deleteMovement(payload);
+  } else if (fb.functions && typeof fb.httpsCallable === "function") {
+    const callable = fb.httpsCallable(fb.functions, "adminDeleteFinancialMovement", { timeout:30000 });
+    const response = await callable(payload);
+    result = response?.data || {};
+  } else {
+    throw Object.assign(new Error("FINANCIAL_DELETE_ENGINE_UNAVAILABLE"), { code:"FINANCIAL_DELETE_ENGINE_UNAVAILABLE" });
+  }
+
+  ["explora","chofer","gastos","caja_chica"].forEach(category => window.invalidateReceiptCache?.(category));
+  window.invalidateWeeklyFinancialEngine?.("financial-receipt-deleted");
+  window.ExploraWeeklyEngine?.invalidate?.("financial-receipt-deleted", { refresh:true });
+  window.ExploraAdminShared?.invalidate?.();
+  window.dispatchEvent(new CustomEvent("explora:comprobante-eliminado", { detail:{ kind, documentId, driverUid } }));
+  return { ...result, kind, documentId, driverUid };
 }
 
 function closeReceiptViewer() {
@@ -907,6 +1130,11 @@ window.ExploraReceiptEngine = {
   openReceiptViewer,
   closeReceiptViewer,
   modifyServiceAmount,
+  modifyExpenseAmount,
+  modifyFinancialAmount,
+  deleteFinancialMovement,
+  financialReceiptKind,
+  financialReceiptDocumentId,
   resetUploadState,
   deleteUploadedFile,
   getState:getUploadState

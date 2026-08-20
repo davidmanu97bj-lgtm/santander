@@ -1,5 +1,5 @@
 import { collection, query, where, limit, onSnapshot, getDocs, getDoc, addDoc, setDoc, doc, updateDoc, deleteDoc, runTransaction, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../core/admin-debt-payment-core.mjs?v=4143-billing-driver-payment";
 import {
@@ -14,7 +14,7 @@ import {
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4143-billing-driver-payment";
+  const VERSION = "explora-pago-home-v52-v4144-receipts-edit-delete";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -1887,6 +1887,11 @@ import {
     const alreadyCompensated = autoClosesCashbox ? Math.max(0, moneyNumber(closure.cashboxAlreadyCompensated || 0)) : 0;
     const cashboxPending = autoClosesCashbox ? Math.max(0, cashboxGenerated - alreadyCompensated) : null;
     const settlement = billingSettlementWithCashbox({ cash, digital, cashboxEligibleGross:eligibleGross, cashboxRate, cashboxAmount:cashboxPending });
+    const settlementPaymentTotal = Math.max(0, moneyNumber(closure.billingSettlementPaymentTotal));
+    const netAfterDriverPayments = settlement.netToDriver + settlementPaymentTotal;
+    const amountFromDriver = Math.max(0, -netAfterDriverPayments);
+    const amountToDriver = Math.max(0, netAfterDriverPayments);
+    const payerRole = amountFromDriver > .49 ? "driver" : amountToDriver > .49 ? "admin" : "balanced";
     return {
       gross:settlement.gross, grossBeforeCashbox:settlement.gross, cashInDriver:cash, cashGrossInDriver:cash,
       exploraCash:digital, nonCashInExplora:digital, nonCashGrossInExplora:digital,
@@ -1903,9 +1908,14 @@ import {
       cashboxIncludedInSettlement:autoClosesCashbox ? settlement.cashboxGenerated : moneyNumber(closure.cashboxIncludedInSettlement || 0),
       cashboxInDriver:autoClosesCashbox ? settlement.cashboxGenerated : settlement.cashboxRemainingInDriver,
       cashboxInExplora:autoClosesCashbox ? 0 : settlement.cashboxOffsetApplied,
-      netSettlementToDriver:settlement.netToDriver,
-      amountDueFromDriver:settlement.amountFromDriver, amountFromDriver:settlement.amountFromDriver,
-      amountDueToDriver:settlement.amountToDriver, amountToDriver:settlement.amountToDriver
+      billingNetBeforeDriverPayments:settlement.netToDriver,
+      billingSettlementPaymentTotal:settlementPaymentTotal,
+      netSettlementToDriver:netAfterDriverPayments,
+      amountDueFromDriver:amountFromDriver, amountFromDriver,
+      amountDueToDriver:amountToDriver, amountToDriver,
+      pendingPayerRole:payerRole,
+      receiptRequiredFrom:payerRole,
+      paymentDirection:payerRole === "driver" ? "driver_to_explora" : payerRole === "admin" ? "explora_to_driver" : "balanced"
     };
   }
 
@@ -1923,6 +1933,32 @@ import {
     };
   }
 
+  function adminDeleteBillingSettlementClosurePatch(closure = {}, movement = {}) {
+    const amount = amountOf(movement);
+    const previousPaymentTotal = Math.max(0, moneyNumber(closure.billingSettlementPaymentTotal));
+    const paymentTotal = Math.max(0, previousPaymentTotal - amount);
+    const previousNet = moneyNumber(closure.netSettlementToDriver);
+    const netBeforePayments = Number.isFinite(Number(closure.billingNetBeforeDriverPayments))
+      ? moneyNumber(closure.billingNetBeforeDriverPayments)
+      : previousNet - previousPaymentTotal;
+    const netToDriver = netBeforePayments + paymentTotal;
+    const amountFromDriver = Math.max(0, -netToDriver);
+    const amountToDriver = Math.max(0, netToDriver);
+    const payerRole = amountFromDriver > .49 ? "driver" : amountToDriver > .49 ? "admin" : "balanced";
+    return {
+      billingSettlementPaymentTotal:paymentTotal,
+      billingNetBeforeDriverPayments:netBeforePayments,
+      netSettlementToDriver:netToDriver,
+      amountDueFromDriver:amountFromDriver,
+      amountFromDriver,
+      amountDueToDriver:amountToDriver,
+      amountToDriver,
+      pendingPayerRole:payerRole,
+      receiptRequiredFrom:payerRole,
+      paymentDirection:payerRole === "driver" ? "driver_to_explora" : payerRole === "admin" ? "explora_to_driver" : "balanced"
+    };
+  }
+
   function adminDeleteExpenseClosurePatch(closure = {}, movement = {}) {
     const { amount, driverPart, exploraPart } = adminDeleteExpenseParts(movement);
     const total = Math.max(0, moneyNumber(closure.expenseTotal ?? closure.mainTotal ?? closure.gross) - amount);
@@ -1930,12 +1966,17 @@ import {
     const oldExplora = moneyNumber(closure.exploraExpenseShare ?? closure.amountDueToDriver);
     const newDriver = Math.max(0, oldDriver - driverPart);
     const newExplora = Math.max(0, oldExplora - exploraPart);
+    const debtOffset = Math.min(newExplora, Math.max(0, moneyNumber(closure.expenseDebtOffsetApplied)));
+    const amountToDriver = Math.max(0, newExplora - debtOffset);
     return {
       expenseTotal:total, mainTotal:total, gross:total,
       driverExpenseShare:newDriver, exploraExpenseShare:newExplora,
+      expenseAmountToDriverBeforeDebt:newExplora,
+      expenseDebtOffsetApplied:debtOffset,
+      expenseAmountToDriverAfterDebt:amountToDriver,
       amountDueFromDriver:0, amountFromDriver:0,
-      amountDueToDriver:newExplora, amountToDriver:newExplora,
-      netSettlementToDriver:newExplora
+      amountDueToDriver:amountToDriver, amountToDriver,
+      netSettlementToDriver:amountToDriver
     };
   }
 
@@ -1961,9 +2002,10 @@ import {
   }
 
   async function adminDeleteAdjustClosuresDirect({ type, driverUid, documentId, movement }) {
-    const includeField = type === "gasto" ? "includedExpenseIds" : "includedBillingIds";
+    const settlementPayment = type === "cobro" && isDriverBillingSettlementPayment(movement);
+    const includeField = type === "gasto" ? "includedExpenseIds" : settlementPayment ? "includedBillingSettlementPaymentIds" : "includedBillingIds";
     const docsMap = new Map();
-    for (const field of (type === "gasto" ? [includeField] : [includeField, "includedCashboxIds"])) {
+    for (const field of (type === "gasto" || settlementPayment ? [includeField] : [includeField, "includedCashboxIds"])) {
       const found = await adminDeleteRelatedClosures(driverUid, documentId, field);
       found.forEach(snap => docsMap.set(snap.id, snap));
     }
@@ -1976,12 +2018,14 @@ import {
       const inBillingIds = Array.isArray(closure.includedBillingIds) && closure.includedBillingIds.map(safe).includes(safe(documentId));
       const inCashboxIds = Array.isArray(closure.includedCashboxIds) && closure.includedCashboxIds.map(safe).includes(safe(documentId));
       if (type === "gasto" && kind === "gastos") patch = adminDeleteExpenseClosurePatch(closure, movement);
-      if (type === "cobro" && (kind === "chofer" || kind === "explora" || kind === "facturacion")) patch = adminDeleteBillingClosurePatch(closure, movement, { cashboxOnly:!inBillingIds && inCashboxIds });
+      if (settlementPayment && (kind === "chofer" || kind === "explora" || kind === "facturacion")) patch = adminDeleteBillingSettlementClosurePatch(closure, movement);
+      else if (type === "cobro" && (kind === "chofer" || kind === "explora" || kind === "facturacion")) patch = adminDeleteBillingClosurePatch(closure, movement, { cashboxOnly:!inBillingIds && inCashboxIds });
       if (type === "caja_chica" && (kind === "chofer" || kind === "explora" || kind === "facturacion") && methodOf(movement) === "cash") patch = adminDeleteBillingClosurePatch(closure, movement, { cashboxOnly:true });
       if ((type === "cobro" || type === "caja_chica") && kind === "caja_chica" && methodOf(movement) === "cash") patch = adminDeleteCashboxClosurePatch(closure, movement);
       if (!patch) continue;
       const primaryIds = Array.isArray(closure[includeField]) ? closure[includeField].map(safe) : [];
       const removesPrimaryMovement = (type !== "caja_chica" || kind === "caja_chica") && primaryIds.includes(safe(documentId));
+      const decrementsIncludedCount = removesPrimaryMovement && !settlementPayment;
       const generatedIds = Array.isArray(closure.includedCashboxGeneratedBillingIds)
         ? adminDeleteRemoveArrayItem(closure.includedCashboxGeneratedBillingIds, documentId)
         : closure.includedCashboxGeneratedBillingIds;
@@ -1997,7 +2041,7 @@ import {
         ...(generatedIds !== undefined ? { includedCashboxGeneratedBillingIds:generatedIds } : {}),
         ...(eligibleIds !== undefined ? { includedCashboxEligibleBillingIds:eligibleIds } : {}),
         ...(cashboxIds !== undefined ? { includedCashboxIds:cashboxIds } : {}),
-        includedCount:removesPrimaryMovement ? Math.max(0, Number(closure.includedCount || 0) - 1) : Number(closure.includedCount || 0),
+        includedCount:decrementsIncludedCount ? Math.max(0, Number(closure.includedCount || 0) - 1) : Number(closure.includedCount || 0),
         adminAdjusted:true,
         adminAdjustedReason:type === "caja_chica" ? "Caja chica excluida manualmente" : "Movimiento eliminado manualmente",
         adminAdjustedAt:serverTimestamp(),
@@ -2012,16 +2056,57 @@ import {
     return adjusted;
   }
 
+  async function adminDeleteReceiptIndexDocs(documentId = "", type = "") {
+    const id = safe(documentId);
+    if (!id || !state.db) return [];
+    const found = new Map();
+    const canonicalIds = type === "gasto" ? [`expense_${id}`, `gasto_${id}`] : [`payment_${id}`, `billing_${id}`];
+    for (const receiptId of canonicalIds) {
+      try {
+        const snap = await getDoc(doc(state.db, "receipt_index", receiptId));
+        if (snap.exists()) found.set(snap.id, snap);
+      } catch (_) {}
+    }
+    for (const field of ["recordId", "relatedDocumentId", "operationId"]) {
+      try {
+        const snap = await getDocs(query(collection(state.db, "receipt_index"), where(field, "==", id), limit(30)));
+        snap.forEach(item => found.set(item.id, item));
+      } catch (error) {
+        console.warn("EXPLORA_ADMIN_DELETE_RECEIPT_INDEX_QUERY", field, error?.code || error?.message || error);
+      }
+    }
+    return [...found.values()];
+  }
+
+  async function adminDeleteStorageArtifacts(rows = []) {
+    if (!state.storage) return 0;
+    const paths = new Set();
+    for (const row of rows) {
+      const data = row?.data && typeof row.data === "function" ? row.data() || {} : row || {};
+      ["receiptPath","storagePath","fullPath","filePath","comprobantePath","archivoPath","driverReceiptPath","adminReceiptPath","davidReceiptPath","receiptUrl","downloadURL","fileUrl","comprobanteUrl","archivoUrl","notificationPhotoUrl","telegramPhotoUrl"]
+        .forEach(field => { const value=safe(data[field]);if(value)paths.add(value); });
+    }
+    let deleted = 0;
+    for (const path of paths) {
+      try { await deleteObject(storageRef(state.storage, path));deleted += 1; }
+      catch (error) { if (!String(error?.code || "").includes("object-not-found")) console.warn("EXPLORA_ADMIN_DELETE_STORAGE_SKIP", path, error?.code || error?.message || error); }
+    }
+    return deleted;
+  }
+
   async function adminDeleteFinancialDirect({ type = "", documentId = "", driverUid = "" } = {}) {
     if (!state.db) throw new Error("Firestore no está disponible.");
     const collectionName = type === "gasto" ? "gastos" : "billing_records";
     const movementRef = doc(state.db, collectionName, documentId);
     const snap = await getDoc(movementRef);
-    if (!snap.exists()) throw new Error("El movimiento ya no existe en Firestore.");
-    const movement = { id:snap.id, ...snap.data() };
+    const receiptIndexes = type === "caja_chica" ? [] : await adminDeleteReceiptIndexDocs(documentId, type);
+    if (!snap.exists() && !receiptIndexes.length) throw new Error("El movimiento ya no existe en Firestore.");
+    const fallbackIndexData = receiptIndexes[0]?.data?.() || {};
+    const movement = snap.exists() ? { id:snap.id, ...snap.data() } : { id:documentId, ...fallbackIndexData };
     if (!adminDeleteMovementBelongsToSelected(movement, driverUid, documentId)) throw new Error("El movimiento no pertenece al chofer seleccionado.");
     if (type === "caja_chica" && methodOf(movement) !== "cash") throw new Error("Solo los cobros en efectivo generan caja chica.");
     const closuresAdjusted = await adminDeleteAdjustClosuresDirect({ type, driverUid, documentId, movement });
+    const deletedFiles = type === "caja_chica" ? 0 : await adminDeleteStorageArtifacts([movement, ...receiptIndexes]);
     if (type === "caja_chica") {
       await updateDoc(movementRef, {
         excludeFromCashbox:true,
@@ -2036,9 +2121,29 @@ import {
         updatedByUid:safe(state.user?.uid || window.ExploraSession?.authUser?.uid)
       });
     } else {
-      await deleteDoc(movementRef);
+      if (snap.exists()) await deleteDoc(movementRef);
+      for (const receiptIndex of receiptIndexes) await deleteDoc(doc(state.db, "receipt_index", receiptIndex.id));
     }
-    return { ok:true, direct:true, closuresAdjusted };
+    const adminUid = safe(state.user?.uid || window.ExploraSession?.authUser?.uid || window.ExploraFirebase?.auth?.currentUser?.uid);
+    await setDoc(doc(state.db, "admin_audit", `financial_delete_${Date.now()}_${documentId}`), {
+      action:"admin_delete_financial_movement",
+      type,
+      collectionName,
+      documentId,
+      driverUid,
+      adminUid,
+      reason:type === "caja_chica" ? "Caja chica excluida desde panel administrador" : "Eliminado desde Comprobantes por el administrador",
+      amount:amountOf(movement),
+      method:methodOf(movement),
+      closuresAdjusted,
+      deletedFiles,
+      deletedReceiptIndexes:receiptIndexes.length,
+      direct:true,
+      createdAt:serverTimestamp(),
+      createdAtMs:Date.now(),
+      version:VERSION
+    }, { merge:false }).catch(error => console.warn("EXPLORA_ADMIN_DELETE_AUDIT_SKIP", error?.code || error?.message || error));
+    return { ok:true, direct:true, closuresAdjusted, deletedFiles, deletedReceiptIndexes:receiptIndexes.length };
   }
 
   function adminDeleteCallableShouldFallback(error) {
@@ -2065,6 +2170,22 @@ import {
       return { ...(response?.data || {}), direct:false };
     }
   }
+
+  async function deleteFinancialMovementFromReceipts(payload = {}) {
+    if (!isAdmin()) throw new Error("Solo el administrador puede eliminar comprobantes.");
+    const type = safe(payload.type);
+    const documentId = safe(payload.documentId);
+    const driverUid = safe(payload.driverUid);
+    if (!documentId || !driverUid || !["cobro","gasto"].includes(type)) throw new Error("No se pudo identificar el comprobante a eliminar.");
+    const result = await adminDeleteCallServerOrDirect({ type, documentId, driverUid, reason:safe(payload.reason || "Eliminado desde Comprobantes por el administrador") });
+    await refreshOpenData("receipt-financial-delete");
+    return result;
+  }
+
+  window.ExploraAdminFinancialMovements = {
+    ...(window.ExploraAdminFinancialMovements || {}),
+    deleteMovement:deleteFinancialMovementFromReceipts
+  };
 
   async function submitAdminDeleteMovement(documentId = "", type = "", sourceButton = null) {
     if (!isAdmin()) throw new Error("Solo el administrador puede borrar movimientos.");
