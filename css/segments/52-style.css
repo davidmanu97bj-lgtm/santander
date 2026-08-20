@@ -3261,6 +3261,52 @@ body.explora-admin-debts-white .admin-debt-existing-selector select{
   .pay-debt-method-card small{font-size:11.5px;}
 }
 
+/* v4139 · Administrador registra entregas de deuda en efectivo o transferencia */
+.pay-debt-tender-field{gap:8px!important;}
+.pay-debt-tender-methods{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+}
+.pay-debt-tender-method{
+  min-height:48px;
+  border:1px solid rgba(202,209,228,.95);
+  border-radius:16px;
+  background:#f7f8fc;
+  color:#596073;
+  font-size:13px;
+  font-weight:950;
+  letter-spacing:.025em;
+}
+.pay-debt-tender-method.is-selected{
+  border-color:#111827;
+  background:#111827;
+  color:#fff;
+  box-shadow:0 10px 22px rgba(15,23,42,.16);
+}
+.pay-debt-tender-method[data-debt-payment-method="transfer"].is-selected{
+  border-color:var(--pay-blue);
+  background:var(--pay-blue);
+  box-shadow:0 10px 22px rgba(77,79,229,.20);
+}
+.pay-debt-tender-field > small,
+#payDebtPaymentHint{
+  color:#747b91;
+  font-size:12px;
+  font-weight:760;
+  line-height:1.3;
+}
+#payAdminDebtPaymentPreviewHint{
+  border-color:#dfe4f2;
+  background:#f6f7fb;
+  color:#596073;
+}
+#payAdminDebtPaymentPreviewHint.is-error{
+  border-color:rgba(217,48,37,.24);
+  background:#fff1f2;
+  color:#9b1c29;
+}
+
 
 /* v4071 · Ajuste de deuda visible, unión de bordes y bloqueo horizontal */
 html,
@@ -3601,3 +3647,118 @@ body.explora-pay-mode .pay-tabs{
 
 /* v4121 · KM de cierre eliminado de forma definitiva. No afecta Cierre Uber semanal. */
 #payClosureKmField,.pay-closure-km-field,#payClosureKmInput,#payClosureKmHint{display:none!important;visibility:hidden!important;pointer-events:none!important}
+
+/* v4141 · Menú único: Deuda del chofer / Pago del chofer */
+body.explora-admin-debts-white .admin-debt-operation-picker{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin:2px 0 14px;
+}
+body.explora-admin-debts-white .admin-debt-operation-picker button{
+  min-width:0;
+  min-height:92px;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:center;
+  gap:5px;
+  padding:15px 14px;
+  border:1px solid #d6dbea;
+  border-radius:22px;
+  background:#fff;
+  color:#252936;
+  text-align:left;
+  box-shadow:0 9px 23px rgba(29,35,52,.055);
+}
+body.explora-admin-debts-white .admin-debt-operation-picker button span{
+  font-size:14px;
+  line-height:1.12;
+  font-weight:950;
+  letter-spacing:-.01em;
+}
+body.explora-admin-debts-white .admin-debt-operation-picker button small{
+  color:#7b8193;
+  font-size:11px;
+  line-height:1.25;
+  font-weight:760;
+}
+body.explora-admin-debts-white .admin-debt-operation-picker button.is-selected{
+  border-color:#4d4fe5;
+  background:linear-gradient(180deg,#f4f5ff 0%,#edf0ff 100%);
+  color:#3d40d4;
+  box-shadow:0 11px 24px rgba(77,79,229,.14);
+}
+body.explora-admin-debts-white .admin-debt-operation-picker button.is-selected small{color:#5c61b9;}
+body.explora-admin-debts-white .debt-form.debt-ledger-form{
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  gap:14px!important;
+  padding:18px!important;
+}
+body.explora-admin-debts-white .debt-ledger-form>*{
+  grid-column:1/-1!important;
+}
+body.explora-admin-debts-white .debt-ledger-operation-note{order:1!important;}
+body.explora-admin-debts-white .debt-ledger-form .debt-field--driver{order:2!important;}
+body.explora-admin-debts-white .debt-ledger-form[data-debt-operation="debt"] .debt-field--description{order:3!important;}
+body.explora-admin-debts-white .debt-ledger-form[data-debt-operation="debt"] .debt-field--amount{order:4!important;}
+body.explora-admin-debts-white .debt-ledger-form[data-debt-operation="debt"] .debt-field--attachment{order:5!important;}
+body.explora-admin-debts-white .debt-ledger-form[data-debt-operation="payment"] .debt-field--amount{order:3!important;}
+body.explora-admin-debts-white .debt-ledger-form[data-debt-operation="payment"] .debt-field--payment-method{order:4!important;}
+body.explora-admin-debts-white .debt-ledger-form[data-debt-operation="payment"] .debt-field--description{order:5!important;}
+body.explora-admin-debts-white .debt-ledger-form[data-debt-operation="payment"] .debt-field--attachment{order:6!important;}
+body.explora-admin-debts-white .debt-ledger-summary{order:10!important;}
+body.explora-admin-debts-white .debt-ledger-form #adminDebtMessage{order:11!important;}
+body.explora-admin-debts-white .debt-ledger-form #adminDebtDiagnostic{order:12!important;}
+body.explora-admin-debts-white .debt-ledger-form .admin-debt-submit{order:13!important;}
+body.explora-admin-debts-white #adminDebtPaymentMethodField[hidden]{display:none!important;}
+body.explora-admin-debts-white .admin-debt-payment-methods{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+}
+body.explora-admin-debts-white .admin-debt-payment-methods button{
+  min-height:52px;
+  border:1px solid #cad1e4;
+  border-radius:17px;
+  background:#f7f8fc;
+  color:#292d3a;
+  font-size:13px;
+  font-weight:950;
+}
+body.explora-admin-debts-white .admin-debt-payment-methods button.is-selected{
+  border-color:#4d4fe5;
+  background:#eef0ff;
+  color:#3f42d4;
+  box-shadow:0 8px 17px rgba(77,79,229,.12);
+}
+body.explora-admin-debts-white .debt-ledger-form .debt-field--attachment>.receipt-upload-field>.receipt-upload-heading{display:none!important;}
+body.explora-admin-debts-white .debt-ledger-form .receipt-upload-trigger{width:100%!important;min-height:76px!important;}
+body.explora-admin-debts-white .debt-ledger-summary{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+}
+body.explora-admin-debts-white .debt-ledger-summary .debt-summary-direction{
+  grid-column:1/-1!important;
+  background:#f1f4ff!important;
+  border-color:#d8def8!important;
+}
+body.explora-admin-debts-white .debt-ledger-summary .debt-summary-direction strong{
+  color:#3438bf!important;
+}
+body.explora-admin-debts-white .debt-ledger-form textarea{min-height:104px!important;}
+body.explora-admin-debts-white .debt-ledger-form .admin-shared-status.is-ok{
+  padding:13px 14px;
+  border:1px solid #b9e3c5;
+  border-radius:16px;
+  background:#f0fbf3;
+  color:#16763a!important;
+  font-weight:850!important;
+  line-height:1.35;
+}
+@media(max-width:370px){
+  body.explora-admin-debts-white .admin-debt-operation-picker{grid-template-columns:1fr;}
+  body.explora-admin-debts-white .admin-debt-operation-picker button{min-height:78px;}
+  body.explora-admin-debts-white .debt-ledger-summary{grid-template-columns:1fr!important;}
+  body.explora-admin-debts-white .debt-ledger-summary .debt-summary-direction{grid-column:1!important;}
+}
