@@ -9,7 +9,7 @@ const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, FieldValue, FieldPath } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
-const { calculateOpenBillingBalance } = require("./telegram-billing-balance");
+const { calculateOpenBillingBalance, isDriverBillingSettlementPayment } = require("./telegram-billing-balance");
 const {
   buildAdminDebtPaymentTelegramText,
   isAdminDebtPayment
@@ -1589,7 +1589,7 @@ function personalRecordIsTest(data = {}) {
   return normalized(data.environment) === "test" || normalized(data.entorno) === "test";
 }
 function personalRecordIsValid(data = {}) {
-  if (!data || personalRecordIsTest(data) || data.deleted === true || data.isDeleted === true) return false;
+  if (!data || personalRecordIsTest(data) || data.deleted === true || data.isDeleted === true || isDriverBillingSettlementPayment(data) || data.excludeFromPerformance === true || data.excludeFromRanking === true) return false;
   const status = normalized(data.status || data.estado || data.paymentStatus || data.billingStatus);
   if (PERSONAL_RECORD_INVALID_STATUS.some(token => status.includes(token))) return false;
   return personalRecordAmount(data) > 0 && Boolean(personalRecordUid(data));
@@ -1765,6 +1765,7 @@ exports.onBillingRecordWritePersonalRecord = onDocumentWritten({
 }, async event => {
   const before = event.data?.before?.exists ? (event.data.before.data() || {}) : {};
   const after = event.data?.after?.exists ? (event.data.after.data() || {}) : {};
+  if (isDriverBillingSettlementPayment(before) && isDriverBillingSettlementPayment(after)) return { skipped:true, reason:"billing-settlement-payment" };
   const affected = new Set([personalRecordUid(before), personalRecordUid(after)].filter(Boolean));
   for (const uid of affected) await recomputePersonalRecord(uid);
 });
@@ -1863,6 +1864,41 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
     return { skipped: true, reason: "simulation-record" };
   }
   const method = telegramPaymentMethod(data);
+  if (isDriverBillingSettlementPayment(data)) {
+    if (!new Set(["cash", "transfer"]).has(method.key)) {
+      return { skipped: true, reason: "unsupported-settlement-payment-method", method: method.key };
+    }
+    if (!(telegramAmount(data) > 0)) {
+      return { skipped: true, reason: "invalid-settlement-payment-amount" };
+    }
+    const docId = telegramSafeText(event.params?.docId || event.data?.id);
+    const balance = await telegramOpenBillingBalance(data, docId);
+    const previousPayload = Number(data.previousBillingBalance);
+    const currentPayload = Number(data.newBillingBalance);
+    const previousBalance = Number.isFinite(previousPayload) ? Math.max(0, previousPayload) : Math.max(0, Number(balance.amountFromDriver || 0) + telegramAmount(data));
+    const currentBalance = Number.isFinite(currentPayload) ? Math.max(0, currentPayload) : Math.max(0, Number(balance.amountFromDriver || 0));
+    const notes = telegramSafeText(data.reason || data.notes || data.detalle || data.descripcion || data.description);
+    const caption = [
+      "PAGO DEL CHOFER · FACTURACIÓN",
+      `Chofer: ${telegramDriverName(data)}`,
+      `Monto recibido: ${telegramMoney(telegramAmount(data))}`,
+      `Método: ${method.label}`,
+      ...(notes ? [`Motivo: ${notes.slice(0, 300)}`] : []),
+      `Facturación anterior: ${telegramMoney(previousBalance)}`,
+      `Facturación actual: ${telegramMoney(currentBalance)}`,
+      currentBalance > 0.49 ? `Quién paga a quién: Chofer debe liquidar a Explora ${telegramMoney(currentBalance)}` : "Quién paga a quién: nadie debe liquidar en Facturación",
+      "Deudas independientes: sin cambios",
+      `Fecha: ${telegramDateLabel(data)}`
+    ].join("\n");
+    return telegramProcessNotification({
+      kind: "billing",
+      docId,
+      data,
+      eventId: event.id,
+      caption,
+      requirePhoto: method.key === "transfer"
+    });
+  }
   const isDigital = new Set(["card", "qr", "transfer"]).has(method.key);
   const isCash = method.key === "cash";
   if (!isDigital && !isCash) {
