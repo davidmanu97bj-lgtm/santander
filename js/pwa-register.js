@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v4143 · Pago del chofer aplicado a Facturación */
+/* EXPLORA PWA registration · v4144 · Edición y eliminación de comprobantes financieros */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4143-billing-driver-payment';
+  const BUILD = 'v4144-receipts-edit-delete';
 
   const clearLegacyCaches = async () => {
     try {
