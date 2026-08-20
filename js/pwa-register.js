@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v4141 · Deudas y pagos admin */
+/* EXPLORA PWA registration · v4143 · Pago del chofer aplicado a Facturación */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4141-deudas-pagos-admin';
+  const BUILD = 'v4143-billing-driver-payment';
 
   const clearLegacyCaches = async () => {
     try {
