@@ -1,7 +1,11 @@
 import { collection, query, where, limit, onSnapshot, getDocs, getDoc, addDoc, setDoc, doc, updateDoc, deleteDoc, runTransaction, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../core/admin-debt-payment-core.mjs?v=4141-deudas-pagos-admin";
+import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../core/admin-debt-payment-core.mjs?v=4143-billing-driver-payment";
+import {
+  applyDriverBillingPayments,
+  isDriverBillingSettlementPayment
+} from "../core/billing-settlement-payment-core.mjs?v=4143-billing-driver-payment";
 
 (() => {
   "use strict";
@@ -10,7 +14,7 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4141-deudas-pagos-admin";
+  const VERSION = "explora-pago-home-v52-v4143-billing-driver-payment";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -747,6 +751,7 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
     if (collectionName === "gastos") return ["gastos"];
     if (collectionName === "deudas_choferes" || collectionName === "deuda_pagos") return ["pendientes"];
     if (collectionName !== "billing_records") return [];
+    if (isDriverBillingSettlementPayment(row)) return ["chofer", "explora"];
     const method = methodOf(row);
     if (method === "cash") return ["chofer", "caja_chica"];
     return ["explora"];
@@ -4000,20 +4005,22 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
     openClosureModal(isAdmin() ? "admin-review" : "confirm", closure, kind);
   }
 
-  function computeSummary({ records = state.records, expenses = state.expenses, closures = state.closures, debts = state.debts, debtPayments = state.debtPayments } = {}) {
+  function computeSummary({ records = state.records, expenses = state.expenses, closures = state.closures, debts = state.debts, debtPayments = state.debtPayments, uberWeeks = state.uberWeeks } = {}) {
     // Nuevo modo: Chofer y Explora son dos vistas del mismo cierre de facturación.
     // El corte de cualquiera de los dos corta toda la facturación: efectivo + digital.
     const resetBillingMs = lastBillingClosureMs(closures);
     const resetExpensesMs = lastClosureMs(closures, "gastos");
     const resetCashboxMs = lastCashboxResetMs(closures);
 
-    const billingRecords = records.filter(row => !movementIsDeleted(row) && rowMs(row) > resetBillingMs).sort((a,b)=>rowMs(b)-rowMs(a));
+    const openBillingRows = records.filter(row => !movementIsDeleted(row) && rowMs(row) > resetBillingMs).sort((a,b)=>rowMs(b)-rowMs(a));
+    const billingSettlementPayments = openBillingRows.filter(isDriverBillingSettlementPayment);
+    const billingRecords = openBillingRows.filter(row => !isDriverBillingSettlementPayment(row));
     const cashRecords = billingRecords.filter(row => methodOf(row) === "cash");
     const exploraRecords = billingRecords.filter(row => methodOf(row) !== "cash");
     // Caja chica es módulo independiente y SOLO se genera por cobros en efectivo.
     // Cobros digitales (transferencia/QR/tarjeta) no generan ni descuentan caja chica.
     const regularCashboxRecords = records.filter(row => !movementIsDeleted(row) && !cashboxIsExcluded(row) && rowMs(row) > resetCashboxMs && methodOf(row) === "cash");
-    const uberCashboxRecords = (state.uberWeeks || []).filter(row => safe(row.reviewStatus || row.status) !== "rejected" && rowMs(row) > resetCashboxMs && moneyNumber(row.grossAmount || row.totalAmount) > 0).map(row => ({
+    const uberCashboxRecords = (uberWeeks || []).filter(row => safe(row.reviewStatus || row.status) !== "rejected" && rowMs(row) > resetCashboxMs && moneyNumber(row.grossAmount || row.totalAmount) > 0).map(row => ({
       ...row,
       id:`uber_cashbox_${safe(row.id || row.closureId)}`,
       amount:moneyNumber(row.grossAmount || row.totalAmount),
@@ -4077,9 +4084,15 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
     const cashboxAmountToDriver = 0;
     const billingShareEach = billingSettlement.share;
     const billingNetBeforeCashboxToDriver = billingSettlement.netBeforeCashboxToDriver;
-    const billingNetToDriver = billingSettlement.netToDriver;
-    const amountToDriverForBilling = billingSettlement.amountToDriver;
-    const amountFromDriverForBilling = billingSettlement.amountFromDriver;
+    const billingPaymentAdjustment = applyDriverBillingPayments({
+      netToDriver:billingSettlement.netToDriver,
+      paymentRows:billingSettlementPayments
+    });
+    const billingNetBeforeDriverPayments = billingPaymentAdjustment.netBeforePayments;
+    const billingSettlementPaymentTotal = billingPaymentAdjustment.paymentTotal;
+    const billingNetToDriver = billingPaymentAdjustment.adjustedNetToDriver;
+    const amountToDriverForBilling = billingPaymentAdjustment.amountToDriver;
+    const amountFromDriverForBilling = billingPaymentAdjustment.amountFromDriver;
 
     let expenseTotal = 0, driverExpenseShare = 0, exploraExpenseShare = 0, expensesPaidByDriver = 0, expensesPaidByExplora = 0;
     let expenseAmountToDriverBeforeDebt = 0;
@@ -4102,11 +4115,12 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
     const netSettlementToDriver = billingNetToDriver + expenseAmountToDriver;
 
     const billingTab = {
-      resetMs:resetBillingMs, records:billingRecords, cashboxGeneratedRecords:cashboxGeneratedBillingRecords, cashboxEligibleRecords:cashboxEligibleBillingRecords, expenses:[], gross, grossBeforeCashbox, expenseTotal:0,
+      resetMs:resetBillingMs, records:openBillingRows, billingRecords, billingSettlementPayments, cashboxGeneratedRecords:cashboxGeneratedBillingRecords, cashboxEligibleRecords:cashboxEligibleBillingRecords, expenses:[], gross, grossBeforeCashbox, expenseTotal:0,
       cashGrossInDriver, nonCashGrossInExplora, cashInDriver, nonCashInExplora, billingShareEach,
       cashboxRate, cashboxTotal:cashboxFromBillingCash, cashboxInDriver:billingCashboxRemainingInDriver, cashboxInExplora:billingCashboxOffsetApplied,
       billingCashboxGross, billingCashboxEligibleGross, billingCashboxGenerated:cashboxTotal, billingCurrentCashboxGross, billingCurrentCashboxGenerated, billingCashboxEligibleAmount, billingCashboxOffsetApplied, billingCashboxRemainingInDriver,
       billingNetBeforeCashboxToDriver, billingAmountToDriverBeforeCashbox:Math.max(0, billingNetBeforeCashboxToDriver),
+      billingNetBeforeDriverPayments, billingSettlementPaymentTotal,
       amountToDriver:amountToDriverForBilling, amountFromDriver:amountFromDriverForBilling,
       netSettlementToDriver:billingNetToDriver,
       summaryLabel:"Facturación abierta"
@@ -4137,11 +4151,12 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
 
     return {
       resetMs:tabs[activeClosureKind(state.tab) || "caja_chica"]?.resetMs || 0,
-      records:billingRecords, billingRecords, cashRecords, exploraRecords, expenses:filteredExpenses, debts, debtPayments, tabs, pendientes:pendientesTab,
+      records:openBillingRows, billingRecords, billingSettlementPayments, cashRecords, exploraRecords, expenses:filteredExpenses, debts, debtPayments, tabs, pendientes:pendientesTab,
       cashboxRecords, cashboxCashRecords, cashboxExploraRecords,
       gross, grossBeforeCashbox, cashGrossInDriver, nonCashGrossInExplora, cashboxFromBillingCash, cashboxFromBillingExplora, cashInDriver, nonCashInExplora, billingShareEach,
       billingCashboxGross, billingCashboxEligibleGross, billingCashboxGenerated:cashboxTotal, billingCurrentCashboxGross, billingCurrentCashboxGenerated, billingCashboxEligibleAmount, billingCashboxOffsetApplied, billingCashboxRemainingInDriver,
       billingNetBeforeCashboxToDriver, billingAmountToDriverBeforeCashbox:Math.max(0, billingNetBeforeCashboxToDriver),
+      billingNetBeforeDriverPayments, billingSettlementPaymentTotal,
       cashboxRate, cashboxGross, cashboxGeneratedTotal, cashboxOffsetPreviouslyApplied, cashboxOffsetReservedOpen, cashboxTotal, cashboxInDriver, cashboxInExplora, cashboxAmountFromDriver, cashboxAmountToDriver,
       driverShare:billingShareEach, exploraShare:billingShareEach,
       driverShareFromCash:cashInDriver * .5, exploraShareFromCash:cashInDriver * .5,
@@ -4359,7 +4374,8 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
       expenses:driverRowsFor(state.expenses, uid),
       closures:driverRowsFor(state.closures, uid),
       debts:driverRowsFor(state.debts, uid),
-      debtPayments:driverRowsFor(state.debtPayments, uid)
+      debtPayments:driverRowsFor(state.debtPayments, uid),
+      uberWeeks:driverRowsFor(state.uberWeeks, uid)
     });
   }
 
@@ -4665,7 +4681,7 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
     const rows = [];
     // Chofer: mantiene la lógica del ciclo abierto. Admin: auditoría global en bruto.
     const adminMode = isAdmin();
-    const paymentRows = adminMode ? (state.records || []) : (summary.billingRecords || summary.records || []);
+    const paymentRows = adminMode ? (state.records || []) : (summary.records || summary.billingRecords || []);
     const cashboxRows = adminMode ? (state.records || []).filter(row => methodOf(row) === "cash" && !cashboxIsExcluded(row) && !movementIsDeleted(row)) : (summary.cashboxRecords || []);
     const expenseRows = adminMode ? (state.expenses || []) : (summary.expenses || []);
 
@@ -4673,6 +4689,21 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
       if (movementIsDeleted(row)) continue;
       const amount = amountOf(row), method = methodOf(row), at = rowMs(row);
       if (!(amount > 0)) continue;
+      if (isDriverBillingSettlementPayment(row)) {
+        const paymentHasPhoto = rowHasAttachment(row);
+        rows.push({
+          at, type:"billing_payment", method, source:row, driverName:driverNameForRow(row), title:`${dateTimeShort(at)} · Pago del chofer`,
+          meta:safe(row.reason || row.description || row.detalle || row.notes || "Pago aplicado a Facturación"),
+          detail:`Reduce únicamente el saldo de Facturación · Deudas independientes sin cambios`,
+          amount, positive:true,
+          hasPhoto:paymentHasPhoto,
+          photoKey:paymentHasPhoto ? activityPhotoKey("billing_driver_payment", row) : "",
+          photoTitle:"Pago del chofer a Explora",
+          photoMeta:method === "transfer" ? "Comprobante de transferencia" : "Comprobante del pago",
+          photoAmount:amount
+        });
+        continue;
+      }
       const cashbox = method === "cash" ? amount * .05 : 0;
       const paymentHasPhoto = method !== "cash" && rowHasAttachment(row);
       rows.push({
@@ -4941,7 +4972,7 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
   function computeHistoryReport(scope = state.historyScope) {
     const range = historyRange(scope);
     const data = state.historyData || {};
-    const records = (data.records || []).filter(row => !movementIsDeleted(row) && historyInRange(row, range));
+    const records = (data.records || []).filter(row => !movementIsDeleted(row) && !isDriverBillingSettlementPayment(row) && historyInRange(row, range));
     const expenses = (data.expenses || []).filter(row => !movementIsDeleted(row) && historyInRange(row, range));
     const debtPayments = (data.debtPayments || []).filter(row => !movementIsDeleted(row) && historyInRange(row, range));
     const totalFacturado = records.reduce((sum,row)=>sum + amountOf(row), 0);
@@ -5650,9 +5681,25 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
       getScopedDocs("gastos", uid),
       getScopedDocs("cierres_semanales", uid),
       getScopedDocs("deudas_choferes", uid),
-      getScopedDocs("deuda_pagos", uid)
+      getScopedDocs("deuda_pagos", uid),
+      getScopedDocs("uber_weekly_closures", uid)
     ]);
-    return computeSummary({ records, expenses, closures, debts, debtPayments });
+    return computeSummary({ records, expenses, closures, debts, debtPayments, uberWeeks });
+  }
+
+  async function getDriverBillingBalance(uid = "") {
+    const targetUid = safe(uid);
+    if (!targetUid) throw new Error("Seleccioná un chofer para calcular Facturación.");
+    const summary = await computeDriverSummary(targetUid);
+    return {
+      driverUid:targetUid,
+      amountFromDriver:Number(summary.amountFromDriverForBilling || 0),
+      amountToDriver:Number(summary.amountToDriverForBilling || 0),
+      netToDriver:Number(summary.billingNetToDriver || 0),
+      paymentTotal:Number(summary.billingSettlementPaymentTotal || 0),
+      cutoffMs:Number(summary.tabs?.facturacion?.resetMs || 0),
+      summary
+    };
   }
 
 
@@ -6889,6 +6936,7 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
     console.log("[CIERRE] pedir cierre", { driverUid:targetUid, moduleKey, periodId });
     const isBillingRequest = isBillingClosureKind(kind);
     const recordIds = (summary.records || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
+    const settlementPaymentIds = (summary.billingSettlementPayments || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
     const cashboxGeneratedBillingIds = (summary.cashboxGeneratedRecords || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
     const cashboxEligibleBillingIds = (summary.cashboxEligibleRecords || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
     const cashboxRecordIds = (fullSummary.cashboxRecords || []).map(row => safe(row.id)).filter(Boolean).slice(0, 200);
@@ -6965,11 +7013,14 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
       billingCashboxRemainingInDriver:Number(summary.billingCashboxRemainingInDriver || 0),
       billingNetBeforeCashboxToDriver:Number(summary.billingNetBeforeCashboxToDriver || 0),
       billingAmountToDriverBeforeCashbox:Number(summary.billingAmountToDriverBeforeCashbox || 0),
+      billingNetBeforeDriverPayments:Number(summary.billingNetBeforeDriverPayments || 0),
+      billingSettlementPaymentTotal:Number(summary.billingSettlementPaymentTotal || 0),
       billingShareEach:Number(summary.billingShareEach || 0),
       netSettlementToDriver:Number(summary.netSettlementToDriver || 0),
       amountDueFromDriver:amountFromDriver,
       amountDueToDriver:amountToDriver,
       includedBillingIds:recordIds,
+      includedBillingSettlementPaymentIds:settlementPaymentIds,
       includedCashboxGeneratedBillingIds:cashboxGeneratedBillingIds,
       includedCashboxEligibleBillingIds:cashboxEligibleBillingIds,
       includedCashboxIds:isBillingRequest ? cashboxRecordIds : [],
@@ -7207,7 +7258,7 @@ import { normalizeAdminDebtPaymentMethod, previewAdminDebtPayment } from "../cor
   else boot();
   window.ExploraActions = window.ExploraActions || {};
   window.ExploraActions["admin-cierres"] = () => showPayView("admin-cierres");
-  window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen, waitUntilReady:waitUntilFinancialReady, isReady:()=>!state.dataLoading && REALTIME_COLLECTIONS.every(name=>state.realtimeReady.has(name)) });
+  window.ExploraPagoHome = Object.freeze({ version:VERSION, render, openClosureModal, computeSummary, getDriverBillingBalance, refreshOpenData, openEfficiencyModal, renderAdminClosuresScreen, waitUntilReady:waitUntilFinancialReady, isReady:()=>!state.dataLoading && REALTIME_COLLECTIONS.every(name=>state.realtimeReady.has(name)) });
 })();
 
 /* v4052: Histórico con rangos correctos, selector mensual, consultas paralelas con timeout. */

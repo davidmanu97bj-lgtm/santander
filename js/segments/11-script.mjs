@@ -1202,6 +1202,7 @@ apiKey: "AIzaSyDbTWF8fVVMMk2b8eWYv_0mHSl-AQmW2qs",
     }
 
     function isServiceValidForWeeklyTotals(data = {}) {
+      if (data.excludeFromWeeklyTotals === true || data.excludeFromBillingGross === true || data.affectsBillingSettlement === true) return false;
       const state = normalizeStatus(data.estado || data.status || data.estadoServicio || data.estadoViaje);
       if (isInvalidState(state)) return false;
       if (["pendiente", "en espera", "presupuesto", "cotizado"].some(value => state.includes(value))) return false;
