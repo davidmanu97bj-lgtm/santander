@@ -9,6 +9,15 @@ const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, FieldValue, FieldPath } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
+const { calculateOpenBillingBalance } = require("./telegram-billing-balance");
+const {
+  buildAdminDebtPaymentTelegramText,
+  isAdminDebtPayment
+} = require("./telegram-debt-payment");
+const {
+  buildAdminDriverDebtTelegramText,
+  isAdminDriverDebt
+} = require("./telegram-driver-debt");
 
 const PROJECT_ID = "explora-control-operativo";
 const STORAGE_BUCKET = `${PROJECT_ID}.firebasestorage.app`;
@@ -34,6 +43,7 @@ const TELEGRAM_CHAT_ID = defineSecret("TELEGRAM_CHAT_ID");
 const TELEGRAM_NOTIFICATIONS_COLLECTION = "telegram_notifications";
 const TELEGRAM_FUNCTION_REGION = "us-central1";
 const TELEGRAM_PROCESSING_LEASE_MS = 10 * 60 * 1000;
+const TELEGRAM_BALANCE_FALLBACK_DRIVER_FIELDS = ["choferUid", "uid"];
 
 // WhatsApp operativo deshabilitado: todas las notificaciones solicitadas salen por Telegram.
 
@@ -123,6 +133,67 @@ function telegramExpenseType(data = {}) {
     other: "Otros"
   };
   return labels[normalizedType] || raw || "Gasto";
+}
+
+function telegramDriverUid(data = {}) {
+  return telegramSafeText(
+    data.driverUid || data.choferUid || data.uid || data.ownerUid ||
+    data.driverId || data.choferId || data.userUid || data.createdByUid
+  );
+}
+
+async function telegramDriverDocuments(collectionName, driverUid) {
+  const targetUid = telegramSafeText(driverUid);
+  if (!targetUid) throw new Error(`No se pudo identificar el chofer para consultar ${collectionName}.`);
+
+  const documents = new Map();
+  try {
+    const canonicalSnap = await db.collection(collectionName).where("driverUid", "==", targetUid).get();
+    canonicalSnap.docs.forEach(docSnap => documents.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() || {}) }));
+    return [...documents.values()];
+  } catch (canonicalError) {
+    console.warn("[telegram balance] canonical query failed", collectionName, canonicalError?.code || canonicalError?.message || canonicalError);
+  }
+
+  const attempts = await Promise.all(TELEGRAM_BALANCE_FALLBACK_DRIVER_FIELDS.map(async field => {
+    try {
+      const snap = await db.collection(collectionName).where(field, "==", targetUid).get();
+      snap.docs.forEach(docSnap => documents.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() || {}) }));
+      return true;
+    } catch (error) {
+      console.warn("[telegram balance] query skipped", collectionName, field, error?.code || error?.message || error);
+      return false;
+    }
+  }));
+
+  if (!attempts.some(Boolean)) throw new Error(`No se pudo consultar ${collectionName} para calcular el saldo.`);
+  return [...documents.values()];
+}
+
+async function telegramOpenBillingBalance(data = {}, docId = "") {
+  const driverUid = telegramDriverUid(data);
+  const [records, closures] = await Promise.all([
+    telegramDriverDocuments("billing_records", driverUid),
+    telegramDriverDocuments("cierres_semanales", driverUid)
+  ]);
+  const currentId = telegramSafeText(docId);
+  const currentRecord = { id: currentId, ...data };
+  const allRecords = currentId
+    ? [...records.filter(row => telegramSafeText(row.id) !== currentId), currentRecord]
+    : [...records, currentRecord];
+  return calculateOpenBillingBalance({ records: allRecords, closures });
+}
+
+function telegramBillingBalanceLine(balance = {}) {
+  const amountFromDriver = Number(balance.amountFromDriver || 0);
+  const amountToDriver = Number(balance.amountToDriver || 0);
+  if (amountFromDriver > 0.49) {
+    return `Saldo acumulado: Chofer debe liquidar a Explora ${telegramMoney(amountFromDriver)}`;
+  }
+  if (amountToDriver > 0.49) {
+    return `Saldo acumulado: Explora debe liquidar al chofer ${telegramMoney(amountToDriver)}`;
+  }
+  return "Saldo acumulado: nadie debe liquidar";
 }
 
 function telegramDirectPhotoUrl(data = {}) {
@@ -234,6 +305,40 @@ async function telegramSendPhoto(photoUrl, caption) {
   }
 }
 
+function telegramAttachmentIsPdf(data = {}, url = "") {
+  const mimeType = telegramSafeText(
+    data.receiptMimeType || data.comprobanteMimeType || data.fileMimeType || data.mimeType
+  ).toLowerCase();
+  const fileName = telegramSafeText(
+    data.receiptName || data.receiptFileName || data.comprobanteNombre || data.fileName
+  ).toLowerCase();
+  const cleanUrl = telegramSafeText(url).split(/[?#]/, 1)[0].toLowerCase();
+  return mimeType.includes("pdf") || fileName.endsWith(".pdf") || cleanUrl.endsWith(".pdf");
+}
+
+async function telegramSendDocument(documentUrl, caption) {
+  const chatId = telegramSafeText(TELEGRAM_CHAT_ID.value());
+  if (!chatId) throw new Error("TELEGRAM_CHAT_ID no está configurado.");
+
+  try {
+    return await telegramApi("sendDocument", {
+      chat_id: chatId,
+      document: documentUrl,
+      caption: caption.slice(0, 1024)
+    });
+  } catch (urlError) {
+    const documentResponse = await fetch(documentUrl, { redirect: "follow" });
+    if (!documentResponse.ok) throw urlError;
+    const bytes = await documentResponse.arrayBuffer();
+    const contentType = telegramSafeText(documentResponse.headers.get("content-type")) || "application/pdf";
+    const form = new FormData();
+    form.append("chat_id", chatId);
+    form.append("caption", caption.slice(0, 1024));
+    form.append("document", new Blob([bytes], { type: contentType }), "comprobante.pdf");
+    return telegramApi("sendDocument", form, { multipart: true });
+  }
+}
+
 async function telegramSendText(text) {
   const chatId = telegramSafeText(TELEGRAM_CHAT_ID.value());
   if (!chatId) throw new Error("TELEGRAM_CHAT_ID no está configurado.");
@@ -268,7 +373,9 @@ async function telegramProcessNotification({
     if (requirePhoto) {
       photoUrl = await telegramResolvePhotoUrl(kind, sourceDocumentId, data);
       if (!photoUrl) throw new Error(`El documento ${sourceCollection || kind}/${sourceDocumentId} no contiene una URL de foto.`);
-      message = await telegramSendPhoto(photoUrl, caption);
+      message = telegramAttachmentIsPdf(data, photoUrl)
+        ? await telegramSendDocument(photoUrl, caption)
+        : await telegramSendPhoto(photoUrl, caption);
     } else {
       message = await telegramSendText(caption);
     }
@@ -309,7 +416,7 @@ function closureTelegramAllowed(data = {}) {
   return data.billingClosure === true || data.autoClosesCashbox === true || keys.some(key => allowed.has(key));
 }
 
-function closureTelegramText(data = {}, docId = "") {
+function closureTelegramText(data = {}) {
   const kind = telegramSafeText(data.closureKind || data.closureType || data.moduleKey || data.payTab || "cierre");
   const amountFromDriver = Number(data.amountDueFromDriver || 0);
   const amountToDriver = Number(data.amountDueToDriver || 0);
@@ -326,12 +433,11 @@ function closureTelegramText(data = {}, docId = "") {
     `Total facturado: ${telegramMoney(data.gross || data.grossAmount || 0)}`,
     `Gastos: ${telegramMoney(data.expenseTotal || 0)}`,
     `Caja chica: ${telegramMoney(data.cashboxTotal || data.cashboxGeneratedTotal || 0)}`,
-    `Fecha: ${telegramDateLabel(data)}`,
-    `Operación: ${docId}`
+    `Fecha: ${telegramDateLabel(data)}`
   ].join("\n");
 }
 
-function uberTelegramText(data = {}, docId = "") {
+function uberTelegramText(data = {}) {
   const review = telegramSafeText(data.reviewStatus || data.status).toLowerCase();
   const noData = data.noData === true || review === "no_data";
   if (noData) {
@@ -340,8 +446,7 @@ function uberTelegramText(data = {}, docId = "") {
       `Chofer: ${telegramDriverName(data)}`,
       `Semana: ${telegramSafeText(data.weekLabel || data.weekId || "—")}`,
       "Estado: cerrada sin datos por el chofer.",
-      `Fecha: ${telegramDateLabel(data)}`,
-      `Operación: ${docId}`
+      `Fecha: ${telegramDateLabel(data)}`
     ].join("\n");
   }
   return [
@@ -352,8 +457,7 @@ function uberTelegramText(data = {}, docId = "") {
     `Deudas (50%): ${telegramMoney(data.debtAmount || data.exploraShare || 0)}`,
     `Caja chica Uber (5%): ${telegramMoney(data.cashboxAmount || data.uberCashboxAmount || 0)}`,
     "Estado: pendiente de revisión en Explora.",
-    `Fecha: ${telegramDateLabel(data)}`,
-    `Operación: ${docId}`
+    `Fecha: ${telegramDateLabel(data)}`
   ].join("\n");
 }
 
@@ -1767,14 +1871,15 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
 
   const docId = telegramSafeText(event.params?.docId || event.data?.id);
   const notes = telegramSafeText(data.notes || data.detalle || data.descripcion || data.observaciones || data.serviceDescription);
+  const balance = await telegramOpenBillingBalance(data, docId);
   const caption = [
     isCash ? "COBRO EN EFECTIVO REGISTRADO" : "COBRO DIGITAL REGISTRADO",
     `Chofer: ${telegramDriverName(data)}`,
     `Monto: ${telegramMoney(telegramAmount(data))}`,
     `Método: ${method.label}`,
     ...(notes ? [`Detalle: ${notes.slice(0, 300)}`] : []),
-    `Fecha: ${telegramDateLabel(data)}`,
-    `Operación: ${docId}`
+    telegramBillingBalanceLine(balance),
+    `Fecha: ${telegramDateLabel(data)}`
   ].join("\n");
 
   return telegramProcessNotification({
@@ -1805,8 +1910,7 @@ exports.notifyExpenseV2 = onDocumentCreated({
     `Monto: ${telegramMoney(telegramAmount(data))}`,
     `Tipo: ${telegramExpenseType(data)}`,
     ...(notes ? [`Detalle: ${notes.slice(0, 300)}`] : []),
-    `Fecha: ${telegramDateLabel(data)}`,
-    `Operación: ${docId}`
+    `Fecha: ${telegramDateLabel(data)}`
   ];
 
   return telegramProcessNotification({
@@ -1815,6 +1919,79 @@ exports.notifyExpenseV2 = onDocumentCreated({
     data,
     eventId: event.id,
     caption: captionLines.join("\n")
+  });
+});
+
+// Envía a Telegram cada entrega de deuda registrada por el administrador.
+// Efectivo se informa como texto; transferencia incluye el comprobante.
+exports.notifyAdminDebtPaymentTelegramV1 = onDocumentCreated({
+  document: "deuda_pagos/{docId}",
+  region: TELEGRAM_FUNCTION_REGION,
+  memory: "256MiB",
+  timeoutSeconds: 120,
+  retry: true,
+  secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
+}, async event => {
+  const data = event.data?.data() || {};
+  if (!isAdminDebtPayment(data)) {
+    return { skipped: true, reason: "not-an-admin-debt-payment" };
+  }
+
+  const method = telegramPaymentMethod(data);
+  if (!new Set(["cash", "transfer"]).has(method.key)) {
+    return { skipped: true, reason: "unsupported-payment-method", method: method.key };
+  }
+  if (!(telegramAmount(data) > 0)) {
+    return { skipped: true, reason: "invalid-payment-amount" };
+  }
+
+  const docId = telegramSafeText(event.params?.docId || event.data?.id);
+  return telegramProcessNotification({
+    kind: "admin_debt_payment",
+    docId,
+    sourceCollection: "deuda_pagos",
+    sourceDocumentId: docId,
+    data,
+    eventId: event.id,
+    caption: buildAdminDebtPaymentTelegramText(data, {
+      formatMoney: telegramMoney,
+      formatDate: telegramDateLabel
+    }),
+    requirePhoto: Boolean(telegramDirectPhotoUrl(data))
+  });
+});
+
+// Envía a Telegram cada deuda del chofer cargada desde el menú administrador.
+// El importe queda 100 % a cargo del chofer; el comprobante es opcional.
+exports.notifyAdminDriverDebtTelegramV1 = onDocumentCreated({
+  document: "deudas_choferes/{docId}",
+  region: TELEGRAM_FUNCTION_REGION,
+  memory: "256MiB",
+  timeoutSeconds: 120,
+  retry: true,
+  secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
+}, async event => {
+  const data = event.data?.data() || {};
+  if (!isAdminDriverDebt(data)) {
+    return { skipped: true, reason: "not-an-admin-driver-debt" };
+  }
+  if (!(telegramAmount(data) > 0)) {
+    return { skipped: true, reason: "invalid-debt-amount" };
+  }
+
+  const docId = telegramSafeText(event.params?.docId || event.data?.id);
+  return telegramProcessNotification({
+    kind: "admin_driver_debt",
+    docId,
+    sourceCollection: "deudas_choferes",
+    sourceDocumentId: docId,
+    data,
+    eventId: event.id,
+    caption: buildAdminDriverDebtTelegramText(data, {
+      formatMoney: telegramMoney,
+      formatDate: telegramDateLabel
+    }),
+    requirePhoto: Boolean(telegramDirectPhotoUrl(data))
   });
 });
 
@@ -1837,7 +2014,7 @@ exports.notifyClosureTelegramGroupV1 = onDocumentCreated({
     sourceDocumentId: docId,
     data,
     eventId: event.id,
-    caption: closureTelegramText(data, docId),
+    caption: closureTelegramText(data),
     requirePhoto: false
   });
 });
@@ -1883,7 +2060,7 @@ exports.notifyUberClosureTelegramGroupV1 = onDocumentWritten({
     sourceDocumentId: docId,
     data: after,
     eventId: event.id,
-    caption: uberTelegramText(after, docId),
+    caption: uberTelegramText(after),
     requirePhoto: !isNoData
   });
 });
