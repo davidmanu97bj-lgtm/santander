@@ -1,7 +1,12 @@
 /* EXPLORA v4084 · corrección de valor de servicios desde comprobantes (admin) */
 .receipt-row-actions{display:flex;flex-direction:column;align-items:stretch;gap:7px;margin-top:5px}
+.receipt-row-manage{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .receipt-edit-amount{border:1px solid rgba(120,192,255,.48);border-radius:10px;background:rgba(30,117,210,.16);color:#dcefff;font:800 10px/1.1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.055em;padding:9px 8px;cursor:pointer;white-space:nowrap;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .receipt-edit-amount:active{transform:scale(.985);background:rgba(30,117,210,.28)}
+.receipt-delete-financial{border:1px solid rgba(255,113,128,.5);border-radius:10px;background:rgba(197,43,62,.18);color:#ffdce1;font:800 10px/1.1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.045em;padding:9px 7px;cursor:pointer;white-space:nowrap;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.receipt-delete-financial:active{transform:scale(.985);background:rgba(197,43,62,.3)}
+.receipt-edit-amount:disabled,.receipt-delete-financial:disabled{opacity:.52;cursor:wait}
+.receipt-row-card.is-busy{opacity:.76;pointer-events:none}
 .receipt-amount-edit-backdrop{position:fixed;inset:0;z-index:100090;display:none;place-items:center;padding:18px;background:rgba(3,8,18,.84);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px)}
 .receipt-amount-edit-backdrop.is-open{display:grid}
 .receipt-amount-edit-modal{width:min(430px,100%);max-height:min(92dvh,720px);overflow:auto;border:1px solid rgba(130,182,255,.25);border-radius:24px;background:linear-gradient(165deg,#111d31 0%,#09111f 100%);box-shadow:0 28px 80px rgba(0,0,0,.55);padding:23px;color:#f7fbff}
@@ -22,10 +27,10 @@
 .receipt-amount-edit-cancel{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.055);color:#d9e2ef}
 .receipt-amount-edit-save{border:1px solid #4da5ff;background:linear-gradient(180deg,#258ef5,#1268c4);color:#fff;box-shadow:0 9px 24px rgba(25,119,215,.26)}
 .receipt-amount-edit-actions button:disabled{opacity:.55;cursor:wait}
-@media(max-width:480px){.receipt-row-card{grid-template-columns:42px minmax(0,1fr) minmax(102px,auto) 14px}.receipt-row-side{min-width:102px}.receipt-edit-amount{white-space:normal}.receipt-amount-edit-modal{border-radius:21px;padding:20px}.receipt-amount-edit-actions{grid-template-columns:1fr}}
+@media(max-width:480px){.receipt-row-card{grid-template-columns:42px minmax(0,1fr) minmax(118px,auto) 14px}.receipt-row-side{min-width:118px}.receipt-row-manage{grid-template-columns:1fr}.receipt-edit-amount,.receipt-delete-financial{white-space:normal}.receipt-amount-edit-modal{border-radius:21px;padding:20px}.receipt-amount-edit-actions{grid-template-columns:1fr}}
 
 /* v4085: confirma visualmente la ruta administrativa real */
-#receiptsScreen[data-admin-mode="true"][data-view="list"] .receipts-list-head::after{content:"ADMIN · EDICIÓN DE VALORES ACTIVA";display:inline-flex;margin-top:8px;padding:6px 9px;border-radius:999px;border:1px solid rgba(120,192,255,.45);background:rgba(30,117,210,.14);color:#dcefff;font:800 9px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.055em}
+#receiptsScreen[data-admin-mode="true"][data-view="list"] .receipts-list-head::after{content:"ADMIN · EDICIÓN Y ELIMINACIÓN ACTIVAS";display:inline-flex;margin-top:8px;padding:6px 9px;border-radius:999px;border:1px solid rgba(120,192,255,.45);background:rgba(30,117,210,.14);color:#dcefff;font:800 9px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.055em}
 
 /* v4086 · edición directa desde Últimas actividades del administrador */
 .pay-activity-side{display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:max-content}
