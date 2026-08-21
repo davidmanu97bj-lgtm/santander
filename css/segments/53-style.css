@@ -32,11 +32,14 @@
 /* v4085: confirma visualmente la ruta administrativa real */
 #receiptsScreen[data-admin-mode="true"][data-view="list"] .receipts-list-head::after{content:"ADMIN · EDICIÓN Y ELIMINACIÓN ACTIVAS";display:inline-flex;margin-top:8px;padding:6px 9px;border-radius:999px;border:1px solid rgba(120,192,255,.45);background:rgba(30,117,210,.14);color:#dcefff;font:800 9px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.055em}
 
-/* v4086 · edición directa desde Últimas actividades del administrador */
-.pay-activity-side{display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:max-content}
-.pay-activity-edit-value{width:34px;height:34px;display:grid;place-items:center;border:1px solid rgba(78,80,230,.22);border-radius:12px;background:#f2f4ff;color:#4e50e6;box-shadow:none;cursor:pointer;padding:0}
-.pay-activity-edit-value svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.pay-activity-edit-value:active{transform:scale(.95)}
+/* v4145 · edición y eliminación directa desde Últimas actividades del administrador */
+.pay-activity-side{display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:94px}
+.pay-activity-financial-actions{width:100%;display:grid;grid-template-columns:1fr;gap:6px}
+.pay-activity-financial-actions button{min-height:32px;border-radius:10px;padding:7px 8px;font:900 9px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.035em;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;box-shadow:none}
+.pay-activity-financial-edit{border:1px solid rgba(78,80,230,.24);background:#f2f4ff;color:#4e50e6}
+.pay-activity-financial-delete{border:1px solid rgba(196,42,59,.24);background:#fff0f1;color:#b42335}
+.pay-activity-financial-actions button:active{transform:scale(.97)}
+.pay-activity-financial-actions button:disabled{opacity:.52;cursor:wait}
 .pay-admin-amount-edit-backdrop{position:fixed;inset:0;z-index:100120;display:none;place-items:center;padding:18px;background:rgba(4,8,17,.82);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .pay-admin-amount-edit-backdrop.is-open{display:grid}
 .pay-admin-amount-edit-modal{width:min(430px,100%);max-height:min(92dvh,720px);overflow:auto;border:1px solid rgba(99,118,255,.24);border-radius:24px;background:#fff;box-shadow:0 28px 80px rgba(0,0,0,.38);padding:22px;color:#202437}
@@ -58,4 +61,4 @@
 .pay-admin-amount-edit-cancel{border:1px solid rgba(200,204,219,.9);background:#f3f4f8;color:#474c5f}
 .pay-admin-amount-edit-save{border:1px solid #4e50e6;background:#4e50e6;color:#fff;box-shadow:0 10px 24px rgba(78,80,230,.22)}
 .pay-admin-amount-edit-actions button:disabled{opacity:.55;cursor:wait}
-@media(max-width:480px){.pay-activity-side{gap:7px}.pay-activity-edit-value{width:32px;height:32px;border-radius:11px}.pay-admin-amount-edit-modal{padding:19px;border-radius:21px}.pay-admin-amount-edit-actions{grid-template-columns:1fr}}
+@media(max-width:480px){.pay-activity{grid-template-columns:42px minmax(0,1fr) minmax(88px,auto);gap:10px}.pay-activity-side{gap:7px;min-width:88px}.pay-activity-financial-actions button{min-height:31px;padding:7px 6px;font-size:8.5px}.pay-admin-amount-edit-modal{padding:19px;border-radius:21px}.pay-admin-amount-edit-actions{grid-template-columns:1fr}}

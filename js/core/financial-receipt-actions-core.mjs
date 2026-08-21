@@ -1,4 +1,4 @@
-export const FINANCIAL_RECEIPT_ACTIONS_VERSION = "v4144-receipts-edit-delete";
+export const FINANCIAL_RECEIPT_ACTIONS_VERSION = "v4145-activity-receipt-actions";
 
 const text = value => String(value ?? "").trim();
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;

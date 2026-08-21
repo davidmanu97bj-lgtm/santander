@@ -1,9 +1,9 @@
-/* EXPLORA PWA registration · v4144 · Edición y eliminación de comprobantes financieros */
+/* EXPLORA PWA registration · v4145 · Acciones financieras en Últimas actividades */
 (() => {
   'use strict';
   if (!('serviceWorker' in navigator)) return;
 
-  const BUILD = 'v4144-receipts-edit-delete';
+  const BUILD = 'v4145-activity-receipt-actions';
 
   const clearLegacyCaches = async () => {
     try {

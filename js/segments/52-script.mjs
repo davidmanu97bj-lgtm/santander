@@ -14,7 +14,7 @@ import {
     ranking:true, dailyRanking:true, derivationRanking:true, weeklyClosure:true, weeklyMileage:true
   });
 
-  const VERSION = "explora-pago-home-v52-v4144-receipts-edit-delete";
+  const VERSION = "explora-pago-home-v52-v4145-activity-receipt-actions";
     const AR_TZ = "America/Argentina/Cordoba";
   const EXPLORA_WHATSAPP = "5493757461564";
   const EXPLORA_WHATSAPP_DISPLAY = "+5493757461564";
@@ -92,7 +92,9 @@ import {
     adminDeleteBusy:false,
     adminDeleteBusyKey:"",
     adminAmountEditRow:null,
+    adminAmountEditKind:"",
     adminAmountEditBusy:false,
+    adminFinancialDeleteBusyKey:"",
     busy:false,
     refreshing:false,
     dataLoading:true,
@@ -1484,11 +1486,24 @@ import {
       openClosureFromNotification(button.dataset.payNotificationClosure);
     });
     $("payActivityList")?.addEventListener("click", event => {
-      const editButton = event.target.closest("[data-pay-activity-edit]");
+      const deleteButton = event.target.closest("[data-pay-activity-financial-delete]");
+      if (deleteButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        deleteAdminActivityFinancial(
+          deleteButton.dataset.payActivityFinancialKind || "",
+          deleteButton.dataset.payActivityFinancialDelete || ""
+        ).catch(error => window.alert(error?.message || "No se pudo eliminar el comprobante."));
+        return;
+      }
+      const editButton = event.target.closest("[data-pay-activity-financial-edit]");
       if (editButton) {
         event.preventDefault();
         event.stopPropagation();
-        openAdminActivityAmountEditor(editButton.dataset.payActivityEdit || "");
+        openAdminActivityAmountEditor(
+          editButton.dataset.payActivityFinancialKind || "",
+          editButton.dataset.payActivityFinancialEdit || ""
+        );
         return;
       }
       const row = event.target.closest("[data-pay-activity-closure]");
@@ -4809,11 +4824,13 @@ import {
     for (const row of paymentRows || []) {
       if (movementIsDeleted(row)) continue;
       const amount = amountOf(row), method = methodOf(row), at = rowMs(row);
+      const financialId = safe(row.id || row.recordId || row.operationId || row.billingRecordId || row.billingId);
       if (!(amount > 0)) continue;
       if (isDriverBillingSettlementPayment(row)) {
         const paymentHasPhoto = rowHasAttachment(row);
         rows.push({
           at, type:"billing_payment", method, source:row, driverName:driverNameForRow(row), title:`${dateTimeShort(at)} · Pago del chofer`,
+          financialKind:"cobro", financialId,
           meta:safe(row.reason || row.description || row.detalle || row.notes || "Pago aplicado a Facturación"),
           detail:`Reduce únicamente el saldo de Facturación · Deudas independientes sin cambios`,
           amount, positive:true,
@@ -4829,7 +4846,7 @@ import {
       const paymentHasPhoto = method !== "cash" && rowHasAttachment(row);
       rows.push({
         at, type:"payment", method, source:row, driverName:driverNameForRow(row), title:`${dateTimeShort(at)} · ${paymentLabel(method)}`,
-        editId:safe(row.id || row.recordId || row.operationId || row.billingRecordId),
+        financialKind:"cobro", financialId,
         meta:safe(row.description || row.detalle || row.notes || row.ruta || "Servicio registrado"),
         detail: method === "cash"
           ? `Cobró el chofer en efectivo: ${currency(amount)} · caja chica separada ${currency(cashbox)}`
@@ -4860,10 +4877,12 @@ import {
       if (movementIsDeleted(row)) continue;
       const at = rowMs(row);
       const { amount, driverPart, exploraPart } = expenseParts(row);
+      const financialId = safe(row.id || row.expenseId || row.gastoId || row.recordId || row.operationId);
       if (!(amount > 0)) continue;
       const expenseHasPhoto = rowHasAttachment(row);
       rows.push({
         at, type:"expense", source:row, driverName:driverNameForRow(row), title:`${dateTimeShort(at)} · ${expenseTypeLabel(row)}`,
+        financialKind:"gasto", financialId,
         meta:safe(row.notes || row.descripcion || row.description || "Gasto operativo"),
         detail: `Gasto cargado por el chofer: ${currency(amount)} · Explora reintegra ${currency(exploraPart)} · Parte chofer ${currency(driverPart)}`,
         amount:-amount, negative:true,
@@ -5617,30 +5636,76 @@ import {
     box.className = `pay-admin-amount-edit-message${tone ? ` is-${tone}` : ""}`;
   }
 
-  function adminActivityPaymentById(documentId = "") {
-    const id = safe(documentId);
-    if (!id) return null;
-    return (state.records || []).find(row => safe(row.id || row.recordId || row.operationId || row.billingRecordId) === id) || null;
+  function adminActivityFinancialRows(kind = "") {
+    return kind === "gasto" ? (state.expenses || []) : kind === "cobro" ? (state.records || []) : [];
   }
 
-  function openAdminActivityAmountEditor(documentId = "") {
+  function adminActivityFinancialDocumentId(row = {}, kind = "") {
+    if (kind === "gasto") return safe(row.id || row.expenseId || row.gastoId || row.recordId || row.operationId);
+    if (kind === "cobro") return safe(row.id || row.recordId || row.operationId || row.billingRecordId || row.billingId);
+    return "";
+  }
+
+  function adminActivityFinancialById(kind = "", documentId = "") {
+    const id = safe(documentId);
+    if (!id || !["cobro", "gasto"].includes(kind)) return null;
+    return adminActivityFinancialRows(kind).find(row => adminActivityFinancialDocumentId(row, kind) === id) || null;
+  }
+
+  function adminActivityFinancialReceipt(kind = "", row = {}, documentId = "") {
+    const id = safe(documentId || adminActivityFinancialDocumentId(row, kind));
+    const driverUid = driverUidOf(row);
+    const driverName = driverNameForRow(row);
+    const sourceCollection = kind === "gasto" ? "gastos" : "billing_records";
+    return {
+      ...row,
+      category:kind === "gasto" ? "gastos" : "facturacion",
+      categoryLabel:kind === "gasto" ? "GASTO" : "COBRO",
+      amount:amountOf(row),
+      driverUid,
+      driverName,
+      recordId:id,
+      ...(kind === "gasto" ? { expenseId:id, gastoId:id } : { billingRecordId:id, operationId:id }),
+      raw:{
+        ...row,
+        id,
+        sourceCollection,
+        relatedCollection:sourceCollection,
+        relatedDocumentId:id,
+        recordId:id,
+        driverUid,
+        driverName,
+        ...(kind === "gasto" ? { expenseId:id, gastoId:id } : { billingRecordId:id, operationId:id })
+      }
+    };
+  }
+
+  function openAdminActivityAmountEditor(kind = "", documentId = "") {
     if (!isAdmin()) return;
-    const row = adminActivityPaymentById(documentId);
+    const cleanKind = ["cobro", "gasto"].includes(safe(kind)) ? safe(kind) : "";
+    const row = adminActivityFinancialById(cleanKind, documentId);
     if (!row) {
-      window.alert("No se encontró el servicio en las actividades actuales.");
+      window.alert("No se encontró el comprobante en las actividades actuales.");
       return;
     }
     const currentAmount = Math.round(amountOf(row));
     if (!(currentAmount > 0)) {
-      window.alert("Este servicio no tiene un valor válido para editar.");
+      window.alert("Este comprobante no tiene un importe válido para editar.");
       return;
     }
     state.adminAmountEditRow = row;
+    state.adminAmountEditKind = cleanKind;
     const backdrop = $("payAdminAmountEditBackdrop");
     const input = $("payAdminAmountEditInput");
     if (!backdrop || !input) return;
+    const isExpense = cleanKind === "gasto";
+    $("payAdminAmountEditTitle").textContent = isExpense ? "EDITAR GASTO" : "EDITAR COBRO";
+    const contextLabel = $("payAdminAmountEditContextLabel");
+    if (contextLabel) contextLabel.textContent = isExpense ? "GASTO" : "COBRO";
     $("payAdminAmountEditDriver").textContent = driverNameForRow(row);
-    $("payAdminAmountEditDetail").textContent = safe(row.description || row.detalle || row.notes || row.ruta || paymentLabel(methodOf(row)));
+    $("payAdminAmountEditDetail").textContent = isExpense
+      ? safe(row.notes || row.descripcion || row.description || expenseTypeLabel(row))
+      : safe(row.description || row.detalle || row.notes || row.ruta || paymentLabel(methodOf(row)));
     $("payAdminAmountEditPrevious").textContent = currency(currentAmount);
     input.value = new Intl.NumberFormat("es-AR", { maximumFractionDigits:0 }).format(currentAmount);
     input.disabled = false;
@@ -5662,16 +5727,18 @@ import {
     backdrop?.classList.remove("is-open");
     backdrop?.setAttribute("aria-hidden", "true");
     state.adminAmountEditRow = null;
+    state.adminAmountEditKind = "";
     setAdminActivityAmountMessage("");
     window.unlockPageScroll?.("pay-admin-amount-edit");
   }
 
-  function applyAdminActivityAmountLocally(documentId = "", newAmount = 0, closureUpdates = []) {
+  function applyAdminActivityAmountLocally(kind = "", documentId = "", newAmount = 0, closureUpdates = []) {
     const id = safe(documentId);
     const amount = Math.round(number(newAmount));
-    if (!id || !(amount > 0)) return;
-    state.records = (state.records || []).map(row => {
-      if (safe(row.id || row.recordId || row.operationId || row.billingRecordId) !== id) return row;
+    if (!id || !(amount > 0) || !["cobro", "gasto"].includes(kind)) return;
+    const stateKey = kind === "gasto" ? "expenses" : "records";
+    state[stateKey] = (state[stateKey] || []).map(row => {
+      if (adminActivityFinancialDocumentId(row, kind) !== id) return row;
       return {
         ...row,
         amount,
@@ -5696,8 +5763,9 @@ import {
   async function saveAdminActivityAmountEdit() {
     if (state.adminAmountEditBusy || !isAdmin()) return;
     const row = state.adminAmountEditRow;
+    const kind = state.adminAmountEditKind;
     const input = $("payAdminAmountEditInput");
-    if (!row || !input) return;
+    if (!row || !input || !["cobro", "gasto"].includes(kind)) return;
     const previousAmount = Math.round(amountOf(row));
     const newAmount = Math.round(moneyNumber(input.value));
     if (!(newAmount > 0)) {
@@ -5710,13 +5778,13 @@ import {
       input.focus();
       return;
     }
-    if (!window.ExploraReceiptEngine?.modifyServiceAmount) {
+    if (!window.ExploraReceiptEngine?.modifyFinancialAmount) {
       setAdminActivityAmountMessage("El módulo de edición no está disponible. Cerrá y volvé a abrir la app.", "error");
       return;
     }
-    const documentId = safe(row.id || row.recordId || row.operationId || row.billingRecordId);
+    const documentId = adminActivityFinancialDocumentId(row, kind);
     if (!documentId) {
-      setAdminActivityAmountMessage("No se pudo identificar el servicio original.", "error");
+      setAdminActivityAmountMessage("No se pudo identificar el comprobante original.", "error");
       return;
     }
     state.adminAmountEditBusy = true;
@@ -5725,18 +5793,12 @@ import {
     $("payAdminAmountEditCancel").disabled = true;
     setAdminActivityAmountMessage("Guardando y recalculando cierres…");
     try {
-      const result = await window.ExploraReceiptEngine.modifyServiceAmount({
-        ...row,
-        raw:{ ...row, id:documentId, sourceCollection:"billing_records", recordId:documentId, billingRecordId:documentId, operationId:documentId },
-        recordId:documentId,
-        billingRecordId:documentId,
-        operationId:documentId,
-        driverName:driverNameForRow(row)
-      }, newAmount);
-      applyAdminActivityAmountLocally(documentId, newAmount, result?.closureUpdates || []);
-      setAdminActivityAmountMessage(`Valor actualizado: ${currency(previousAmount)} → ${currency(newAmount)}.`, "success");
+      const receipt = adminActivityFinancialReceipt(kind, row, documentId);
+      const result = await window.ExploraReceiptEngine.modifyFinancialAmount(receipt, newAmount);
+      applyAdminActivityAmountLocally(kind, documentId, newAmount, result?.closureUpdates || []);
+      setAdminActivityAmountMessage(`${kind === "gasto" ? "Gasto" : "Cobro"} actualizado: ${currency(previousAmount)} → ${currency(newAmount)}.`, "success");
       window.ExploraAdminShared?.invalidate?.();
-      window.invalidateReceiptCache?.("alias");
+      (kind === "gasto" ? ["gastos"] : ["explora", "chofer", "caja_chica"]).forEach(category => window.invalidateReceiptCache?.(category));
       setTimeout(() => {
         state.adminAmountEditBusy = false;
         closeAdminActivityAmountEditor();
@@ -5746,12 +5808,12 @@ import {
       console.error("EXPLORA_ADMIN_ACTIVITY_AMOUNT_EDIT_SAVE", error);
       const code = safe(error?.code || error?.message).toUpperCase();
       const message = code.includes("NOT_FOUND")
-        ? "No se encontró el servicio original en Firestore."
+        ? `No se encontró ${kind === "gasto" ? "el gasto" : "el cobro"} original en Firestore.`
         : code.includes("PERMISSION") || code.includes("ADMIN") || code.includes("AUTH")
-          ? "La sesión de administrador no tiene permiso para modificar este servicio."
+          ? "La sesión de administrador no tiene permiso para modificar este comprobante."
           : code.includes("INVALID")
             ? "Ingresá un valor válido."
-            : "No se pudo modificar el valor ni recalcular los cierres. Revisá la conexión e intentá nuevamente.";
+            : "No se pudo modificar el comprobante ni recalcular los cierres. Revisá la conexión e intentá nuevamente.";
       setAdminActivityAmountMessage(message, "error");
     } finally {
       if (state.adminAmountEditBusy) {
@@ -5760,6 +5822,34 @@ import {
         $("payAdminAmountEditSave").disabled = false;
         $("payAdminAmountEditCancel").disabled = false;
       }
+    }
+  }
+
+  async function deleteAdminActivityFinancial(kind = "", documentId = "") {
+    if (!isAdmin()) throw new Error("Solo el administrador puede eliminar comprobantes.");
+    const cleanKind = ["cobro", "gasto"].includes(safe(kind)) ? safe(kind) : "";
+    const id = safe(documentId);
+    const row = adminActivityFinancialById(cleanKind, id);
+    if (!row || !id) throw new Error("No se encontró el comprobante en las actividades actuales.");
+    const busyKey = `${cleanKind}:${id}`;
+    if (state.adminFinancialDeleteBusyKey) return;
+    const label = cleanKind === "gasto" ? "gasto" : "cobro";
+    const confirmed = window.confirm(`¿Eliminar este ${label} de ${currency(amountOf(row))}?\n\nSe eliminará su comprobante y se recalcularán los cierres relacionados. Esta acción no se puede deshacer.`);
+    if (!confirmed) return;
+    if (!window.ExploraReceiptEngine?.deleteFinancialMovement) throw new Error("El módulo para eliminar comprobantes todavía no está disponible. Cerrá y volvé a abrir la app.");
+    state.adminFinancialDeleteBusyKey = busyKey;
+    render();
+    try {
+      await window.ExploraReceiptEngine.deleteFinancialMovement(adminActivityFinancialReceipt(cleanKind, row, id));
+      const stateKey = cleanKind === "gasto" ? "expenses" : "records";
+      state[stateKey] = (state[stateKey] || []).filter(item => adminActivityFinancialDocumentId(item, cleanKind) !== id);
+      state.latestSummary = computeSummary();
+      render();
+      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(35);
+      window.alert(`${cleanKind === "gasto" ? "Gasto" : "Cobro"} eliminado correctamente. Los cierres fueron recalculados.`);
+    } finally {
+      state.adminFinancialDeleteBusyKey = "";
+      render();
     }
   }
 
@@ -5784,13 +5874,18 @@ import {
         : "";
       const photoClass = photoButton ? " has-photo-action" : "";
       const driverLine = isAdmin() ? `<div class="pay-activity-driver-name">${esc(row.driverName || "Chofer")}</div>` : "";
-      const editButton = isAdmin() && row.type === "payment" && row.editId
-        ? `<button class="pay-activity-edit-value" type="button" data-pay-activity-edit="${esc(row.editId)}" aria-label="Editar valor del servicio" title="Editar valor"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4l11-11-4-4L4 16v4Z"></path><path d="m13.5 6.5 4 4"></path></svg></button>`
+      const financialKind = safe(row.financialKind);
+      const financialId = safe(row.financialId);
+      const canManageFinancial = isAdmin() && ["cobro", "gasto"].includes(financialKind) && !!financialId;
+      const deleteBusy = canManageFinancial && state.adminFinancialDeleteBusyKey === `${financialKind}:${financialId}`;
+      const financialActions = canManageFinancial
+        ? `<div class="pay-activity-financial-actions"><button class="pay-activity-financial-edit" type="button" data-pay-activity-financial-edit="${esc(financialId)}" data-pay-activity-financial-kind="${esc(financialKind)}" ${deleteBusy ? "disabled" : ""}>EDITAR</button><button class="pay-activity-financial-delete" type="button" data-pay-activity-financial-delete="${esc(financialId)}" data-pay-activity-financial-kind="${esc(financialKind)}" ${deleteBusy ? "disabled" : ""}>${deleteBusy ? "ELIMINANDO…" : "ELIMINAR"}</button></div>`
         : "";
-      return `<article class="pay-activity ${row.type === "closure" ? "is-clickable" : ""}${closureTone}${photoClass}"${closureAttr}>
+      const financialClass = canManageFinancial ? " has-financial-actions" : "";
+      return `<article class="pay-activity ${row.type === "closure" ? "is-clickable" : ""}${closureTone}${photoClass}${financialClass}"${closureAttr}>
         <span class="pay-activity-icon">${activityIcon(row.type)}</span>
         <div>${driverLine}<div class="pay-activity-title">${esc(row.title)}</div><div class="pay-activity-meta">${esc(row.meta)}</div><div class="pay-activity-detail">${esc(row.detail)}</div></div>
-        <div class="pay-activity-side"><strong class="pay-activity-amount ${row.positive ? "is-positive" : row.negative ? "is-negative" : ""}">${row.amount ? (row.amount > 0 ? "+" : "") + currency(row.amount) : ""}</strong>${editButton}</div>
+        <div class="pay-activity-side"><strong class="pay-activity-amount ${row.positive ? "is-positive" : row.negative ? "is-negative" : ""}">${row.amount ? (row.amount > 0 ? "+" : "") + currency(row.amount) : ""}</strong>${financialActions}</div>
         ${photoButton}
       </article>`;
     }).join("");

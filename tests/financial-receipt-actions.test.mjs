@@ -61,7 +61,7 @@ assert.match(receiptEngine, /includedBillingSettlementPaymentIds/);
 assert.match(payHome, /deletedReceiptIndexes/);
 assert.match(payHome, /admin_audit/);
 assert.match(functions, /financialReceiptIndexDocuments/);
-assert.match(index, /js\/segments\/09-script\.js\?v=4144-receipts-edit-delete/);
-assert.match(serviceWorker, /v4144-receipts-edit-delete/);
+assert.match(index, /js\/segments\/09-script\.js\?v=4145-activity-receipt-actions/);
+assert.match(serviceWorker, /v4145-activity-receipt-actions/);
 
 console.log("financial receipt actions: ok");

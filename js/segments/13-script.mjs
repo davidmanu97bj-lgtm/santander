@@ -7,7 +7,7 @@ import {
   financialReceiptDocumentId,
   isBillingSettlementPayment,
   expenseAmountCorrectionPatch
-} from "../core/financial-receipt-actions-core.mjs?v=4144-receipts-edit-delete";
+} from "../core/financial-receipt-actions-core.mjs?v=4145-activity-receipt-actions";
 
 const fb = window.ExploraFirebase || {};
 const auth = fb.auth;
@@ -1023,7 +1023,7 @@ async function modifyExpenseAmount(receipt = {}, requestedAmount = 0) {
         amountCorrectedAt:serverTimestamp(),
         updatedAt:serverTimestamp(),
         updatedAtMs:Date.now(),
-        version:"v4144-receipts-edit-delete"
+        version:"v4145-activity-receipt-actions"
       };
       transaction.update(candidate.reference, correctionPatch);
       closureUpdates.push({ id:candidate.id, patch:correctionPatch });
