@@ -196,17 +196,12 @@
     </section>
 
     <div id="driverDashboard">
-      <section class="team-realtime-card is-collapsed" aria-labelledby="teamRealtimeTitle">
-        <div class="team-realtime-heading">
-          <div>
-            <span class="team-realtime-kicker"><i aria-hidden="true"></i> En vivo</span>
-            <h2 id="teamRealtimeTitle">Tiempo real</h2>
-          </div>
-          <p>Quién debe liquidar y cuánto</p>
-        </div>
-        <button id="teamRealtimeToggle" class="team-realtime-toggle" type="button" aria-expanded="false" aria-controls="teamRealtimeList">Abrir choferes</button>
-        <div id="teamRealtimeList" class="team-realtime-list" aria-live="polite">
-          <div class="team-realtime-empty">Cargando saldos de los choferes…</div>
+      <section id="driverNewsCard" class="driver-news-card is-balanced" aria-labelledby="driverNewsTitle" aria-live="polite">
+        <div class="driver-news-icon" aria-hidden="true">!</div>
+        <div class="driver-news-copy">
+          <span class="driver-news-kicker">Novedad importante</span>
+          <h2 id="driverNewsTitle">Todo está en orden</h2>
+          <p id="driverNewsText">Tu cuenta está equilibrada con Explora. Seguí así.</p>
         </div>
         <div id="syncStatus" class="sync" aria-live="polite" hidden>Conectando…</div>
       </section>

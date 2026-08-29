@@ -1444,9 +1444,40 @@ function settlementModel() {
   };
 }
 
+function renderDriverNews(settlementBalance) {
+  const card = $("driverNewsCard");
+  const title = $("driverNewsTitle");
+  const text = $("driverNewsText");
+  if (!card || !title || !text) return;
+
+  const balance = Number(settlementBalance || 0);
+  const amount = Math.abs(balance);
+  card.classList.remove("is-driver-owes", "is-explora-owes", "is-balanced");
+
+  if (amount <= 0.5) {
+    card.classList.add("is-balanced");
+    title.textContent = "Todo está en orden";
+    text.textContent = "Tu cuenta está equilibrada con Explora. Seguí así.";
+    return;
+  }
+
+  if (balance > 0.5) {
+    card.classList.add("is-driver-owes");
+    title.textContent = "Estás en rojo";
+    text.textContent = "Pedí a los pasajeros que paguen en digital o pedí un cierre para pagar tu deuda con efectivo sobrante en mano, alias o depósito.";
+    return;
+  }
+
+  card.classList.add("is-explora-owes");
+  title.textContent = "Estás en verde";
+  text.textContent = "Priorizá cobrar en efectivo. También podés pedir un cierre para cobrar a Explora la deuda pendiente.";
+}
+
 function renderWalletStatus(elementId, settlementBalance) {
   const element = $(elementId);
   if (!element) return;
+
+  renderDriverNews(settlementBalance);
 
   const differenceHint = $("settlementDifferenceHint");
   const amount = Math.abs(Number(settlementBalance || 0));
@@ -3039,11 +3070,6 @@ $("adminLogoutBtn")?.addEventListener("click", async () => {
   }
 });
 
-$("teamRealtimeToggle")?.addEventListener("click", () => {
-  const button = $("teamRealtimeToggle");
-  const expanded = button?.getAttribute("aria-expanded") === "true";
-  setTeamRealtimeExpanded(!expanded);
-});
 
 $("adminDriversBtn")?.addEventListener("click", () => {
   if (!isAdminProfile()) return;

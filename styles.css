@@ -5690,3 +5690,83 @@ body {
     font-size: 1.05rem;
   }
 }
+
+
+/* v76 · novedad contextual del chofer, reemplaza Tiempo real */
+.driver-news-card {
+  width: 100%;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 14px;
+  padding: 18px;
+  border: 2px solid rgba(59, 130, 246, .18);
+  border-radius: 22px;
+  background: #f8fbff;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, .07);
+}
+.driver-news-card .driver-news-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 26px;
+  line-height: 1;
+  font-weight: 950;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.driver-news-copy { min-width: 0; }
+.driver-news-kicker {
+  display: block;
+  margin-bottom: 4px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+}
+.driver-news-card h2 {
+  margin: 0 0 5px;
+  color: #0f172a;
+  font-size: 22px;
+  line-height: 1.05;
+  letter-spacing: -.03em;
+}
+.driver-news-card p {
+  margin: 0;
+  color: #334155;
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 700;
+}
+.driver-news-card.is-driver-owes {
+  border-color: rgba(220, 38, 38, .24);
+  background: linear-gradient(90deg, #fff7f7 0%, #fff 100%);
+}
+.driver-news-card.is-driver-owes .driver-news-icon { background: #fee2e2; color: #b91c1c; }
+.driver-news-card.is-driver-owes h2 { color: #b91c1c; }
+.driver-news-card.is-explora-owes {
+  border-color: rgba(22, 163, 74, .24);
+  background: linear-gradient(90deg, #f3fff7 0%, #fff 100%);
+}
+.driver-news-card.is-explora-owes .driver-news-icon { background: #dcfce7; color: #15803d; }
+.driver-news-card.is-explora-owes h2 { color: #15803d; }
+.driver-news-card.is-balanced {
+  border-color: rgba(37, 99, 235, .20);
+  background: linear-gradient(90deg, #f5f8ff 0%, #fff 100%);
+}
+@media (max-width: 640px) {
+  .driver-news-card {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 12px;
+    padding: 16px 14px;
+    border-radius: 20px;
+  }
+  .driver-news-card .driver-news-icon { width: 46px; height: 46px; font-size: 23px; }
+  .driver-news-card h2 { font-size: 20px; }
+  .driver-news-card p { font-size: 14px; }
+}
