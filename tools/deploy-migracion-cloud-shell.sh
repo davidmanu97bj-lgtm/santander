@@ -54,6 +54,8 @@ fi
 echo "5/5 · Desplegando reglas y todas las Cloud Functions..."
 firebase deploy \
   --project "${FIREBASE_PROJECT_ID}" \
-  --only firestore:rules,storage,functions
+  --only firestore:rules,storage,functions \
+  --force \
+  --non-interactive
 
 echo "Listo: backend de Barbería Main actualizado en ${FIREBASE_PROJECT_ID}."
