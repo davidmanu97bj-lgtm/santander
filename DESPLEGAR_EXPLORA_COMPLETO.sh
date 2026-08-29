@@ -123,30 +123,23 @@ fi
 if git -C "$PROJECT_DIR" remote get-url origin >/dev/null 2>&1; then
   echo "Sincronizando Git con origin/$git_branch antes del push..."
 
-  # Evita el error non-fast-forward: primero trae el historial remoto y,
-  # si hay commits nuevos en GitHub, los integra conservando esta versión
-  # del proyecto cuando exista un conflicto de contenido.
-  if git -C "$PROJECT_DIR" fetch --prune origin "$git_branch"; then
-    remote_ref="refs/remotes/origin/$git_branch"
-    if git -C "$PROJECT_DIR" show-ref --verify --quiet "$remote_ref"; then
-      if ! git -C "$PROJECT_DIR" merge-base --is-ancestor "$remote_ref" HEAD; then
-        echo "Origin tiene cambios nuevos. Integrándolos automáticamente..."
-        if ! git -C "$PROJECT_DIR" merge --no-edit -X ours "$remote_ref"; then
-          git -C "$PROJECT_DIR" merge --abort >/dev/null 2>&1 || true
-          echo "Los historiales no pudieron unirse de forma normal; reintentando sin perder archivos locales..."
-          git -C "$PROJECT_DIR" merge --no-edit --allow-unrelated-histories -X ours "$remote_ref"
-        fi
-      fi
-    fi
-  else
-    echo "AVISO: no se pudo hacer fetch de origin. Se intentará el push igualmente."
-  fi
+  # El paquete extraído es la versión completa que debe quedar en GitHub.
+  # Hacemos fetch sólo para actualizar la referencia remota y luego usamos
+  # --force-with-lease: evita non-fast-forward y también evita merges que
+  # fallen por archivos locales/untracked que existen en Cloud Shell.
+  git -C "$PROJECT_DIR" fetch --prune origin "$git_branch" || true
 
-  if git -C "$PROJECT_DIR" push --set-upstream origin "$git_branch"; then
-    GIT_RESULT="Commit creado, sincronizado y enviado a origin/$git_branch"
+  if git -C "$PROJECT_DIR" push --force-with-lease --set-upstream origin "$git_branch"; then
+    GIT_RESULT="Commit creado y GitHub actualizado con esta versión completa en origin/$git_branch"
   else
-    GIT_RESULT="Commit local creado; el push quedó pendiente por acceso al remoto"
-    echo "AVISO: Firebase continuará. Git quedó guardado localmente y no se perdió ningún cambio."
+    echo "El push protegido no pudo completarse; refrescando origin y reintentando una vez..."
+    git -C "$PROJECT_DIR" fetch --prune origin "$git_branch" || true
+    if git -C "$PROJECT_DIR" push --force-with-lease --set-upstream origin "$git_branch"; then
+      GIT_RESULT="Commit creado y GitHub actualizado con esta versión completa en origin/$git_branch"
+    else
+      GIT_RESULT="Commit local creado; el push quedó pendiente por acceso al remoto"
+      echo "AVISO: Firebase continuará. Git quedó guardado localmente y no se perdió ningún cambio."
+    fi
   fi
 else
   GIT_RESULT="Commit local creado; no existe origin para hacer push"
