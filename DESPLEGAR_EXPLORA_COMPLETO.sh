@@ -151,20 +151,63 @@ if command -v gcloud >/dev/null 2>&1; then
   gcloud config set project "$FIREBASE_PROJECT_ID" >/dev/null
 fi
 
-echo "7/8 · Desplegando Firebase por etapas para evitar cortes de Hosting..."
+echo "7/8 · Desplegando Firebase por etapas para evitar cortes del CLI..."
+
+# Firebase CLI a veces imprime "Deploy complete!" y luego devuelve un código distinto de 0
+# por un fallo interno/telemetría. En ese caso el despliegue sí terminó y no debemos abortar.
+run_firebase_stage() {
+  local stage_name="$1"
+  shift
+  local log_file
+  log_file="$(mktemp)"
+  local rc=0
+
+  set +e
+  firebase deploy "$@" 2>&1 | tee "$log_file"
+  rc=${PIPESTATUS[0]}
+  set -e
+
+  if [[ "$rc" -eq 0 ]]; then
+    rm -f "$log_file"
+    return 0
+  fi
+
+  if grep -Fq "Deploy complete!" "$log_file"; then
+    echo "   AVISO: Firebase CLI devolvió código $rc después de confirmar 'Deploy complete!'."
+    echo "   Se considera $stage_name desplegado correctamente y el proceso continúa."
+    rm -f "$log_file"
+    return 0
+  fi
+
+  rm -f "$log_file"
+  return "$rc"
+}
 
 echo "   7.1 · Firestore, Storage y Functions..."
-firebase deploy \
-  --project "$FIREBASE_PROJECT_ID" \
-  --only firestore:rules,storage,functions \
-  --force \
-  --non-interactive
+STAGE_OK=0
+for intento in 1 2 3; do
+  echo "   Backend: intento $intento de 3..."
+  if run_firebase_stage "Firestore/Storage/Functions" \
+      --project "$FIREBASE_PROJECT_ID" \
+      --only firestore:rules,storage,functions \
+      --force \
+      --non-interactive; then
+    STAGE_OK=1
+    break
+  fi
+  [[ "$intento" -lt 3 ]] && sleep $((intento * 8))
+done
+
+if [[ "$STAGE_OK" != "1" ]]; then
+  echo "ERROR: Firestore/Storage/Functions no pudieron completarse después de 3 intentos."
+  exit 1
+fi
 
 echo "   7.2 · Hosting con reintentos automáticos..."
 HOSTING_OK=0
 for intento in 1 2 3 4 5; do
   echo "   Hosting: intento $intento de 5..."
-  if firebase deploy \
+  if run_firebase_stage "Hosting" \
       --project "$FIREBASE_PROJECT_ID" \
       --only hosting \
       --non-interactive; then
