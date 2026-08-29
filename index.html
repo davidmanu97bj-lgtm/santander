@@ -89,6 +89,16 @@
     .expense-quick-option{border:1.5px solid #efb0b3;background:#fff4f4;color:#ad252c;border-radius:13px;padding:10px 6px;font-size:10px;font-weight:900;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent}
     .expense-quick-option:active{background:#fde5e6;border-color:#d95b61;color:#951b22;transform:translateY(1px)}.expense-quick-option.selected{background:#e8f7ee;border-color:#38a169;color:#176b3a;box-shadow:0 0 0 2px rgba(56,161,105,.12),0 6px 14px rgba(22,107,58,.10);transform:none}
     .file-note{font-size:9px;color:#888;margin-top:6px;line-height:1.4}.modal-actions{display:flex;gap:9px;margin-top:18px}.modal-actions button{flex:1}
+    .photo-source-picker{position:relative}
+    .photo-source-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+    .photo-source-action{min-height:50px;border:1px solid var(--line);border-radius:14px;padding:10px 9px;font-size:11px;font-weight:900;line-height:1.25;text-align:center;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
+    .photo-source-action.camera{background:var(--dark);border-color:var(--dark);color:#fff;box-shadow:0 7px 16px rgba(15,17,21,.12)}
+    .photo-source-action.gallery{background:#fff;color:var(--ink)}
+    .photo-source-action:active{transform:scale(.985)}
+    .photo-source-action:disabled{opacity:.48;cursor:not-allowed;transform:none}
+    .photo-source-input{position:fixed!important;left:-10000px!important;top:auto!important;width:1px!important;height:1px!important;min-height:0!important;padding:0!important;border:0!important;opacity:0!important;pointer-events:none!important}
+    .photo-source-selection{min-height:16px;margin-top:7px;color:#7b818a;font-size:9px;font-weight:750;line-height:1.35}
+    .photo-source-selection.has-photo{color:#16814d}
     .secondary{border:1px solid var(--line);background:#fff;border-radius:13px;padding:12px;font-weight:850;font-size:11px}.save{border:0;background:var(--dark);color:#fff;border-radius:13px;padding:12px;font-weight:850;font-size:11px;box-shadow:0 7px 16px rgba(15,17,21,.12)}
     .save:disabled,.primary:disabled,.collect:disabled,.close-btn:disabled{opacity:.52;cursor:not-allowed}.close-summary{background:#f7f8fa;border:1px solid var(--line);border-radius:18px;padding:14px;margin-top:7px}.close-summary div{display:flex;justify-content:space-between;gap:12px;font-size:11px;padding:6px 0}.close-summary strong{font-size:12px;font-weight:900}
 
@@ -248,7 +258,19 @@
         <div class="money-entry"><span aria-hidden="true">$</span><input id="chargeAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div>
       </div>
       <div class="field"><label>Detalle / cliente</label><input id="detail" placeholder="Opcional"></div>
-      <div id="proofField" class="field hidden"><label>Comprobante digital</label><input id="proof" type="file" accept="image/*,.pdf"><div class="file-note">El comprobante se guardará en Firebase Storage.</div></div>
+      <div id="proofField" class="field hidden">
+        <label>Comprobante digital</label>
+        <div class="photo-source-picker" data-photo-picker="digital">
+          <div class="photo-source-actions" aria-label="Elegir origen de la foto">
+            <button type="button" class="photo-source-action camera" data-photo-input="proofCamera">Sacar foto con la cámara</button>
+            <button type="button" class="photo-source-action gallery" data-photo-input="proof">Subir foto de galería</button>
+          </div>
+          <input id="proofCamera" class="photo-source-input" type="file" accept="image/*" capture="environment" data-photo-source="camera" tabindex="-1">
+          <input id="proof" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1">
+          <div class="photo-source-selection" data-photo-selection aria-live="polite">Ninguna foto seleccionada.</div>
+        </div>
+        <div class="file-note">Solo se aceptan fotos tomadas con la cámara o elegidas desde la galería.</div>
+      </div>
       <div id="chargeStatus" class="status"></div>
       <div class="modal-actions"><button type="button" class="secondary" data-close="chargeModal">Cancelar</button><button id="saveChargeBtn" type="submit" class="save">Registrar cobro</button></div>
     </form>
@@ -383,7 +405,19 @@
         </div>
         <input id="expenseDetail" placeholder="Ej. Productos de limpieza" required>
       </div>
-      <div class="field"><label>Comprobante</label><input id="expenseProof" type="file" accept="image/*,.pdf" required><div class="file-note">Explora reconocerá automáticamente el 50% y lo aplicará a quién paga a quién.</div></div>
+      <div class="field">
+        <label>Comprobante</label>
+        <div class="photo-source-picker" data-photo-picker="expense">
+          <div class="photo-source-actions" aria-label="Elegir origen de la foto">
+            <button type="button" class="photo-source-action camera" data-photo-input="expenseProofCamera">Sacar foto con la cámara</button>
+            <button type="button" class="photo-source-action gallery" data-photo-input="expenseProof">Subir foto de galería</button>
+          </div>
+          <input id="expenseProofCamera" class="photo-source-input" type="file" accept="image/*" capture="environment" data-photo-source="camera" tabindex="-1">
+          <input id="expenseProof" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1">
+          <div class="photo-source-selection" data-photo-selection aria-live="polite">Ninguna foto seleccionada.</div>
+        </div>
+        <div class="file-note">Explora reconocerá automáticamente el 50% y lo aplicará a quién paga a quién.</div>
+      </div>
       <div id="expenseStatus" class="status"></div>
       <div class="modal-actions"><button type="button" class="secondary" data-close="expenseModal">Cancelar</button><button id="saveExpenseBtn" type="submit" class="save">Registrar gasto</button></div>
     </form>
@@ -456,7 +490,19 @@
         <div><span>Estado</span><strong id="uberWeekStateLabel">Pendiente</strong></div>
       </div>
       <div class="field"><label for="uberAmount">Monto total facturado en Uber</label><div class="money-entry"><span aria-hidden="true">$</span><input id="uberAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div></div>
-      <div class="field"><label for="uberProof">Comprobante de la semana seleccionada</label><input id="uberProof" type="file" accept="image/*,.pdf" required><div class="file-note">El monto se suma al efectivo del chofer, se divide 50% para cada parte y genera 5% de caja chica.</div></div>
+      <div class="field">
+        <label>Comprobante de la semana seleccionada</label>
+        <div class="photo-source-picker" data-photo-picker="uber">
+          <div class="photo-source-actions" aria-label="Elegir origen de la foto">
+            <button type="button" class="photo-source-action camera" data-photo-input="uberProofCamera">Sacar foto con la cámara</button>
+            <button type="button" class="photo-source-action gallery" data-photo-input="uberProof">Subir foto de galería</button>
+          </div>
+          <input id="uberProofCamera" class="photo-source-input" type="file" accept="image/*" capture="environment" data-photo-source="camera" tabindex="-1">
+          <input id="uberProof" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1">
+          <div class="photo-source-selection" data-photo-selection aria-live="polite">Ninguna foto seleccionada.</div>
+        </div>
+        <div class="file-note">El monto se suma al efectivo del chofer, se divide 50% para cada parte y genera 5% de caja chica.</div>
+      </div>
       <div id="uberStatus" class="status"></div>
       <div class="modal-actions"><button type="button" class="secondary" data-close="uberModal">Cancelar</button><button id="saveUberBtn" type="submit" class="save">Registrar Uber</button></div>
     </form>
@@ -650,6 +696,6 @@
   </script>
 
 
-<script type="module" src="./app.js?v=20260829-73-tiempo-real"></script>
+<script type="module" src="./app.js?v=20260829-74-fotos-camara-galeria"></script>
 </body>
 </html>

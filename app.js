@@ -37,6 +37,75 @@ const authReady = setPersistence(auth, browserLocalPersistence)
 const AUTH_READY_TIMEOUT_MS = 2500;
 
 const $ = id => document.getElementById(id);
+
+function photoPicker(key) {
+  return document.querySelector(`[data-photo-picker="${key}"]`);
+}
+
+function selectedPhotoFile(key) {
+  const picker = photoPicker(key);
+  if (!picker) return null;
+  const selectedInput = $(picker.dataset.selectedInput || "");
+  if (selectedInput?.files?.[0]) return selectedInput.files[0];
+  return Array.from(picker.querySelectorAll(".photo-source-input"))
+    .map(input => input.files?.[0] || null)
+    .find(Boolean) || null;
+}
+
+function clearPhotoPicker(key) {
+  const picker = photoPicker(key);
+  if (!picker) return;
+  picker.querySelectorAll(".photo-source-input").forEach(input => { input.value = ""; });
+  delete picker.dataset.selectedInput;
+  const selection = picker.querySelector("[data-photo-selection]");
+  if (selection) {
+    selection.textContent = "Ninguna foto seleccionada.";
+    selection.classList.remove("has-photo");
+  }
+}
+
+function setPhotoPickerDisabled(key, disabled) {
+  const picker = photoPicker(key);
+  if (!picker) return;
+  picker.querySelectorAll(".photo-source-input, [data-photo-input]").forEach(control => {
+    control.disabled = Boolean(disabled);
+  });
+}
+
+function initializePhotoSourcePickers() {
+  document.querySelectorAll("[data-photo-picker]").forEach(picker => {
+    picker.querySelectorAll("[data-photo-input]").forEach(button => {
+      button.addEventListener("click", () => {
+        const input = $(button.dataset.photoInput || "");
+        if (!input || input.disabled) return;
+        input.click();
+      });
+    });
+
+    picker.querySelectorAll(".photo-source-input").forEach(input => {
+      input.addEventListener("change", () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        picker.querySelectorAll(".photo-source-input").forEach(other => {
+          if (other !== input) other.value = "";
+        });
+        picker.dataset.selectedInput = input.id;
+        const selection = picker.querySelector("[data-photo-selection]");
+        if (selection) {
+          const source = input.dataset.photoSource === "camera" ? "Foto tomada" : "Foto de galería";
+          selection.textContent = `${source}: ${file.name || "imagen seleccionada"}`;
+          selection.classList.add("has-photo");
+        }
+      });
+    });
+
+    picker.closest("form")?.addEventListener("reset", () => {
+      window.setTimeout(() => clearPhotoPicker(picker.dataset.photoPicker), 0);
+    });
+  });
+}
+
+initializePhotoSourcePickers();
 const SPLASH_MIN_VISIBLE_MS = 900;
 let splashStartedAt = Date.now();
 let splashProgress = 4;
@@ -1202,9 +1271,8 @@ function renderUberWeekSelector() {
   const select = $("uberWeekSelect");
   const notice = $("uberPendingNotice");
   const amountInput = $("uberAmount");
-  const proofInput = $("uberProof");
   const saveButton = $("saveUberBtn");
-  if (!select || !notice || !amountInput || !proofInput || !saveButton) return;
+  if (!select || !notice || !amountInput || !photoPicker("uber") || !saveButton) return;
 
   const pending = pendingUberWeeks();
   const previousValue = select.value;
@@ -1227,7 +1295,7 @@ function renderUberWeekSelector() {
 
   select.disabled = !hasPending;
   amountInput.disabled = !hasPending;
-  proofInput.disabled = !hasPending;
+  setPhotoPickerDisabled("uber", !hasPending);
   saveButton.disabled = !hasPending;
   updateUberWeekSummary();
 }
@@ -3329,7 +3397,6 @@ document.querySelectorAll("[data-mode]").forEach(btn => {
     $("chargeModal").dataset.tone = mode;
     $("chargeTitle").textContent = mode === "cash" ? "Cobro en efectivo" : "Cobro digital";
     $("proofField").classList.toggle("hidden", mode !== "digital");
-    $("proof").required = mode === "digital";
     $("chargeStatus").textContent = "";
     $("chargeStatus").className = "status";
     $("saveChargeBtn").disabled = false;
@@ -3681,7 +3748,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
   const mode = $("chargeMode").value;
   const service = mode === "cash" ? "Cobro en efectivo" : "Cobro digital";
   const amount = parseMoneyInput($("chargeAmount").value);
-  const file = $("proof").files?.[0];
+  const file = selectedPhotoFile("digital");
 
   if (!amount || amount <= 0) {
     $("chargeStatus").textContent = "Ingresá un importe válido.";
@@ -4275,7 +4342,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
 
   const amount = parseMoneyInput($("expenseAmount").value);
   const detail = $("expenseDetail").value.trim();
-  const file = $("expenseProof").files?.[0];
+  const file = selectedPhotoFile("expense");
 
   if (!amount || amount <= 0) {
     $("expenseStatus").textContent = "Ingresá un importe válido.";
@@ -4453,7 +4520,7 @@ $("uberForm")?.addEventListener("submit", async e => {
 
   const amount = parseMoneyInput($("uberAmount").value);
   const week = selectedPendingUberWeek();
-  const file = $("uberProof").files?.[0];
+  const file = selectedPhotoFile("uber");
 
   if (!week) {
     $("uberStatus").textContent = "Elegí una semana cerrada pendiente.";
@@ -4581,7 +4648,7 @@ $("uberForm")?.addEventListener("submit", async e => {
     render();
 
     $("uberAmount").value = "";
-    $("uberProof").value = "";
+    clearPhotoPicker("uber");
     renderUberWeekSelector();
     const remaining = pendingUberWeeks().length;
     $("uberStatus").textContent = remaining
