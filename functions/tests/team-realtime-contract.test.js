@@ -21,12 +21,15 @@ test("el resumen anterior fue reemplazado por Tiempo real", () => {
   assert.match(app, /Explora debe liquidar al chofer/);
 });
 
-test("la gestión administrativa incorpora una acción explícita de inhabilitar", () => {
-  assert.match(html, /data-driver-manager-mode="disable">Inhabilitar</);
-  assert.match(html, /id="disableDriverSelect"/);
-  assert.match(app, /active:false/);
-  assert.match(app, /no aparecerá en Tiempo real/i);
-  assert.match(app, /\["disableDriverSelect", activeOptions\]/);
+test("el listado de choferes inicia cerrado y la gestión permite borrar", () => {
+  assert.match(html, /id="teamRealtimeToggle"/);
+  assert.match(html, />Abrir choferes</);
+  assert.match(html, /data-driver-manager-mode="delete">Borrar chofer</);
+  assert.match(html, /id="deleteDriverSelect"/);
+  assert.match(app, /deleteDriver:true/);
+  assert.match(app, /Borrar chofer/);
+  assert.match(app, /filter\(teamRealtimeHasValidDriver\)/);
+  assert.match(functions, /admin_delete_driver/);
 });
 
 test("los saldos compartidos son sanitizados y mantenidos por backend", () => {
