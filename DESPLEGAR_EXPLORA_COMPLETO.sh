@@ -151,12 +151,39 @@ if command -v gcloud >/dev/null 2>&1; then
   gcloud config set project "$FIREBASE_PROJECT_ID" >/dev/null
 fi
 
-echo "7/8 · Desplegando Hosting, Firestore, Storage y todas las Functions..."
+echo "7/8 · Desplegando Firebase por etapas para evitar cortes de Hosting..."
+
+echo "   7.1 · Firestore, Storage y Functions..."
 firebase deploy \
   --project "$FIREBASE_PROJECT_ID" \
-  --only hosting,firestore:rules,storage,functions \
+  --only firestore:rules,storage,functions \
   --force \
   --non-interactive
+
+echo "   7.2 · Hosting con reintentos automáticos..."
+HOSTING_OK=0
+for intento in 1 2 3 4 5; do
+  echo "   Hosting: intento $intento de 5..."
+  if firebase deploy \
+      --project "$FIREBASE_PROJECT_ID" \
+      --only hosting \
+      --non-interactive; then
+    HOSTING_OK=1
+    break
+  fi
+
+  if [[ "$intento" -lt 5 ]]; then
+    espera=$((intento * 8))
+    echo "   Firebase Hosting devolvió un error temporal. Reintentando en ${espera}s..."
+    sleep "$espera"
+  fi
+done
+
+if [[ "$HOSTING_OK" != "1" ]]; then
+  echo "ERROR: Hosting no pudo completar la subida después de 5 intentos."
+  echo "Las Functions/Rules ya quedaron desplegadas. Podés volver a ejecutar este mismo SH; Git no duplicará cambios."
+  exit 1
+fi
 
 echo "8/8 · Proceso terminado correctamente."
 echo "Firebase: proyecto $FIREBASE_PROJECT_ID actualizado."

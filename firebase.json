@@ -13,7 +13,12 @@
       "tools/**",
       "*.md",
       "*.zip",
-      "*.json.map"
+      "*.json.map",
+      "*.txt",
+      "*.sh",
+      "CLOUD_SHELL_DESPLEGAR.md",
+      "CONFIGURAR_FIREBASE.md",
+      "MIGRACION_SANTANDER_A_BARBERIA.md"
     ],
     "rewrites": [
       {
