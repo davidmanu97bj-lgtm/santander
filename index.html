@@ -165,7 +165,7 @@
 
       <div class="admin-action-grid" aria-label="Acciones del administrador">
         <button id="adminDriversBtn" class="admin-action-btn primary" type="button">
-          <strong>Crear / editar / inhabilitar chofer</strong>
+          <strong>Crear / editar / borrar chofer</strong>
           <span>Altas, datos, clave y acceso.</span>
         </button>
         <button id="adminAddDebtBtn" class="admin-action-btn" type="button">
@@ -196,7 +196,8 @@
     </section>
 
     <div id="driverDashboard">
-      <section class="team-realtime-card" aria-labelledby="teamRealtimeTitle">
+      <section class="team-realtime-card is-collapsed" aria-labelledby="teamRealtimeTitle">
+        <button id="teamRealtimeToggle" class="team-realtime-toggle" type="button" aria-expanded="false" aria-controls="teamRealtimeList">Abrir choferes</button>
         <div class="team-realtime-heading">
           <div>
             <span class="team-realtime-kicker"><i aria-hidden="true"></i> En vivo</span>
@@ -283,7 +284,7 @@
     <div class="admin-manager-switch" role="group" aria-label="Modo de gestión">
       <button id="driverManagerCreateTab" class="selected" type="button" data-driver-manager-mode="create">Crear chofer</button>
       <button id="driverManagerEditTab" type="button" data-driver-manager-mode="edit">Editar chofer</button>
-      <button id="driverManagerDisableTab" type="button" data-driver-manager-mode="disable">Inhabilitar</button>
+      <button id="driverManagerDisableTab" type="button" data-driver-manager-mode="delete">Borrar chofer</button>
     </div>
     <form id="driverManagerForm">
       <input id="driverManagerMode" type="hidden" value="create">
@@ -300,11 +301,11 @@
         <div class="field"><label for="editDriverPassword">Nueva clave <span class="optional-label">opcional</span></label><input id="editDriverPassword" type="password" autocomplete="new-password" minlength="6" placeholder="Dejar vacío para mantenerla"></div>
       </div>
 
-      <div id="driverDisableFields" class="hidden">
-        <div class="field"><label for="disableDriverSelect">Chofer que querés inhabilitar</label><select id="disableDriverSelect"></select></div>
+      <div id="driverDeleteFields" class="hidden">
+        <div class="field"><label for="deleteDriverSelect">Chofer que querés borrar</label><select id="deleteDriverSelect"></select></div>
         <div class="admin-disable-note">
-          <strong>El chofer perderá el acceso</strong>
-          <p>Desaparecerá de Tiempo real y de todos los menús operativos. Sus movimientos anteriores se conservarán en el historial.</p>
+          <strong>El chofer será eliminado</strong>
+          <p>Se borrará su acceso y desaparecerá de Tiempo real y de todos los menús operativos. Los movimientos históricos ya registrados no se eliminan.</p>
         </div>
       </div>
 

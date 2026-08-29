@@ -1904,6 +1904,7 @@ function isAdminProfile() {
 
 function applyRoleUI() {
   const admin = isAdminProfile();
+  resetTeamRealtimeDisclosure();
   $("driverDashboard")?.classList.toggle("hidden", admin);
   $("adminDashboard")?.classList.toggle("hidden", !admin);
   // En Admin, el único botón de salida queda dentro del panel para evitar duplicados.
@@ -1934,7 +1935,24 @@ function adminDriverIsActive(driver = {}) {
 }
 
 function teamRealtimeDriverLabel(row = {}) {
-  return String(row.driverName || row.displayName || row.nombre || row.username || "Chofer").trim() || "Chofer";
+  return String(row.driverName || row.displayName || row.nombre || row.username || "").trim();
+}
+
+function teamRealtimeHasValidDriver(row = {}) {
+  return Boolean(teamRealtimeDriverLabel(row));
+}
+
+function setTeamRealtimeExpanded(expanded = false) {
+  const card = document.querySelector(".team-realtime-card");
+  const button = $("teamRealtimeToggle");
+  if (!card || !button) return;
+  card.classList.toggle("is-collapsed", !expanded);
+  button.textContent = expanded ? "Cerrar choferes" : "Abrir choferes";
+  button.setAttribute("aria-expanded", expanded ? "true" : "false");
+}
+
+function resetTeamRealtimeDisclosure() {
+  setTeamRealtimeExpanded(false);
 }
 
 function teamRealtimeSignedBalance(row = {}) {
@@ -1961,6 +1979,7 @@ function renderTeamRealtimeList() {
 
   const rows = teamRealtimeBalances
     .filter(row => row.active !== false)
+    .filter(teamRealtimeHasValidDriver)
     .sort((a, b) => teamRealtimeDriverLabel(a).localeCompare(teamRealtimeDriverLabel(b), "es", { sensitivity:"base" }));
 
   if (!rows.length) {
@@ -2206,7 +2225,7 @@ function renderAdminDriverOptions() {
 
   [
     ["editDriverSelect", activeOptions],
-    ["disableDriverSelect", activeOptions],
+    ["deleteDriverSelect", activeOptions],
     ["debtDriver", activeOptions],
     ["adjustmentDriver", activeOptions],
     ["historyDriver", historicalOptions],
@@ -2531,19 +2550,19 @@ function syncDriverEditForm() {
 }
 
 function setDriverManagerMode(mode = "create") {
-  const normalizedMode = mode === "edit" ? "edit" : mode === "disable" ? "disable" : "create";
+  const normalizedMode = mode === "edit" ? "edit" : mode === "delete" ? "delete" : "create";
   const createMode = normalizedMode === "create";
   const editMode = normalizedMode === "edit";
-  const disableMode = normalizedMode === "disable";
+  const deleteMode = normalizedMode === "delete";
   $("driverManagerMode").value = normalizedMode;
   $("driverCreateFields").classList.toggle("hidden", !createMode);
   $("driverEditFields").classList.toggle("hidden", !editMode);
-  $("driverDisableFields").classList.toggle("hidden", !disableMode);
+  $("driverDeleteFields").classList.toggle("hidden", !deleteMode);
   $("driverManagerCreateTab").classList.toggle("selected", createMode);
   $("driverManagerEditTab").classList.toggle("selected", editMode);
-  $("driverManagerDisableTab").classList.toggle("selected", disableMode);
-  $("saveDriverManagerBtn").textContent = createMode ? "Crear chofer" : editMode ? "Guardar cambios" : "Inhabilitar chofer";
-  $("saveDriverManagerBtn").classList.toggle("danger", disableMode);
+  $("driverManagerDisableTab").classList.toggle("selected", deleteMode);
+  $("saveDriverManagerBtn").textContent = createMode ? "Crear chofer" : editMode ? "Guardar cambios" : "Borrar chofer";
+  $("saveDriverManagerBtn").classList.toggle("danger", deleteMode);
 
   ["newDriverName", "newDriverUsername", "newDriverPassword"].forEach(id => {
     const input = $(id);
@@ -2551,7 +2570,7 @@ function setDriverManagerMode(mode = "create") {
   });
   $("editDriverSelect").required = editMode;
   $("editDriverName").required = editMode;
-  $("disableDriverSelect").required = disableMode;
+  $("deleteDriverSelect").required = deleteMode;
   if (editMode) syncDriverEditForm();
 }
 
@@ -3020,6 +3039,12 @@ $("adminLogoutBtn")?.addEventListener("click", async () => {
   }
 });
 
+$("teamRealtimeToggle")?.addEventListener("click", () => {
+  const button = $("teamRealtimeToggle");
+  const expanded = button?.getAttribute("aria-expanded") === "true";
+  setTeamRealtimeExpanded(!expanded);
+});
+
 $("adminDriversBtn")?.addEventListener("click", () => {
   if (!isAdminProfile()) return;
   $("driverManagerForm").reset();
@@ -3068,20 +3093,20 @@ $("driverManagerForm")?.addEventListener("submit", async event => {
       await adminUpdateDriverCallable({ driverId, nombre, active:true, password });
       status.textContent = `Datos de ${nombre} actualizados.`;
     } else {
-      const driverId = $("disableDriverSelect").value;
+      const driverId = $("deleteDriverSelect").value;
       const driver = adminDriverById(driverId);
-      if (!driverId || !driver || !adminDriverIsActive(driver)) throw new Error("Seleccioná un chofer activo para inhabilitar.");
+      if (!driverId || !driver) throw new Error("Seleccioná un chofer para borrar.");
       const nombre = adminDriverLabel(driver);
-      const confirmed = window.confirm(`¿Inhabilitar a ${nombre}? Perderá el acceso y desaparecerá de los menús operativos.`);
+      const confirmed = window.confirm(`¿Borrar definitivamente a ${nombre}? Se eliminará su acceso y desaparecerá de los menús. Los movimientos históricos se conservarán.`);
       if (!confirmed) {
-        status.textContent = "Inhabilitación cancelada.";
+        status.textContent = "Borrado cancelado.";
         status.className = "status";
         return;
       }
 
-      button.textContent = "Inhabilitando…";
-      await adminUpdateDriverCallable({ driverId, nombre, active:false, password:"" });
-      status.textContent = `${nombre} fue inhabilitado y ya no aparecerá en Tiempo real.`;
+      button.textContent = "Borrando…";
+      await adminUpdateDriverCallable({ driverId, nombre, deleteDriver:true });
+      status.textContent = `${nombre} fue borrado correctamente.`;
     }
 
     status.className = "status success";
@@ -3092,7 +3117,7 @@ $("driverManagerForm")?.addEventListener("submit", async event => {
     status.className = "status error";
   } finally {
     button.disabled = false;
-    button.textContent = mode === "create" ? "Crear chofer" : mode === "edit" ? "Guardar cambios" : "Inhabilitar chofer";
+    button.textContent = mode === "create" ? "Crear chofer" : mode === "edit" ? "Guardar cambios" : "Borrar chofer";
   }
 });
 

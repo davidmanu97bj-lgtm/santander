@@ -5660,3 +5660,25 @@ body {
     animation: none !important;
   }
 }
+
+
+/* v74 · listado de choferes plegable por defecto */
+.team-realtime-toggle {
+  width: calc(100% - 48px);
+  margin: 22px 24px 0;
+  min-height: 56px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 18px;
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  font: inherit;
+  font-weight: 850;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.team-realtime-card.is-collapsed .team-realtime-list { display: none; }
+.team-realtime-card.is-collapsed .team-realtime-heading { border-bottom: 0; }
+.team-realtime-card.is-collapsed .team-realtime-heading p { opacity: .8; }
+@media (max-width: 640px) {
+  .team-realtime-toggle { width: calc(100% - 32px); margin: 16px 16px 0; min-height: 54px; font-size: 1.05rem; }
+}
