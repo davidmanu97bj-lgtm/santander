@@ -1300,6 +1300,7 @@ exports.adminUpdateDriver = onCall({ region: "southamerica-east1", timeoutSecond
   const driverId = text(request.data?.driverId);
   const requestedName = text(request.data?.nombre);
   const requestedPassword = text(request.data?.password);
+  const deleteDriver = request.data?.deleteDriver === true;
   const active = request.data?.active !== false;
 
   if (!driverId) throw new HttpsError("invalid-argument", "Falta el chofer.");
@@ -1314,6 +1315,36 @@ exports.adminUpdateDriver = onCall({ region: "southamerica-east1", timeoutSecond
   const nombre = requestedName || text(driver.nombreCompleto || driver.nombre || driver.username || driver.usuario);
   const username = normalizeUsername(driver.username || driver.usuario);
   const aliasRef = username ? db.collection("login_aliases").doc(username) : null;
+
+  if (deleteDriver) {
+    const batch = db.batch();
+    batch.delete(driverRef);
+    if (aliasRef) batch.delete(aliasRef);
+    batch.delete(db.collection(TEAM_REALTIME_BALANCES_COLLECTION).doc(driverId));
+    for (const collectionName of ["usuarios", "users", "perfiles"]) {
+      batch.delete(db.collection(collectionName).doc(driverId));
+    }
+    const vehicleId = text(driver.vehicleId || driver.vehiculoId || driver.assignedVehicleId);
+    if (vehicleId) {
+      batch.set(db.collection("vehiculos").doc(vehicleId), {
+        currentDriverUid:null, currentDriverDocumentId:null, currentDriverName:null,
+        driverUid:null, driverId:null, driverName:null, isAssigned:false,
+        updatedAt:FieldValue.serverTimestamp(), updatedByUid:adminUid
+      }, { merge:true });
+    }
+    const auditRef = db.collection(ADMIN_AUDIT_COLLECTION).doc(`delete_${driverId}_${Date.now()}`);
+    batch.set(auditRef, {
+      action:"admin_delete_driver", adminUid, targetUid:driverId, targetUsername:username, targetName:nombre,
+      createdAt:FieldValue.serverTimestamp(), status:"completed"
+    });
+    try {
+      await auth.deleteUser(authUid);
+      await batch.commit();
+    } catch (error) {
+      throw new HttpsError("internal", safeErrorMessage(error, "No se pudo borrar completamente el chofer."));
+    }
+    return { ok:true, driverId, nombre, deleted:true };
+  }
 
   if (!nombre || nombre.length > 100) throw new HttpsError("invalid-argument", "El nombre es obligatorio y debe tener hasta 100 caracteres.");
   if (requestedPassword && !isValidPassword(requestedPassword)) {
