@@ -38,6 +38,29 @@ service cloud.firestore {
         || hasAdminDocument();
     }
 
+    function isActiveTeamViewer() {
+      return isAdmin() || (
+        signedIn()
+        && exists(/databases/$(database)/documents/choferes/$(uid()))
+        && (
+          !get(/databases/$(database)/documents/choferes/$(uid())).data.keys().hasAny(['active'])
+          || get(/databases/$(database)/documents/choferes/$(uid())).data.active == true
+        )
+        && (
+          !get(/databases/$(database)/documents/choferes/$(uid())).data.keys().hasAny(['activo'])
+          || get(/databases/$(database)/documents/choferes/$(uid())).data.activo == true
+        )
+        && (
+          !get(/databases/$(database)/documents/choferes/$(uid())).data.keys().hasAny(['status'])
+          || get(/databases/$(database)/documents/choferes/$(uid())).data.status != 'inactive'
+        )
+        && (
+          !get(/databases/$(database)/documents/choferes/$(uid())).data.keys().hasAny(['estado'])
+          || get(/databases/$(database)/documents/choferes/$(uid())).data.estado != 'inactivo'
+        )
+      );
+    }
+
     function owns(data) {
       return signedIn() && data != null && (
         (data.keys().hasAny(['driverUid']) && data.driverUid == uid())
@@ -164,6 +187,13 @@ service cloud.firestore {
           && request.resource.data.driverUid == uid();
         allow update, delete: if isAdmin();
       }
+    }
+
+    // Vista sanitizada del equipo: únicamente nombre, dirección y monto del
+    // saldo. Las escrituras pertenecen exclusivamente a Cloud Functions.
+    match /team_realtime_balances/{driverId} {
+      allow read: if isActiveTeamViewer();
+      allow create, update, delete: if false;
     }
 
     match /drivers/{driverId} {

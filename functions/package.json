@@ -1,10 +1,10 @@
 {
   "name": "explora-admin-functions",
-  "version": "2.4.63",
+  "version": "2.4.73",
   "private": true,
   "main": "index.js",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test tests/*.test.js"
   },
   "engines": {
     "node": "22"

@@ -1,0 +1,16 @@
+# Dependencias y cachés locales
+node_modules/
+functions/node_modules/
+.firebase/
+firebase-debug.log
+*.log
+
+# Archivos locales o sensibles
+.env
+.env.*
+service-account*.json
+serviceAccount*.json
+credentials*.json
+
+# Paquetes de entrega
+*.zip

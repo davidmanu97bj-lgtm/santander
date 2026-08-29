@@ -53,6 +53,7 @@ function paymentMethodOf(data = {}) {
   if (/qr/.test(raw)) return "qr";
   if (/card|tarjeta|point|posnet/.test(raw)) return "card";
   if (/transfer|alias|transf/.test(raw)) return "transfer";
+  if (/digital|online|electr[oó]nic/.test(raw)) return "digital";
   return raw;
 }
 
@@ -92,6 +93,11 @@ function isSimulated(data = {}) {
   return data.isSimulated === true || data.createdBySimulation === true || data.verificationMode === "simulation";
 }
 
+function cashboxIsExcluded(data = {}) {
+  return data.excludeFromCashbox === true || data.cashboxExcluded === true ||
+    data.cajaChicaEliminada === true || data.ignoreCashbox === true || data.noCashbox === true;
+}
+
 function isDriverBillingSettlementPayment(data = {}) {
   const type = safeText(data.type || data.operationType || data.movementType).toLowerCase();
   const source = safeText(data.sourceModule || data.category || data.module).toLowerCase();
@@ -100,16 +106,49 @@ function isDriverBillingSettlementPayment(data = {}) {
     (type === "driver_payment" && /factur|billing/.test(source));
 }
 
-function closureKindOf(data = {}) {
-  const raw = safeText(
-    data.closureKind || data.closureType || data.payTab || data.closeKind ||
-    data.kind || data.cierreTipo || data.type || data.category
-  ).toLowerCase();
+function billingSettlementDirection(data = {}) {
+  let direction = safeText(data.adjustmentDirection || data.settlementDirection || data.paymentDirection).toLowerCase();
+  if (["driver_pays_explora", "chofer_a_explora", "chofer_a_david"].includes(direction)) direction = "driver_to_explora";
+  if (["explora_pays_driver", "explora_a_chofer", "david_a_chofer"].includes(direction)) direction = "explora_to_driver";
+  if (direction === "driver_to_explora" || direction === "explora_to_driver") return direction;
+  if (isDriverBillingSettlementPayment(data)) return "driver_to_explora";
+  return "";
+}
+
+function activeClosureKind(value = "") {
+  const raw = safeText(value).toLowerCase();
+  if (/pendiente|deuda|debt|multa|choque|prestamo|pr[eé]stamo|adelanto|loan|advance/.test(raw)) return "pendientes";
   if (/caja|chica|cashbox|bruto/.test(raw)) return "caja_chica";
   if (/gasto|expense/.test(raw)) return "gastos";
+  if (/factur|billing|cobro/.test(raw)) return "facturacion";
   if (/explora|digital|transfer|qr|card|tarjeta/.test(raw)) return "explora";
   if (/chofer|driver|efectivo|cash/.test(raw)) return "chofer";
-  if (/factur|billing|cobro/.test(raw)) return "facturacion";
+  return "";
+}
+
+function isBillingClosureKind(value = "") {
+  const kind = activeClosureKind(value);
+  return kind === "chofer" || kind === "explora" || kind === "facturacion";
+}
+
+function closureKindOf(data = {}) {
+  const raw = data.closureKind || data.closureType || data.payTab || data.closeKind ||
+    data.kind || data.cierreTipo || data.type || data.category;
+  return activeClosureKind(raw);
+}
+
+function closureHomeModuleOf(data = {}) {
+  const fields = [
+    "homeModule", "homeTab", "homeCard", "moduleKey", "closureModuleKey",
+    "requestModule", "requestedModule", "requestedTab", "requestedFrom",
+    "originModule", "originTab", "sourceModule", "sourceTab", "settlementType",
+    "payTab", "closeKind", "kind", "closureKind", "closureType", "cierreTipo",
+    "module", "modulo", "source", "origin", "tab", "type", "category"
+  ];
+  for (const field of fields) {
+    const kind = activeClosureKind(data[field]);
+    if (kind) return kind;
+  }
   return "";
 }
 
@@ -123,11 +162,21 @@ function closureInvalidatesCutoff(data = {}) {
     data.cutoffActive === false || /reject|rechaz|cancel|anulad|no aceptado|rejected_on_demand/.test(joined);
 }
 
-function isActiveBillingClosure(data = {}) {
+function closureUsesActiveCutoff(data = {}) {
   const mode = safeText(data.closureMode || data.periodType).toLowerCase();
-  const kind = closureKindOf(data);
-  const isBilling = data.billingClosure === true || ["chofer", "explora", "facturacion"].includes(kind);
-  return mode === "on_demand" && isBilling && !closureInvalidatesCutoff(data);
+  return mode === "on_demand" && !closureInvalidatesCutoff(data);
+}
+
+function closureMatchesIndependentModule(data = {}, target = "") {
+  const targetKind = activeClosureKind(target);
+  if (!targetKind) return false;
+  const rowKind = closureKindOf(data);
+  const homeKind = closureHomeModuleOf(data);
+  if (targetKind === "caja_chica") return rowKind === "caja_chica" || homeKind === "caja_chica";
+  if (targetKind === "gastos") return rowKind === "gastos" || homeKind === "gastos";
+  if (targetKind === "pendientes") return rowKind === "pendientes" || homeKind === "pendientes";
+  if (isBillingClosureKind(targetKind)) return isBillingClosureKind(rowKind) || isBillingClosureKind(homeKind);
+  return rowKind === targetKind || homeKind === targetKind;
 }
 
 function closureCutMs(data = {}) {
@@ -145,60 +194,195 @@ function closureCutMs(data = {}) {
   );
 }
 
-function latestBillingCutoffMs(closures = []) {
+function latestCutoffMsFor(closures = [], kind = "facturacion") {
   return closures
-    .filter(isActiveBillingClosure)
+    .filter(closureUsesActiveCutoff)
+    .filter(row => closureMatchesIndependentModule(row, kind))
     .map(closureCutMs)
     .filter(value => value > 0)
     .reduce((latest, value) => Math.max(latest, value), 0);
+}
+
+function latestBillingCutoffMs(closures = []) {
+  return latestCutoffMsFor(closures, "facturacion");
+}
+
+function billingClosureClosesCashbox(data = {}) {
+  const affects = Array.isArray(data.affectsTabs) ? data.affectsTabs.map(activeClosureKind) : [];
+  return data.autoClosesCashbox === true || data.cashboxClosedWithBilling === true ||
+    data.cashboxAutoClosed === true || affects.includes("caja_chica");
+}
+
+function latestCashboxResetMs(closures = []) {
+  // Facturación es acumulativa: un cierre de facturación no reinicia caja chica.
+  // Solo un cierre explícito del módulo caja chica puede cortar ese módulo.
+  return latestCutoffMsFor(closures, "caja_chica");
+}
+
+function billingCashboxOffsetOf(data = {}) {
+  return Math.max(0, moneyNumber(
+    data.billingCashboxOffsetApplied ?? data.cashboxOffsetApplied ??
+    data.cajaChicaDescontadaLiquidacion ?? data.cajaChicaCompensada ?? 0
+  ));
+}
+
+function billingCashboxOffsetsAfter(closures = [], resetCashboxMs = 0) {
+  return roundMoney(closures
+    .filter(closureUsesActiveCutoff)
+    .filter(row => isBillingClosureKind(closureKindOf(row)) || isBillingClosureKind(closureHomeModuleOf(row)))
+    .filter(row => closureCutMs(row) > Number(resetCashboxMs || 0))
+    .reduce((sum, row) => sum + billingCashboxOffsetOf(row), 0));
 }
 
 function roundMoney(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
-function calculateOpenBillingBalance({ records = [], closures = [] } = {}) {
-  const cutoffMs = latestBillingCutoffMs(closures);
+function uberGrossAmount(data = {}) {
+  return moneyNumber(data.grossAmount ?? data.totalAmount ?? data.amount ?? data.monto ?? 0);
+}
+
+function uberCashboxAmount(data = {}) {
+  const explicit = moneyNumber(data.cashboxAmount ?? data.uberCashboxAmount ?? 0);
+  if (explicit > 0) return explicit;
+  return uberGrossAmount(data) * 0.05;
+}
+
+function isAdminSettlementDebt(data = {}) {
+  const type = safeText(data.type || data.debtType).toLowerCase();
+  const role = safeText(data.createdByRole || data.registeredByRole).toLowerCase();
+  const source = safeText(data.sourceModule || data.registrationOrigin || data.origin).toLowerCase();
+  if (source === "uber_weekly" || type === "uber_weekly") return false;
+  return type === "admin_debt" || role === "admin" || role === "administrador" ||
+    data.registeredByAdmin === true || source === "admin_debt_menu";
+}
+
+function debtRemainingAmount(data = {}) {
+  const status = safeText(data.status || data.debtStatus || data.estado).toLowerCase();
+  if (/paid|pagad|closed|cerrad|cancel|anulad|deleted|eliminad/.test(status)) return 0;
+  const remaining = moneyNumber(data.remainingAmount ?? data.saldoPendiente ?? data.amount ?? data.totalAmount ?? 0);
+  return Math.max(0, remaining);
+}
+
+function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = [], expenses = [], debts = [] } = {}) {
+  // La facturación nunca se corta por un cierre: efectivo y digital son históricos
+  // acumulados. Los pagos de cierre quedan como ajustes y son los que llevan el
+  // saldo a cero sin borrar la facturación.
+  const cutoffMs = 0;
+  const cashboxResetMs = latestCashboxResetMs(closures);
   let cash = 0;
   let digital = 0;
   let includedCount = 0;
-  let settlementPaymentTotal = 0;
+  let driverSettlementTotal = 0;
+  let exploraSettlementTotal = 0;
   let settlementPaymentCount = 0;
 
   for (const record of records) {
-    if (!record || movementIsDeleted(record) || isSimulated(record) || rowMs(record) <= cutoffMs) continue;
+    if (!record || movementIsDeleted(record) || isSimulated(record)) continue;
     const amount = amountOf(record);
-    if (isDriverBillingSettlementPayment(record)) {
-      if (amount > 0) {
-        settlementPaymentTotal += amount;
+    const settlementDirection = billingSettlementDirection(record);
+    if (settlementDirection) {
+      const paidToAdvance = settlementDirection === "driver_to_explora"
+        ? moneyNumber(record.advanceRepaymentAmount || 0)
+        : 0;
+      const settlementAmount = Math.max(0, amount - paidToAdvance);
+      if (settlementAmount > 0) {
+        if (settlementDirection === "driver_to_explora") driverSettlementTotal += settlementAmount;
+        else exploraSettlementTotal += settlementAmount;
         settlementPaymentCount += 1;
       }
       continue;
     }
+    if (record.excludeFromBillingSettlement === true || record.internalSettlementAdjustment === true) continue;
     const method = paymentMethodOf(record);
-    if (!(amount > 0) || !["cash", "card", "qr", "transfer"].includes(method)) continue;
+    if (!(amount > 0) || !["cash", "card", "qr", "transfer", "digital"].includes(method)) continue;
     if (method === "cash") cash += amount;
     else digital += amount;
     includedCount += 1;
   }
 
+  let regularCashboxGenerated = 0;
+  for (const record of records) {
+    if (!record || movementIsDeleted(record) || isSimulated(record) || rowMs(record) <= cashboxResetMs) continue;
+    if (billingSettlementDirection(record)) continue;
+    if (record.excludeFromBillingSettlement === true || record.internalSettlementAdjustment === true) continue;
+    if (cashboxIsExcluded(record) || paymentMethodOf(record) !== "cash") continue;
+    const amount = amountOf(record);
+    if (amount > 0) regularCashboxGenerated += amount * 0.05;
+  }
+
+  let uberCashboxGenerated = 0;
+  let uberGrossTotal = 0;
+  for (const week of uberWeeks || []) {
+    if (!week || movementIsDeleted(week) || isSimulated(week) || rowMs(week) <= cashboxResetMs) continue;
+    const review = safeText(week.reviewStatus || week.status).toLowerCase();
+    if (review === "rejected") continue;
+    const grossAmount = uberGrossAmount(week);
+    if (!(grossAmount > 0)) continue;
+    uberGrossTotal += grossAmount;
+    uberCashboxGenerated += uberCashboxAmount(week);
+  }
+
+  let expenseTotal = 0;
+  for (const expense of expenses || []) {
+    if (!expense || movementIsDeleted(expense) || isSimulated(expense)) continue;
+    const amount = amountOf(expense);
+    if (amount > 0) expenseTotal += amount;
+  }
+
+  let adminDebtTotal = 0;
+  for (const debt of debts || []) {
+    if (!debt || movementIsDeleted(debt) || isSimulated(debt) || !isAdminSettlementDebt(debt)) continue;
+    adminDebtTotal += debtRemainingAmount(debt);
+  }
+
   cash = roundMoney(cash);
   digital = roundMoney(digital);
-  const gross = roundMoney(cash + digital);
+  uberGrossTotal = roundMoney(uberGrossTotal);
+  expenseTotal = roundMoney(expenseTotal);
+  adminDebtTotal = roundMoney(adminDebtTotal);
+  const expenseShare = roundMoney(expenseTotal * 0.50);
+  const gross = roundMoney(cash + digital + uberGrossTotal);
   const shareEach = roundMoney(gross * 0.5);
-  const netBeforePayments = roundMoney(shareEach - cash);
-  settlementPaymentTotal = roundMoney(settlementPaymentTotal);
-  const netToDriver = roundMoney(netBeforePayments + settlementPaymentTotal);
+  const netBeforeCashboxToDriver = roundMoney(shareEach - cash - uberGrossTotal);
+
+  const cashboxGeneratedTotal = roundMoney(regularCashboxGenerated + uberCashboxGenerated);
+  const cashboxOffsetPreviouslyApplied = Math.min(
+    cashboxGeneratedTotal,
+    billingCashboxOffsetsAfter(closures, cashboxResetMs)
+  );
+  const cashboxTotal = roundMoney(Math.max(0, cashboxGeneratedTotal - cashboxOffsetPreviouslyApplied));
+  // El chofer paga el gasto y Explora reconoce el 50%, por eso ese 50%
+  // se suma al saldo a favor del chofer antes de aplicar pagos de cierre.
+  const netBeforePayments = roundMoney(netBeforeCashboxToDriver - cashboxTotal + expenseShare - adminDebtTotal);
+
+  driverSettlementTotal = roundMoney(driverSettlementTotal);
+  exploraSettlementTotal = roundMoney(exploraSettlementTotal);
+  const settlementPaymentTotal = roundMoney(driverSettlementTotal - exploraSettlementTotal);
+  const netToDriver = roundMoney(netBeforePayments + driverSettlementTotal - exploraSettlementTotal);
 
   return {
     cutoffMs,
+    cashboxResetMs,
     includedCount,
     cash,
     digital,
+    uberGrossTotal,
     gross,
     shareEach,
     settlementPaymentCount,
     settlementPaymentTotal,
+    driverSettlementTotal,
+    exploraSettlementTotal,
+    regularCashboxGenerated:roundMoney(regularCashboxGenerated),
+    uberCashboxGenerated:roundMoney(uberCashboxGenerated),
+    cashboxGeneratedTotal,
+    cashboxOffsetPreviouslyApplied:roundMoney(cashboxOffsetPreviouslyApplied),
+    cashboxTotal,
+    expenseTotal,
+    expenseShare,
+    adminDebtTotal,
+    netBeforeCashboxToDriver,
     netBeforePayments,
     netToDriver,
     amountFromDriver:roundMoney(Math.max(0, -netToDriver)),
@@ -206,8 +390,136 @@ function calculateOpenBillingBalance({ records = [], closures = [] } = {}) {
   };
 }
 
+function teamIsReimbursementCompensation(data = {}) {
+  const type = safeText(data.type || data.operationType || data.movementType).toLowerCase();
+  return type === "reimbursement_compensation" || type === "debt_compensation";
+}
+
+function teamExpenseUsesAutomaticBilling50(data = {}) {
+  if (data.autoApplyToBilling === true || data.gastoAuto50 === true) return true;
+  if (safeText(data.billingImpactMode).toLowerCase() === "auto_50") return true;
+  return Object.prototype.hasOwnProperty.call(data, "telegramSettlementBeforeBalance") ||
+    Object.prototype.hasOwnProperty.call(data, "telegramSettlementAfterBalance") ||
+    Object.prototype.hasOwnProperty.call(data, "telegramExpenseRecognizedAmount");
+}
+
+function teamAutomaticExpenseImpact(expenses = [], cutoffMs = 0) {
+  return roundMoney(expenses
+    .filter(item => item && !movementIsDeleted(item) && !isSimulated(item))
+    .filter(item => rowMs(item) > cutoffMs)
+    .filter(teamExpenseUsesAutomaticBilling50)
+    .reduce((sum, item) => sum + (amountOf(item) * 0.50), 0));
+}
+
+function latestTeamReimbursementAnchor(records = [], baseline = 0) {
+  const anchors = records
+    .filter(item => item && !movementIsDeleted(item) && !isSimulated(item))
+    .filter(teamIsReimbursementCompensation)
+    .map(item => ({
+      timestamp:rowMs(item),
+      settlementAfter:Number(item.settlementAfter)
+    }))
+    .filter(item => item.timestamp > baseline && Number.isFinite(item.settlementAfter))
+    .sort((a, b) => b.timestamp - a.timestamp);
+  if (!anchors.length) return null;
+  return {
+    timestamp:anchors[0].timestamp,
+    balance:Math.abs(anchors[0].settlementAfter) > 0.5 ? anchors[0].settlementAfter : 0
+  };
+}
+
+function teamSettlementDeltaSince(cutoffMs, records = [], uberWeeks = [], expenses = []) {
+  const scopedRecords = records
+    .filter(item => item && !movementIsDeleted(item) && !isSimulated(item))
+    .filter(item => rowMs(item) > cutoffMs)
+    .filter(item => !teamIsReimbursementCompensation(item));
+
+  const cash = scopedRecords
+    .filter(item => !billingSettlementDirection(item) && paymentMethodOf(item) === "cash")
+    .reduce((sum, item) => sum + amountOf(item), 0);
+  const cashboxEligibleCash = scopedRecords
+    .filter(item => !billingSettlementDirection(item) && paymentMethodOf(item) === "cash")
+    .filter(item => !cashboxIsExcluded(item))
+    .reduce((sum, item) => sum + amountOf(item), 0);
+  const digital = scopedRecords
+    .filter(item => !billingSettlementDirection(item) && ["card", "qr", "transfer", "digital"].includes(paymentMethodOf(item)))
+    .reduce((sum, item) => sum + amountOf(item), 0);
+  const driverPaid = scopedRecords
+    .filter(item => billingSettlementDirection(item) === "driver_to_explora")
+    .reduce((sum, item) => sum + Math.max(0, amountOf(item) - moneyNumber(item.advanceRepaymentAmount || 0)), 0);
+  const exploraPaid = scopedRecords
+    .filter(item => billingSettlementDirection(item) === "explora_to_driver")
+    .reduce((sum, item) => sum + amountOf(item), 0);
+  const uber = uberWeeks
+    .filter(item => item && !movementIsDeleted(item) && !isSimulated(item) && rowMs(item) > cutoffMs)
+    .filter(item => !/reject|rechaz/.test(safeText(item.reviewStatus || item.status).toLowerCase()))
+    .reduce((sum, item) => sum + uberGrossAmount(item), 0);
+  const cashbox = (cashboxEligibleCash + uber) * 0.05;
+  const automaticExpenseImpact = teamAutomaticExpenseImpact(expenses, cutoffMs);
+
+  return roundMoney(
+    (cash * 0.50) + (uber * 0.50) + cashbox - (digital * 0.50) -
+    automaticExpenseImpact - driverPaid + exploraPaid
+  );
+}
+
+// Replica la calculadora central que ve cada chofer en el Main. A diferencia del
+// cálculo histórico de Telegram, respeta la base heredada de Santander y las
+// fotografías de compensación usadas durante la migración.
+function calculateTeamRealtimeSettlementBalance({ records = [], closures = [], uberWeeks = [], expenses = [], debts = [] } = {}) {
+  const baseline = latestBillingCutoffMs(closures);
+  const openRecords = records
+    .filter(item => item && !movementIsDeleted(item) && !isSimulated(item))
+    .filter(item => rowMs(item) > baseline)
+    .filter(item => !teamIsReimbursementCompensation(item));
+
+  const cash = openRecords
+    .filter(item => !billingSettlementDirection(item) && paymentMethodOf(item) === "cash")
+    .reduce((sum, item) => sum + amountOf(item), 0);
+  const cashboxEligibleCash = openRecords
+    .filter(item => !billingSettlementDirection(item) && paymentMethodOf(item) === "cash")
+    .filter(item => !cashboxIsExcluded(item))
+    .reduce((sum, item) => sum + amountOf(item), 0);
+  const digital = openRecords
+    .filter(item => !billingSettlementDirection(item) && ["card", "qr", "transfer", "digital"].includes(paymentMethodOf(item)))
+    .reduce((sum, item) => sum + amountOf(item), 0);
+  const driverPaid = openRecords
+    .filter(item => billingSettlementDirection(item) === "driver_to_explora")
+    .reduce((sum, item) => sum + Math.max(0, amountOf(item) - moneyNumber(item.advanceRepaymentAmount || 0)), 0);
+  const exploraPaid = openRecords
+    .filter(item => billingSettlementDirection(item) === "explora_to_driver")
+    .reduce((sum, item) => sum + amountOf(item), 0);
+  const uber = uberWeeks
+    .filter(item => item && !movementIsDeleted(item) && !isSimulated(item) && rowMs(item) > baseline)
+    .filter(item => !/reject|rechaz/.test(safeText(item.reviewStatus || item.status).toLowerCase()))
+    .reduce((sum, item) => sum + uberGrossAmount(item), 0);
+  const cashbox = (cashboxEligibleCash + uber) * 0.05;
+  const automaticExpenseImpact = teamAutomaticExpenseImpact(expenses, baseline);
+  const adminDebtTotal = debts
+    .filter(item => item && !movementIsDeleted(item) && !isSimulated(item) && isAdminSettlementDebt(item))
+    .reduce((sum, item) => sum + debtRemainingAmount(item), 0);
+  const anchor = latestTeamReimbursementAnchor(records, baseline);
+
+  const rawBalance = anchor
+    ? anchor.balance + teamSettlementDeltaSince(anchor.timestamp, records, uberWeeks, expenses) + adminDebtTotal
+    : (cash * 0.50) + (uber * 0.50) + cashbox + adminDebtTotal -
+      (digital * 0.50) - automaticExpenseImpact - driverPaid + exploraPaid;
+  const balance = Math.abs(rawBalance) > 0.5 ? roundMoney(rawBalance) : 0;
+
+  return {
+    baseline,
+    balance,
+    amount:roundMoney(Math.abs(balance)),
+    amountFromDriver:roundMoney(Math.max(0, balance)),
+    amountToDriver:roundMoney(Math.max(0, -balance)),
+    direction:balance > 0.5 ? "driver_to_explora" : balance < -0.5 ? "explora_to_driver" : "balanced"
+  };
+}
+
 module.exports = {
   calculateOpenBillingBalance,
+  calculateTeamRealtimeSettlementBalance,
   isDriverBillingSettlementPayment,
-  latestBillingCutoffMs
+  latestBillingCutoffMs,
+  latestCashboxResetMs
 };

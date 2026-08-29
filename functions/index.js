@@ -9,7 +9,11 @@ const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, FieldValue, FieldPath } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
-const { calculateOpenBillingBalance, isDriverBillingSettlementPayment } = require("./telegram-billing-balance");
+const {
+  calculateOpenBillingBalance,
+  calculateTeamRealtimeSettlementBalance,
+  isDriverBillingSettlementPayment
+} = require("./telegram-billing-balance");
 const {
   buildAdminDebtPaymentTelegramText,
   isAdminDebtPayment
@@ -18,6 +22,7 @@ const {
   buildAdminDriverDebtTelegramText,
   isAdminDriverDebt
 } = require("./telegram-driver-debt");
+const { buildExpenseTelegramAmountLines } = require("./telegram-expense");
 
 const PROJECT_ID = "explora-control-operativo";
 const STORAGE_BUCKET = `${PROJECT_ID}.firebasestorage.app`;
@@ -32,6 +37,7 @@ const ADMIN_ROLES = new Set(["admin", "administrador", "owner", "superadmin"]);
 const ADMIN_PROFILE_COLLECTIONS = ["administradores", "admins", "usuarios", "choferes"];
 const DELETION_JOBS_COLLECTION = "admin_driver_deletion_jobs";
 const ADMIN_AUDIT_COLLECTION = "admin_audit";
+const TEAM_REALTIME_BALANCES_COLLECTION = "team_realtime_balances";
 const PAGE_SIZE = 180;
 const MAX_SCANNED_DOCUMENTS = 25000;
 
@@ -43,7 +49,7 @@ const TELEGRAM_CHAT_ID = defineSecret("TELEGRAM_CHAT_ID");
 const TELEGRAM_NOTIFICATIONS_COLLECTION = "telegram_notifications";
 const TELEGRAM_FUNCTION_REGION = "us-central1";
 const TELEGRAM_PROCESSING_LEASE_MS = 10 * 60 * 1000;
-const TELEGRAM_BALANCE_FALLBACK_DRIVER_FIELDS = ["choferUid", "uid"];
+const TELEGRAM_BALANCE_FALLBACK_DRIVER_FIELDS = ["choferUid", "uid", "driverId", "choferId", "ownerUid"];
 
 // WhatsApp operativo deshabilitado: todas las notificaciones solicitadas salen por Telegram.
 
@@ -111,6 +117,7 @@ function telegramPaymentMethod(data = {}) {
   if (/qr/.test(raw)) return { key: "qr", label: "QR" };
   if (/card|tarjeta|point|posnet/.test(raw)) return { key: "card", label: "Tarjeta" };
   if (/transfer|alias|transf/.test(raw)) return { key: "transfer", label: "Transferencia" };
+  if (/digital|online|electr[oó]nic/.test(raw)) return { key: "digital", label: "Digital" };
   if (/cash|efectivo/.test(raw)) return { key: "cash", label: "Efectivo" };
   return { key: raw || "unknown", label: raw ? raw.toUpperCase() : "Sin especificar" };
 }
@@ -147,10 +154,11 @@ async function telegramDriverDocuments(collectionName, driverUid) {
   if (!targetUid) throw new Error(`No se pudo identificar el chofer para consultar ${collectionName}.`);
 
   const documents = new Map();
+  let canonicalSucceeded = false;
   try {
     const canonicalSnap = await db.collection(collectionName).where("driverUid", "==", targetUid).get();
     canonicalSnap.docs.forEach(docSnap => documents.set(docSnap.id, { id: docSnap.id, ...(docSnap.data() || {}) }));
-    return [...documents.values()];
+    canonicalSucceeded = true;
   } catch (canonicalError) {
     console.warn("[telegram balance] canonical query failed", collectionName, canonicalError?.code || canonicalError?.message || canonicalError);
   }
@@ -166,23 +174,185 @@ async function telegramDriverDocuments(collectionName, driverUid) {
     }
   }));
 
-  if (!attempts.some(Boolean)) throw new Error(`No se pudo consultar ${collectionName} para calcular el saldo.`);
+  if (!canonicalSucceeded && !attempts.some(Boolean)) throw new Error(`No se pudo consultar ${collectionName} para calcular el saldo.`);
   return [...documents.values()];
 }
 
 async function telegramOpenBillingBalance(data = {}, docId = "") {
   const driverUid = telegramDriverUid(data);
-  const [records, closures] = await Promise.all([
+  const [records, closures, uberWeeks, expenses, debts] = await Promise.all([
     telegramDriverDocuments("billing_records", driverUid),
-    telegramDriverDocuments("cierres_semanales", driverUid)
+    telegramDriverDocuments("cierres_semanales", driverUid),
+    telegramDriverDocuments("uber_weekly_closures", driverUid),
+    telegramDriverDocuments("gastos", driverUid),
+    telegramDriverDocuments("deudas_choferes", driverUid)
   ]);
   const currentId = telegramSafeText(docId);
   const currentRecord = { id: currentId, ...data };
   const allRecords = currentId
     ? [...records.filter(row => telegramSafeText(row.id) !== currentId), currentRecord]
     : [...records, currentRecord];
-  return calculateOpenBillingBalance({ records: allRecords, closures });
+  return calculateOpenBillingBalance({ records: allRecords, closures, uberWeeks, expenses, debts });
 }
+
+function teamRealtimeDriverIsActive(data = {}) {
+  const state = normalized(data.status || data.estado || "");
+  return data.active !== false && data.activo !== false && data.deleted !== true &&
+    data.isDeleted !== true && data.eliminado !== true &&
+    !/inactiv|disabled|deshabil|eliminad|deleted/.test(state);
+}
+
+function teamRealtimeDriverIsAdmin(profileId = "", data = {}) {
+  const role = normalized(data.role || data.rol || "");
+  const authUid = text(data.authUid || data.uid || profileId);
+  return ADMIN_UIDS.has(text(profileId)) || ADMIN_UIDS.has(authUid) || ADMIN_ROLES.has(role);
+}
+
+function teamRealtimeDriverName(data = {}) {
+  return text(data.displayName || data.nombreCompleto || data.nombre || data.username || data.usuario || "Chofer") || "Chofer";
+}
+
+async function teamRealtimeProfileForIdentity(identity = "") {
+  const target = text(identity);
+  if (!target) return null;
+  const profiles = db.collection("choferes");
+  const direct = await profiles.doc(target).get().catch(() => null);
+  if (direct?.exists) return direct;
+
+  for (const field of ["uid", "authUid", "driverUid", "driverId", "choferUid", "choferId"]) {
+    const match = await profiles.where(field, "==", target).limit(1).get().catch(() => null);
+    if (match && !match.empty) return match.docs[0];
+  }
+  return null;
+}
+
+async function teamRealtimeBalanceForDriver(driverUid = "") {
+  const target = text(driverUid);
+  const [records, closures, uberWeeks, expenses, debts] = await Promise.all([
+    telegramDriverDocuments("billing_records", target),
+    telegramDriverDocuments("cierres_semanales", target),
+    telegramDriverDocuments("uber_weekly_closures", target),
+    telegramDriverDocuments("gastos", target),
+    telegramDriverDocuments("deudas_choferes", target)
+  ]);
+  return calculateTeamRealtimeSettlementBalance({ records, closures, uberWeeks, expenses, debts });
+}
+
+async function refreshTeamRealtimeBalanceForProfile(profileSnap) {
+  if (!profileSnap?.exists) return { skipped:true, reason:"missing-profile" };
+  const profileId = text(profileSnap.id);
+  const profile = profileSnap.data() || {};
+  const publicRef = db.collection(TEAM_REALTIME_BALANCES_COLLECTION).doc(profileId);
+
+  if (!teamRealtimeDriverIsActive(profile) || teamRealtimeDriverIsAdmin(profileId, profile)) {
+    await publicRef.delete().catch(error => {
+      if (error?.code !== 5 && error?.code !== "not-found") throw error;
+    });
+    return { removed:true, profileId };
+  }
+
+  const driverUid = text(profile.authUid || profile.uid || profile.driverUid || profileId);
+  const result = await teamRealtimeBalanceForDriver(driverUid);
+  const nowMs = Date.now();
+  await publicRef.set({
+    profileDocumentId:profileId,
+    driverId:profileId,
+    driverUid,
+    driverName:teamRealtimeDriverName(profile),
+    active:true,
+    direction:result.direction,
+    settlementBalance:result.balance,
+    amount:result.amount,
+    amountFromDriver:result.amountFromDriver,
+    amountToDriver:result.amountToDriver,
+    billingBaselineMs:result.baseline,
+    schemaVersion:1,
+    calculationVersion:"v73-team-realtime",
+    updatedAtMs:nowMs,
+    updatedAt:FieldValue.serverTimestamp()
+  });
+  return { refreshed:true, profileId, driverUid, direction:result.direction, amount:result.amount };
+}
+
+async function refreshTeamRealtimeBalanceForIdentity(identity = "") {
+  const profile = await teamRealtimeProfileForIdentity(identity);
+  if (!profile) return { skipped:true, reason:"profile-not-found", identity:text(identity) };
+  return refreshTeamRealtimeBalanceForProfile(profile);
+}
+
+async function refreshTeamRealtimeFromMovementEvent(event) {
+  const before = event.data?.before?.exists ? (event.data.before.data() || {}) : {};
+  const after = event.data?.after?.exists ? (event.data.after.data() || {}) : {};
+  const affected = new Set([telegramDriverUid(before), telegramDriverUid(after)].filter(Boolean));
+  const results = [];
+  for (const identity of affected) results.push(await refreshTeamRealtimeBalanceForIdentity(identity));
+  return { affected:[...affected], results };
+}
+
+async function assertTeamRealtimeViewer(request) {
+  const callerUid = text(request.auth?.uid);
+  if (!callerUid) throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
+  if (ADMIN_UIDS.has(callerUid)) return callerUid;
+  const profile = await teamRealtimeProfileForIdentity(callerUid);
+  if (!profile?.exists || !teamRealtimeDriverIsActive(profile.data() || {}) || teamRealtimeDriverIsAdmin(profile.id, profile.data() || {})) {
+    throw new HttpsError("permission-denied", "El usuario no está habilitado para ver Tiempo real.");
+  }
+  return callerUid;
+}
+
+// Inicializa únicamente los saldos que todavía no existen. Después, los
+// disparadores de cada movimiento mantienen la colección sanitizada al día.
+exports.ensureTeamRealtimeBalances = onCall({
+  region:"southamerica-east1",
+  timeoutSeconds:180,
+  memory:"512MiB",
+  invoker:"public"
+}, async request => {
+  await assertTeamRealtimeViewer(request);
+  const profilesSnap = await db.collection("choferes").get();
+  const profiles = profilesSnap.docs.filter(profile => {
+    const data = profile.data() || {};
+    return teamRealtimeDriverIsActive(data) && !teamRealtimeDriverIsAdmin(profile.id, data);
+  });
+  if (!profiles.length) return { ok:true, activeDrivers:0, initialized:0 };
+
+  const publicRefs = profiles.map(profile => db.collection(TEAM_REALTIME_BALANCES_COLLECTION).doc(profile.id));
+  const existing = await db.getAll(...publicRefs);
+  const pending = profiles.filter((profile, index) => !existing[index]?.exists || Number(existing[index].data()?.schemaVersion || 0) !== 1);
+  const results = await Promise.all(pending.map(refreshTeamRealtimeBalanceForProfile));
+  return { ok:true, activeDrivers:profiles.length, initialized:results.length };
+});
+
+exports.onTeamRealtimeBillingWriteV1 = onDocumentWritten({
+  document:"billing_records/{docId}", region:"southamerica-east1", timeoutSeconds:180, memory:"512MiB", retry:true
+}, refreshTeamRealtimeFromMovementEvent);
+
+exports.onTeamRealtimeExpenseWriteV1 = onDocumentWritten({
+  document:"gastos/{docId}", region:"southamerica-east1", timeoutSeconds:180, memory:"512MiB", retry:true
+}, refreshTeamRealtimeFromMovementEvent);
+
+exports.onTeamRealtimeUberWriteV1 = onDocumentWritten({
+  document:"uber_weekly_closures/{docId}", region:"southamerica-east1", timeoutSeconds:180, memory:"512MiB", retry:true
+}, refreshTeamRealtimeFromMovementEvent);
+
+exports.onTeamRealtimeDebtWriteV1 = onDocumentWritten({
+  document:"deudas_choferes/{docId}", region:"southamerica-east1", timeoutSeconds:180, memory:"512MiB", retry:true
+}, refreshTeamRealtimeFromMovementEvent);
+
+exports.onTeamRealtimeClosureWriteV1 = onDocumentWritten({
+  document:"cierres_semanales/{docId}", region:"southamerica-east1", timeoutSeconds:180, memory:"512MiB", retry:true
+}, refreshTeamRealtimeFromMovementEvent);
+
+exports.onTeamRealtimeDriverWriteV1 = onDocumentWritten({
+  document:"choferes/{driverId}", region:"southamerica-east1", timeoutSeconds:180, memory:"512MiB", retry:true
+}, async event => {
+  const after = event.data?.after;
+  if (!after?.exists) {
+    await db.collection(TEAM_REALTIME_BALANCES_COLLECTION).doc(text(event.params?.driverId)).delete().catch(() => {});
+    return { removed:true };
+  }
+  return refreshTeamRealtimeBalanceForProfile(after);
+});
 
 function telegramBillingBalanceLine(balance = {}) {
   const amountFromDriver = Number(balance.amountFromDriver || 0);
@@ -194,6 +364,13 @@ function telegramBillingBalanceLine(balance = {}) {
     return `Saldo acumulado: Explora debe liquidar al chofer ${telegramMoney(amountToDriver)}`;
   }
   return "Saldo acumulado: nadie debe liquidar";
+}
+
+function telegramSignedSettlementLine(value) {
+  const balance = Number(value || 0);
+  if (balance > 0.49) return `Quién paga a quién: Chofer debe liquidar a Explora ${telegramMoney(balance)}`;
+  if (balance < -0.49) return `Quién paga a quién: Explora debe liquidar al chofer ${telegramMoney(Math.abs(balance))}`;
+  return "Quién paga a quién: cuentas equilibradas";
 }
 
 function telegramDirectPhotoUrl(data = {}) {
@@ -234,6 +411,13 @@ async function telegramResolvePhotoUrl(kind, docId, data = {}) {
 
 function telegramNotificationDocId(kind, docId) {
   return `${kind}_${docId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 300);
+}
+
+function telegramOperationNotificationKey(data = {}, docId = "") {
+  const operationKey = telegramSafeText(data.idempotencyKey || data.clientOperationId || data.operationId);
+  if (!operationKey) return telegramSafeText(docId);
+  const driverUid = telegramDriverUid(data);
+  return driverUid ? `${driverUid}_${operationKey}` : operationKey;
 }
 
 async function telegramClaimNotification(kind, notificationKey, sourceCollection, sourceDocumentId, eventId) {
@@ -425,16 +609,25 @@ function closureTelegramText(data = {}) {
     : amountToDriver > 0.49
       ? `Explora debe pagar ${telegramMoney(amountToDriver)}`
       : "Sin saldo a liquidar";
-  return [
+  const lines = [
     "PEDIDO DE CIERRE EXPLORA",
     `Chofer: ${telegramDriverName(data)}`,
     `Tipo: ${kind || "cierre"}`,
-    `Resultado: ${result}`,
+    `Resultado: ${result}`
+  ];
+  if (amountToDriver > 0.49 && telegramSafeText(data.recipientAlias)) {
+    lines.push(`Destino: ${telegramSafeText(data.recipientAlias)} · CUIT ${telegramSafeText(data.recipientCuit || "—")}`);
+  }
+  if (amountFromDriver > 0.49 && telegramSafeText(data.transferAlias)) {
+    lines.push(`Cuenta Explora: ${telegramSafeText(data.transferAlias)} · CUIT ${telegramSafeText(data.transferCuit || "—")}`);
+  }
+  lines.push(
     `Total facturado: ${telegramMoney(data.gross || data.grossAmount || 0)}`,
     `Gastos: ${telegramMoney(data.expenseTotal || 0)}`,
     `Caja chica: ${telegramMoney(data.cashboxTotal || data.cashboxGeneratedTotal || 0)}`,
     `Fecha: ${telegramDateLabel(data)}`
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 function uberTelegramText(data = {}) {
@@ -456,6 +649,7 @@ function uberTelegramText(data = {}) {
     `Total Uber: ${telegramMoney(data.totalAmount || data.grossAmount || 0)}`,
     `Deudas (50%): ${telegramMoney(data.debtAmount || data.exploraShare || 0)}`,
     `Caja chica Uber (5%): ${telegramMoney(data.cashboxAmount || data.uberCashboxAmount || 0)}`,
+    telegramSignedSettlementLine(data.telegramSettlementAfterBalance),
     "Estado: pendiente de revisión en Explora.",
     `Fecha: ${telegramDateLabel(data)}`
   ].join("\n");
@@ -1100,6 +1294,105 @@ exports.adminCreateDriver = onCall({ region: "southamerica-east1", timeoutSecond
   }
 });
 
+
+exports.adminUpdateDriver = onCall({ region: "southamerica-east1", timeoutSeconds: 120, memory: "512MiB", invoker: "public" }, async request => {
+  const adminUid = await assertAdmin(request);
+  const driverId = text(request.data?.driverId);
+  const requestedName = text(request.data?.nombre);
+  const requestedPassword = text(request.data?.password);
+  const active = request.data?.active !== false;
+
+  if (!driverId) throw new HttpsError("invalid-argument", "Falta el chofer.");
+  if (ADMIN_UIDS.has(driverId)) throw new HttpsError("failed-precondition", "No se puede editar la cuenta administradora desde este panel.");
+
+  const driverRef = db.collection("choferes").doc(driverId);
+  const driverSnap = await driverRef.get();
+  if (!driverSnap.exists) throw new HttpsError("not-found", "El chofer no existe.");
+
+  const driver = driverSnap.data() || {};
+  const authUid = text(driver.authUid || driver.uid || driverId);
+  const nombre = requestedName || text(driver.nombreCompleto || driver.nombre || driver.username || driver.usuario);
+  const username = normalizeUsername(driver.username || driver.usuario);
+  const aliasRef = username ? db.collection("login_aliases").doc(username) : null;
+
+  if (!nombre || nombre.length > 100) throw new HttpsError("invalid-argument", "El nombre es obligatorio y debe tener hasta 100 caracteres.");
+  if (requestedPassword && !isValidPassword(requestedPassword)) {
+    throw new HttpsError("invalid-argument", "La nueva contraseña debe tener entre 6 y 72 caracteres.");
+  }
+
+  const authUpdate = { displayName: nombre, disabled: !active };
+  if (requestedPassword) authUpdate.password = requestedPassword;
+
+  try {
+    await auth.updateUser(authUid, authUpdate);
+  } catch (error) {
+    throw new HttpsError("internal", safeErrorMessage(error, "No se pudo actualizar el acceso del chofer."));
+  }
+
+  const now = FieldValue.serverTimestamp();
+  const batch = db.batch();
+
+  batch.set(driverRef, {
+    nombre,
+    nombreCompleto: nombre,
+    displayName: nombre,
+    active,
+    activo: active,
+    status: active ? "active" : "inactive",
+    estado: active ? "disponible" : "inactivo",
+    updatedAt: now,
+    updatedByUid: adminUid
+  }, { merge: true });
+
+  if (aliasRef) {
+    batch.set(aliasRef, {
+      active,
+      activo: active,
+      updatedAt: now,
+      updatedByUid: adminUid
+    }, { merge: true });
+  }
+
+  for (const collectionName of ["usuarios", "users", "perfiles"]) {
+    const profileRef = db.collection(collectionName).doc(driverId);
+    const profileSnap = await profileRef.get().catch(() => null);
+    if (profileSnap?.exists) {
+      batch.set(profileRef, {
+        nombre,
+        nombreCompleto: nombre,
+        displayName: nombre,
+        active,
+        activo: active,
+        status: active ? "active" : "inactive",
+        estado: active ? "disponible" : "inactivo",
+        updatedAt: now,
+        updatedByUid: adminUid
+      }, { merge: true });
+    }
+  }
+
+  const auditRef = db.collection(ADMIN_AUDIT_COLLECTION).doc(`update_${driverId}_${Date.now()}`);
+  batch.set(auditRef, {
+    action: "admin_update_driver",
+    adminUid,
+    targetUid: driverId,
+    targetUsername: username,
+    targetName: nombre,
+    active,
+    passwordChanged: Boolean(requestedPassword),
+    createdAt: now,
+    status: "completed"
+  });
+
+  try {
+    await batch.commit();
+  } catch (error) {
+    throw new HttpsError("internal", safeErrorMessage(error, "El acceso se actualizó, pero no se pudo guardar el perfil del chofer."));
+  }
+
+  return { ok: true, driverId, nombre, active, passwordChanged: Boolean(requestedPassword) };
+});
+
 exports.adminResetDriverOperationalData = onCall({ region: "southamerica-east1", timeoutSeconds: 540, memory: "1GiB" }, async request => {
   const adminUid = await assertAdmin(request);
   const driverId = text(request.data?.driverId);
@@ -1511,6 +1804,105 @@ function financialExpenseClosurePatch(closure = {}, movement = {}) {
   };
 }
 
+function financialExpenseAmountCorrectionPatch(closure = {}, movement = {}, newAmount = 0) {
+  const previous = financialExpenseParts(movement);
+  const nextAmount = Math.max(0, Math.round(financialNumber(newAmount)));
+  if (!(previous.amount > 0) || !(nextAmount > 0) || previous.amount === nextAmount) return null;
+  const next = financialExpenseParts({ ...movement, amount:nextAmount, monto:nextAmount, valor:nextAmount, totalAmount:nextAmount });
+  const currentTotal = Math.max(0, financialNumber(closure.expenseTotal ?? closure.mainTotal ?? closure.gross));
+  const previousDriverShare = closure.driverExpenseShare !== undefined
+    ? Math.max(0, financialNumber(closure.driverExpenseShare))
+    : currentTotal * (previous.driverPart / previous.amount);
+  const previousExploraShare = closure.exploraExpenseShare !== undefined
+    ? Math.max(0, financialNumber(closure.exploraExpenseShare))
+    : closure.expenseAmountToDriverBeforeDebt !== undefined
+      ? Math.max(0, financialNumber(closure.expenseAmountToDriverBeforeDebt))
+      : Math.max(0, currentTotal - previousDriverShare);
+  const total = Math.max(0, currentTotal + next.amount - previous.amount);
+  const driverShare = Math.max(0, previousDriverShare + next.driverPart - previous.driverPart);
+  const exploraShare = Math.max(0, previousExploraShare + next.exploraPart - previous.exploraPart);
+  const debtOffset = Math.min(exploraShare, Math.max(0, financialNumber(closure.expenseDebtOffsetApplied)));
+  const amountToDriver = Math.max(0, exploraShare - debtOffset);
+  return {
+    expenseTotal:total, mainTotal:total, gross:total,
+    driverExpenseShare:driverShare, exploraExpenseShare:exploraShare,
+    expenseAmountToDriverBeforeDebt:exploraShare,
+    expenseDebtOffsetApplied:debtOffset,
+    expenseAmountToDriverAfterDebt:amountToDriver,
+    amountDueFromDriver:0, amountFromDriver:0,
+    amountDueToDriver:amountToDriver, amountToDriver,
+    netSettlementToDriver:amountToDriver
+  };
+}
+
+
+function financialBillingAmountCorrectionPatch(closure = {}, movement = {}, newAmount = 0, { cashboxOnly = false } = {}) {
+  const previousAmount = Math.max(0, financialAmountOf(movement));
+  const nextAmount = Math.max(0, Math.round(financialNumber(newAmount)));
+  if (!(previousAmount > 0) || !(nextAmount > 0) || previousAmount === nextAmount) return null;
+  const delta = nextAmount - previousAmount;
+  const method = financialMethodOf(movement);
+  const oldCash = financialNumber(closure.cashInDriver ?? closure.cashGrossInDriver ?? closure.driverActualCash);
+  const oldDigital = financialNumber(closure.exploraCash ?? closure.nonCashInExplora ?? closure.nonCashGrossInExplora);
+  const cash = Math.max(0, oldCash + (!cashboxOnly && method === "cash" ? delta : 0));
+  const digital = Math.max(0, oldDigital + (!cashboxOnly && method !== "cash" ? delta : 0));
+  const cashboxExcluded = movement.excludeFromCashbox === true || movement.cashboxExcluded === true || movement.cajaChicaEliminada === true || movement.ignoreCashbox === true || movement.noCashbox === true;
+  const cashboxGenerates = method === "cash" && !cashboxExcluded;
+  const oldCashboxGross = financialNumber(closure.billingCashboxGross ?? closure.cashboxGross ?? oldCash);
+  const oldEligibleGross = financialNumber(closure.billingCashboxEligibleGross ?? closure.cashboxEligibleGross ?? oldCashboxGross);
+  const cashboxGross = Math.max(0, oldCashboxGross + (cashboxGenerates ? delta : 0));
+  const eligibleGross = Math.max(0, oldEligibleGross + (cashboxGenerates ? delta : 0));
+  const gross = cash + digital;
+  const share = gross * .5;
+  const netBeforeCashboxToDriver = share - cash;
+  const cashboxRate = Math.max(0, financialNumber(closure.cashboxRate || .05));
+  const cashboxGenerated = cashboxGross * cashboxRate;
+  const cashboxEligibleAmount = eligibleGross * cashboxRate;
+  const autoClosesCashbox = closure.autoClosesCashbox === true || closure.cashboxClosedWithBilling === true || closure.cashboxAutoClosed === true || (Array.isArray(closure.affectsTabs) && closure.affectsTabs.includes("caja_chica"));
+  const alreadyCompensated = autoClosesCashbox ? Math.max(0, financialNumber(closure.cashboxAlreadyCompensated || 0)) : 0;
+  const cashboxPending = autoClosesCashbox ? Math.max(0, cashboxGenerated - alreadyCompensated) : cashboxEligibleAmount;
+  const cashboxOffsetApplied = autoClosesCashbox ? cashboxPending : (netBeforeCashboxToDriver > 0 ? Math.min(netBeforeCashboxToDriver, cashboxEligibleAmount) : 0);
+  const netToDriver = netBeforeCashboxToDriver - cashboxOffsetApplied;
+  const settlementPaymentTotal = Math.max(0, financialNumber(closure.billingSettlementPaymentTotal));
+  const netAfterDriverPayments = netToDriver + settlementPaymentTotal;
+  const amountFromDriver = Math.max(0, -netAfterDriverPayments);
+  const amountToDriver = Math.max(0, netAfterDriverPayments);
+  const payerRole = amountFromDriver > .49 ? "driver" : amountToDriver > .49 ? "admin" : "balanced";
+  return {
+    gross, grossBeforeCashbox:gross, cashInDriver:cash, cashGrossInDriver:cash,
+    exploraCash:digital, nonCashInExplora:digital, nonCashGrossInExplora:digital,
+    billingShareEach:share, driverShare:share, exploraShare:share, driverEntitlement:share, driverFinal:share,
+    billingNetBeforeCashboxToDriver:netBeforeCashboxToDriver,
+    billingAmountToDriverBeforeCashbox:Math.max(0, netBeforeCashboxToDriver),
+    billingCashboxGross:cashboxGross, billingCashboxEligibleGross:eligibleGross,
+    billingCashboxGenerated:autoClosesCashbox ? cashboxPending : cashboxGenerated,
+    billingCashboxEligibleAmount:autoClosesCashbox ? cashboxPending : cashboxEligibleAmount,
+    billingCashboxOffsetApplied:cashboxOffsetApplied,
+    cashboxGeneratedTotal:cashboxGenerated,
+    cashboxTotal:autoClosesCashbox ? cashboxPending : cashboxGenerated,
+    cashboxIncludedInSettlement:autoClosesCashbox ? cashboxPending : financialNumber(closure.cashboxIncludedInSettlement || 0),
+    cashboxInDriver:autoClosesCashbox ? cashboxPending : Math.max(0, cashboxEligibleAmount - cashboxOffsetApplied),
+    cashboxInExplora:autoClosesCashbox ? 0 : cashboxOffsetApplied,
+    billingNetBeforeDriverPayments:netToDriver,
+    billingSettlementPaymentTotal:settlementPaymentTotal,
+    netSettlementToDriver:netAfterDriverPayments,
+    amountDueFromDriver:amountFromDriver, amountFromDriver,
+    amountDueToDriver:amountToDriver, amountToDriver,
+    pendingPayerRole:payerRole, receiptRequiredFrom:payerRole,
+    paymentDirection:payerRole === "driver" ? "driver_to_explora" : payerRole === "admin" ? "explora_to_driver" : "balanced"
+  };
+}
+
+function financialCashboxAmountCorrectionPatch(closure = {}, movement = {}, newAmount = 0) {
+  const previousAmount = Math.max(0, financialAmountOf(movement));
+  const nextAmount = Math.max(0, Math.round(financialNumber(newAmount)));
+  if (!(previousAmount > 0) || !(nextAmount > 0) || previousAmount === nextAmount) return null;
+  const delta = nextAmount - previousAmount;
+  const gross = Math.max(0, financialNumber(closure.cashboxGross ?? closure.gross ?? closure.cashboxBase) + delta);
+  const total = Math.max(0, financialNumber(closure.cashboxTotal ?? closure.mainTotal ?? closure.amountDueFromDriver) + delta * .05);
+  return { gross, cashboxGross:gross, mainTotal:total, cashboxTotal:total, cashboxInDriver:total, cashboxInExplora:0, amountDueFromDriver:total, amountFromDriver:total, amountDueToDriver:0, amountToDriver:0, netSettlementToDriver:-total };
+}
+
 async function financialAdjustClosures({ type, driverUid, documentId, movement, adminUid }) {
   const settlementPayment = type === "cobro" && financialIsBillingSettlementPayment(movement);
   const includeField = type === "gasto" ? "includedExpenseIds" : settlementPayment ? "includedBillingSettlementPaymentIds" : "includedBillingIds";
@@ -1609,9 +2001,9 @@ exports.adminDeleteFinancialMovement = onCall({ region:"southamerica-east1", tim
   const adminUid = await assertAdmin(request);
   const type = normalized(request.data?.type);
   const documentId = text(request.data?.documentId);
-  const driverUid = text(request.data?.driverUid);
+  const requestedDriverUid = text(request.data?.driverUid);
   const reason = text(request.data?.reason || "Borrado manual desde panel administrador").slice(0, 280);
-  if (!documentId || !driverUid) throw new HttpsError("invalid-argument", "Falta chofer o movimiento.");
+  if (!documentId) throw new HttpsError("invalid-argument", "Falta el movimiento.");
   if (!["cobro", "gasto", "caja_chica"].includes(type)) throw new HttpsError("invalid-argument", "Tipo de movimiento no permitido.");
 
   const collectionName = type === "gasto" ? "gastos" : "billing_records";
@@ -1620,7 +2012,9 @@ exports.adminDeleteFinancialMovement = onCall({ region:"southamerica-east1", tim
   const receiptIndexes = type === "caja_chica" ? [] : await financialReceiptIndexDocuments(documentId, type);
   if (!snap.exists && !receiptIndexes.length) throw new HttpsError("not-found", "El movimiento ya no existe en Firestore.");
   const data = snap.exists ? (snap.data() || {}) : ({ id:documentId, ...(receiptIndexes[0]?.data() || {}) });
-  if (!(await financialBelongsToDriver(data, driverUid))) throw new HttpsError("permission-denied", "El movimiento no pertenece al chofer seleccionado.");
+  const requestedMatches = requestedDriverUid ? await financialBelongsToDriver(data, requestedDriverUid) : false;
+  const driverUid = requestedMatches ? requestedDriverUid : (financialDriverValues(data)[0] || requestedDriverUid);
+  if (!driverUid) throw new HttpsError("failed-precondition", "El movimiento no tiene un chofer identificable.");
   if (type === "caja_chica" && financialMethodOf(data) !== "cash") throw new HttpsError("failed-precondition", "Solo los cobros en efectivo generan caja chica.");
 
   const auditRef = db.collection(ADMIN_AUDIT_COLLECTION).doc(`financial_delete_${Date.now()}_${documentId}`);
@@ -1645,13 +2039,197 @@ exports.adminDeleteFinancialMovement = onCall({ region:"southamerica-east1", tim
 
   await auditRef.set({
     action:"admin_delete_financial_movement", type, collectionName, documentId, driverUid,
-    adminUid, reason, amount:financialAmountOf(data), method:financialMethodOf(data), closuresAdjusted,
-    deletedFiles:counters.deletedFiles || 0, deletedReceiptIndexes:receiptIndexes.length, createdAt:FieldValue.serverTimestamp(), createdAtMs:Date.now()
+    adminUid, reason, amount:financialAmountOf(data), method:financialMethodOf(data), targetName:telegramDriverName(data), closuresAdjusted,
+    deletedFiles:counters.deletedFiles || 0, deletedReceiptIndexes:receiptIndexes.length, createdAt:FieldValue.serverTimestamp(), createdAtMs:Date.now(), version:"v67-admin-financial-actions"
   }, { merge:true }).catch(() => {});
   return { ok:true, type, collectionName, documentId, driverUid, closuresAdjusted, deletedFiles:counters.deletedFiles || 0, deletedReceiptIndexes:receiptIndexes.length };
 });
 
+exports.adminModifyExpenseAmount = onCall({ region:"southamerica-east1", timeoutSeconds:180, memory:"512MiB" }, async request => {
+  const adminUid = await assertAdmin(request);
+  const documentId = text(request.data?.documentId);
+  const requestedDriverUid = text(request.data?.driverUid);
+  const newAmount = Math.max(0, Math.round(financialNumber(request.data?.newAmount)));
+  const reason = text(request.data?.reason || "Corrección manual de gasto").slice(0, 280);
+  if (!documentId) throw new HttpsError("invalid-argument", "Falta el gasto.");
+  if (!(newAmount > 0)) throw new HttpsError("invalid-argument", "El importe nuevo debe ser mayor a cero.");
 
+  const expenseRef = db.collection("gastos").doc(documentId);
+  const initialSnapshot = await expenseRef.get();
+  if (!initialSnapshot.exists) throw new HttpsError("not-found", "El gasto original ya no existe en Firestore.");
+  const initialData = initialSnapshot.data() || {};
+  const requestedMatches = requestedDriverUid ? await financialBelongsToDriver(initialData, requestedDriverUid) : false;
+  const driverUid = requestedMatches ? requestedDriverUid : (financialDriverValues(initialData)[0] || requestedDriverUid);
+  if (!driverUid) throw new HttpsError("failed-precondition", "El gasto no tiene un chofer identificable.");
+
+  const receiptIndexes = await financialReceiptIndexDocuments(documentId, "gasto");
+  const closureDocuments = await financialRelatedClosures(driverUid, documentId, "includedExpenseIds");
+  const auditRef = db.collection(ADMIN_AUDIT_COLLECTION).doc(`expense_modify_${Date.now()}_${documentId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 180));
+  let previousAmount = 0;
+  const closureUpdates = [];
+
+  await db.runTransaction(async transaction => {
+    const expenseSnapshot = await transaction.get(expenseRef);
+    if (!expenseSnapshot.exists) throw new HttpsError("not-found", "El gasto original ya no existe en Firestore.");
+    const indexSnapshots = [];
+    for (const item of receiptIndexes) indexSnapshots.push(await transaction.get(item.ref));
+    const closureSnapshots = [];
+    for (const item of closureDocuments) closureSnapshots.push({ id:item.id, ref:item.ref, snapshot:await transaction.get(item.ref) });
+
+    const expenseData = expenseSnapshot.data() || {};
+    previousAmount = Math.max(0, Math.round(financialAmountOf(expenseData)));
+    if (!(previousAmount > 0)) throw new HttpsError("failed-precondition", "El gasto anterior no tiene un importe válido.");
+    if (previousAmount === newAmount) return;
+
+    const expenseUpdate = {
+      amount:newAmount, monto:newAmount,
+      previousAmount, amountBeforeCorrection:previousAmount,
+      amountCorrectionCount:Math.max(0, Number(expenseData.amountCorrectionCount || 0)) + 1,
+      amountCorrectedByUid:adminUid, amountCorrectedByRole:"admin",
+      amountCorrectedAt:FieldValue.serverTimestamp(),
+      updatedAt:FieldValue.serverTimestamp(), updatedAtMs:Date.now(),
+      version:"v4146-expense-receipt-actions"
+    };
+    for (const key of ["valor", "totalAmount", "importe", "price", "total"]) {
+      if (Object.prototype.hasOwnProperty.call(expenseData, key)) expenseUpdate[key] = newAmount;
+    }
+    transaction.update(expenseRef, expenseUpdate);
+
+    indexSnapshots.forEach(snapshot => {
+      if (!snapshot.exists) return;
+      transaction.update(snapshot.ref, {
+        amount:newAmount, previousAmount,
+        amountCorrectedByUid:adminUid, amountCorrectedByRole:"admin",
+        amountCorrectedAt:FieldValue.serverTimestamp(),
+        updatedAt:FieldValue.serverTimestamp(), updatedAtMs:Date.now(),
+        version:"v4146-expense-receipt-actions"
+      });
+    });
+
+    closureUpdates.length = 0;
+    closureSnapshots.forEach(item => {
+      if (!item.snapshot.exists) return;
+      const patch = financialExpenseAmountCorrectionPatch(item.snapshot.data() || {}, expenseData, newAmount);
+      if (!patch) return;
+      transaction.update(item.ref, {
+        ...patch,
+        adminAdjusted:true, adminAdjustedReason:"Valor de gasto corregido",
+        amountCorrectionRecordId:documentId,
+        amountCorrectionPrevious:previousAmount,
+        amountCorrectionNew:newAmount,
+        amountCorrectionDifference:newAmount - previousAmount,
+        amountCorrectedByUid:adminUid, amountCorrectedByRole:"admin",
+        amountCorrectedAt:FieldValue.serverTimestamp(),
+        updatedAt:FieldValue.serverTimestamp(), updatedAtMs:Date.now(),
+        version:"v4146-expense-receipt-actions"
+      });
+      closureUpdates.push({ id:item.id, patch });
+    });
+
+    transaction.set(auditRef, {
+      action:"admin_modify_expense_amount", type:"gasto", collectionName:"gastos",
+      documentId, recordId:documentId, driverUid, adminUid, targetName:telegramDriverName(expenseData), method:"expense",
+      previousAmount, newAmount, difference:newAmount - previousAmount, reason,
+      adjustedClosureCount:closureUpdates.length,
+      adjustedClosureIds:closureUpdates.map(item => item.id),
+      createdAt:FieldValue.serverTimestamp(), createdAtMs:Date.now(),
+      version:"v4146-expense-receipt-actions"
+    }, { merge:false });
+  });
+
+  return {
+    ok:true, type:"gasto", collectionName:"gastos", documentId, driverUid,
+    previousAmount, newAmount, closureUpdates,
+    adjustedClosureCount:closureUpdates.length,
+    updatedReceiptIndexes:receiptIndexes.length
+  };
+});
+
+
+
+
+exports.adminModifyBillingAmount = onCall({ region:"southamerica-east1", timeoutSeconds:180, memory:"512MiB" }, async request => {
+  const adminUid = await assertAdmin(request);
+  const documentId = text(request.data?.documentId);
+  const requestedDriverUid = text(request.data?.driverUid);
+  const newAmount = Math.max(0, Math.round(financialNumber(request.data?.newAmount)));
+  const reason = text(request.data?.reason || "Corrección manual de cobro").slice(0, 280);
+  if (!documentId) throw new HttpsError("invalid-argument", "Falta el cobro.");
+  if (!(newAmount > 0)) throw new HttpsError("invalid-argument", "El importe nuevo debe ser mayor a cero.");
+
+  const paymentRef = db.collection("billing_records").doc(documentId);
+  const initialSnapshot = await paymentRef.get();
+  if (!initialSnapshot.exists) throw new HttpsError("not-found", "El cobro original ya no existe en Firestore.");
+  const initialData = initialSnapshot.data() || {};
+  if (financialIsBillingSettlementPayment(initialData) || normalized(initialData.type) === "settlement_adjustment" || normalized(initialData.type).includes("compensation")) {
+    throw new HttpsError("failed-precondition", "Este movimiento es un ajuste interno y no se puede editar desde Cobros/Gastos.");
+  }
+  const requestedMatches = requestedDriverUid ? await financialBelongsToDriver(initialData, requestedDriverUid) : false;
+  const driverUid = requestedMatches ? requestedDriverUid : (financialDriverValues(initialData)[0] || requestedDriverUid);
+  if (!driverUid) throw new HttpsError("failed-precondition", "El cobro no tiene un chofer identificable.");
+
+  const receiptIndexes = await financialReceiptIndexDocuments(documentId, "cobro");
+  const closureMap = new Map();
+  for (const field of ["includedBillingIds", "includedCashboxIds"]) {
+    const docs = await financialRelatedClosures(driverUid, documentId, field);
+    docs.forEach(item => closureMap.set(item.id, item));
+  }
+  const closureDocuments = [...closureMap.values()];
+  const auditRef = db.collection(ADMIN_AUDIT_COLLECTION).doc(`billing_modify_${Date.now()}_${documentId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 180));
+  let previousAmount = 0;
+  const closureUpdates = [];
+
+  await db.runTransaction(async transaction => {
+    const paymentSnapshot = await transaction.get(paymentRef);
+    if (!paymentSnapshot.exists) throw new HttpsError("not-found", "El cobro original ya no existe en Firestore.");
+    const indexSnapshots = [];
+    for (const item of receiptIndexes) indexSnapshots.push(await transaction.get(item.ref));
+    const closureSnapshots = [];
+    for (const item of closureDocuments) closureSnapshots.push({ id:item.id, ref:item.ref, snapshot:await transaction.get(item.ref) });
+
+    const paymentData = paymentSnapshot.data() || {};
+    previousAmount = Math.max(0, Math.round(financialAmountOf(paymentData)));
+    if (!(previousAmount > 0)) throw new HttpsError("failed-precondition", "El cobro anterior no tiene un importe válido.");
+    if (previousAmount === newAmount) return;
+
+    const paymentUpdate = {
+      amount:newAmount, monto:newAmount,
+      previousAmount, amountBeforeCorrection:previousAmount,
+      amountCorrectionCount:Math.max(0, Number(paymentData.amountCorrectionCount || 0)) + 1,
+      amountCorrectedByUid:adminUid, amountCorrectedByRole:"admin", amountCorrectionReason:reason,
+      amountCorrectedAt:FieldValue.serverTimestamp(), updatedAt:FieldValue.serverTimestamp(), updatedAtMs:Date.now(),
+      version:"v67-admin-financial-actions"
+    };
+    for (const key of ["valor", "billingAmount", "finalPrice", "finalAmount", "totalAmount", "importe", "price", "total"]) {
+      if (Object.prototype.hasOwnProperty.call(paymentData, key)) paymentUpdate[key] = newAmount;
+    }
+    transaction.update(paymentRef, paymentUpdate);
+
+    indexSnapshots.forEach(snapshot => {
+      if (!snapshot.exists) return;
+      transaction.update(snapshot.ref, { amount:newAmount, previousAmount, amountCorrectedByUid:adminUid, amountCorrectedByRole:"admin", amountCorrectionReason:reason, amountCorrectedAt:FieldValue.serverTimestamp(), updatedAt:FieldValue.serverTimestamp(), updatedAtMs:Date.now(), version:"v67-admin-financial-actions" });
+    });
+
+    closureUpdates.length = 0;
+    closureSnapshots.forEach(item => {
+      if (!item.snapshot.exists) return;
+      const closure = item.snapshot.data() || {};
+      const kind = financialClosureKind(closure);
+      const inBillingIds = Array.isArray(closure.includedBillingIds) && closure.includedBillingIds.map(text).includes(text(documentId));
+      const inCashboxIds = Array.isArray(closure.includedCashboxIds) && closure.includedCashboxIds.map(text).includes(text(documentId));
+      let patch = null;
+      if (financialIsBillingClosure(kind)) patch = financialBillingAmountCorrectionPatch(closure, paymentData, newAmount, { cashboxOnly:!inBillingIds && inCashboxIds });
+      if (kind === "caja_chica" && financialMethodOf(paymentData) === "cash" && inCashboxIds) patch = financialCashboxAmountCorrectionPatch(closure, paymentData, newAmount);
+      if (!patch) return;
+      transaction.update(item.ref, { ...patch, adminAdjusted:true, adminAdjustedReason:"Valor de cobro corregido", amountCorrectionRecordId:documentId, amountCorrectionPrevious:previousAmount, amountCorrectionNew:newAmount, amountCorrectionDifference:newAmount-previousAmount, amountCorrectionReason:reason, amountCorrectedByUid:adminUid, amountCorrectedByRole:"admin", amountCorrectedAt:FieldValue.serverTimestamp(), updatedAt:FieldValue.serverTimestamp(), updatedAtMs:Date.now(), version:"v67-admin-financial-actions" });
+      closureUpdates.push({ id:item.id, patch });
+    });
+
+    transaction.set(auditRef, { action:"admin_modify_billing_amount", type:"cobro", collectionName:"billing_records", documentId, recordId:documentId, driverUid, adminUid, previousAmount, newAmount, difference:newAmount-previousAmount, reason, method:financialMethodOf(paymentData), targetName:telegramDriverName(paymentData), adjustedClosureCount:closureUpdates.length, adjustedClosureIds:closureUpdates.map(item=>item.id), createdAt:FieldValue.serverTimestamp(), createdAtMs:Date.now(), version:"v67-admin-financial-actions" }, { merge:false });
+  });
+
+  return { ok:true, type:"cobro", collectionName:"billing_records", documentId, driverUid, previousAmount, newAmount, closureUpdates, adjustedClosureCount:closureUpdates.length, updatedReceiptIndexes:receiptIndexes.length };
+});
 // ============================================================================
 // RÉCORD PERSONAL — autoridad del servidor
 // ============================================================================
@@ -1942,6 +2520,113 @@ exports.applyDailyDebtPenalties = onSchedule({
   console.info("applyDailyDebtPenalties", { processed, skipped, scanned:snap.size, totalInterest, todayKey });
 });
 
+
+function telegramInternalBillingMovement(data = {}) {
+  const type = normalized(data.type || data.operationType || data.movementType);
+  return type === "settlement_adjustment" || type === "reimbursement_compensation" || type === "debt_compensation" || data.internalSettlementAdjustment === true;
+}
+
+function telegramInternalBillingText(data = {}) {
+  const type = normalized(data.type || data.operationType || data.movementType);
+  if (type === "reimbursement_compensation" || type === "debt_compensation") {
+    return [
+      "COMPENSACIÓN REGISTRADA",
+      `Chofer: ${telegramDriverName(data)}`,
+      `Monto aplicado: ${telegramMoney(telegramAmount(data))}`,
+      ...(telegramSafeText(data.detail || data.notes) ? [`Detalle: ${telegramSafeText(data.detail || data.notes).slice(0, 500)}`] : []),
+      `Fecha: ${telegramDateLabel(data)}`
+    ].join("\n");
+  }
+  const direction = normalized(data.adjustmentDirection);
+  const title = direction === "explora_to_driver" ? "PAGO / AJUSTE DE EXPLORA" : "PAGO / AJUSTE DEL CHOFER";
+  return [
+    title,
+    `Chofer: ${telegramDriverName(data)}`,
+    `Monto: ${telegramMoney(telegramAmount(data))}`,
+    ...(telegramSafeText(data.detail || data.notes || data.reason) ? [`Detalle: ${telegramSafeText(data.detail || data.notes || data.reason).slice(0, 500)}`] : []),
+    `Fecha: ${telegramDateLabel(data)}`
+  ].join("\n");
+}
+
+function telegramAdvanceText(data = {}) {
+  return [
+    "SOLICITUD DE ADELANTO / PRÉSTAMO",
+    `Chofer: ${telegramDriverName(data)}`,
+    `Monto solicitado: ${telegramMoney(data.principalAmount || data.originalAmount || data.amount || 0)}`,
+    `Interés: ${Number(data.interestPercent || 0)}%`,
+    `Total a devolver: ${telegramMoney(data.totalDebt || data.remainingAmount || 0)}`,
+    `Diferencia al solicitar: ${telegramMoney(data.differenceAtRequest || 0)}`,
+    `Fecha: ${telegramDateLabel(data)}`
+  ].join("\n");
+}
+
+function telegramAdminAuditText(data = {}) {
+  const action = normalized(data.action);
+  const actionLabels = {
+    admin_create_driver:"CHOFER CREADO",
+    admin_update_driver:"CHOFER MODIFICADO",
+    admin_delete_financial_movement:"MOVIMIENTO ELIMINADO POR ADMIN",
+    admin_modify_expense_amount:"GASTO MODIFICADO POR ADMIN",
+    admin_modify_billing_amount:"COBRO MODIFICADO POR ADMIN",
+    admin_annul_driver_debt:"DEUDA ANULADA POR ADMIN"
+  };
+  const title = actionLabels[action] || "ACCIÓN ADMINISTRATIVA";
+  const lines = [title];
+  const name = telegramSafeText(data.targetName || data.targetUsername || data.driverName || data.driverUid || data.targetUid);
+  if (name) lines.push(`Chofer: ${name}`);
+  if (Number(data.previousAmount) > 0) lines.push(`Importe anterior: ${telegramMoney(data.previousAmount)}`);
+  if (Number(data.newAmount) > 0) lines.push(`Importe nuevo: ${telegramMoney(data.newAmount)}`);
+  if (!Number(data.previousAmount) && Number(data.amount) > 0) lines.push(`Importe: ${telegramMoney(data.amount)}`);
+  if (telegramSafeText(data.type)) lines.push(`Tipo: ${telegramSafeText(data.type)}`);
+  if (telegramSafeText(data.method)) lines.push(`Método: ${telegramSafeText(data.method)}`);
+  if (typeof data.active === "boolean") lines.push(`Estado: ${data.active ? "activo" : "inactivo"}`);
+  if (data.passwordChanged === true) lines.push("Clave: modificada");
+  if (telegramSafeText(data.reason)) lines.push(`Motivo: ${telegramSafeText(data.reason).slice(0, 500)}`);
+  lines.push(`Fecha: ${telegramDateLabel(data)}`);
+  return lines.join("\n");
+}
+
+function closureTelegramUpdateChanged(before = {}, after = {}) {
+  const keys = ["status","paidAmountTotal","remainingAmount","amountDueFromDriver","amountDueToDriver","proofUrl","receiptUrl","completedAt"];
+  return keys.some(key => JSON.stringify(before?.[key] ?? null) !== JSON.stringify(after?.[key] ?? null));
+}
+
+function closureTelegramUpdateText(data = {}) {
+  const remaining = Math.max(0, Number(data.remainingAmount ?? data.amountDueFromDriver ?? data.amountDueToDriver ?? 0) || 0);
+  const paid = Math.max(0, Number(data.paidAmountTotal || 0));
+  const status = telegramSafeText(data.status || data.reviewStatus || "actualizado").toLowerCase();
+  const title = /reject|rechaz/.test(status) ? "CIERRE RECHAZADO"
+    : /completed|approved|partial|paid/.test(status) ? "CIERRE PROCESADO POR ADMIN"
+      : "CIERRE ACTUALIZADO";
+  const lines = [
+    title,
+    `Chofer: ${telegramDriverName(data)}`,
+    `Tipo: ${telegramSafeText(data.closureKind || data.closureType || "facturación")}`,
+    `Estado: ${telegramSafeText(data.status || "actualizado")}`,
+    `Pagado acumulado: ${telegramMoney(paid)}`,
+    `Saldo pendiente: ${telegramMoney(remaining)}`
+  ];
+  if (telegramSafeText(data.actionedByAdminName || data.approvedByName || data.rejectedByName)) {
+    lines.push(`Acción Admin: ${telegramSafeText(data.actionedByAdminName || data.approvedByName || data.rejectedByName)}`);
+  }
+  if (telegramSafeText(data.rejectionReason)) lines.push(`Motivo: ${telegramSafeText(data.rejectionReason).slice(0, 500)}`);
+  lines.push(`Fecha: ${telegramDateLabel({ ...data, createdAt:data.updatedAt || data.completedAt || data.rejectedAt || data.createdAt, createdAtMs:data.updatedAtMs || data.rejectedAtMs || data.createdAtMs })}`);
+  return lines.join("\n");
+}
+
+function telegramAdvanceDecisionText(data = {}) {
+  const state = telegramSafeText(data.approvalStatus || data.status).toLowerCase();
+  const approved = /approved|active/.test(state);
+  return [
+    approved ? "ADELANTO / PRÉSTAMO APROBADO" : "ADELANTO / PRÉSTAMO RECHAZADO",
+    `Chofer: ${telegramDriverName(data)}`,
+    `Monto solicitado: ${telegramMoney(data.principalAmount || data.originalAmount || data.amount || 0)}`,
+    `Total a devolver: ${telegramMoney(data.totalDebt || data.requestedTotalDebt || 0)}`,
+    `Acción Admin: ${telegramSafeText(data.approvedByName || data.rejectedByName || "Administrador")}`,
+    `Fecha: ${telegramDateLabel({ ...data, createdAt:data.approvedAt || data.rejectedAt || data.updatedAt || data.createdAt, createdAtMs:data.approvedAtMs || data.rejectedAtMs || data.updatedAtMs || data.createdAtMs })}`
+  ].join("\n");
+}
+
 // Envía a Telegram cada cobro nuevo:
 // - digital (tarjeta, QR o transferencia), con foto;
 // - efectivo, sin foto pero con los datos de la operación.
@@ -1954,8 +2639,20 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
   secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
 }, async event => {
   const data = event.data?.data() || {};
+  const internalMovement = telegramInternalBillingMovement(data);
+  if (data.suppressTelegram === true && !internalMovement) {
+    return { skipped: true, reason: "suppressed-by-source" };
+  }
   if (data.isSimulated === true || data.createdBySimulation === true || data.verificationMode === "simulation") {
     return { skipped: true, reason: "simulation-record" };
+  }
+  if (internalMovement && !isDriverBillingSettlementPayment(data)) {
+    const docId = telegramSafeText(event.params?.docId || event.data?.id);
+    return telegramProcessNotification({
+      kind:"billing_internal", docId, sourceCollection:"billing_records", sourceDocumentId:docId,
+      notificationKey:telegramOperationNotificationKey(data, docId), data, eventId:event.id,
+      caption:telegramInternalBillingText(data), requirePhoto:Boolean(telegramDirectPhotoUrl(data))
+    });
   }
   const method = telegramPaymentMethod(data);
   if (isDriverBillingSettlementPayment(data)) {
@@ -1987,13 +2684,14 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
     return telegramProcessNotification({
       kind: "billing",
       docId,
+      notificationKey: telegramOperationNotificationKey(data, docId),
       data,
       eventId: event.id,
       caption,
       requirePhoto: method.key === "transfer"
     });
   }
-  const isDigital = new Set(["card", "qr", "transfer"]).has(method.key);
+  const isDigital = new Set(["card", "qr", "transfer", "digital"]).has(method.key);
   const isCash = method.key === "cash";
   if (!isDigital && !isCash) {
     return { skipped: true, reason: "unsupported-payment-method", method: method.key };
@@ -2001,20 +2699,25 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
 
   const docId = telegramSafeText(event.params?.docId || event.data?.id);
   const notes = telegramSafeText(data.notes || data.detalle || data.descripcion || data.observaciones || data.serviceDescription);
-  const balance = await telegramOpenBillingBalance(data, docId);
+  const payloadAfterBalance = Number(data.telegramSettlementAfterBalance);
+  const balance = Number.isFinite(payloadAfterBalance) ? null : await telegramOpenBillingBalance(data, docId);
+  const balanceLine = Number.isFinite(payloadAfterBalance)
+    ? telegramSignedSettlementLine(payloadAfterBalance)
+    : telegramBillingBalanceLine(balance || {});
   const caption = [
     isCash ? "COBRO EN EFECTIVO REGISTRADO" : "COBRO DIGITAL REGISTRADO",
     `Chofer: ${telegramDriverName(data)}`,
     `Monto: ${telegramMoney(telegramAmount(data))}`,
     `Método: ${method.label}`,
     ...(notes ? [`Detalle: ${notes.slice(0, 300)}`] : []),
-    telegramBillingBalanceLine(balance),
+    balanceLine,
     `Fecha: ${telegramDateLabel(data)}`
   ].join("\n");
 
   return telegramProcessNotification({
     kind: "billing",
     docId,
+    notificationKey: telegramOperationNotificationKey(data, docId),
     data,
     eventId: event.id,
     caption,
@@ -2034,10 +2737,19 @@ exports.notifyExpenseV2 = onDocumentCreated({
   const data = event.data?.data() || {};
   const docId = telegramSafeText(event.params?.docId || event.data?.id);
   const notes = telegramSafeText(data.notes || data.detalle || data.descripcion || data.observaciones);
+  const loadedAmount = Number(data.telegramExpenseLoadedAmount ?? telegramAmount(data) ?? 0);
+  const recognizedAmount = Number(data.telegramExpenseRecognizedAmount ?? (loadedAmount * 0.50));
+  const settlementAfterBalance = Number(data.telegramSettlementAfterBalance ?? 0);
+  const amountLines = buildExpenseTelegramAmountLines({
+    loadedAmount,
+    recognizedAmount,
+    settlementAfterBalance,
+    formatMoney: telegramMoney
+  });
   const captionLines = [
-    "GASTO REGISTRADO",
+    "NUEVO GASTO GENERADO",
     `Chofer: ${telegramDriverName(data)}`,
-    `Monto: ${telegramMoney(telegramAmount(data))}`,
+    ...amountLines,
     `Tipo: ${telegramExpenseType(data)}`,
     ...(notes ? [`Detalle: ${notes.slice(0, 300)}`] : []),
     `Fecha: ${telegramDateLabel(data)}`
@@ -2046,6 +2758,7 @@ exports.notifyExpenseV2 = onDocumentCreated({
   return telegramProcessNotification({
     kind: "expense",
     docId,
+    notificationKey: telegramOperationNotificationKey(data, docId),
     data,
     eventId: event.id,
     caption: captionLines.join("\n")
@@ -2126,7 +2839,7 @@ exports.notifyAdminDriverDebtTelegramV1 = onDocumentCreated({
 });
 
 // Telegram grupal · cierres solicitados por chofer: gastos, caja chica y facturación.
-exports.notifyClosureTelegramGroupV1 = onDocumentCreated({
+exports.notifyClosureTelegramGroupV1 = onDocumentWritten({
   document: "cierres_semanales/{docId}",
   region: TELEGRAM_FUNCTION_REGION,
   memory: "256MiB",
@@ -2134,18 +2847,22 @@ exports.notifyClosureTelegramGroupV1 = onDocumentCreated({
   retry: true,
   secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
 }, async event => {
-  const data = event.data?.data() || {};
-  if (!closureTelegramAllowed(data)) return { skipped: true, reason: "not-a-driver-operational-closure" };
-  const docId = telegramSafeText(event.params?.docId || event.data?.id);
+  const before = event.data?.before?.exists ? (event.data.before.data() || {}) : null;
+  const after = event.data?.after?.exists ? (event.data.after.data() || {}) : null;
+  if (!after) return { skipped:true, reason:"deleted" };
+  if (!closureTelegramAllowed(after)) return { skipped: true, reason: "not-an-operational-closure" };
+  const docId = telegramSafeText(event.params?.docId || event.data?.after?.id);
+  if (!before) {
+    return telegramProcessNotification({
+      kind: "closure", docId, sourceCollection:"cierres_semanales", sourceDocumentId:docId,
+      data:after, eventId:event.id, caption:closureTelegramText(after), requirePhoto:false
+    });
+  }
+  if (!closureTelegramUpdateChanged(before, after)) return { skipped:true, reason:"no-meaningful-closure-change" };
+  const revisionKey = `${docId}_${Number(after.updatedAtMs || after.paidAmountTotal || Date.now())}_${telegramSafeText(after.status)}`;
   return telegramProcessNotification({
-    kind: "closure",
-    docId,
-    sourceCollection: "cierres_semanales",
-    sourceDocumentId: docId,
-    data,
-    eventId: event.id,
-    caption: closureTelegramText(data),
-    requirePhoto: false
+    kind:"closure_update", docId, notificationKey:revisionKey, sourceCollection:"cierres_semanales", sourceDocumentId:docId,
+    data:after, eventId:event.id, caption:closureTelegramUpdateText(after), requirePhoto:Boolean(telegramDirectPhotoUrl(after))
   });
 });
 
@@ -2195,6 +2912,50 @@ exports.notifyUberClosureTelegramGroupV1 = onDocumentWritten({
   });
 });
 
+
+
+// Telegram · cada solicitud de adelanto/préstamo.
+exports.notifyAdvanceTelegramV1 = onDocumentCreated({
+  document:"prestamos_operativos/{docId}", region:TELEGRAM_FUNCTION_REGION, memory:"256MiB", timeoutSeconds:120, retry:true,
+  secrets:[TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
+}, async event => {
+  const data = event.data?.data() || {};
+  const docId = telegramSafeText(event.params?.docId || event.data?.id);
+  return telegramProcessNotification({ kind:"advance", docId, sourceCollection:"prestamos_operativos", sourceDocumentId:docId, data, eventId:event.id, caption:telegramAdvanceText(data), requirePhoto:false });
+});
+
+// Telegram · decisión del Admin sobre adelantos/préstamos pendientes.
+exports.notifyAdvanceDecisionTelegramV1 = onDocumentWritten({
+  document:"prestamos_operativos/{docId}", region:TELEGRAM_FUNCTION_REGION, memory:"256MiB", timeoutSeconds:120, retry:true,
+  secrets:[TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
+}, async event => {
+  const before = event.data?.before?.exists ? (event.data.before.data() || {}) : null;
+  const after = event.data?.after?.exists ? (event.data.after.data() || {}) : null;
+  if (!before || !after) return { skipped:true, reason:"not-an-update" };
+  const beforeState = telegramSafeText(before.approvalStatus || before.status).toLowerCase();
+  const afterState = telegramSafeText(after.approvalStatus || after.status).toLowerCase();
+  if (beforeState === afterState) return { skipped:true, reason:"decision-not-changed" };
+  if (!/approved|active|rejected|rechaz/.test(afterState)) return { skipped:true, reason:"not-a-final-admin-decision" };
+  const docId = telegramSafeText(event.params?.docId || event.data?.after?.id);
+  const revisionKey = `${docId}_${afterState}_${Number(after.updatedAtMs || after.approvedAtMs || after.rejectedAtMs || Date.now())}`;
+  return telegramProcessNotification({
+    kind:"advance_decision", docId, notificationKey:revisionKey, sourceCollection:"prestamos_operativos", sourceDocumentId:docId,
+    data:after, eventId:event.id, caption:telegramAdvanceDecisionText(after), requirePhoto:false
+  });
+});
+
+// Telegram · acciones administrativas que no tienen una notificación propia en su colección.
+exports.notifyAdminAuditTelegramV1 = onDocumentCreated({
+  document:"admin_audit/{docId}", region:TELEGRAM_FUNCTION_REGION, memory:"256MiB", timeoutSeconds:120, retry:true,
+  secrets:[TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
+}, async event => {
+  const data = event.data?.data() || {};
+  const action = normalized(data.action);
+  const allowed = new Set(["admin_create_driver","admin_update_driver","admin_delete_financial_movement","admin_modify_expense_amount","admin_modify_billing_amount","admin_annul_driver_debt"]);
+  if (!allowed.has(action)) return { skipped:true, reason:"covered-by-specific-notification-or-not-relevant", action };
+  const docId = telegramSafeText(event.params?.docId || event.data?.id);
+  return telegramProcessNotification({ kind:"admin_audit", docId, sourceCollection:"admin_audit", sourceDocumentId:docId, data, eventId:event.id, caption:telegramAdminAuditText(data), requirePhoto:false });
+});
 
 // Compatibilidad de despliegue: conserva los nombres de las funciones WhatsApp anteriores
 // pero las vuelve NO-OP. Así, un deploy normal reemplaza cualquier versión activa que
