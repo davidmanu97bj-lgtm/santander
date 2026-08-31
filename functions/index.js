@@ -14,15 +14,8 @@ const {
   calculateTeamRealtimeSettlementBalance,
   isDriverBillingSettlementPayment
 } = require("./telegram-billing-balance");
-const {
-  buildAdminDebtPaymentTelegramText,
-  isAdminDebtPayment
-} = require("./telegram-debt-payment");
-const {
-  buildAdminDriverDebtTelegramText,
-  isAdminDriverDebt
-} = require("./telegram-driver-debt");
-const { buildExpenseTelegramAmountLines } = require("./telegram-expense");
+const { isAdminDebtPayment } = require("./telegram-debt-payment");
+const { isAdminDriverDebt } = require("./telegram-driver-debt");
 
 const PROJECT_ID = "explora-control-operativo";
 const STORAGE_BUCKET = `${PROJECT_ID}.firebasestorage.app`;
@@ -354,23 +347,49 @@ exports.onTeamRealtimeDriverWriteV1 = onDocumentWritten({
   return refreshTeamRealtimeBalanceForProfile(after);
 });
 
+function telegramSignedSettlementLine(value) {
+  const balance = Number(value || 0);
+  if (balance > 0.49) return `Estado: Chofer debe ${telegramMoney(balance)}`;
+  if (balance < -0.49) return `Estado: Explora debe ${telegramMoney(Math.abs(balance))}`;
+  return "Estado: Equilibrado";
+}
+
 function telegramBillingBalanceLine(balance = {}) {
   const amountFromDriver = Number(balance.amountFromDriver || 0);
   const amountToDriver = Number(balance.amountToDriver || 0);
-  if (amountFromDriver > 0.49) {
-    return `Saldo acumulado: Chofer debe liquidar a Explora ${telegramMoney(amountFromDriver)}`;
-  }
-  if (amountToDriver > 0.49) {
-    return `Saldo acumulado: Explora debe liquidar al chofer ${telegramMoney(amountToDriver)}`;
-  }
-  return "Saldo acumulado: nadie debe liquidar";
+  if (amountFromDriver > 0.49) return `Estado: Chofer debe ${telegramMoney(amountFromDriver)}`;
+  if (amountToDriver > 0.49) return `Estado: Explora debe ${telegramMoney(amountToDriver)}`;
+  return "Estado: Equilibrado";
 }
 
-function telegramSignedSettlementLine(value) {
-  const balance = Number(value || 0);
-  if (balance > 0.49) return `Quién paga a quién: Chofer debe liquidar a Explora ${telegramMoney(balance)}`;
-  if (balance < -0.49) return `Quién paga a quién: Explora debe liquidar al chofer ${telegramMoney(Math.abs(balance))}`;
-  return "Quién paga a quién: cuentas equilibradas";
+function telegramDateTimeLines(data = {}) {
+  const ms = telegramTimestampMs(data.createdAt)
+    || telegramTimestampMs(data.completedAt)
+    || telegramTimestampMs(data.expenseDate)
+    || telegramTimestampMs(data.receiptUploadedAt)
+    || Number(data.createdAtMs || 0)
+    || Date.now();
+  const date = new Date(ms);
+  const dateLabel = new Intl.DateTimeFormat("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    day: "2-digit", month: "2-digit", year: "numeric"
+  }).format(date);
+  const timeLabel = new Intl.DateTimeFormat("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    hour: "2-digit", minute: "2-digit", hour12: false
+  }).format(date);
+  return [`Fecha: ${dateLabel}`, `Hora: ${timeLabel}`];
+}
+
+function telegramSimpleFinancialText({ title, data = {}, amount = 0, detail = "Operación registrada", balance = 0, dateData = null } = {}) {
+  return [
+    telegramSafeText(title || "MOVIMIENTO REGISTRADO"),
+    `Chofer: ${telegramDriverName(data)}`,
+    `Monto: ${telegramMoney(amount)}`,
+    `Detalle: ${telegramSafeText(detail || "Operación registrada").slice(0, 500)}`,
+    telegramSignedSettlementLine(balance),
+    ...telegramDateTimeLines(dateData || data)
+  ].join("\n");
 }
 
 function telegramDirectPhotoUrl(data = {}) {
@@ -602,56 +621,40 @@ function closureTelegramAllowed(data = {}) {
 
 function closureTelegramText(data = {}) {
   const kind = telegramSafeText(data.closureKind || data.closureType || data.moduleKey || data.payTab || "cierre");
-  const amountFromDriver = Number(data.amountDueFromDriver || 0);
-  const amountToDriver = Number(data.amountDueToDriver || 0);
-  const result = amountFromDriver > 0.49
-    ? `Chofer debe pagar ${telegramMoney(amountFromDriver)}`
-    : amountToDriver > 0.49
-      ? `Explora debe pagar ${telegramMoney(amountToDriver)}`
-      : "Sin saldo a liquidar";
-  const lines = [
-    "PEDIDO DE CIERRE EXPLORA",
+  const amountFromDriver = Math.max(0, Number(data.amountDueFromDriver || 0));
+  const amountToDriver = Math.max(0, Number(data.amountDueToDriver || 0));
+  const amount = Math.max(amountFromDriver, amountToDriver, Number(data.amount || data.totalAmount || 0));
+  const detailParts = [kind || "cierre"];
+  if (telegramSafeText(data.notes || data.detail || data.reason)) detailParts.push(telegramSafeText(data.notes || data.detail || data.reason).slice(0, 300));
+  return [
+    "CIERRE SOLICITADO",
     `Chofer: ${telegramDriverName(data)}`,
-    `Tipo: ${kind || "cierre"}`,
-    `Resultado: ${result}`
-  ];
-  if (amountToDriver > 0.49 && telegramSafeText(data.recipientAlias)) {
-    lines.push(`Destino: ${telegramSafeText(data.recipientAlias)} · CUIT ${telegramSafeText(data.recipientCuit || "—")}`);
-  }
-  if (amountFromDriver > 0.49 && telegramSafeText(data.transferAlias)) {
-    lines.push(`Cuenta Explora: ${telegramSafeText(data.transferAlias)} · CUIT ${telegramSafeText(data.transferCuit || "—")}`);
-  }
-  lines.push(
-    `Total facturado: ${telegramMoney(data.gross || data.grossAmount || 0)}`,
-    `Gastos: ${telegramMoney(data.expenseTotal || 0)}`,
-    `Caja chica: ${telegramMoney(data.cashboxTotal || data.cashboxGeneratedTotal || 0)}`,
-    `Fecha: ${telegramDateLabel(data)}`
-  );
-  return lines.join("\n");
+    `Monto: ${telegramMoney(amount)}`,
+    `Detalle: ${detailParts.join(" · ")}`,
+    amountFromDriver > 0.49
+      ? `Estado: Chofer debe ${telegramMoney(amountFromDriver)}`
+      : amountToDriver > 0.49
+        ? `Estado: Explora debe ${telegramMoney(amountToDriver)}`
+        : "Estado: Equilibrado",
+    ...telegramDateTimeLines(data)
+  ].join("\n");
 }
 
 function uberTelegramText(data = {}) {
   const review = telegramSafeText(data.reviewStatus || data.status).toLowerCase();
   const noData = data.noData === true || review === "no_data";
-  if (noData) {
-    return [
-      "CIERRE UBER SIN DATOS",
-      `Chofer: ${telegramDriverName(data)}`,
-      `Semana: ${telegramSafeText(data.weekLabel || data.weekId || "—")}`,
-      "Estado: cerrada sin datos por el chofer.",
-      `Fecha: ${telegramDateLabel(data)}`
-    ].join("\n");
-  }
+  const week = telegramSafeText(data.weekLabel || data.weekId || "—");
+  const amount = noData ? 0 : Number(data.totalAmount || data.grossAmount || 0);
+  const stateLine = Number.isFinite(Number(data.telegramSettlementAfterBalance))
+    ? telegramSignedSettlementLine(Number(data.telegramSettlementAfterBalance))
+    : "Estado: Equilibrado";
   return [
-    "NUEVO COMPROBANTE UBER",
+    noData ? "CIERRE UBER SIN DATOS" : "CIERRE UBER REGISTRADO",
     `Chofer: ${telegramDriverName(data)}`,
-    `Semana cargada: ${telegramSafeText(data.weekLabel || data.weekId || "—")}`,
-    `Total Uber: ${telegramMoney(data.totalAmount || data.grossAmount || 0)}`,
-    `Deudas (50%): ${telegramMoney(data.debtAmount || data.exploraShare || 0)}`,
-    `Caja chica Uber (5%): ${telegramMoney(data.cashboxAmount || data.uberCashboxAmount || 0)}`,
-    telegramSignedSettlementLine(data.telegramSettlementAfterBalance),
-    "Estado: pendiente de revisión en Explora.",
-    `Fecha: ${telegramDateLabel(data)}`
+    `Monto: ${telegramMoney(amount)}`,
+    `Detalle: Semana ${week}${noData ? " · Sin datos" : ""}`,
+    stateLine,
+    ...telegramDateTimeLines(data)
   ].join("\n");
 }
 
@@ -2559,23 +2562,16 @@ function telegramInternalBillingMovement(data = {}) {
 
 function telegramInternalBillingText(data = {}) {
   const type = normalized(data.type || data.operationType || data.movementType);
-  if (type === "reimbursement_compensation" || type === "debt_compensation") {
-    return [
-      "COMPENSACIÓN REGISTRADA",
-      `Chofer: ${telegramDriverName(data)}`,
-      `Monto aplicado: ${telegramMoney(telegramAmount(data))}`,
-      ...(telegramSafeText(data.detail || data.notes) ? [`Detalle: ${telegramSafeText(data.detail || data.notes).slice(0, 500)}`] : []),
-      `Fecha: ${telegramDateLabel(data)}`
-    ].join("\n");
-  }
-  const direction = normalized(data.adjustmentDirection);
-  const title = direction === "explora_to_driver" ? "PAGO / AJUSTE DE EXPLORA" : "PAGO / AJUSTE DEL CHOFER";
+  const detail = telegramSafeText(data.detail || data.notes || data.reason) ||
+    (type === "reimbursement_compensation" || type === "debt_compensation" ? "Compensación" : "Cierre / ajuste");
+  const payloadBalance = Number(data.telegramSettlementAfterBalance ?? data.settlementAfter);
   return [
-    title,
+    "CIERRE REGISTRADO",
     `Chofer: ${telegramDriverName(data)}`,
     `Monto: ${telegramMoney(telegramAmount(data))}`,
-    ...(telegramSafeText(data.detail || data.notes || data.reason) ? [`Detalle: ${telegramSafeText(data.detail || data.notes || data.reason).slice(0, 500)}`] : []),
-    `Fecha: ${telegramDateLabel(data)}`
+    `Detalle: ${detail.slice(0, 500)}`,
+    Number.isFinite(payloadBalance) ? telegramSignedSettlementLine(payloadBalance) : "Estado: Equilibrado",
+    ...telegramDateTimeLines(data)
   ].join("\n");
 }
 
@@ -2587,7 +2583,7 @@ function telegramAdvanceText(data = {}) {
     `Interés: ${Number(data.interestPercent || 0)}%`,
     `Total a devolver: ${telegramMoney(data.totalDebt || data.remainingAmount || 0)}`,
     `Diferencia al solicitar: ${telegramMoney(data.differenceAtRequest || 0)}`,
-    `Fecha: ${telegramDateLabel(data)}`
+    ...telegramDateTimeLines(data)
   ].join("\n");
 }
 
@@ -2609,11 +2605,10 @@ function telegramAdminAuditText(data = {}) {
   if (Number(data.newAmount) > 0) lines.push(`Importe nuevo: ${telegramMoney(data.newAmount)}`);
   if (!Number(data.previousAmount) && Number(data.amount) > 0) lines.push(`Importe: ${telegramMoney(data.amount)}`);
   if (telegramSafeText(data.type)) lines.push(`Tipo: ${telegramSafeText(data.type)}`);
-  if (telegramSafeText(data.method)) lines.push(`Método: ${telegramSafeText(data.method)}`);
   if (typeof data.active === "boolean") lines.push(`Estado: ${data.active ? "activo" : "inactivo"}`);
   if (data.passwordChanged === true) lines.push("Clave: modificada");
   if (telegramSafeText(data.reason)) lines.push(`Motivo: ${telegramSafeText(data.reason).slice(0, 500)}`);
-  lines.push(`Fecha: ${telegramDateLabel(data)}`);
+  lines.push(...telegramDateTimeLines(data));
   return lines.join("\n");
 }
 
@@ -2627,22 +2622,31 @@ function closureTelegramUpdateText(data = {}) {
   const paid = Math.max(0, Number(data.paidAmountTotal || 0));
   const status = telegramSafeText(data.status || data.reviewStatus || "actualizado").toLowerCase();
   const title = /reject|rechaz/.test(status) ? "CIERRE RECHAZADO"
-    : /completed|approved|partial|paid/.test(status) ? "CIERRE PROCESADO POR ADMIN"
+    : /completed|approved|partial|paid/.test(status) ? "CIERRE REGISTRADO"
       : "CIERRE ACTUALIZADO";
-  const lines = [
+  const kind = telegramSafeText(data.closureKind || data.closureType || "facturación");
+  const detailParts = [kind];
+  if (telegramSafeText(data.rejectionReason)) detailParts.push(telegramSafeText(data.rejectionReason).slice(0, 300));
+  const payloadBalance = Number(data.telegramSettlementAfterBalance);
+  let stateLine = Number.isFinite(payloadBalance) ? telegramSignedSettlementLine(payloadBalance) : "";
+  if (!stateLine) {
+    if (/completed|approved|paid/.test(status) && remaining <= 0.49) stateLine = "Estado: Equilibrado";
+    else if (Number(data.amountDueFromDriver || 0) > 0.49) stateLine = `Estado: Chofer debe ${telegramMoney(remaining || data.amountDueFromDriver)}`;
+    else if (Number(data.amountDueToDriver || 0) > 0.49) stateLine = `Estado: Explora debe ${telegramMoney(remaining || data.amountDueToDriver)}`;
+    else stateLine = "Estado: Equilibrado";
+  }
+  return [
     title,
     `Chofer: ${telegramDriverName(data)}`,
-    `Tipo: ${telegramSafeText(data.closureKind || data.closureType || "facturación")}`,
-    `Estado: ${telegramSafeText(data.status || "actualizado")}`,
-    `Pagado acumulado: ${telegramMoney(paid)}`,
-    `Saldo pendiente: ${telegramMoney(remaining)}`
-  ];
-  if (telegramSafeText(data.actionedByAdminName || data.approvedByName || data.rejectedByName)) {
-    lines.push(`Acción Admin: ${telegramSafeText(data.actionedByAdminName || data.approvedByName || data.rejectedByName)}`);
-  }
-  if (telegramSafeText(data.rejectionReason)) lines.push(`Motivo: ${telegramSafeText(data.rejectionReason).slice(0, 500)}`);
-  lines.push(`Fecha: ${telegramDateLabel({ ...data, createdAt:data.updatedAt || data.completedAt || data.rejectedAt || data.createdAt, createdAtMs:data.updatedAtMs || data.rejectedAtMs || data.createdAtMs })}`);
-  return lines.join("\n");
+    `Monto: ${telegramMoney(paid > 0.49 ? paid : remaining)}`,
+    `Detalle: ${detailParts.filter(Boolean).join(" · ") || "Cierre"}`,
+    stateLine,
+    ...telegramDateTimeLines({
+      ...data,
+      createdAt:data.updatedAt || data.completedAt || data.rejectedAt || data.createdAt,
+      createdAtMs:data.updatedAtMs || data.rejectedAtMs || data.createdAtMs
+    })
+  ].join("\n");
 }
 
 function telegramAdvanceDecisionText(data = {}) {
@@ -2654,7 +2658,7 @@ function telegramAdvanceDecisionText(data = {}) {
     `Monto solicitado: ${telegramMoney(data.principalAmount || data.originalAmount || data.amount || 0)}`,
     `Total a devolver: ${telegramMoney(data.totalDebt || data.requestedTotalDebt || 0)}`,
     `Acción Admin: ${telegramSafeText(data.approvedByName || data.rejectedByName || "Administrador")}`,
-    `Fecha: ${telegramDateLabel({ ...data, createdAt:data.approvedAt || data.rejectedAt || data.updatedAt || data.createdAt, createdAtMs:data.approvedAtMs || data.rejectedAtMs || data.updatedAtMs || data.createdAtMs })}`
+    ...telegramDateTimeLines({ ...data, createdAt:data.approvedAt || data.rejectedAt || data.updatedAt || data.createdAt, createdAtMs:data.approvedAtMs || data.rejectedAtMs || data.updatedAtMs || data.createdAtMs })
   ].join("\n");
 }
 
@@ -2695,22 +2699,16 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
     }
     const docId = telegramSafeText(event.params?.docId || event.data?.id);
     const balance = await telegramOpenBillingBalance(data, docId);
-    const previousPayload = Number(data.previousBillingBalance);
     const currentPayload = Number(data.newBillingBalance);
-    const previousBalance = Number.isFinite(previousPayload) ? Math.max(0, previousPayload) : Math.max(0, Number(balance.amountFromDriver || 0) + telegramAmount(data));
     const currentBalance = Number.isFinite(currentPayload) ? Math.max(0, currentPayload) : Math.max(0, Number(balance.amountFromDriver || 0));
     const notes = telegramSafeText(data.reason || data.notes || data.detalle || data.descripcion || data.description);
     const caption = [
-      "PAGO DEL CHOFER · FACTURACIÓN",
+      "CIERRE REGISTRADO",
       `Chofer: ${telegramDriverName(data)}`,
-      `Monto recibido: ${telegramMoney(telegramAmount(data))}`,
-      `Método: ${method.label}`,
-      ...(notes ? [`Motivo: ${notes.slice(0, 300)}`] : []),
-      `Facturación anterior: ${telegramMoney(previousBalance)}`,
-      `Facturación actual: ${telegramMoney(currentBalance)}`,
-      currentBalance > 0.49 ? `Quién paga a quién: Chofer debe liquidar a Explora ${telegramMoney(currentBalance)}` : "Quién paga a quién: nadie debe liquidar en Facturación",
-      "Deudas independientes: sin cambios",
-      `Fecha: ${telegramDateLabel(data)}`
+      `Monto: ${telegramMoney(telegramAmount(data))}`,
+      `Detalle: ${notes ? notes.slice(0, 300) : "Facturación"}`,
+      currentBalance > 0.49 ? `Estado: Chofer debe ${telegramMoney(currentBalance)}` : "Estado: Equilibrado",
+      ...telegramDateTimeLines(data)
     ].join("\n");
     return telegramProcessNotification({
       kind: "billing",
@@ -2739,10 +2737,9 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
     isCash ? "COBRO EN EFECTIVO REGISTRADO" : "COBRO DIGITAL REGISTRADO",
     `Chofer: ${telegramDriverName(data)}`,
     `Monto: ${telegramMoney(telegramAmount(data))}`,
-    `Método: ${method.label}`,
-    ...(notes ? [`Detalle: ${notes.slice(0, 300)}`] : []),
+    `Detalle: ${notes ? notes.slice(0, 300) : (isCash ? "Cobro en efectivo" : "Cobro digital")}`,
     balanceLine,
-    `Fecha: ${telegramDateLabel(data)}`
+    ...telegramDateTimeLines(data)
   ].join("\n");
 
   return telegramProcessNotification({
@@ -2769,21 +2766,19 @@ exports.notifyExpenseV2 = onDocumentCreated({
   const docId = telegramSafeText(event.params?.docId || event.data?.id);
   const notes = telegramSafeText(data.notes || data.detalle || data.descripcion || data.observaciones);
   const loadedAmount = Number(data.telegramExpenseLoadedAmount ?? telegramAmount(data) ?? 0);
-  const recognizedAmount = Number(data.telegramExpenseRecognizedAmount ?? (loadedAmount * 0.50));
-  const settlementAfterBalance = Number(data.telegramSettlementAfterBalance ?? 0);
-  const amountLines = buildExpenseTelegramAmountLines({
-    loadedAmount,
-    recognizedAmount,
-    settlementAfterBalance,
-    formatMoney: telegramMoney
-  });
+  const settlementPayload = Number(data.telegramSettlementAfterBalance);
+  const settlementBalance = Number.isFinite(settlementPayload)
+    ? settlementPayload
+    : Number((await teamRealtimeBalanceForDriver(telegramDriverUid(data))).balance || 0);
+  const detailParts = [telegramExpenseType(data)];
+  if (notes) detailParts.push(notes.slice(0, 300));
   const captionLines = [
-    "NUEVO GASTO GENERADO",
+    "GASTO REGISTRADO",
     `Chofer: ${telegramDriverName(data)}`,
-    ...amountLines,
-    `Tipo: ${telegramExpenseType(data)}`,
-    ...(notes ? [`Detalle: ${notes.slice(0, 300)}`] : []),
-    `Fecha: ${telegramDateLabel(data)}`
+    `Monto: ${telegramMoney(loadedAmount)}`,
+    `Detalle: ${detailParts.filter(Boolean).join(" · ") || "Gasto"}`,
+    telegramSignedSettlementLine(settlementBalance),
+    ...telegramDateTimeLines(data)
   ];
 
   return telegramProcessNotification({
@@ -2811,33 +2806,34 @@ exports.notifyAdminDebtPaymentTelegramV1 = onDocumentCreated({
     return { skipped: true, reason: "not-an-admin-debt-payment" };
   }
 
-  const method = telegramPaymentMethod(data);
-  if (!new Set(["cash", "transfer"]).has(method.key)) {
-    return { skipped: true, reason: "unsupported-payment-method", method: method.key };
-  }
   if (!(telegramAmount(data) > 0)) {
     return { skipped: true, reason: "invalid-payment-amount" };
   }
 
+  const settlement = await teamRealtimeBalanceForDriver(telegramDriverUid(data));
+  const payload = { ...data, telegramSettlementAfterBalance:Number(settlement.balance || 0) };
   const docId = telegramSafeText(event.params?.docId || event.data?.id);
   return telegramProcessNotification({
     kind: "admin_debt_payment",
     docId,
     sourceCollection: "deuda_pagos",
     sourceDocumentId: docId,
-    data,
+    data:payload,
     eventId: event.id,
-    caption: buildAdminDebtPaymentTelegramText(data, {
-      formatMoney: telegramMoney,
-      formatDate: telegramDateLabel
+    caption: telegramSimpleFinancialText({
+      title:"CIERRE DE DEUDA REGISTRADO",
+      data:payload,
+      amount:telegramAmount(payload),
+      detail:telegramSafeText(payload.detail || payload.notes || payload.reason || "Cierre de deuda"),
+      balance:Number(settlement.balance || 0)
     }),
-    requirePhoto: Boolean(telegramDirectPhotoUrl(data))
+    requirePhoto: Boolean(telegramDirectPhotoUrl(payload))
   });
 });
 
-// Envía a Telegram cada deuda del chofer cargada desde el menú administrador.
-// El importe queda 100 % a cargo del chofer; el comprobante es opcional.
-exports.notifyAdminDriverDebtTelegramV1 = onDocumentCreated({
+// La deuda NO avisa al cargarse. Telegram se envía únicamente cuando el chofer
+// pasa la deuda de pendiente a aceptada; recién ahí la deuda impacta el saldo.
+exports.notifyAdminDriverDebtTelegramV1 = onDocumentWritten({
   document: "deudas_choferes/{docId}",
   region: TELEGRAM_FUNCTION_REGION,
   memory: "256MiB",
@@ -2845,25 +2841,39 @@ exports.notifyAdminDriverDebtTelegramV1 = onDocumentCreated({
   retry: true,
   secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
 }, async event => {
-  const data = event.data?.data() || {};
-  if (!isAdminDriverDebt(data)) {
-    return { skipped: true, reason: "not-an-admin-driver-debt" };
+  const before = event.data?.before?.exists ? (event.data.before.data() || {}) : null;
+  const after = event.data?.after?.exists ? (event.data.after.data() || {}) : null;
+  if (!before || !after) return { skipped:true, reason:"wait-for-driver-acceptance" };
+  if (!isAdminDriverDebt(after)) return { skipped:true, reason:"not-an-admin-driver-debt" };
+  if (before.acknowledgedByDriver === true || after.acknowledgedByDriver !== true) {
+    return { skipped:true, reason:"driver-acceptance-not-transitioned" };
   }
-  if (!(telegramAmount(data) > 0)) {
-    return { skipped: true, reason: "invalid-debt-amount" };
-  }
+  if (!(telegramAmount(after) > 0)) return { skipped:true, reason:"invalid-debt-amount" };
 
-  const docId = telegramSafeText(event.params?.docId || event.data?.id);
+  const driverUid = telegramDriverUid(after);
+  const settlement = await teamRealtimeBalanceForDriver(driverUid);
+  const data = {
+    ...after,
+    telegramSettlementAfterBalance:Number(settlement.balance || 0),
+    createdAt:after.acknowledgedAt || after.updatedAt || after.createdAt,
+    createdAtMs:after.acknowledgedAtMs || after.updatedAtMs || after.createdAtMs
+  };
+  const docId = telegramSafeText(event.params?.docId || event.data?.after?.id);
   return telegramProcessNotification({
-    kind: "admin_driver_debt",
+    kind: "admin_driver_debt_accepted",
     docId,
+    notificationKey:`${docId}_accepted`,
     sourceCollection: "deudas_choferes",
     sourceDocumentId: docId,
     data,
     eventId: event.id,
-    caption: buildAdminDriverDebtTelegramText(data, {
-      formatMoney: telegramMoney,
-      formatDate: telegramDateLabel
+    caption: telegramSimpleFinancialText({
+      title:"DEUDA AGREGADA",
+      data,
+      amount:telegramAmount(data),
+      detail:telegramSafeText(data.detail || data.reason || data.notes || "Deuda agregada por Explora"),
+      balance:Number(settlement.balance || 0),
+      dateData:data
     }),
     requirePhoto: Boolean(telegramDirectPhotoUrl(data))
   });
