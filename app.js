@@ -1840,7 +1840,7 @@ function renderDriverDebtConfirmation(item = {}) {
     <div class="driver-debt-confirmation-amount">${money(amount)}</div>
     <div class="driver-debt-confirmation-concept"><span>Concepto</span><strong>${escapeHtml(concept)}</strong></div>
     ${proofUrl ? (imageProof
-      ? `<a class="driver-debt-confirmation-proof" target="_blank" rel="noopener" href="${escapeHtml(proofUrl)}" aria-label="Abrir comprobante de deuda"><img src="${escapeHtml(proofUrl)}" alt="Comprobante de ${escapeHtml(concept)}"></a>`
+      ? `<button type="button" class="driver-debt-confirmation-proof" data-proof-preview="${escapeHtml(proofUrl)}" data-proof-alt="Comprobante de ${escapeHtml(concept)}" aria-label="Ampliar comprobante de deuda"><img src="${escapeHtml(proofUrl)}" alt="Comprobante de ${escapeHtml(concept)}"></button>`
       : `<a class="driver-debt-confirmation-proof-link" target="_blank" rel="noopener" href="${escapeHtml(proofUrl)}">Abrir comprobante adjunto</a>`)
       : `<div class="driver-debt-confirmation-proof-missing">Comprobante no disponible.</div>`}
     <div class="driver-debt-balance-grid" aria-label="Saldo antes y después de aceptar la deuda">
@@ -1925,6 +1925,69 @@ async function acceptDriverDebtConfirmation() {
 
 $("acceptDriverDebtBtn")?.addEventListener("click", acceptDriverDebtConfirmation);
 
+
+function ensureProofImageViewer() {
+  let viewer = $("proofImageViewer");
+  if (viewer) return viewer;
+
+  viewer = document.createElement("div");
+  viewer.id = "proofImageViewer";
+  viewer.className = "proof-image-viewer hidden";
+  viewer.setAttribute("role", "dialog");
+  viewer.setAttribute("aria-modal", "true");
+  viewer.setAttribute("aria-label", "Comprobante ampliado");
+  viewer.innerHTML = `
+    <button type="button" class="proof-image-viewer-close" aria-label="Cerrar comprobante">×</button>
+    <div class="proof-image-viewer-stage">
+      <img class="proof-image-viewer-img" alt="Comprobante ampliado">
+    </div>`;
+  document.body.appendChild(viewer);
+
+  const close = () => closeProofImageViewer();
+  viewer.querySelector(".proof-image-viewer-close")?.addEventListener("click", close);
+  viewer.addEventListener("click", event => {
+    if (event.target === viewer || event.target?.classList?.contains("proof-image-viewer-stage")) close();
+  });
+  return viewer;
+}
+
+function openProofImageViewer(url, alt = "Comprobante ampliado") {
+  const safeUrl = String(url || "").trim();
+  if (!safeUrl) return;
+  const viewer = ensureProofImageViewer();
+  const img = viewer.querySelector(".proof-image-viewer-img");
+  if (!img) return;
+
+  img.src = safeUrl;
+  img.alt = String(alt || "Comprobante ampliado");
+  viewer.classList.remove("hidden");
+  document.documentElement.classList.add("proof-image-viewer-open");
+  document.body.classList.add("proof-image-viewer-open");
+  window.setTimeout(() => viewer.querySelector(".proof-image-viewer-close")?.focus({ preventScroll:true }), 30);
+}
+
+function closeProofImageViewer() {
+  const viewer = $("proofImageViewer");
+  if (!viewer || viewer.classList.contains("hidden")) return;
+  viewer.classList.add("hidden");
+  document.documentElement.classList.remove("proof-image-viewer-open");
+  document.body.classList.remove("proof-image-viewer-open");
+  const img = viewer.querySelector(".proof-image-viewer-img");
+  if (img) img.removeAttribute("src");
+}
+
+document.addEventListener("click", event => {
+  const trigger = event.target?.closest?.("[data-proof-preview]");
+  if (!trigger) return;
+  event.preventDefault();
+  event.stopPropagation();
+  openProofImageViewer(trigger.getAttribute("data-proof-preview"), trigger.getAttribute("data-proof-alt") || "Comprobante ampliado");
+});
+
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeProofImageViewer();
+});
+
 function receiptFooterLabel(item = {}) {
   if (isUberReceipt(item)) return `Semana ${escapeHtml(uberWeekLabelForItem(item))}`;
   if (isCashAdvance(item)) {
@@ -1988,7 +2051,7 @@ function renderList(containerId, items) {
                       : "Operación registrada";
     const proof = proofUrl
       ? (imageProof
-          ? `<a class="receipt-proof-thumb" target="_blank" rel="noopener" href="${escapeHtml(proofUrl)}" aria-label="Abrir comprobante"><img src="${escapeHtml(proofUrl)}" alt="Comprobante de ${escapeHtml(item.service || proofLabel)}"></a>`
+          ? `<button type="button" class="receipt-proof-thumb" data-proof-preview="${escapeHtml(proofUrl)}" data-proof-alt="Comprobante de ${escapeHtml(item.service || proofLabel)}" aria-label="Ampliar comprobante"><img src="${escapeHtml(proofUrl)}" alt="Comprobante de ${escapeHtml(item.service || proofLabel)}" loading="lazy"></button>`
           : `<a class="receipt-proof-file" target="_blank" rel="noopener" href="${escapeHtml(proofUrl)}" aria-label="Abrir archivo adjunto">PDF</a>`)
       : `<span class="proof internal-proof">${escapeHtml(proofLabel)}</span>`;
 
