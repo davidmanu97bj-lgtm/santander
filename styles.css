@@ -6063,14 +6063,14 @@ body.driver-debt-modal-open {
 
 /* v76.1 — Comprobantes compactos: miniatura visible y paginación progresiva. */
 #driverDashboard .unified-proof-list .receipt-footer {
-  min-height: 48px;
+  min-height: 76px;
 }
 
 #driverDashboard .receipt-proof-thumb,
 #driverDashboard .receipt-proof-file {
-  width: 46px;
-  height: 46px;
-  flex: 0 0 46px;
+  width: 72px;
+  height: 72px;
+  flex: 0 0 72px;
   border: 1px solid rgba(76, 87, 106, .18);
   border-radius: 11px;
   overflow: hidden;
@@ -6103,14 +6103,14 @@ body.driver-debt-modal-open {
 @media (max-width: 620px) {
   #driverDashboard .receipt-proof-thumb,
   #driverDashboard .receipt-proof-file {
-    width: 44px;
-    height: 44px;
-    flex-basis: 44px;
+    width: 68px;
+    height: 68px;
+    flex-basis: 68px;
     border-radius: 10px;
   }
 
   #driverDashboard .unified-proof-list .receipt-footer {
-    min-height: 46px;
+    min-height: 72px;
     gap: 10px;
   }
 }
