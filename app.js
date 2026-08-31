@@ -156,8 +156,9 @@ const OWNERSHIP_FIELDS = [
 ];
 let selectedCloseDirection = "";
 let selectedAdminClosureId = "";
-const RECENT_RECEIPTS_LIMIT = 6;
-let receiptsExpanded = false;
+const RECENT_RECEIPTS_LIMIT = 10;
+const RECEIPTS_PAGE_SIZE = 10;
+let visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
 let pendingOperationPreview = null;
 // Primera semana administrada por este selector. Desde aquí, toda semana
 // cerrada sin comprobante permanece pendiente hasta que el chofer la cargue.
@@ -1762,15 +1763,15 @@ function render() {
   syncDriverDebtConfirmationModal();
   const model = settlementModel();
   const receipts = buildUnifiedReceipts();
-  const visibleReceipts = receiptsExpanded ? receipts : receipts.slice(0, RECENT_RECEIPTS_LIMIT);
+  const visibleReceipts = receipts.slice(0, Math.max(RECENT_RECEIPTS_LIMIT, visibleReceiptCount));
 
   setAnimatedMoney("settlementTotal", model.balance);
   renderWalletStatus("settlementDirection", model.balance);
   $("receiptCount").textContent = receipts.length;
 
   const toggle = $("receiptsToggle");
-  toggle.classList.toggle("hidden", receipts.length <= RECENT_RECEIPTS_LIMIT);
-  toggle.textContent = receiptsExpanded ? "Ver menos comprobantes" : "Ver más comprobantes";
+  toggle.classList.toggle("hidden", visibleReceiptCount >= receipts.length);
+  toggle.textContent = "Ver más comprobantes";
 
   renderUberPendingBadge();
   renderList("receiptList", visibleReceipts);
@@ -1910,7 +1911,6 @@ async function acceptDriverDebtConfirmation() {
     window.setTimeout(() => {
       closeDriverDebtConfirmationModal();
       acceptingDriverDebtConfirmation = false;
-      window.scrollTo({ top:0, left:0, behavior:"smooth" });
       window.setTimeout(maybeShowDriverDebtConfirmation, 120);
     }, 700);
   } catch (err) {
@@ -1957,18 +1957,40 @@ function renderList(containerId, items) {
     const cashboxReceipt = isCashboxReceipt(item);
     const adminDebt = isAdminDebt(item);
     const digitalReceipt = item.method === "digital" && !isSettlementAdjustment(item);
-    const showsProof = digitalReceipt || isSettlementAdjustment(item) || adminDebt || uberReceipt || expenseReceipt || cashAdvance || cashboxReceipt;
-    const proof = showsProof
-      ? (debtCompensation
-          ? `<span class="proof internal-proof">Comprobante interno</span>`
-          : cashboxReceipt
-            ? `<span class="proof internal-proof">Generado automático</span>`
-            : cashAdvance
-              ? `<span class="proof internal-proof">${/pending/.test(String(item.approvalStatus || item.status || "").toLowerCase()) ? "Esperando Admin" : /reject|rechaz/.test(String(item.approvalStatus || item.status || "").toLowerCase()) ? "Rechazado" : "Aprobado"}</span>`
-              : item.proofUrl
-                ? `<a class="proof" target="_blank" rel="noopener" href="${escapeHtml(item.proofUrl)}">Ver comprobante</a>`
-                : `<span class="proof">Sin archivo</span>`)
-      : `<span class="proof internal-proof">Comprobante generado</span>`;
+    const regularCashReceipt = item.method === "cash"
+      && !isSettlementAdjustment(item)
+      && !adminDebt
+      && !debtCompensation
+      && !cashAdvance
+      && !expenseReceipt
+      && !uberReceipt
+      && !cashboxReceipt;
+    const proofUrl = String(item.proofUrl || item.receiptUrl || "");
+    const imageProof = proofUrl && debtProofIsImage(item);
+    const proofLabel = cashboxReceipt
+      ? "Caja chica"
+      : regularCashReceipt
+        ? "Cobro en efectivo"
+        : debtCompensation
+          ? "Comprobante interno"
+          : cashAdvance
+            ? (/pending/.test(String(item.approvalStatus || item.status || "").toLowerCase()) ? "Esperando Admin" : /reject|rechaz/.test(String(item.approvalStatus || item.status || "").toLowerCase()) ? "Rechazado" : "Aprobado")
+            : adminDebt
+              ? "Deuda agregada"
+              : digitalReceipt
+                ? "Cobro digital"
+                : expenseReceipt
+                  ? "Gasto"
+                  : uberReceipt
+                    ? "Uber"
+                    : isSettlementAdjustment(item)
+                      ? "Cierre"
+                      : "Operación registrada";
+    const proof = proofUrl
+      ? (imageProof
+          ? `<a class="receipt-proof-thumb" target="_blank" rel="noopener" href="${escapeHtml(proofUrl)}" aria-label="Abrir comprobante"><img src="${escapeHtml(proofUrl)}" alt="Comprobante de ${escapeHtml(item.service || proofLabel)}"></a>`
+          : `<a class="receipt-proof-file" target="_blank" rel="noopener" href="${escapeHtml(proofUrl)}" aria-label="Abrir archivo adjunto">PDF</a>`)
+      : `<span class="proof internal-proof">${escapeHtml(proofLabel)}</span>`;
 
     const icon = cashboxReceipt
       ? `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="2"/><circle cx="16" cy="16" r="2"/><path d="M7 17 17 7"/></svg>`
@@ -1987,14 +2009,6 @@ function renderList(containerId, items) {
                   : `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
 
     const amountPrefix = debtCompensation ? "−" : "+";
-    const regularCashReceipt = item.method === "cash"
-      && !isSettlementAdjustment(item)
-      && !adminDebt
-      && !debtCompensation
-      && !cashAdvance
-      && !expenseReceipt
-      && !uberReceipt
-      && !cashboxReceipt;
     const receiptToneClass = expenseReceipt
       ? "receipt-tone-expense"
       : uberReceipt
@@ -2017,10 +2031,6 @@ function renderList(containerId, items) {
       cashAdvance ? "receipt-advance" : ""
     ].filter(Boolean).join(" ");
 
-    const debtProofPreview = adminDebt && item.proofUrl && debtProofIsImage(item)
-      ? `<a class="receipt-debt-proof-preview" target="_blank" rel="noopener" href="${escapeHtml(item.proofUrl)}"><img src="${escapeHtml(item.proofUrl)}" alt="Comprobante de deuda: ${escapeHtml(item.detail || "Deuda")}"></a>`
-      : "";
-
     return `<article class="receipt ${receiptClass}">
       <div class="receipt-main">
         <span class="receipt-icon">${icon}</span>
@@ -2033,13 +2043,12 @@ function renderList(containerId, items) {
       <div class="receipt-footer">
         <span>${receiptFooterLabel(item)}</span>${proof}
       </div>
-      ${debtProofPreview}
     </article>`;
   }).join("");
 }
 
 $("receiptsToggle")?.addEventListener("click", () => {
-  receiptsExpanded = !receiptsExpanded;
+  visibleReceiptCount += RECEIPTS_PAGE_SIZE;
   render();
 });
 
@@ -3516,11 +3525,13 @@ onAuthStateChanged(auth, async user => {
     adminPendingAction = null;
     adminDismissedPendingActionIds.clear();
     currentProfile = null;
+    visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
     await finishSplash("loginScreen");
     return;
   }
 
   // La pantalla se decide por rol: Admin nunca reutiliza la vista financiera del chofer.
+  visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
   currentProfile = fallbackProfile(user);
   $("operatorName").textContent = `Hola ${currentProfile.displayName || currentProfile.username || user.email?.split("@")[0] || "Chofer"}`;
   applyRoleUI();
