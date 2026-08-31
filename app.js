@@ -1006,9 +1006,31 @@ function isAdminSettlementDebt(item = {}) {
   if (/uber_weekly/.test(source) || type === "uber_weekly") return false;
   return type === "admin_debt" || role === "admin" || role === "administrador" || source === "admin_debt_menu";
 }
+
+// Desde esta versión, las deudas nuevas cargadas por Admin requieren confirmación
+// explícita del chofer antes de impactar en "Quién paga a quién". Las deudas
+// históricas no llevan este marcador y conservan exactamente su comportamiento.
+function debtRequiresDriverConfirmation(item = {}) {
+  return isAdminSettlementDebt(item) && item.driverConfirmationRequired === true;
+}
+
+function debtImpactsSettlement(item = {}) {
+  return isAdminSettlementDebt(item)
+    && (!debtRequiresDriverConfirmation(item) || item.acknowledgedByDriver === true);
+}
+
+function pendingDriverDebtConfirmations() {
+  if (isAdminProfile()) return [];
+  return debts
+    .filter(item => !movementIsDeleted(item))
+    .filter(item => Number(item.amount || 0) > 0.5)
+    .filter(item => debtRequiresDriverConfirmation(item) && item.acknowledgedByDriver !== true)
+    .sort((a, b) => recordTimestampMs(a) - recordTimestampMs(b));
+}
+
 function debtsTotal() {
   return debts
-    .filter(item => !movementIsDeleted(item) && isAdminSettlementDebt(item))
+    .filter(item => !movementIsDeleted(item) && debtImpactsSettlement(item))
     .reduce((a,item)=>a+Number(item.amount||0),0);
 }
 function advanceRemaining(item) {
@@ -1670,7 +1692,7 @@ function buildUnifiedReceipts() {
     }));
 
   const debtReceipts = debts
-    .filter(item => !movementIsDeleted(item) && isAdminSettlementDebt(item))
+    .filter(item => !movementIsDeleted(item) && debtImpactsSettlement(item))
     .map(item => ({
       ...item,
       method: "debt",
@@ -1737,6 +1759,7 @@ function buildUnifiedReceipts() {
 }
 
 function render() {
+  syncDriverDebtConfirmationModal();
   const model = settlementModel();
   const receipts = buildUnifiedReceipts();
   const visibleReceipts = receiptsExpanded ? receipts : receipts.slice(0, RECENT_RECEIPTS_LIMIT);
@@ -1751,7 +1774,156 @@ function render() {
 
   renderUberPendingBadge();
   renderList("receiptList", visibleReceipts);
+  window.setTimeout(maybeShowDriverDebtConfirmation, 0);
 }
+
+function debtProofIsImage(item = {}) {
+  const mime = String(item.proofMimeType || item.receiptMimeType || "").toLowerCase();
+  if (mime.startsWith("image/")) return true;
+  if (mime === "application/pdf") return false;
+  const path = String(item.proofPath || item.receiptPath || item.proofFileName || item.receiptFileName || item.proofUrl || "").toLowerCase();
+  if (/\.pdf(?:$|[?#])/.test(path)) return false;
+  return /\.(?:png|jpe?g|webp|gif|heic|heif)(?:$|[?#])/.test(path) || Boolean(item.proofUrl);
+}
+
+function settlementPreviewCopy(balance) {
+  const value = Math.abs(Number(balance || 0)) <= 0.5 ? 0 : Number(balance || 0);
+  if (value > 0) return { label:"Vos debés a Explora", amount:value, tone:"driver" };
+  if (value < 0) return { label:"Explora te debe", amount:Math.abs(value), tone:"explora" };
+  return { label:"Cuenta equilibrada", amount:0, tone:"balanced" };
+}
+
+let activeDriverDebtConfirmationId = "";
+let acceptingDriverDebtConfirmation = false;
+
+function closeDriverDebtConfirmationModal() {
+  $("driverDebtConfirmationModal")?.classList.add("hidden");
+  document.documentElement.classList.remove("driver-debt-modal-open");
+  document.body.classList.remove("driver-debt-modal-open");
+  activeDriverDebtConfirmationId = "";
+}
+
+function syncDriverDebtConfirmationModal() {
+  if (acceptingDriverDebtConfirmation || !activeDriverDebtConfirmationId) return;
+  const modal = $("driverDebtConfirmationModal");
+  if (!modal || modal.classList.contains("hidden")) return;
+  const stillPending = pendingDriverDebtConfirmations().some(item => item.id === activeDriverDebtConfirmationId);
+  if (!stillPending) closeDriverDebtConfirmationModal();
+}
+
+function renderDriverDebtConfirmation(item = {}) {
+  const modal = $("driverDebtConfirmationModal");
+  const body = $("driverDebtConfirmationBody");
+  const accept = $("acceptDriverDebtBtn");
+  const status = $("driverDebtConfirmationStatus");
+  if (!modal || !body || !accept || !status || !item?.id) return;
+
+  const amount = Math.max(0, Number(item.totalAmount || item.originalAmount || item.amount || 0));
+  const currentBalance = Number(settlementModel().balance || 0);
+  const afterBalance = currentBalance + amount;
+  const before = settlementPreviewCopy(currentBalance);
+  const after = settlementPreviewCopy(afterBalance);
+  const concept = String(item.detail || item.reason || item.notes || "Deuda agregada por Explora").trim();
+  const proofUrl = String(item.proofUrl || item.receiptUrl || "");
+  const imageProof = proofUrl && debtProofIsImage(item);
+
+  activeDriverDebtConfirmationId = item.id;
+  acceptingDriverDebtConfirmation = false;
+  status.textContent = "";
+  status.className = "status driver-debt-confirmation-status";
+  accept.disabled = false;
+  accept.textContent = "Aceptar deuda";
+
+  body.innerHTML = `
+    <div class="driver-debt-alert-badge">Explora agregó una deuda</div>
+    <div class="driver-debt-confirmation-amount">${money(amount)}</div>
+    <div class="driver-debt-confirmation-concept"><span>Concepto</span><strong>${escapeHtml(concept)}</strong></div>
+    ${proofUrl ? (imageProof
+      ? `<a class="driver-debt-confirmation-proof" target="_blank" rel="noopener" href="${escapeHtml(proofUrl)}" aria-label="Abrir comprobante de deuda"><img src="${escapeHtml(proofUrl)}" alt="Comprobante de ${escapeHtml(concept)}"></a>`
+      : `<a class="driver-debt-confirmation-proof-link" target="_blank" rel="noopener" href="${escapeHtml(proofUrl)}">Abrir comprobante adjunto</a>`)
+      : `<div class="driver-debt-confirmation-proof-missing">Comprobante no disponible.</div>`}
+    <div class="driver-debt-balance-grid" aria-label="Saldo antes y después de aceptar la deuda">
+      <div class="driver-debt-balance-card is-${before.tone}">
+        <span>Ahora</span>
+        <strong>${escapeHtml(before.label)}</strong>
+        <b>${money(before.amount)}</b>
+      </div>
+      <div class="driver-debt-balance-card is-${after.tone}">
+        <span>Después de aceptar</span>
+        <strong>${escapeHtml(after.label)}</strong>
+        <b>${money(after.amount)}</b>
+      </div>
+    </div>
+    <p class="driver-debt-confirmation-note">Al tocar “Aceptar deuda”, este importe se incorporará al saldo con Explora y aparecerá abajo como comprobante.</p>`;
+
+  modal.classList.remove("hidden");
+  document.documentElement.classList.add("driver-debt-modal-open");
+  document.body.classList.add("driver-debt-modal-open");
+  window.setTimeout(() => accept.focus({ preventScroll:true }), 60);
+}
+
+function maybeShowDriverDebtConfirmation() {
+  if (!auth.currentUser || isAdminProfile() || acceptingDriverDebtConfirmation) return;
+  const modal = $("driverDebtConfirmationModal");
+  if (!modal) return;
+  if (!modal.classList.contains("hidden")) return;
+
+  const anotherModalOpen = Array.from(document.querySelectorAll(".modal:not(.hidden)"))
+    .some(node => node.id !== "driverDebtConfirmationModal");
+  if (anotherModalOpen) return;
+
+  const pending = pendingDriverDebtConfirmations();
+  if (pending.length) renderDriverDebtConfirmation(pending[0]);
+}
+
+async function acceptDriverDebtConfirmation() {
+  if (acceptingDriverDebtConfirmation || !activeDriverDebtConfirmationId || isAdminProfile()) return;
+  const user = auth.currentUser;
+  const item = debts.find(row => row.id === activeDriverDebtConfirmationId);
+  const accept = $("acceptDriverDebtBtn");
+  const status = $("driverDebtConfirmationStatus");
+  if (!user || !item || !debtRequiresDriverConfirmation(item)) {
+    closeDriverDebtConfirmationModal();
+    acceptingDriverDebtConfirmation = false;
+    window.setTimeout(maybeShowDriverDebtConfirmation, 0);
+    return;
+  }
+
+  acceptingDriverDebtConfirmation = true;
+  accept.disabled = true;
+  accept.textContent = "Confirmando…";
+  status.textContent = "Guardando aceptación…";
+  status.className = "status driver-debt-confirmation-status";
+
+  try {
+    await setDoc(doc(db, ROOT_COLLECTIONS.debts, item.id), {
+      acknowledgedByDriver: true,
+      acknowledgedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }, { merge:true });
+
+    item.acknowledgedByDriver = true;
+    status.textContent = "Deuda aceptada y sumada al saldo.";
+    status.className = "status success driver-debt-confirmation-status";
+    accept.textContent = "Aceptada ✓";
+    render();
+    window.setTimeout(() => {
+      closeDriverDebtConfirmationModal();
+      acceptingDriverDebtConfirmation = false;
+      window.scrollTo({ top:0, left:0, behavior:"smooth" });
+      window.setTimeout(maybeShowDriverDebtConfirmation, 120);
+    }, 700);
+  } catch (err) {
+    console.error("No se pudo aceptar la deuda:", err);
+    acceptingDriverDebtConfirmation = false;
+    accept.disabled = false;
+    accept.textContent = "Aceptar deuda";
+    status.textContent = "No se pudo confirmar. Revisá la conexión e intentá nuevamente.";
+    status.className = "status error driver-debt-confirmation-status";
+  }
+}
+
+$("acceptDriverDebtBtn")?.addEventListener("click", acceptDriverDebtConfirmation);
 
 function receiptFooterLabel(item = {}) {
   if (isUberReceipt(item)) return `Semana ${escapeHtml(uberWeekLabelForItem(item))}`;
@@ -1845,6 +2017,10 @@ function renderList(containerId, items) {
       cashAdvance ? "receipt-advance" : ""
     ].filter(Boolean).join(" ");
 
+    const debtProofPreview = adminDebt && item.proofUrl && debtProofIsImage(item)
+      ? `<a class="receipt-debt-proof-preview" target="_blank" rel="noopener" href="${escapeHtml(item.proofUrl)}"><img src="${escapeHtml(item.proofUrl)}" alt="Comprobante de deuda: ${escapeHtml(item.detail || "Deuda")}"></a>`
+      : "";
+
     return `<article class="receipt ${receiptClass}">
       <div class="receipt-main">
         <span class="receipt-icon">${icon}</span>
@@ -1857,6 +2033,7 @@ function renderList(containerId, items) {
       <div class="receipt-footer">
         <span>${receiptFooterLabel(item)}</span>${proof}
       </div>
+      ${debtProofPreview}
     </article>`;
   }).join("");
 }
@@ -2228,7 +2405,7 @@ function adminBillingBalanceForDriver(driver = {}) {
   const baseline = adminBillingBaselineForDriver(driver);
   const adminDebtTotal = adminDebts
     .filter(item => adminRecordBelongsToDriver(item, driver))
-    .filter(item => !movementIsDeleted(item) && isAdminSettlementDebt(item))
+    .filter(item => !movementIsDeleted(item) && debtImpactsSettlement(item))
     .reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const driverPayments = adminPayments
     .filter(item => adminRecordBelongsToDriver(item, driver))
@@ -2296,6 +2473,7 @@ function adminOpenDebtItemsForDriver(driver = {}) {
   return adminDebts
     .filter(item => adminRecordBelongsToDriver(item, driver))
     .filter(item => !movementIsDeleted(item))
+    .filter(item => debtImpactsSettlement(item))
     .filter(item => Number(item.amount || 0) > 0.5)
     .sort((a, b) => recordTimestampMs(a) - recordTimestampMs(b));
 }
@@ -3406,7 +3584,10 @@ document.querySelectorAll("[data-mode]").forEach(btn => {
 });
 
 document.querySelectorAll("[data-close]").forEach(btn => {
-  btn.addEventListener("click", () => $(btn.dataset.close).classList.add("hidden"));
+  btn.addEventListener("click", () => {
+    $(btn.dataset.close).classList.add("hidden");
+    window.setTimeout(maybeShowDriverDebtConfirmation, 0);
+  });
 });
 
 // Muestra el estado de éxito dentro del mismo modal y luego lo cierra solo.
@@ -3421,6 +3602,7 @@ function closeModalAndGoTop(modalId, delayMs = 1000) {
     } catch (_) {
       window.scrollTo(0, 0);
     }
+    window.setTimeout(maybeShowDriverDebtConfirmation, 0);
   }, delayMs);
 }
 
@@ -3993,7 +4175,7 @@ $("debtForm")?.addEventListener("submit", async event => {
     const settlementBeforeDebt = adminBillingBalanceForDriver(driver);
     const debtBalanceBefore = adminDebts
       .filter(item => adminRecordBelongsToDriver(item, driver))
-      .filter(item => !movementIsDeleted(item) && isAdminSettlementDebt(item))
+      .filter(item => !movementIsDeleted(item) && debtImpactsSettlement(item))
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const settlementAfterDebt = settlementBeforeDebt + amount;
     const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -4018,8 +4200,12 @@ $("debtForm")?.addEventListener("submit", async event => {
       notes: detail,
       proofUrl,
       proofPath,
+      proofMimeType: file.type || "",
+      proofFileName: file.name || cleanName,
       receiptUrl: proofUrl,
       receiptPath: proofPath,
+      receiptMimeType: file.type || "",
+      receiptFileName: file.name || cleanName,
       dayKey: localDayKey(),
       driverUid: driver.id,
       choferUid: driver.id,
@@ -4033,6 +4219,8 @@ $("debtForm")?.addEventListener("submit", async event => {
       status: "active",
       debtStatus: "active",
       acknowledgedByDriver: false,
+      driverConfirmationRequired: true,
+      driverConfirmationVersion: 1,
       createdByRole: "admin",
       registeredByAdmin: true,
       registrationOrigin: "admin_debt_menu",
