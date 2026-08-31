@@ -257,6 +257,11 @@ function isAdminSettlementDebt(data = {}) {
     data.registeredByAdmin === true || source === "admin_debt_menu";
 }
 
+function debtImpactsSettlement(data = {}) {
+  if (!isAdminSettlementDebt(data)) return false;
+  return data.driverConfirmationRequired !== true || data.acknowledgedByDriver === true;
+}
+
 function debtRemainingAmount(data = {}) {
   const status = safeText(data.status || data.debtStatus || data.estado).toLowerCase();
   if (/paid|pagad|closed|cerrad|cancel|anulad|deleted|eliminad/.test(status)) return 0;
@@ -332,7 +337,7 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
 
   let adminDebtTotal = 0;
   for (const debt of debts || []) {
-    if (!debt || movementIsDeleted(debt) || isSimulated(debt) || !isAdminSettlementDebt(debt)) continue;
+    if (!debt || movementIsDeleted(debt) || isSimulated(debt) || !debtImpactsSettlement(debt)) continue;
     adminDebtTotal += debtRemainingAmount(debt);
   }
 
@@ -496,7 +501,7 @@ function calculateTeamRealtimeSettlementBalance({ records = [], closures = [], u
   const cashbox = (cashboxEligibleCash + uber) * 0.05;
   const automaticExpenseImpact = teamAutomaticExpenseImpact(expenses, baseline);
   const adminDebtTotal = debts
-    .filter(item => item && !movementIsDeleted(item) && !isSimulated(item) && isAdminSettlementDebt(item))
+    .filter(item => item && !movementIsDeleted(item) && !isSimulated(item) && debtImpactsSettlement(item))
     .reduce((sum, item) => sum + debtRemainingAmount(item), 0);
   const anchor = latestTeamReimbursementAnchor(records, baseline);
 
