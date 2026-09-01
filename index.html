@@ -89,6 +89,16 @@
     .expense-quick-option{border:1.5px solid #efb0b3;background:#fff4f4;color:#ad252c;border-radius:13px;padding:10px 6px;font-size:10px;font-weight:900;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent}
     .expense-quick-option:active{background:#fde5e6;border-color:#d95b61;color:#951b22;transform:translateY(1px)}.expense-quick-option.selected{background:#e8f7ee;border-color:#38a169;color:#176b3a;box-shadow:0 0 0 2px rgba(56,161,105,.12),0 6px 14px rgba(22,107,58,.10);transform:none}
     .file-note{font-size:9px;color:#888;margin-top:6px;line-height:1.4}.modal-actions{display:flex;gap:9px;margin-top:18px}.modal-actions button{flex:1}
+    .photo-source-picker{position:relative}
+    .photo-source-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+    .photo-source-action{min-height:50px;border:1px solid var(--line);border-radius:14px;padding:10px 9px;font-size:11px;font-weight:900;line-height:1.25;text-align:center;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
+    .photo-source-action.camera{background:var(--dark);border-color:var(--dark);color:#fff;box-shadow:0 7px 16px rgba(15,17,21,.12)}
+    .photo-source-action.gallery{background:#fff;color:var(--ink)}
+    .photo-source-action:active{transform:scale(.985)}
+    .photo-source-action:disabled{opacity:.48;cursor:not-allowed;transform:none}
+    .photo-source-input{position:fixed!important;left:-10000px!important;top:auto!important;width:1px!important;height:1px!important;min-height:0!important;padding:0!important;border:0!important;opacity:0!important;pointer-events:none!important}
+    .photo-source-selection{min-height:16px;margin-top:7px;color:#7b818a;font-size:9px;font-weight:750;line-height:1.35}
+    .photo-source-selection.has-photo{color:#16814d}
     .secondary{border:1px solid var(--line);background:#fff;border-radius:13px;padding:12px;font-weight:850;font-size:11px}.save{border:0;background:var(--dark);color:#fff;border-radius:13px;padding:12px;font-weight:850;font-size:11px;box-shadow:0 7px 16px rgba(15,17,21,.12)}
     .save:disabled,.primary:disabled,.collect:disabled,.close-btn:disabled{opacity:.52;cursor:not-allowed}.close-summary{background:#f7f8fa;border:1px solid var(--line);border-radius:18px;padding:14px;margin-top:7px}.close-summary div{display:flex;justify-content:space-between;gap:12px;font-size:11px;padding:6px 0}.close-summary strong{font-size:12px;font-weight:900}
 
@@ -105,7 +115,7 @@
       .service-option{min-height:80px;padding:13px 11px}.service-option strong{font-size:12px}.service-option span{font-size:16px}
     }
   </style>
-  <link rel="stylesheet" href="./styles.css?v=20260829-73-tiempo-real" />
+  <link rel="stylesheet" href="./styles.css?v=20260901-77-cierre-directo" />
 </head>
 <body>
 <section id="splashScreen" class="splash-screen" aria-live="polite" aria-label="Cargando Explora">
@@ -165,7 +175,7 @@
 
       <div class="admin-action-grid" aria-label="Acciones del administrador">
         <button id="adminDriversBtn" class="admin-action-btn primary" type="button">
-          <strong>Crear / editar / inhabilitar chofer</strong>
+          <strong>Crear / editar / borrar chofer</strong>
           <span>Altas, datos, clave y acceso.</span>
         </button>
         <button id="adminAddDebtBtn" class="admin-action-btn" type="button">
@@ -196,16 +206,12 @@
     </section>
 
     <div id="driverDashboard">
-      <section class="team-realtime-card" aria-labelledby="teamRealtimeTitle">
-        <div class="team-realtime-heading">
-          <div>
-            <span class="team-realtime-kicker"><i aria-hidden="true"></i> En vivo</span>
-            <h2 id="teamRealtimeTitle">Tiempo real</h2>
-          </div>
-          <p>Quién debe liquidar y cuánto</p>
-        </div>
-        <div id="teamRealtimeList" class="team-realtime-list" aria-live="polite">
-          <div class="team-realtime-empty">Cargando saldos de los choferes…</div>
+      <section id="driverNewsCard" class="driver-news-card is-balanced" aria-labelledby="driverNewsTitle" aria-live="polite">
+        <div class="driver-news-icon" aria-hidden="true">!</div>
+        <div class="driver-news-copy">
+          <span class="driver-news-kicker">Novedad importante</span>
+          <h2 id="driverNewsTitle">Todo está en orden</h2>
+          <p id="driverNewsText">Tu cuenta está equilibrada con Explora. Seguí así.</p>
         </div>
         <div id="syncStatus" class="sync" aria-live="polite" hidden>Conectando…</div>
       </section>
@@ -252,7 +258,19 @@
         <div class="money-entry"><span aria-hidden="true">$</span><input id="chargeAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div>
       </div>
       <div class="field"><label>Detalle / cliente</label><input id="detail" placeholder="Opcional"></div>
-      <div id="proofField" class="field hidden"><label>Comprobante digital</label><input id="proof" type="file" accept="image/*,.pdf"><div class="file-note">El comprobante se guardará en Firebase Storage.</div></div>
+      <div id="proofField" class="field hidden">
+        <label>Comprobante digital</label>
+        <div class="photo-source-picker" data-photo-picker="digital">
+          <div class="photo-source-actions" aria-label="Elegir origen de la foto">
+            <button type="button" class="photo-source-action camera" data-photo-input="proofCamera">Sacar foto con la cámara</button>
+            <button type="button" class="photo-source-action gallery" data-photo-input="proof">Subir foto de galería</button>
+          </div>
+          <input id="proofCamera" class="photo-source-input" type="file" accept="image/*" capture="environment" data-photo-source="camera" tabindex="-1">
+          <input id="proof" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1">
+          <div class="photo-source-selection" data-photo-selection aria-live="polite">Ninguna foto seleccionada.</div>
+        </div>
+        <div class="file-note">Solo se aceptan fotos tomadas con la cámara o elegidas desde la galería.</div>
+      </div>
       <div id="chargeStatus" class="status"></div>
       <div class="modal-actions"><button type="button" class="secondary" data-close="chargeModal">Cancelar</button><button id="saveChargeBtn" type="submit" class="save">Registrar cobro</button></div>
     </form>
@@ -277,13 +295,27 @@
   </div>
 </div>
 
+
+<div id="driverDebtConfirmationModal" class="modal driver-debt-confirmation-modal hidden" role="dialog" aria-modal="true" aria-labelledby="driverDebtConfirmationTitle" aria-describedby="driverDebtConfirmationBody">
+  <div class="modal-card driver-debt-confirmation-card">
+    <div class="driver-debt-confirmation-head">
+      <span class="driver-debt-confirmation-kicker">Aviso de Explora</span>
+      <h2 id="driverDebtConfirmationTitle">Tenés una deuda nueva</h2>
+      <p>Revisá el concepto, el comprobante y cómo quedará tu saldo antes de aceptar.</p>
+    </div>
+    <div id="driverDebtConfirmationBody" class="driver-debt-confirmation-body"></div>
+    <div id="driverDebtConfirmationStatus" class="status driver-debt-confirmation-status" aria-live="polite"></div>
+    <button id="acceptDriverDebtBtn" type="button" class="save driver-debt-confirmation-accept">Aceptar deuda</button>
+  </div>
+</div>
+
 <div id="driverManagerModal" class="modal hidden">
   <div class="modal-card admin-manager-card">
     <div class="modal-head"><h2>Gestionar choferes</h2><button class="x" data-close="driverManagerModal">×</button></div>
     <div class="admin-manager-switch" role="group" aria-label="Modo de gestión">
       <button id="driverManagerCreateTab" class="selected" type="button" data-driver-manager-mode="create">Crear chofer</button>
       <button id="driverManagerEditTab" type="button" data-driver-manager-mode="edit">Editar chofer</button>
-      <button id="driverManagerDisableTab" type="button" data-driver-manager-mode="disable">Inhabilitar</button>
+      <button id="driverManagerDisableTab" type="button" data-driver-manager-mode="delete">Borrar chofer</button>
     </div>
     <form id="driverManagerForm">
       <input id="driverManagerMode" type="hidden" value="create">
@@ -300,11 +332,11 @@
         <div class="field"><label for="editDriverPassword">Nueva clave <span class="optional-label">opcional</span></label><input id="editDriverPassword" type="password" autocomplete="new-password" minlength="6" placeholder="Dejar vacío para mantenerla"></div>
       </div>
 
-      <div id="driverDisableFields" class="hidden">
-        <div class="field"><label for="disableDriverSelect">Chofer que querés inhabilitar</label><select id="disableDriverSelect"></select></div>
+      <div id="driverDeleteFields" class="hidden">
+        <div class="field"><label for="deleteDriverSelect">Chofer que querés borrar</label><select id="deleteDriverSelect"></select></div>
         <div class="admin-disable-note">
-          <strong>El chofer perderá el acceso</strong>
-          <p>Desaparecerá de Tiempo real y de todos los menús operativos. Sus movimientos anteriores se conservarán en el historial.</p>
+          <strong>El chofer será eliminado</strong>
+          <p>Se borrará su acceso y desaparecerá de Tiempo real y de todos los menús operativos. Los movimientos históricos ya registrados no se eliminan.</p>
         </div>
       </div>
 
@@ -387,7 +419,19 @@
         </div>
         <input id="expenseDetail" placeholder="Ej. Productos de limpieza" required>
       </div>
-      <div class="field"><label>Comprobante</label><input id="expenseProof" type="file" accept="image/*,.pdf" required><div class="file-note">Explora reconocerá automáticamente el 50% y lo aplicará a quién paga a quién.</div></div>
+      <div class="field">
+        <label>Comprobante</label>
+        <div class="photo-source-picker" data-photo-picker="expense">
+          <div class="photo-source-actions" aria-label="Elegir origen de la foto">
+            <button type="button" class="photo-source-action camera" data-photo-input="expenseProofCamera">Sacar foto con la cámara</button>
+            <button type="button" class="photo-source-action gallery" data-photo-input="expenseProof">Subir foto de galería</button>
+          </div>
+          <input id="expenseProofCamera" class="photo-source-input" type="file" accept="image/*" capture="environment" data-photo-source="camera" tabindex="-1">
+          <input id="expenseProof" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1">
+          <div class="photo-source-selection" data-photo-selection aria-live="polite">Ninguna foto seleccionada.</div>
+        </div>
+        <div class="file-note">Explora reconocerá automáticamente el 50% y lo aplicará a quién paga a quién.</div>
+      </div>
       <div id="expenseStatus" class="status"></div>
       <div class="modal-actions"><button type="button" class="secondary" data-close="expenseModal">Cancelar</button><button id="saveExpenseBtn" type="submit" class="save">Registrar gasto</button></div>
     </form>
@@ -460,7 +504,19 @@
         <div><span>Estado</span><strong id="uberWeekStateLabel">Pendiente</strong></div>
       </div>
       <div class="field"><label for="uberAmount">Monto total facturado en Uber</label><div class="money-entry"><span aria-hidden="true">$</span><input id="uberAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div></div>
-      <div class="field"><label for="uberProof">Comprobante de la semana seleccionada</label><input id="uberProof" type="file" accept="image/*,.pdf" required><div class="file-note">El monto se suma al efectivo del chofer, se divide 50% para cada parte y genera 5% de caja chica.</div></div>
+      <div class="field">
+        <label>Comprobante de la semana seleccionada</label>
+        <div class="photo-source-picker" data-photo-picker="uber">
+          <div class="photo-source-actions" aria-label="Elegir origen de la foto">
+            <button type="button" class="photo-source-action camera" data-photo-input="uberProofCamera">Sacar foto con la cámara</button>
+            <button type="button" class="photo-source-action gallery" data-photo-input="uberProof">Subir foto de galería</button>
+          </div>
+          <input id="uberProofCamera" class="photo-source-input" type="file" accept="image/*" capture="environment" data-photo-source="camera" tabindex="-1">
+          <input id="uberProof" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1">
+          <div class="photo-source-selection" data-photo-selection aria-live="polite">Ninguna foto seleccionada.</div>
+        </div>
+        <div class="file-note">El monto se suma al efectivo del chofer, se divide 50% para cada parte y genera 5% de caja chica.</div>
+      </div>
       <div id="uberStatus" class="status"></div>
       <div class="modal-actions"><button type="button" class="secondary" data-close="uberModal">Cancelar</button><button id="saveUberBtn" type="submit" class="save">Registrar Uber</button></div>
     </form>
@@ -532,29 +588,30 @@
 
     <div id="closeDriverView">
       <div id="closeBalanceMessage" class="close-balance-message">Calculando liquidación…</div>
-      <div class="close-choice-grid">
-        <button id="choosePayExplora" type="button" class="close-choice pay">
-          <span class="close-choice-icon">↑</span>
-          <strong>Pagar a Explora</strong>
-          <small>El chofer adjunta el comprobante.</small>
-        </button>
-        <button id="chooseCollectExplora" type="button" class="close-choice collect-choice">
-          <span class="close-choice-icon">↓</span>
-          <strong>Cobrar a Explora</strong>
-          <small>El administrador adjunta el comprobante.</small>
-        </button>
-      </div>
 
       <form id="driverCloseForm" class="close-payment-form hidden">
         <div id="driverCloseSelected" class="selected-close-summary"></div>
         <div id="driverCloseAmountField" class="field hidden">
-          <label for="driverCloseAmount">Importe que va a pagar</label>
+          <label for="driverCloseAmount">¿Cuánto dinero querés usar para achicar la deuda?</label>
           <div class="amount-with-action">
             <input id="driverCloseAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off">
             <button id="driverUseFullAmount" type="button">Usar total</button>
           </div>
           <div id="driverCloseLimit" class="file-note"></div>
         </div>
+        <div id="driverClosePaymentPreview" class="close-payment-preview hidden" aria-live="polite">
+          <div><span id="driverCloseCurrentBalanceLabel">Deuda actual</span><strong id="driverCloseCurrentBalance">$ 0</strong></div>
+          <div><span id="driverClosePaymentAmountLabel">Dinero que vas a entregar</span><strong id="driverClosePaymentAmountPreview">$ 0</strong></div>
+          <div class="close-payment-preview-result"><span id="driverCloseNewBalanceLabel">Nuevo saldo después de confirmar</span><strong id="driverCloseNewBalance">$ 0</strong></div>
+        </div>
+        <div id="driverClosePaymentMethodField" class="field close-payment-method-field hidden">
+          <label>¿Cómo vas a entregar el dinero?</label>
+          <div class="close-payment-methods" role="group" aria-label="Forma de pago">
+            <button type="button" data-driver-close-payment-method="cash" aria-pressed="true">Efectivo</button>
+            <button type="button" data-driver-close-payment-method="transfer" aria-pressed="false">Transferencia</button>
+          </div>
+        </div>
+        <div id="driverClosePaymentInstruction" class="close-payment-instruction hidden"></div>
         <div id="exploraTransferData" class="admin-bank-card transfer-destination hidden">
           <span>Transferir a Explora</span>
           <strong>MP.explora</strong>
@@ -562,22 +619,22 @@
         </div>
         <div id="driverCollectBankFields" class="driver-bank-fields hidden">
           <div class="field">
-            <label for="driverCollectAlias">Alias donde querés recibir</label>
-            <input id="driverCollectAlias" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Tu alias" maxlength="80">
-          </div>
-          <div class="field">
             <label for="driverCollectCuit">CUIT del titular</label>
             <input id="driverCollectCuit" type="text" inputmode="numeric" autocomplete="off" placeholder="20-12345678-9" maxlength="15">
           </div>
+          <div class="field">
+            <label for="driverCollectAlias">Alias donde querés recibir</label>
+            <input id="driverCollectAlias" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Tu alias" maxlength="80">
+          </div>
         </div>
         <div id="driverCloseProofField" class="field hidden">
-          <label for="driverCloseProof">Comprobante del pago</label>
+          <label for="driverCloseProof">Subí aquí el comprobante de la transferencia</label>
           <input id="driverCloseProof" type="file" accept="image/*,.pdf">
-          <div class="file-note">El comprobante aparecerá en Digital como “Ajuste del chofer”.</div>
+          <div class="file-note">Primero enviá el dinero y después adjuntá la foto o el PDF.</div>
         </div>
-        <div id="adminProofNotice" class="admin-proof-notice hidden">El cierre quedará pendiente hasta que el administrador pague y suba su comprobante.</div>
+        <div id="adminProofNotice" class="admin-proof-notice hidden">La solicitud llegará al administrador. El saldo cambiará recién cuando el administrador confirme la operación.</div>
         <div id="closeStatus" class="status"></div>
-        <button id="confirmClose" type="submit" class="save close-submit">Continuar</button>
+        <button id="confirmClose" type="submit" class="save close-submit">Aceptar</button>
       </form>
     </div>
 
@@ -654,6 +711,6 @@
   </script>
 
 
-<script type="module" src="./app.js?v=20260829-73-tiempo-real"></script>
+<script type="module" src="./app.js?v=20260901-77-cierre-directo"></script>
 </body>
 </html>

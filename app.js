@@ -37,6 +37,75 @@ const authReady = setPersistence(auth, browserLocalPersistence)
 const AUTH_READY_TIMEOUT_MS = 2500;
 
 const $ = id => document.getElementById(id);
+
+function photoPicker(key) {
+  return document.querySelector(`[data-photo-picker="${key}"]`);
+}
+
+function selectedPhotoFile(key) {
+  const picker = photoPicker(key);
+  if (!picker) return null;
+  const selectedInput = $(picker.dataset.selectedInput || "");
+  if (selectedInput?.files?.[0]) return selectedInput.files[0];
+  return Array.from(picker.querySelectorAll(".photo-source-input"))
+    .map(input => input.files?.[0] || null)
+    .find(Boolean) || null;
+}
+
+function clearPhotoPicker(key) {
+  const picker = photoPicker(key);
+  if (!picker) return;
+  picker.querySelectorAll(".photo-source-input").forEach(input => { input.value = ""; });
+  delete picker.dataset.selectedInput;
+  const selection = picker.querySelector("[data-photo-selection]");
+  if (selection) {
+    selection.textContent = "Ninguna foto seleccionada.";
+    selection.classList.remove("has-photo");
+  }
+}
+
+function setPhotoPickerDisabled(key, disabled) {
+  const picker = photoPicker(key);
+  if (!picker) return;
+  picker.querySelectorAll(".photo-source-input, [data-photo-input]").forEach(control => {
+    control.disabled = Boolean(disabled);
+  });
+}
+
+function initializePhotoSourcePickers() {
+  document.querySelectorAll("[data-photo-picker]").forEach(picker => {
+    picker.querySelectorAll("[data-photo-input]").forEach(button => {
+      button.addEventListener("click", () => {
+        const input = $(button.dataset.photoInput || "");
+        if (!input || input.disabled) return;
+        input.click();
+      });
+    });
+
+    picker.querySelectorAll(".photo-source-input").forEach(input => {
+      input.addEventListener("change", () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        picker.querySelectorAll(".photo-source-input").forEach(other => {
+          if (other !== input) other.value = "";
+        });
+        picker.dataset.selectedInput = input.id;
+        const selection = picker.querySelector("[data-photo-selection]");
+        if (selection) {
+          const source = input.dataset.photoSource === "camera" ? "Foto tomada" : "Foto de galería";
+          selection.textContent = `${source}: ${file.name || "imagen seleccionada"}`;
+          selection.classList.add("has-photo");
+        }
+      });
+    });
+
+    picker.closest("form")?.addEventListener("reset", () => {
+      window.setTimeout(() => clearPhotoPicker(picker.dataset.photoPicker), 0);
+    });
+  });
+}
+
+initializePhotoSourcePickers();
 const SPLASH_MIN_VISIBLE_MS = 900;
 let splashStartedAt = Date.now();
 let splashProgress = 4;
@@ -86,9 +155,11 @@ const OWNERSHIP_FIELDS = [
   "conductorUid", "conductorId", "assignedDriverUid", "enteredOnBehalfOf", "simulationDriverUid"
 ];
 let selectedCloseDirection = "";
+let selectedDriverClosePaymentMethod = "cash";
 let selectedAdminClosureId = "";
-const RECENT_RECEIPTS_LIMIT = 6;
-let receiptsExpanded = false;
+const RECENT_RECEIPTS_LIMIT = 10;
+const RECEIPTS_PAGE_SIZE = 10;
+let visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
 let pendingOperationPreview = null;
 // Primera semana administrada por este selector. Desde aquí, toda semana
 // cerrada sin comprobante permanece pendiente hasta que el chofer la cargue.
@@ -526,6 +597,13 @@ function formatCuit(value) {
   return digits.length === 11 ? `${digits.slice(0,2)}-${digits.slice(2,10)}-${digits.slice(10)}` : String(value || "").trim() || "No informado";
 }
 
+function formatCuitInput(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 10) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}-${digits.slice(2, 10)}-${digits.slice(10)}`;
+}
+
 function ownedQuery(collectionName, uid = currentDriverUid()) {
   return query(collection(db, collectionName), where("driverUid", "==", uid));
 }
@@ -937,9 +1015,31 @@ function isAdminSettlementDebt(item = {}) {
   if (/uber_weekly/.test(source) || type === "uber_weekly") return false;
   return type === "admin_debt" || role === "admin" || role === "administrador" || source === "admin_debt_menu";
 }
+
+// Desde esta versión, las deudas nuevas cargadas por Admin requieren confirmación
+// explícita del chofer antes de impactar en "Quién paga a quién". Las deudas
+// históricas no llevan este marcador y conservan exactamente su comportamiento.
+function debtRequiresDriverConfirmation(item = {}) {
+  return isAdminSettlementDebt(item) && item.driverConfirmationRequired === true;
+}
+
+function debtImpactsSettlement(item = {}) {
+  return isAdminSettlementDebt(item)
+    && (!debtRequiresDriverConfirmation(item) || item.acknowledgedByDriver === true);
+}
+
+function pendingDriverDebtConfirmations() {
+  if (isAdminProfile()) return [];
+  return debts
+    .filter(item => !movementIsDeleted(item))
+    .filter(item => Number(item.amount || 0) > 0.5)
+    .filter(item => debtRequiresDriverConfirmation(item) && item.acknowledgedByDriver !== true)
+    .sort((a, b) => recordTimestampMs(a) - recordTimestampMs(b));
+}
+
 function debtsTotal() {
   return debts
-    .filter(item => !movementIsDeleted(item) && isAdminSettlementDebt(item))
+    .filter(item => !movementIsDeleted(item) && debtImpactsSettlement(item))
     .reduce((a,item)=>a+Number(item.amount||0),0);
 }
 function advanceRemaining(item) {
@@ -1202,9 +1302,8 @@ function renderUberWeekSelector() {
   const select = $("uberWeekSelect");
   const notice = $("uberPendingNotice");
   const amountInput = $("uberAmount");
-  const proofInput = $("uberProof");
   const saveButton = $("saveUberBtn");
-  if (!select || !notice || !amountInput || !proofInput || !saveButton) return;
+  if (!select || !notice || !amountInput || !photoPicker("uber") || !saveButton) return;
 
   const pending = pendingUberWeeks();
   const previousValue = select.value;
@@ -1227,7 +1326,7 @@ function renderUberWeekSelector() {
 
   select.disabled = !hasPending;
   amountInput.disabled = !hasPending;
-  proofInput.disabled = !hasPending;
+  setPhotoPickerDisabled("uber", !hasPending);
   saveButton.disabled = !hasPending;
   updateUberWeekSummary();
 }
@@ -1444,9 +1543,40 @@ function settlementModel() {
   };
 }
 
+function renderDriverNews(settlementBalance) {
+  const card = $("driverNewsCard");
+  const title = $("driverNewsTitle");
+  const text = $("driverNewsText");
+  if (!card || !title || !text) return;
+
+  const balance = Number(settlementBalance || 0);
+  const amount = Math.abs(balance);
+  card.classList.remove("is-driver-owes", "is-explora-owes", "is-balanced");
+
+  if (amount <= 0.5) {
+    card.classList.add("is-balanced");
+    title.textContent = "Todo está en orden";
+    text.textContent = "Tu cuenta está equilibrada con Explora. Seguí así.";
+    return;
+  }
+
+  if (balance > 0.5) {
+    card.classList.add("is-driver-owes");
+    title.textContent = "Estás en rojo";
+    text.textContent = "Pedí a los pasajeros que paguen en digital o pedí un cierre para pagar tu deuda con efectivo sobrante en mano, alias o depósito.";
+    return;
+  }
+
+  card.classList.add("is-explora-owes");
+  title.textContent = "Estás en verde";
+  text.textContent = "Priorizá cobrar en efectivo. También podés pedir un cierre para cobrar a Explora la deuda pendiente.";
+}
+
 function renderWalletStatus(elementId, settlementBalance) {
   const element = $(elementId);
   if (!element) return;
+
+  renderDriverNews(settlementBalance);
 
   const differenceHint = $("settlementDifferenceHint");
   const amount = Math.abs(Number(settlementBalance || 0));
@@ -1571,7 +1701,7 @@ function buildUnifiedReceipts() {
     }));
 
   const debtReceipts = debts
-    .filter(item => !movementIsDeleted(item) && isAdminSettlementDebt(item))
+    .filter(item => !movementIsDeleted(item) && debtImpactsSettlement(item))
     .map(item => ({
       ...item,
       method: "debt",
@@ -1638,21 +1768,233 @@ function buildUnifiedReceipts() {
 }
 
 function render() {
+  syncDriverDebtConfirmationModal();
   const model = settlementModel();
   const receipts = buildUnifiedReceipts();
-  const visibleReceipts = receiptsExpanded ? receipts : receipts.slice(0, RECENT_RECEIPTS_LIMIT);
+  const visibleReceipts = receipts.slice(0, Math.max(RECENT_RECEIPTS_LIMIT, visibleReceiptCount));
 
   setAnimatedMoney("settlementTotal", model.balance);
   renderWalletStatus("settlementDirection", model.balance);
   $("receiptCount").textContent = receipts.length;
 
   const toggle = $("receiptsToggle");
-  toggle.classList.toggle("hidden", receipts.length <= RECENT_RECEIPTS_LIMIT);
-  toggle.textContent = receiptsExpanded ? "Ver menos comprobantes" : "Ver más comprobantes";
+  toggle.classList.toggle("hidden", visibleReceiptCount >= receipts.length);
+  toggle.textContent = "Ver más comprobantes";
 
   renderUberPendingBadge();
   renderList("receiptList", visibleReceipts);
+  window.setTimeout(maybeShowDriverDebtConfirmation, 0);
 }
+
+function debtProofIsImage(item = {}) {
+  const mime = String(item.proofMimeType || item.receiptMimeType || "").toLowerCase();
+  if (mime.startsWith("image/")) return true;
+  if (mime === "application/pdf") return false;
+  const path = String(item.proofPath || item.receiptPath || item.proofFileName || item.receiptFileName || item.proofUrl || "").toLowerCase();
+  if (/\.pdf(?:$|[?#])/.test(path)) return false;
+  return /\.(?:png|jpe?g|webp|gif|heic|heif)(?:$|[?#])/.test(path) || Boolean(item.proofUrl);
+}
+
+function settlementPreviewCopy(balance) {
+  const value = Math.abs(Number(balance || 0)) <= 0.5 ? 0 : Number(balance || 0);
+  if (value > 0) return { label:"Vos debés a Explora", amount:value, tone:"driver" };
+  if (value < 0) return { label:"Explora te debe", amount:Math.abs(value), tone:"explora" };
+  return { label:"Cuenta equilibrada", amount:0, tone:"balanced" };
+}
+
+let activeDriverDebtConfirmationId = "";
+let acceptingDriverDebtConfirmation = false;
+
+function closeDriverDebtConfirmationModal() {
+  $("driverDebtConfirmationModal")?.classList.add("hidden");
+  document.documentElement.classList.remove("driver-debt-modal-open");
+  document.body.classList.remove("driver-debt-modal-open");
+  activeDriverDebtConfirmationId = "";
+}
+
+function syncDriverDebtConfirmationModal() {
+  if (acceptingDriverDebtConfirmation || !activeDriverDebtConfirmationId) return;
+  const modal = $("driverDebtConfirmationModal");
+  if (!modal || modal.classList.contains("hidden")) return;
+  const stillPending = pendingDriverDebtConfirmations().some(item => item.id === activeDriverDebtConfirmationId);
+  if (!stillPending) closeDriverDebtConfirmationModal();
+}
+
+function renderDriverDebtConfirmation(item = {}) {
+  const modal = $("driverDebtConfirmationModal");
+  const body = $("driverDebtConfirmationBody");
+  const accept = $("acceptDriverDebtBtn");
+  const status = $("driverDebtConfirmationStatus");
+  if (!modal || !body || !accept || !status || !item?.id) return;
+
+  const amount = Math.max(0, Number(item.totalAmount || item.originalAmount || item.amount || 0));
+  const currentBalance = Number(settlementModel().balance || 0);
+  const afterBalance = currentBalance + amount;
+  const before = settlementPreviewCopy(currentBalance);
+  const after = settlementPreviewCopy(afterBalance);
+  const concept = String(item.detail || item.reason || item.notes || "Deuda agregada por Explora").trim();
+  const proofUrl = String(item.proofUrl || item.receiptUrl || "");
+  const imageProof = proofUrl && debtProofIsImage(item);
+
+  activeDriverDebtConfirmationId = item.id;
+  acceptingDriverDebtConfirmation = false;
+  status.textContent = "";
+  status.className = "status driver-debt-confirmation-status";
+  accept.disabled = false;
+  accept.textContent = "Aceptar deuda";
+
+  body.innerHTML = `
+    <div class="driver-debt-alert-badge">Explora agregó una deuda</div>
+    <div class="driver-debt-confirmation-amount">${money(amount)}</div>
+    <div class="driver-debt-confirmation-concept"><span>Concepto</span><strong>${escapeHtml(concept)}</strong></div>
+    ${proofUrl ? (imageProof
+      ? `<button type="button" class="driver-debt-confirmation-proof" data-proof-preview="${escapeHtml(proofUrl)}" data-proof-alt="Comprobante de ${escapeHtml(concept)}" aria-label="Ampliar comprobante de deuda"><img src="${escapeHtml(proofUrl)}" alt="Comprobante de ${escapeHtml(concept)}"></button>`
+      : `<a class="driver-debt-confirmation-proof-link" target="_blank" rel="noopener" href="${escapeHtml(proofUrl)}">Abrir comprobante adjunto</a>`)
+      : `<div class="driver-debt-confirmation-proof-missing">Comprobante no disponible.</div>`}
+    <div class="driver-debt-balance-grid" aria-label="Saldo antes y después de aceptar la deuda">
+      <div class="driver-debt-balance-card is-${before.tone}">
+        <span>Ahora</span>
+        <strong>${escapeHtml(before.label)}</strong>
+        <b>${money(before.amount)}</b>
+      </div>
+      <div class="driver-debt-balance-card is-${after.tone}">
+        <span>Después de aceptar</span>
+        <strong>${escapeHtml(after.label)}</strong>
+        <b>${money(after.amount)}</b>
+      </div>
+    </div>
+    <p class="driver-debt-confirmation-note">Al tocar “Aceptar deuda”, este importe se incorporará al saldo con Explora y aparecerá abajo como comprobante.</p>`;
+
+  modal.classList.remove("hidden");
+  document.documentElement.classList.add("driver-debt-modal-open");
+  document.body.classList.add("driver-debt-modal-open");
+  window.setTimeout(() => accept.focus({ preventScroll:true }), 60);
+}
+
+function maybeShowDriverDebtConfirmation() {
+  if (!auth.currentUser || isAdminProfile() || acceptingDriverDebtConfirmation) return;
+  const modal = $("driverDebtConfirmationModal");
+  if (!modal) return;
+  if (!modal.classList.contains("hidden")) return;
+
+  const anotherModalOpen = Array.from(document.querySelectorAll(".modal:not(.hidden)"))
+    .some(node => node.id !== "driverDebtConfirmationModal");
+  if (anotherModalOpen) return;
+
+  const pending = pendingDriverDebtConfirmations();
+  if (pending.length) renderDriverDebtConfirmation(pending[0]);
+}
+
+async function acceptDriverDebtConfirmation() {
+  if (acceptingDriverDebtConfirmation || !activeDriverDebtConfirmationId || isAdminProfile()) return;
+  const user = auth.currentUser;
+  const item = debts.find(row => row.id === activeDriverDebtConfirmationId);
+  const accept = $("acceptDriverDebtBtn");
+  const status = $("driverDebtConfirmationStatus");
+  if (!user || !item || !debtRequiresDriverConfirmation(item)) {
+    closeDriverDebtConfirmationModal();
+    acceptingDriverDebtConfirmation = false;
+    window.setTimeout(maybeShowDriverDebtConfirmation, 0);
+    return;
+  }
+
+  acceptingDriverDebtConfirmation = true;
+  accept.disabled = true;
+  accept.textContent = "Confirmando…";
+  status.textContent = "Guardando aceptación…";
+  status.className = "status driver-debt-confirmation-status";
+
+  try {
+    await setDoc(doc(db, ROOT_COLLECTIONS.debts, item.id), {
+      acknowledgedByDriver: true,
+      acknowledgedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }, { merge:true });
+
+    item.acknowledgedByDriver = true;
+    status.textContent = "Deuda aceptada y sumada al saldo.";
+    status.className = "status success driver-debt-confirmation-status";
+    accept.textContent = "Aceptada ✓";
+    render();
+    window.setTimeout(() => {
+      closeDriverDebtConfirmationModal();
+      acceptingDriverDebtConfirmation = false;
+      window.setTimeout(maybeShowDriverDebtConfirmation, 120);
+    }, 700);
+  } catch (err) {
+    console.error("No se pudo aceptar la deuda:", err);
+    acceptingDriverDebtConfirmation = false;
+    accept.disabled = false;
+    accept.textContent = "Aceptar deuda";
+    status.textContent = "No se pudo confirmar. Revisá la conexión e intentá nuevamente.";
+    status.className = "status error driver-debt-confirmation-status";
+  }
+}
+
+$("acceptDriverDebtBtn")?.addEventListener("click", acceptDriverDebtConfirmation);
+
+
+function ensureProofImageViewer() {
+  let viewer = $("proofImageViewer");
+  if (viewer) return viewer;
+
+  viewer = document.createElement("div");
+  viewer.id = "proofImageViewer";
+  viewer.className = "proof-image-viewer hidden";
+  viewer.setAttribute("role", "dialog");
+  viewer.setAttribute("aria-modal", "true");
+  viewer.setAttribute("aria-label", "Comprobante ampliado");
+  viewer.innerHTML = `
+    <button type="button" class="proof-image-viewer-close" aria-label="Cerrar comprobante">×</button>
+    <div class="proof-image-viewer-stage">
+      <img class="proof-image-viewer-img" alt="Comprobante ampliado">
+    </div>`;
+  document.body.appendChild(viewer);
+
+  const close = () => closeProofImageViewer();
+  viewer.querySelector(".proof-image-viewer-close")?.addEventListener("click", close);
+  viewer.addEventListener("click", event => {
+    if (event.target === viewer || event.target?.classList?.contains("proof-image-viewer-stage")) close();
+  });
+  return viewer;
+}
+
+function openProofImageViewer(url, alt = "Comprobante ampliado") {
+  const safeUrl = String(url || "").trim();
+  if (!safeUrl) return;
+  const viewer = ensureProofImageViewer();
+  const img = viewer.querySelector(".proof-image-viewer-img");
+  if (!img) return;
+
+  img.src = safeUrl;
+  img.alt = String(alt || "Comprobante ampliado");
+  viewer.classList.remove("hidden");
+  document.documentElement.classList.add("proof-image-viewer-open");
+  document.body.classList.add("proof-image-viewer-open");
+  window.setTimeout(() => viewer.querySelector(".proof-image-viewer-close")?.focus({ preventScroll:true }), 30);
+}
+
+function closeProofImageViewer() {
+  const viewer = $("proofImageViewer");
+  if (!viewer || viewer.classList.contains("hidden")) return;
+  viewer.classList.add("hidden");
+  document.documentElement.classList.remove("proof-image-viewer-open");
+  document.body.classList.remove("proof-image-viewer-open");
+  const img = viewer.querySelector(".proof-image-viewer-img");
+  if (img) img.removeAttribute("src");
+}
+
+document.addEventListener("click", event => {
+  const trigger = event.target?.closest?.("[data-proof-preview]");
+  if (!trigger) return;
+  event.preventDefault();
+  event.stopPropagation();
+  openProofImageViewer(trigger.getAttribute("data-proof-preview"), trigger.getAttribute("data-proof-alt") || "Comprobante ampliado");
+});
+
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeProofImageViewer();
+});
 
 function receiptFooterLabel(item = {}) {
   if (isUberReceipt(item)) return `Semana ${escapeHtml(uberWeekLabelForItem(item))}`;
@@ -1686,18 +2028,40 @@ function renderList(containerId, items) {
     const cashboxReceipt = isCashboxReceipt(item);
     const adminDebt = isAdminDebt(item);
     const digitalReceipt = item.method === "digital" && !isSettlementAdjustment(item);
-    const showsProof = digitalReceipt || isSettlementAdjustment(item) || adminDebt || uberReceipt || expenseReceipt || cashAdvance || cashboxReceipt;
-    const proof = showsProof
-      ? (debtCompensation
-          ? `<span class="proof internal-proof">Comprobante interno</span>`
-          : cashboxReceipt
-            ? `<span class="proof internal-proof">Generado automático</span>`
-            : cashAdvance
-              ? `<span class="proof internal-proof">${/pending/.test(String(item.approvalStatus || item.status || "").toLowerCase()) ? "Esperando Admin" : /reject|rechaz/.test(String(item.approvalStatus || item.status || "").toLowerCase()) ? "Rechazado" : "Aprobado"}</span>`
-              : item.proofUrl
-                ? `<a class="proof" target="_blank" rel="noopener" href="${escapeHtml(item.proofUrl)}">Ver comprobante</a>`
-                : `<span class="proof">Sin archivo</span>`)
-      : `<span class="proof internal-proof">Comprobante generado</span>`;
+    const regularCashReceipt = item.method === "cash"
+      && !isSettlementAdjustment(item)
+      && !adminDebt
+      && !debtCompensation
+      && !cashAdvance
+      && !expenseReceipt
+      && !uberReceipt
+      && !cashboxReceipt;
+    const proofUrl = String(item.proofUrl || item.receiptUrl || "");
+    const imageProof = proofUrl && debtProofIsImage(item);
+    const proofLabel = cashboxReceipt
+      ? "Caja chica"
+      : regularCashReceipt
+        ? "Cobro en efectivo"
+        : debtCompensation
+          ? "Comprobante interno"
+          : cashAdvance
+            ? (/pending/.test(String(item.approvalStatus || item.status || "").toLowerCase()) ? "Esperando Admin" : /reject|rechaz/.test(String(item.approvalStatus || item.status || "").toLowerCase()) ? "Rechazado" : "Aprobado")
+            : adminDebt
+              ? "Deuda agregada"
+              : digitalReceipt
+                ? "Cobro digital"
+                : expenseReceipt
+                  ? "Gasto"
+                  : uberReceipt
+                    ? "Uber"
+                    : isSettlementAdjustment(item)
+                      ? "Cierre"
+                      : "Operación registrada";
+    const proof = proofUrl
+      ? (imageProof
+          ? `<button type="button" class="receipt-proof-thumb" data-proof-preview="${escapeHtml(proofUrl)}" data-proof-alt="Comprobante de ${escapeHtml(item.service || proofLabel)}" aria-label="Ampliar comprobante"><img src="${escapeHtml(proofUrl)}" alt="Comprobante de ${escapeHtml(item.service || proofLabel)}" loading="lazy"></button>`
+          : `<a class="receipt-proof-file" target="_blank" rel="noopener" href="${escapeHtml(proofUrl)}" aria-label="Abrir archivo adjunto">PDF</a>`)
+      : `<span class="proof internal-proof">${escapeHtml(proofLabel)}</span>`;
 
     const icon = cashboxReceipt
       ? `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="2"/><circle cx="16" cy="16" r="2"/><path d="M7 17 17 7"/></svg>`
@@ -1716,14 +2080,6 @@ function renderList(containerId, items) {
                   : `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
 
     const amountPrefix = debtCompensation ? "−" : "+";
-    const regularCashReceipt = item.method === "cash"
-      && !isSettlementAdjustment(item)
-      && !adminDebt
-      && !debtCompensation
-      && !cashAdvance
-      && !expenseReceipt
-      && !uberReceipt
-      && !cashboxReceipt;
     const receiptToneClass = expenseReceipt
       ? "receipt-tone-expense"
       : uberReceipt
@@ -1763,7 +2119,7 @@ function renderList(containerId, items) {
 }
 
 $("receiptsToggle")?.addEventListener("click", () => {
-  receiptsExpanded = !receiptsExpanded;
+  visibleReceiptCount += RECEIPTS_PAGE_SIZE;
   render();
 });
 
@@ -1904,6 +2260,7 @@ function isAdminProfile() {
 
 function applyRoleUI() {
   const admin = isAdminProfile();
+  resetTeamRealtimeDisclosure();
   $("driverDashboard")?.classList.toggle("hidden", admin);
   $("adminDashboard")?.classList.toggle("hidden", !admin);
   // En Admin, el único botón de salida queda dentro del panel para evitar duplicados.
@@ -1934,7 +2291,24 @@ function adminDriverIsActive(driver = {}) {
 }
 
 function teamRealtimeDriverLabel(row = {}) {
-  return String(row.driverName || row.displayName || row.nombre || row.username || "Chofer").trim() || "Chofer";
+  return String(row.driverName || row.displayName || row.nombre || row.username || "").trim();
+}
+
+function teamRealtimeHasValidDriver(row = {}) {
+  return Boolean(teamRealtimeDriverLabel(row));
+}
+
+function setTeamRealtimeExpanded(expanded = false) {
+  const card = document.querySelector(".team-realtime-card");
+  const button = $("teamRealtimeToggle");
+  if (!card || !button) return;
+  card.classList.toggle("is-collapsed", !expanded);
+  button.textContent = expanded ? "Cerrar choferes" : "Abrir choferes";
+  button.setAttribute("aria-expanded", expanded ? "true" : "false");
+}
+
+function resetTeamRealtimeDisclosure() {
+  setTeamRealtimeExpanded(false);
 }
 
 function teamRealtimeSignedBalance(row = {}) {
@@ -1961,6 +2335,7 @@ function renderTeamRealtimeList() {
 
   const rows = teamRealtimeBalances
     .filter(row => row.active !== false)
+    .filter(teamRealtimeHasValidDriver)
     .sort((a, b) => teamRealtimeDriverLabel(a).localeCompare(teamRealtimeDriverLabel(b), "es", { sensitivity:"base" }));
 
   if (!rows.length) {
@@ -2110,7 +2485,7 @@ function adminBillingBalanceForDriver(driver = {}) {
   const baseline = adminBillingBaselineForDriver(driver);
   const adminDebtTotal = adminDebts
     .filter(item => adminRecordBelongsToDriver(item, driver))
-    .filter(item => !movementIsDeleted(item) && isAdminSettlementDebt(item))
+    .filter(item => !movementIsDeleted(item) && debtImpactsSettlement(item))
     .reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const driverPayments = adminPayments
     .filter(item => adminRecordBelongsToDriver(item, driver))
@@ -2178,6 +2553,7 @@ function adminOpenDebtItemsForDriver(driver = {}) {
   return adminDebts
     .filter(item => adminRecordBelongsToDriver(item, driver))
     .filter(item => !movementIsDeleted(item))
+    .filter(item => debtImpactsSettlement(item))
     .filter(item => Number(item.amount || 0) > 0.5)
     .sort((a, b) => recordTimestampMs(a) - recordTimestampMs(b));
 }
@@ -2206,7 +2582,7 @@ function renderAdminDriverOptions() {
 
   [
     ["editDriverSelect", activeOptions],
-    ["disableDriverSelect", activeOptions],
+    ["deleteDriverSelect", activeOptions],
     ["debtDriver", activeOptions],
     ["adjustmentDriver", activeOptions],
     ["historyDriver", historicalOptions],
@@ -2531,19 +2907,19 @@ function syncDriverEditForm() {
 }
 
 function setDriverManagerMode(mode = "create") {
-  const normalizedMode = mode === "edit" ? "edit" : mode === "disable" ? "disable" : "create";
+  const normalizedMode = mode === "edit" ? "edit" : mode === "delete" ? "delete" : "create";
   const createMode = normalizedMode === "create";
   const editMode = normalizedMode === "edit";
-  const disableMode = normalizedMode === "disable";
+  const deleteMode = normalizedMode === "delete";
   $("driverManagerMode").value = normalizedMode;
   $("driverCreateFields").classList.toggle("hidden", !createMode);
   $("driverEditFields").classList.toggle("hidden", !editMode);
-  $("driverDisableFields").classList.toggle("hidden", !disableMode);
+  $("driverDeleteFields").classList.toggle("hidden", !deleteMode);
   $("driverManagerCreateTab").classList.toggle("selected", createMode);
   $("driverManagerEditTab").classList.toggle("selected", editMode);
-  $("driverManagerDisableTab").classList.toggle("selected", disableMode);
-  $("saveDriverManagerBtn").textContent = createMode ? "Crear chofer" : editMode ? "Guardar cambios" : "Inhabilitar chofer";
-  $("saveDriverManagerBtn").classList.toggle("danger", disableMode);
+  $("driverManagerDisableTab").classList.toggle("selected", deleteMode);
+  $("saveDriverManagerBtn").textContent = createMode ? "Crear chofer" : editMode ? "Guardar cambios" : "Borrar chofer";
+  $("saveDriverManagerBtn").classList.toggle("danger", deleteMode);
 
   ["newDriverName", "newDriverUsername", "newDriverPassword"].forEach(id => {
     const input = $(id);
@@ -2551,7 +2927,7 @@ function setDriverManagerMode(mode = "create") {
   });
   $("editDriverSelect").required = editMode;
   $("editDriverName").required = editMode;
-  $("disableDriverSelect").required = disableMode;
+  $("deleteDriverSelect").required = deleteMode;
   if (editMode) syncDriverEditForm();
 }
 
@@ -2578,6 +2954,15 @@ function closureRemaining(item) {
   return Math.max(0, Number(item.remainingAmount ?? (original - paid)) || 0);
 }
 
+function closureDriverPaymentMethod(item = {}) {
+  const raw = String(item.paymentMethod || item.method || item.metodoPago || item.financialCategory || "").toLowerCase();
+  return /transfer|alias|transf/.test(raw) ? "transfer" : "cash";
+}
+
+function closureDriverPaymentMethodLabel(item = {}) {
+  return closureDriverPaymentMethod(item) === "transfer" ? "Transferencia" : "Efectivo";
+}
+
 function renderAdminClosures() {
   if (!isAdminProfile()) return;
   const box = $("adminClosureList");
@@ -2593,15 +2978,19 @@ function renderAdminClosures() {
     return item.direction === "driver_pays_explora" && Number(item.paidAmountTotal || 0) > 0.5 && !/reject|rechaz|awaiting|pending/.test(status);
   }).slice(0, 6);
 
-  const reviewHtml = pendingDriverReview.map(item => `
-    <article class="admin-closure-card pending">
-      <div class="admin-closure-top">
-        <div><small>Pago a Explora por confirmar</small><strong>${escapeHtml(item.operatorName || "Chofer")}</strong></div>
-        <b>${money(item.requestedPaymentAmount || item.settlementAmount || 0)}</b>
-      </div>
-      <p>El chofer adjuntó un comprobante. Confirmá o rechazá el movimiento.</p>
-      <button type="button" class="admin-proof-button" data-admin-review-closure="${escapeHtml(item.id)}">Revisar ahora</button>
-    </article>`).join("");
+  const reviewHtml = pendingDriverReview.map(item => {
+    const method = closureDriverPaymentMethod(item);
+    const methodLabel = closureDriverPaymentMethodLabel(item);
+    return `
+      <article class="admin-closure-card pending">
+        <div class="admin-closure-top">
+          <div><small>Pago a Explora por confirmar · ${methodLabel}</small><strong>${escapeHtml(item.operatorName || "Chofer")}</strong></div>
+          <b>${money(item.requestedPaymentAmount || item.settlementAmount || 0)}</b>
+        </div>
+        <p>${method === "transfer" ? "El chofer realizó una transferencia y adjuntó el comprobante." : "El chofer informó que entregará el efectivo en mano a David."} Confirmá solamente después de recibir el dinero.</p>
+        <button type="button" class="admin-proof-button" data-admin-review-closure="${escapeHtml(item.id)}">${method === "transfer" ? "Revisar comprobante" : "Confirmar entrega"}</button>
+      </article>`;
+  }).join("");
 
   const payHtml = pendingExplora.map(item => `
     <article class="admin-closure-card pending">
@@ -2622,7 +3011,7 @@ function renderAdminClosures() {
     ${driverPayments.map(item => `
       <article class="admin-closure-card received">
         <div class="admin-closure-top">
-          <div><small>Ajuste del chofer</small><strong>${escapeHtml(item.operatorName || "Chofer")}</strong></div>
+          <div><small>Ajuste del chofer · ${closureDriverPaymentMethodLabel(item)}</small><strong>${escapeHtml(item.operatorName || "Chofer")}</strong></div>
           <b>${money(item.paidAmountTotal || 0)}</b>
         </div>
         ${item.proofUrl ? `<a class="proof admin-proof-link" target="_blank" rel="noopener" href="${item.proofUrl}">Ver comprobante</a>` : ""}
@@ -2696,13 +3085,17 @@ function renderAdminPendingAction(candidate) {
   } else if (candidate.kind === "closure_driver_payment") {
     title.textContent = "Cierre pendiente de confirmación";
     const requested = Number(item.requestedPaymentAmount || item.settlementAmount || 0);
-    body.innerHTML = `<div class="admin-pending-type">El chofer pagó a Explora</div>
+    const paymentMethod = closureDriverPaymentMethod(item);
+    const paymentMethodLabel = closureDriverPaymentMethodLabel(item);
+    body.innerHTML = `<div class="admin-pending-type">El chofer pagó a Explora · ${paymentMethodLabel}</div>
       <strong class="admin-pending-driver">${escapeHtml(item.operatorName || item.driverName || "Chofer")}</strong>
       <div class="admin-pending-amount">${money(requested)}</div>
-      <div class="admin-bank-card"><span>Destino informado al chofer</span><strong>${escapeHtml(item.transferAlias || EXPLORA_TRANSFER_ALIAS)}</strong><small>CUIT ${escapeHtml(item.transferCuit || EXPLORA_CUIT)}</small></div>
-      ${item.proofUrl ? `<a class="admin-pending-proof" target="_blank" rel="noopener" href="${item.proofUrl}">Ver comprobante del chofer</a>` : ""}`;
+      ${paymentMethod === "transfer"
+        ? `<div class="admin-bank-card"><span>Transferencia enviada a</span><strong>${escapeHtml(item.transferAlias || EXPLORA_TRANSFER_ALIAS)}</strong><small>CUIT ${escapeHtml(item.transferCuit || EXPLORA_CUIT)}</small></div>
+          ${item.proofUrl ? `<a class="admin-pending-proof" target="_blank" rel="noopener" href="${item.proofUrl}">Ver comprobante del chofer</a>` : `<div class="admin-proof-notice">No se encontró el comprobante. No confirmes hasta verificar la transferencia.</div>`}`
+        : `<div class="admin-bank-card"><span>Entrega informada</span><strong>Efectivo en mano a David</strong><small>Confirmá únicamente después de recibirlo.</small></div>`}`;
     approve.textContent = "Confirmar pago";
-    reject.textContent = "Rechazar comprobante";
+    reject.textContent = paymentMethod === "transfer" ? "Rechazar comprobante" : "Rechazar entrega";
   } else {
     title.textContent = "Pedido de cierre pendiente";
     body.innerHTML = `<div class="admin-pending-type">Explora debe pagar al chofer</div>
@@ -2772,10 +3165,6 @@ async function approveDriverClosurePayment(item) {
   if (!admin || !isAdminProfile()) return;
   const closureRef = doc(db, ROOT_COLLECTIONS.closures, item.id);
   const driverUid = item.operatorUid || item.driverUid || item.choferUid || item.uid || "";
-  const candidateAdvanceRefs = adminAdvances
-    .filter(advance => (advance.operatorUid || advance.driverUid || advance.choferUid || advance.uid || "") === driverUid)
-    .filter(advance => advanceRemaining(advance) > 0.5)
-    .map(advance => doc(db, ROOT_COLLECTIONS.advances, advance.id));
   const paymentRef = doc(collection(db, ROOT_COLLECTIONS.payments));
 
   await runTransaction(db, async transaction => {
@@ -2787,25 +3176,24 @@ async function approveDriverClosurePayment(item) {
     }
     const settlementAmount = Number(current.settlementAmount || current.requestedAmount || 0);
     const amount = Math.min(settlementAmount, Number(current.requestedPaymentAmount || settlementAmount || 0));
-    const freshAdvances = [];
-    for (const advanceRef of candidateAdvanceRefs) {
-      const snap = await transaction.get(advanceRef);
-      if (snap.exists()) freshAdvances.push({ id:snap.id, ...snap.data() });
-    }
-    const repaymentPlan = planAdvanceRepayment(amount, freshAdvances);
+    const paymentMethod = closureDriverPaymentMethod(current);
+    const paymentMethodLabel = paymentMethod === "transfer" ? "Transferencia" : "Efectivo";
     const newRemaining = Math.max(0, settlementAmount - amount);
     const detail = [
       newRemaining <= 0.5 ? "Pago confirmado por Admin" : "Pago parcial confirmado por Admin",
-      repaymentPlan.totalApplied > 0.5 ? `Aplicado al adelanto: ${money(repaymentPlan.totalApplied)}` : ""
+      paymentMethodLabel,
+      "Deudas independientes y adelantos sin cambios"
     ].filter(Boolean).join(" · ");
 
     transaction.set(paymentRef, {
-      method:"digital", paymentMethod:"transfer", metodoPago:"transfer", financialCategory:"transfer",
+      method:paymentMethod, paymentMethod, metodoPago:paymentMethod, financialCategory:paymentMethod,
+      receiptRequired:paymentMethod === "transfer",
+      receiptStatus:paymentMethod === "transfer" ? "uploaded" : "not_required",
       type:"admin_billing_settlement_payment", operationType:"admin_billing_settlement_payment", movementType:"driver_payment",
       sourceModule:"facturacion", affectsBillingSettlement:true, adjustmentDirection:"driver_to_explora",
       amount, monto:amount, previousBillingBalance:settlementAmount, newBillingBalance:newRemaining,
-      advanceRepaymentAmount:repaymentPlan.totalApplied,
-      advanceAllocations:repaymentPlan.allocations.map(allocation => ({ advanceId:allocation.id, amount:allocation.applied })),
+      advanceRepaymentAmount:0,
+      advanceAllocations:[],
       service:"Ajuste del chofer", notes:detail, detail,
       proofUrl:current.proofUrl || "", proofPath:current.proofPath || "", receiptUrl:current.receiptUrl || current.proofUrl || "", receiptPath:current.receiptPath || current.proofPath || "",
       closureId:item.id, dayKey:current.dayKey || localDayKey(), weeklyPeriodId:current.weeklyPeriodId || currentWeeklyPeriodId(),
@@ -2819,6 +3207,9 @@ async function approveDriverClosurePayment(item) {
       remainingAmount:newRemaining,
       amountDueFromDriver:newRemaining,
       amountFromDriver:newRemaining,
+      projectedRemainingAmount:newRemaining,
+      projectedBalanceAfterApproval:newRemaining,
+      telegramSettlementAfterBalance:newRemaining,
       reviewStatus:"approved",
       status:newRemaining <= 0.5 ? "completed" : "partial",
       actionedByAdminUid:admin.uid,
@@ -2828,15 +3219,6 @@ async function approveDriverClosurePayment(item) {
       updatedAt:serverTimestamp(),
       updatedAtMs:Date.now(),
       completedAt:newRemaining <= 0.5 ? serverTimestamp() : null
-    });
-    repaymentPlan.allocations.forEach(allocation => {
-      transaction.update(doc(db, ROOT_COLLECTIONS.advances, allocation.id), {
-        remainingAmount:allocation.remainingAmount,
-        repaidAmount:allocation.repaidAmount,
-        status:allocation.status,
-        updatedAt:serverTimestamp(),
-        updatedAtMs:Date.now()
-      });
     });
   });
 }
@@ -3020,6 +3402,7 @@ $("adminLogoutBtn")?.addEventListener("click", async () => {
   }
 });
 
+
 $("adminDriversBtn")?.addEventListener("click", () => {
   if (!isAdminProfile()) return;
   $("driverManagerForm").reset();
@@ -3068,20 +3451,20 @@ $("driverManagerForm")?.addEventListener("submit", async event => {
       await adminUpdateDriverCallable({ driverId, nombre, active:true, password });
       status.textContent = `Datos de ${nombre} actualizados.`;
     } else {
-      const driverId = $("disableDriverSelect").value;
+      const driverId = $("deleteDriverSelect").value;
       const driver = adminDriverById(driverId);
-      if (!driverId || !driver || !adminDriverIsActive(driver)) throw new Error("Seleccioná un chofer activo para inhabilitar.");
+      if (!driverId || !driver) throw new Error("Seleccioná un chofer para borrar.");
       const nombre = adminDriverLabel(driver);
-      const confirmed = window.confirm(`¿Inhabilitar a ${nombre}? Perderá el acceso y desaparecerá de los menús operativos.`);
+      const confirmed = window.confirm(`¿Borrar definitivamente a ${nombre}? Se eliminará su acceso y desaparecerá de los menús. Los movimientos históricos se conservarán.`);
       if (!confirmed) {
-        status.textContent = "Inhabilitación cancelada.";
+        status.textContent = "Borrado cancelado.";
         status.className = "status";
         return;
       }
 
-      button.textContent = "Inhabilitando…";
-      await adminUpdateDriverCallable({ driverId, nombre, active:false, password:"" });
-      status.textContent = `${nombre} fue inhabilitado y ya no aparecerá en Tiempo real.`;
+      button.textContent = "Borrando…";
+      await adminUpdateDriverCallable({ driverId, nombre, deleteDriver:true });
+      status.textContent = `${nombre} fue borrado correctamente.`;
     }
 
     status.className = "status success";
@@ -3092,7 +3475,7 @@ $("driverManagerForm")?.addEventListener("submit", async event => {
     status.className = "status error";
   } finally {
     button.disabled = false;
-    button.textContent = mode === "create" ? "Crear chofer" : mode === "edit" ? "Guardar cambios" : "Inhabilitar chofer";
+    button.textContent = mode === "create" ? "Crear chofer" : mode === "edit" ? "Guardar cambios" : "Borrar chofer";
   }
 });
 
@@ -3219,11 +3602,13 @@ onAuthStateChanged(auth, async user => {
     adminPendingAction = null;
     adminDismissedPendingActionIds.clear();
     currentProfile = null;
+    visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
     await finishSplash("loginScreen");
     return;
   }
 
   // La pantalla se decide por rol: Admin nunca reutiliza la vista financiera del chofer.
+  visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
   currentProfile = fallbackProfile(user);
   $("operatorName").textContent = `Hola ${currentProfile.displayName || currentProfile.username || user.email?.split("@")[0] || "Chofer"}`;
   applyRoleUI();
@@ -3278,7 +3663,6 @@ document.querySelectorAll("[data-mode]").forEach(btn => {
     $("chargeModal").dataset.tone = mode;
     $("chargeTitle").textContent = mode === "cash" ? "Cobro en efectivo" : "Cobro digital";
     $("proofField").classList.toggle("hidden", mode !== "digital");
-    $("proof").required = mode === "digital";
     $("chargeStatus").textContent = "";
     $("chargeStatus").className = "status";
     $("saveChargeBtn").disabled = false;
@@ -3288,7 +3672,10 @@ document.querySelectorAll("[data-mode]").forEach(btn => {
 });
 
 document.querySelectorAll("[data-close]").forEach(btn => {
-  btn.addEventListener("click", () => $(btn.dataset.close).classList.add("hidden"));
+  btn.addEventListener("click", () => {
+    $(btn.dataset.close).classList.add("hidden");
+    window.setTimeout(maybeShowDriverDebtConfirmation, 0);
+  });
 });
 
 // Muestra el estado de éxito dentro del mismo modal y luego lo cierra solo.
@@ -3303,6 +3690,7 @@ function closeModalAndGoTop(modalId, delayMs = 1000) {
     } catch (_) {
       window.scrollTo(0, 0);
     }
+    window.setTimeout(maybeShowDriverDebtConfirmation, 0);
   }, delayMs);
 }
 
@@ -3630,7 +4018,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
   const mode = $("chargeMode").value;
   const service = mode === "cash" ? "Cobro en efectivo" : "Cobro digital";
   const amount = parseMoneyInput($("chargeAmount").value);
-  const file = $("proof").files?.[0];
+  const file = selectedPhotoFile("digital");
 
   if (!amount || amount <= 0) {
     $("chargeStatus").textContent = "Ingresá un importe válido.";
@@ -3875,7 +4263,7 @@ $("debtForm")?.addEventListener("submit", async event => {
     const settlementBeforeDebt = adminBillingBalanceForDriver(driver);
     const debtBalanceBefore = adminDebts
       .filter(item => adminRecordBelongsToDriver(item, driver))
-      .filter(item => !movementIsDeleted(item) && isAdminSettlementDebt(item))
+      .filter(item => !movementIsDeleted(item) && debtImpactsSettlement(item))
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const settlementAfterDebt = settlementBeforeDebt + amount;
     const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -3900,8 +4288,12 @@ $("debtForm")?.addEventListener("submit", async event => {
       notes: detail,
       proofUrl,
       proofPath,
+      proofMimeType: file.type || "",
+      proofFileName: file.name || cleanName,
       receiptUrl: proofUrl,
       receiptPath: proofPath,
+      receiptMimeType: file.type || "",
+      receiptFileName: file.name || cleanName,
       dayKey: localDayKey(),
       driverUid: driver.id,
       choferUid: driver.id,
@@ -3915,6 +4307,8 @@ $("debtForm")?.addEventListener("submit", async event => {
       status: "active",
       debtStatus: "active",
       acknowledgedByDriver: false,
+      driverConfirmationRequired: true,
+      driverConfirmationVersion: 1,
       createdByRole: "admin",
       registeredByAdmin: true,
       registrationOrigin: "admin_debt_menu",
@@ -4224,7 +4618,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
 
   const amount = parseMoneyInput($("expenseAmount").value);
   const detail = $("expenseDetail").value.trim();
-  const file = $("expenseProof").files?.[0];
+  const file = selectedPhotoFile("expense");
 
   if (!amount || amount <= 0) {
     $("expenseStatus").textContent = "Ingresá un importe válido.";
@@ -4402,7 +4796,7 @@ $("uberForm")?.addEventListener("submit", async e => {
 
   const amount = parseMoneyInput($("uberAmount").value);
   const week = selectedPendingUberWeek();
-  const file = $("uberProof").files?.[0];
+  const file = selectedPhotoFile("uber");
 
   if (!week) {
     $("uberStatus").textContent = "Elegí una semana cerrada pendiente.";
@@ -4530,7 +4924,7 @@ $("uberForm")?.addEventListener("submit", async e => {
     render();
 
     $("uberAmount").value = "";
-    $("uberProof").value = "";
+    clearPhotoPicker("uber");
     renderUberWeekSelector();
     const remaining = pendingUberWeeks().length;
     $("uberStatus").textContent = remaining
@@ -4552,85 +4946,107 @@ $("uberForm")?.addEventListener("submit", async e => {
 
 function resetDriverClose() {
   selectedCloseDirection = "";
+  selectedDriverClosePaymentMethod = "cash";
   $("driverCloseForm").reset();
   $("driverCloseForm").classList.add("hidden");
   $("driverCloseAmountField").classList.add("hidden");
+  $("driverClosePaymentPreview")?.classList.add("hidden");
+  $("driverClosePaymentMethodField")?.classList.add("hidden");
+  $("driverClosePaymentInstruction")?.classList.add("hidden");
   $("driverCloseProofField").classList.add("hidden");
   $("exploraTransferData")?.classList.add("hidden");
   $("driverCollectBankFields")?.classList.add("hidden");
   $("adminProofNotice").classList.add("hidden");
   $("driverCloseProof").required = false;
+  $("driverCollectAlias").required = false;
+  $("driverCollectCuit").required = false;
   $("closeStatus").textContent = "";
   $("closeStatus").className = "status";
-  document.querySelectorAll(".close-choice").forEach(button => button.classList.remove("selected"));
+  document.querySelectorAll("[data-driver-close-payment-method]").forEach(button => {
+    const selected = button.dataset.driverClosePaymentMethod === "cash";
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", selected ? "true" : "false");
+  });
+}
+
+function updateDriverClosePreview() {
+  const model = settlementModel();
+  const preview = $("driverClosePaymentPreview");
+  if (!preview || !selectedCloseDirection) return;
+
+  if (selectedCloseDirection === "explora_to_driver") {
+    $("driverCloseCurrentBalanceLabel").textContent = "Total que tenés para cobrar";
+    $("driverClosePaymentAmountLabel").textContent = "Explora te pagará";
+    $("driverCloseNewBalanceLabel").textContent = "Nuevo saldo después de confirmar";
+    $("driverCloseCurrentBalance").textContent = money(model.amount);
+    $("driverClosePaymentAmountPreview").textContent = money(model.amount);
+    $("driverCloseNewBalance").textContent = `${money(0)} · Equilibrado`;
+    preview.classList.remove("hidden");
+    return;
+  }
+
+  const amount = parseMoneyInput($("driverCloseAmount")?.value || "");
+  const newBalance = Math.max(0, model.amount - Math.min(amount, model.amount));
+  $("driverCloseCurrentBalanceLabel").textContent = "Deuda actual";
+  $("driverClosePaymentAmountLabel").textContent = "Dinero que vas a entregar";
+  $("driverCloseNewBalanceLabel").textContent = "Nuevo saldo después de confirmar";
+  $("driverCloseCurrentBalance").textContent = money(model.amount);
+  $("driverClosePaymentAmountPreview").textContent = money(amount);
+  $("driverCloseNewBalance").textContent = newBalance <= 0.5 ? `${money(0)} · Equilibrado` : money(newBalance);
+  preview.classList.remove("hidden");
+}
+
+function setDriverClosePaymentMethod(method) {
+  if (selectedCloseDirection !== "driver_to_explora") return;
+  selectedDriverClosePaymentMethod = method === "transfer" ? "transfer" : "cash";
+  const transfer = selectedDriverClosePaymentMethod === "transfer";
+  document.querySelectorAll("[data-driver-close-payment-method]").forEach(button => {
+    const selected = button.dataset.driverClosePaymentMethod === selectedDriverClosePaymentMethod;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", selected ? "true" : "false");
+  });
+  const instruction = $("driverClosePaymentInstruction");
+  instruction.textContent = transfer
+    ? "Enviá primero el dinero por transferencia y después subí aquí el comprobante."
+    : "Dale el efectivo en mano a David. El saldo cambiará cuando David confirme que lo recibió.";
+  instruction.classList.remove("hidden");
+  $("exploraTransferData")?.classList.toggle("hidden", !transfer);
+  $("driverCloseProofField")?.classList.toggle("hidden", !transfer);
+  $("driverCloseProof").required = transfer;
 }
 
 function prepareDriverClose() {
   resetDriverClose();
   const model = settlementModel();
-  const payButton = $("choosePayExplora");
-  const collectButton = $("chooseCollectExplora");
 
   if (model.from === "balanced") {
-    $("closeBalanceMessage").innerHTML = `<strong>Las cuentas ya están equilibradas.</strong><span>No hay ningún importe pendiente.</span>`;
-    payButton.disabled = true;
-    collectButton.disabled = true;
+    $("closeBalanceMessage").innerHTML = `<strong>Las cuentas ya están equilibradas.</strong><span>No hay ningún importe pendiente para pagar ni cobrar.</span>`;
     return;
   }
 
   if (model.from === "cash") {
-    $("closeBalanceMessage").innerHTML = `<strong>Debe pagar a Explora ${money(model.amount)}.</strong><span>Ese es el total necesario para que ambos queden equilibrados.</span>`;
-    payButton.disabled = false;
-    collectButton.disabled = true;
-    payButton.classList.add("required-action");
-    collectButton.classList.remove("required-action");
-  } else {
-    $("closeBalanceMessage").innerHTML = `<strong>Debe cobrar a Explora ${money(model.amount)}.</strong><span>Ese es el total necesario para que ambos queden equilibrados.</span>`;
-    payButton.disabled = true;
-    collectButton.disabled = false;
-    collectButton.classList.add("required-action");
-    payButton.classList.remove("required-action");
-  }
-}
-
-function selectDriverClose(direction) {
-  const model = settlementModel();
-  const expected = model.from === "cash" ? "driver_to_explora" : model.from === "digital" ? "explora_to_driver" : "";
-  if (!expected || direction !== expected) return;
-
-  selectedCloseDirection = direction;
-  $("driverCloseForm").reset();
-  $("driverCloseForm").classList.remove("hidden");
-  $("closeStatus").textContent = "";
-  $("closeStatus").className = "status";
-  document.querySelectorAll(".close-choice").forEach(button => button.classList.remove("selected"));
-
-  if (direction === "driver_to_explora") {
-    $("choosePayExplora").classList.add("selected");
-    $("driverCloseSelected").innerHTML = `<small>Pagar a Explora</small><strong>${money(model.amount)} pendientes</strong><span>Transferí a los datos de Explora y adjuntá el comprobante. Admin debe confirmar el pago.</span>`;
-    setMoneyInput("driverCloseAmount", model.amount);
-    $("driverCloseLimit").textContent = `Máximo disponible: ${money(model.amount)}.`;
+    selectedCloseDirection = "driver_to_explora";
+    $("closeBalanceMessage").innerHTML = `<strong>Actualmente debés ${money(model.amount)} a Explora.</strong><span>Ingresá cuánto dinero querés usar para achicar la deuda.</span>`;
+    $("driverCloseSelected").innerHTML = `<small>Achicar deuda</small><strong>${money(model.amount)} pendientes</strong><span>Podés pagar una parte o usar el total. El movimiento impactará recién cuando el administrador lo confirme.</span>`;
+    $("driverCloseForm").classList.remove("hidden");
     $("driverCloseAmountField").classList.remove("hidden");
-    $("driverCloseProofField").classList.remove("hidden");
-    $("driverCloseProof").required = true;
-    $("exploraTransferData").classList.remove("hidden");
-    $("driverCollectBankFields").classList.add("hidden");
-    $("driverCollectAlias").required = false;
-    $("driverCollectCuit").required = false;
-    $("adminProofNotice").classList.add("hidden");
-    $("confirmClose").textContent = "Enviar pago para aprobación";
+    $("driverClosePaymentMethodField")?.classList.remove("hidden");
+    $("driverCloseLimit").textContent = `Podés ingresar entre $1 y ${money(model.amount)}.`;
+    $("adminProofNotice").classList.remove("hidden");
+    $("confirmClose").textContent = "Aceptar pago";
+    setDriverClosePaymentMethod("cash");
+    updateDriverClosePreview();
   } else {
-    $("chooseCollectExplora").classList.add("selected");
-    $("driverCloseSelected").innerHTML = `<small>Cobrar a Explora</small><strong>${money(model.amount)} pendientes</strong><span>Indicá el alias y CUIT donde querés recibir el dinero.</span>`;
-    $("driverCloseAmountField").classList.add("hidden");
-    $("driverCloseProofField").classList.add("hidden");
-    $("driverCloseProof").required = false;
-    $("exploraTransferData").classList.add("hidden");
+    selectedCloseDirection = "explora_to_driver";
+    $("closeBalanceMessage").innerHTML = `<strong>Tenés ${money(model.amount)} para cobrar a Explora.</strong><span>Completá tu CUIT y alias. Se solicitará el total completo.</span>`;
+    $("driverCloseSelected").innerHTML = `<small>Solicitar cobro</small><strong>${money(model.amount)} a cobrar</strong><span>Cuando el administrador realice y confirme el pago, el nuevo saldo quedará equilibrado en ${money(0)}.</span>`;
+    $("driverCloseForm").classList.remove("hidden");
     $("driverCollectBankFields").classList.remove("hidden");
     $("driverCollectAlias").required = true;
     $("driverCollectCuit").required = true;
     $("adminProofNotice").classList.remove("hidden");
-    $("confirmClose").textContent = "Solicitar cobro";
+    $("confirmClose").textContent = "Enviar solicitud de cobro";
+    updateDriverClosePreview();
   }
 }
 
@@ -4671,11 +5087,18 @@ $("closeDayBtn")?.addEventListener("click", () => {
   }
 });
 
-$("choosePayExplora")?.addEventListener("click", () => selectDriverClose("driver_to_explora"));
-$("chooseCollectExplora")?.addEventListener("click", () => selectDriverClose("explora_to_driver"));
+$("driverClosePaymentMethodField")?.addEventListener("click", event => {
+  const button = event.target.closest("[data-driver-close-payment-method]");
+  if (button) setDriverClosePaymentMethod(button.dataset.driverClosePaymentMethod);
+});
+$("driverCloseAmount")?.addEventListener("input", updateDriverClosePreview);
+$("driverCollectCuit")?.addEventListener("input", event => {
+  event.target.value = formatCuitInput(event.target.value);
+});
 $("driverUseFullAmount")?.addEventListener("click", () => {
   const model = settlementModel();
   setMoneyInput("driverCloseAmount", model.amount);
+  updateDriverClosePreview();
 });
 
 $("driverCloseForm")?.addEventListener("submit", async event => {
@@ -4692,6 +5115,7 @@ $("driverCloseForm")?.addEventListener("submit", async event => {
   }
 
   const isDriverPayment = selectedCloseDirection === "driver_to_explora";
+  const driverPaymentMethod = selectedDriverClosePaymentMethod === "transfer" ? "transfer" : "cash";
   const amount = isDriverPayment ? parseMoneyInput($("driverCloseAmount").value) : model.amount;
   const file = $("driverCloseProof").files?.[0];
   const recipientAlias = !isDriverPayment ? String($("driverCollectAlias")?.value || "").trim() : "";
@@ -4701,8 +5125,8 @@ $("driverCloseForm")?.addEventListener("submit", async event => {
     $("closeStatus").className = "status error";
     return;
   }
-  if (isDriverPayment && !file) {
-    $("closeStatus").textContent = "Adjuntá el comprobante del pago a Explora.";
+  if (isDriverPayment && driverPaymentMethod === "transfer" && !file) {
+    $("closeStatus").textContent = "Primero transferí el dinero y después adjuntá el comprobante.";
     $("closeStatus").className = "status error";
     return;
   }
@@ -4741,21 +5165,31 @@ $("driverCloseForm")?.addEventListener("submit", async event => {
     const closureRef = doc(collection(db, ROOT_COLLECTIONS.closures));
     let proofUrl = "";
     let proofPath = "";
-    const remainingAmount = Math.max(0, model.amount - amount);
 
     if (isDriverPayment) {
-      const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
-      proofPath = `cierres_semanales/${currentWeeklyPeriodId()}/${user.uid}/${closureRef.id}_${Date.now()}_${cleanName}`;
-      const storageRef = ref(storage, proofPath);
-      await uploadBytes(storageRef, file);
-      proofUrl = await getDownloadURL(storageRef);
+      if (driverPaymentMethod === "transfer") {
+        const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+        proofPath = `cierres_semanales/${currentWeeklyPeriodId()}/${user.uid}/${closureRef.id}_${Date.now()}_${cleanName}`;
+        const storageRef = ref(storage, proofPath);
+        await uploadBytes(storageRef, file);
+        proofUrl = await getDownloadURL(storageRef);
+      }
       const closureNowMs = Date.now();
+      const projectedRemainingAmount = Math.max(0, model.amount - amount);
       await setDoc(closureRef, {
         direction: "driver_pays_explora",
         paymentDirection: "driver_to_explora",
+        paymentMethod: driverPaymentMethod,
+        method: driverPaymentMethod,
+        metodoPago: driverPaymentMethod,
+        financialCategory: driverPaymentMethod,
+        receiptRequired: driverPaymentMethod === "transfer",
+        receiptStatus: driverPaymentMethod === "transfer" ? "uploaded" : "not_required",
         requestedAmount: model.amount,
         settlementAmount: model.amount,
         requestedPaymentAmount: amount,
+        projectedRemainingAmount,
+        projectedBalanceAfterApproval: projectedRemainingAmount,
         paidAmountTotal: 0,
         remainingAmount: model.amount,
         amountDueFromDriver: model.amount,
@@ -4764,9 +5198,11 @@ $("driverCloseForm")?.addEventListener("submit", async event => {
         amountToDriver: 0,
         gross: model.grand, grossAmount: model.grand, expenseTotal: model.expense, cashboxTotal: model.cashBox,
         proofUrl, proofPath, receiptUrl: proofUrl, receiptPath: proofPath,
-        proofUploadedByUid: user.uid, proofUploadedByRole: "driver",
+        proofUploadedByUid: proofUrl ? user.uid : "", proofUploadedByRole: proofUrl ? "driver" : "",
         transferAlias: EXPLORA_TRANSFER_ALIAS,
         transferCuit: EXPLORA_CUIT,
+        detail: driverPaymentMethod === "transfer" ? "Pago de cierre por transferencia" : "Pago de cierre en efectivo",
+        notes: projectedRemainingAmount <= 0.5 ? "Pago total pendiente de confirmación" : "Pago parcial pendiente de confirmación",
         status: "awaiting_admin_review",
         reviewStatus: "pending",
         dayKey: localDayKey(), weeklyPeriodId: currentWeeklyPeriodId(),
@@ -4779,7 +5215,9 @@ $("driverCloseForm")?.addEventListener("submit", async event => {
         requestedByUid: user.uid, requestedByRole: "driver", createdByUid: user.uid, createdByRole: "driver", businessId: BUSINESS_ID,
         cutoffAtMs: closureNowMs, requestedAtMs: closureNowMs, createdAtMs: closureNowMs, requestedAt: serverTimestamp(), createdAt: serverTimestamp()
       });
-      $("closeStatus").textContent = "Pago enviado a Admin. Quedará aplicado cuando sea aprobado.";
+      $("closeStatus").textContent = driverPaymentMethod === "transfer"
+        ? "Transferencia enviada a Admin con su comprobante. El saldo cambiará cuando sea confirmada."
+        : "Entrega en efectivo enviada a Admin. El saldo cambiará cuando David confirme que la recibió.";
     } else {
       const closureNowMs = Date.now();
       await setDoc(closureRef, {
@@ -4793,6 +5231,8 @@ $("driverCloseForm")?.addEventListener("submit", async event => {
         amountFromDriver: 0,
         amountDueToDriver: model.amount,
         amountToDriver: model.amount,
+        projectedRemainingAmount: 0,
+        projectedBalanceAfterApproval: 0,
         gross: model.grand,
         grossAmount: model.grand,
         expenseTotal: model.expense,
@@ -4801,6 +5241,8 @@ $("driverCloseForm")?.addEventListener("submit", async event => {
         reviewStatus: "pending",
         recipientAlias,
         recipientCuit: recipientCuitDigits,
+        detail: "El chofer solicita cobrar el total pendiente",
+        notes: "Solicitud de cobro pendiente de confirmación del administrador",
         dayKey: localDayKey(),
         weeklyPeriodId: currentWeeklyPeriodId(),
         closureKind: "facturacion",
@@ -4837,7 +5279,7 @@ $("driverCloseForm")?.addEventListener("submit", async event => {
         requestedAt: serverTimestamp(),
         createdAt: serverTimestamp()
       });
-      $("closeStatus").textContent = "Cobro solicitado. Falta el pago y comprobante del administrador.";
+      $("closeStatus").textContent = "Solicitud de cobro enviada a Telegram y al administrador. El saldo quedará equilibrado cuando se confirme el pago.";
     }
     $("closeStatus").className = "status success";
     setTimeout(() => $("closeModal").classList.add("hidden"), 1500);
@@ -4847,7 +5289,7 @@ $("driverCloseForm")?.addEventListener("submit", async event => {
     $("closeStatus").className = "status error";
   } finally {
     $("confirmClose").disabled = false;
-    $("confirmClose").textContent = isDriverPayment ? "Enviar pago para aprobación" : "Solicitar cobro";
+    $("confirmClose").textContent = isDriverPayment ? "Aceptar pago" : "Enviar solicitud de cobro";
   }
 });
 

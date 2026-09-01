@@ -349,7 +349,9 @@ service cloud.firestore {
           && ownershipFieldsUnchanged()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'acknowledgedByDriver', 'acknowledgedAt', 'updatedAt'
-          ]);
+          ])
+          && resource.data.driverConfirmationRequired == true
+          && request.resource.data.acknowledgedByDriver == true;
       }
 
       function hasValidDebtRemainingDecrease() {

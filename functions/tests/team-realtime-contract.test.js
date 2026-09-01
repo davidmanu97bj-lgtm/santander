@@ -12,8 +12,8 @@ const functions = fs.readFileSync(path.join(root, "functions/index.js"), "utf8")
 const rules = fs.readFileSync(path.join(root, "firestore.rules"), "utf8");
 
 test("el resumen anterior fue reemplazado por Tiempo real", () => {
-  assert.match(html, /id="teamRealtimeTitle">Tiempo real</);
-  assert.match(html, /id="teamRealtimeList"/);
+  assert.match(html, /<h1>Tiempo real<\/h1>/);
+  assert.match(html, /id="adminDriverList"/);
   assert.doesNotMatch(html, /id="summaryBilledAmount"/);
   assert.doesNotMatch(html, /id="summaryExpenseTotal"/);
   assert.match(app, /TEAM_REALTIME_BALANCES_COLLECTION = "team_realtime_balances"/);
@@ -21,12 +21,16 @@ test("el resumen anterior fue reemplazado por Tiempo real", () => {
   assert.match(app, /Explora debe liquidar al chofer/);
 });
 
-test("la gestión administrativa incorpora una acción explícita de inhabilitar", () => {
-  assert.match(html, /data-driver-manager-mode="disable">Inhabilitar</);
-  assert.match(html, /id="disableDriverSelect"/);
-  assert.match(app, /active:false/);
-  assert.match(app, /no aparecerá en Tiempo real/i);
-  assert.match(app, /\["disableDriverSelect", activeOptions\]/);
+test("el listado de choferes está visible en Admin y la gestión permite borrar", () => {
+  assert.match(html, /id="adminDashboard"/);
+  assert.match(html, /id="adminDriversBtn"/);
+  assert.match(html, /data-driver-manager-mode="delete">Borrar chofer</);
+  assert.match(html, /id="deleteDriverSelect"/);
+  assert.match(app, /deleteDriver:true/);
+  assert.match(app, /Borrar chofer/);
+  assert.match(app, /function renderAdminDriverList\(\)/);
+  assert.match(app, /filter\(driver => !adminDriverIsAdministrator\(driver\) && adminDriverIsActive\(driver\)\)/);
+  assert.match(functions, /admin_delete_driver/);
 });
 
 test("los saldos compartidos son sanitizados y mantenidos por backend", () => {
