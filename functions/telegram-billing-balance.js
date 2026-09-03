@@ -242,10 +242,38 @@ function uberGrossAmount(data = {}) {
   return moneyNumber(data.grossAmount ?? data.totalAmount ?? data.amount ?? data.monto ?? 0);
 }
 
+function uberHasSplitAmounts(data = {}) {
+  return Object.prototype.hasOwnProperty.call(data, "cashAmount") ||
+    Object.prototype.hasOwnProperty.call(data, "uberCashAmount") ||
+    Object.prototype.hasOwnProperty.call(data, "transferAmount") ||
+    Object.prototype.hasOwnProperty.call(data, "uberTransferAmount");
+}
+
+function uberCashAmount(data = {}) {
+  return uberHasSplitAmounts(data)
+    ? moneyNumber(data.cashAmount ?? data.uberCashAmount ?? 0)
+    : uberGrossAmount(data);
+}
+
+function uberTransferAmount(data = {}) {
+  return uberHasSplitAmounts(data)
+    ? moneyNumber(data.transferAmount ?? data.uberTransferAmount ?? data.digitalAmount ?? 0)
+    : 0;
+}
+
 function uberCashboxAmount(data = {}) {
   const explicit = moneyNumber(data.cashboxAmount ?? data.uberCashboxAmount ?? 0);
   if (explicit > 0) return explicit;
-  return uberGrossAmount(data) * 0.05;
+  return uberCashAmount(data) * 0.05;
+}
+
+function uberImpactsSettlement(data = {}) {
+  const workflow = safeText(data.settlementWorkflowVersion || data.workflowVersion).toLowerCase();
+  const status = safeText(data.reviewStatus || data.status).toLowerCase();
+  if (workflow === "v82_admin_driver_confirmation") {
+    return data.driverConfirmed === true && /approved|confirmed|completed/.test(status);
+  }
+  return !/reject|rechaz|cancel|anulad/.test(status);
 }
 
 function isAdminSettlementDebt(data = {}) {
@@ -318,13 +346,16 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
 
   let uberCashboxGenerated = 0;
   let uberGrossTotal = 0;
+  let uberCashTotal = 0;
+  let uberTransferTotal = 0;
   for (const week of uberWeeks || []) {
     if (!week || movementIsDeleted(week) || isSimulated(week) || rowMs(week) <= cashboxResetMs) continue;
-    const review = safeText(week.reviewStatus || week.status).toLowerCase();
-    if (review === "rejected") continue;
+    if (!uberImpactsSettlement(week)) continue;
     const grossAmount = uberGrossAmount(week);
     if (!(grossAmount > 0)) continue;
     uberGrossTotal += grossAmount;
+    uberCashTotal += uberCashAmount(week);
+    uberTransferTotal += uberTransferAmount(week);
     uberCashboxGenerated += uberCashboxAmount(week);
   }
 
@@ -344,12 +375,14 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
   cash = roundMoney(cash);
   digital = roundMoney(digital);
   uberGrossTotal = roundMoney(uberGrossTotal);
+  uberCashTotal = roundMoney(uberCashTotal);
+  uberTransferTotal = roundMoney(uberTransferTotal);
   expenseTotal = roundMoney(expenseTotal);
   adminDebtTotal = roundMoney(adminDebtTotal);
   const expenseShare = roundMoney(expenseTotal * 0.50);
   const gross = roundMoney(cash + digital + uberGrossTotal);
   const shareEach = roundMoney(gross * 0.5);
-  const netBeforeCashboxToDriver = roundMoney(shareEach - cash - uberGrossTotal);
+  const netBeforeCashboxToDriver = roundMoney(shareEach - cash - uberCashTotal);
 
   const cashboxGeneratedTotal = roundMoney(regularCashboxGenerated + uberCashboxGenerated);
   const cashboxOffsetPreviouslyApplied = Math.min(
@@ -373,6 +406,8 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
     cash,
     digital,
     uberGrossTotal,
+    uberCashTotal,
+    uberTransferTotal,
     gross,
     shareEach,
     settlementPaymentCount,
@@ -455,15 +490,17 @@ function teamSettlementDeltaSince(cutoffMs, records = [], uberWeeks = [], expens
   const exploraPaid = scopedRecords
     .filter(item => billingSettlementDirection(item) === "explora_to_driver")
     .reduce((sum, item) => sum + amountOf(item), 0);
-  const uber = uberWeeks
+  const scopedUber = uberWeeks
     .filter(item => item && !movementIsDeleted(item) && !isSimulated(item) && rowMs(item) > cutoffMs)
-    .filter(item => !/reject|rechaz/.test(safeText(item.reviewStatus || item.status).toLowerCase()))
-    .reduce((sum, item) => sum + uberGrossAmount(item), 0);
-  const cashbox = (cashboxEligibleCash + uber) * 0.05;
+    .filter(uberImpactsSettlement);
+  const uberCash = scopedUber.reduce((sum, item) => sum + uberCashAmount(item), 0);
+  const uberTransfer = scopedUber.reduce((sum, item) => sum + uberTransferAmount(item), 0);
+  const cashbox = (cashboxEligibleCash + uberCash) * 0.05;
   const automaticExpenseImpact = teamAutomaticExpenseImpact(expenses, cutoffMs);
 
   return roundMoney(
-    (cash * 0.50) + (uber * 0.50) + cashbox - (digital * 0.50) -
+    (cash * 0.50) + (uberCash * 0.50) + cashbox -
+    (digital * 0.50) - (uberTransfer * 0.50) -
     automaticExpenseImpact - driverPaid + exploraPaid
   );
 }
@@ -494,11 +531,12 @@ function calculateTeamRealtimeSettlementBalance({ records = [], closures = [], u
   const exploraPaid = openRecords
     .filter(item => billingSettlementDirection(item) === "explora_to_driver")
     .reduce((sum, item) => sum + amountOf(item), 0);
-  const uber = uberWeeks
+  const scopedUber = uberWeeks
     .filter(item => item && !movementIsDeleted(item) && !isSimulated(item) && rowMs(item) > baseline)
-    .filter(item => !/reject|rechaz/.test(safeText(item.reviewStatus || item.status).toLowerCase()))
-    .reduce((sum, item) => sum + uberGrossAmount(item), 0);
-  const cashbox = (cashboxEligibleCash + uber) * 0.05;
+    .filter(uberImpactsSettlement);
+  const uberCash = scopedUber.reduce((sum, item) => sum + uberCashAmount(item), 0);
+  const uberTransfer = scopedUber.reduce((sum, item) => sum + uberTransferAmount(item), 0);
+  const cashbox = (cashboxEligibleCash + uberCash) * 0.05;
   const automaticExpenseImpact = teamAutomaticExpenseImpact(expenses, baseline);
   const adminDebtTotal = debts
     .filter(item => item && !movementIsDeleted(item) && !isSimulated(item) && debtImpactsSettlement(item))
@@ -507,8 +545,8 @@ function calculateTeamRealtimeSettlementBalance({ records = [], closures = [], u
 
   const rawBalance = anchor
     ? anchor.balance + teamSettlementDeltaSince(anchor.timestamp, records, uberWeeks, expenses) + adminDebtTotal
-    : (cash * 0.50) + (uber * 0.50) + cashbox + adminDebtTotal -
-      (digital * 0.50) - automaticExpenseImpact - driverPaid + exploraPaid;
+    : (cash * 0.50) + (uberCash * 0.50) + cashbox + adminDebtTotal -
+      (digital * 0.50) - (uberTransfer * 0.50) - automaticExpenseImpact - driverPaid + exploraPaid;
   const balance = Math.abs(rawBalance) > 0.5 ? roundMoney(rawBalance) : 0;
 
   return {

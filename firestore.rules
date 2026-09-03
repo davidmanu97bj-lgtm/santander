@@ -496,7 +496,7 @@ service cloud.firestore {
 
 
     match /uber_weekly_closures/{closureId} {
-      function validUberWeeklyClosure(data) {
+      function validUberClosureRequest(data) {
         return data.driverUid == uid()
           && data.choferUid == uid()
           && data.driverId == uid()
@@ -505,44 +505,26 @@ service cloud.firestore {
           && data.weekId is string
           && data.weekId.size() > 0
           && data.locked == true
-          && (
-            (
-              data.noData == true
-              && data.noDataReason == 'driver_not_working'
-              && data.grossAmount == 0
-              && data.totalAmount == 0
-              && data.exploraShare == 0
-              && data.debtAmount == 0
-              && data.cashboxRate == 0.05
-              && data.cashboxAmount == 0
-              && data.uberCashboxAmount == 0
-              && data.receiptUrl == ''
-              && data.receiptPath == ''
-              && data.reviewStatus == 'no_data'
-              && data.status == 'no_data'
-            )
-            ||
-            (
-              data.grossAmount is number
-              && data.grossAmount > 0
-              && data.totalAmount == data.grossAmount
-              && data.exploraShare is number
-              && data.exploraShare * 2 == data.grossAmount
-              && data.debtAmount == data.exploraShare
-              && data.cashboxRate == 0.05
-              && data.cashboxAmount is number
-              && data.cashboxAmount * 20 == data.grossAmount
-              && data.uberCashboxAmount == data.cashboxAmount
-              && data.receiptUrl is string
-              && data.receiptUrl.size() > 0
-              && data.receiptPath is string
-              && data.receiptPath.size() > 0
-              && data.telegramPhotoUrl == data.receiptUrl
-              && data.notificationPhotoUrl == data.receiptUrl
-              && data.reviewStatus == 'pending'
-              && data.status == 'pending_review'
-            )
-          );
+          && data.settlementWorkflowVersion == 'v82_admin_driver_confirmation'
+          && data.driverConfirmed == false
+          && data.grossAmount == 0
+          && data.totalAmount == 0
+          && data.amount == 0
+          && data.cashAmount == 0
+          && data.uberCashAmount == 0
+          && data.transferAmount == 0
+          && data.uberTransferAmount == 0
+          && data.digitalAmount == 0
+          && data.exploraShare == 0
+          && data.debtAmount == 0
+          && data.cashboxRate == 0.05
+          && data.cashboxAmount == 0
+          && data.uberCashboxAmount == 0
+          && data.settlementImpact == 0
+          && data.receiptUrl == ''
+          && data.receiptPath == ''
+          && data.reviewStatus == 'pending_admin_breakdown'
+          && data.status == 'pending_admin_breakdown';
       }
 
       // La transacción consulta primero un ID determinístico aunque el documento aún no exista.
@@ -554,26 +536,26 @@ service cloud.firestore {
 
       allow create: if signedIn()
         && owns(request.resource.data)
-        && validUberWeeklyClosure(request.resource.data);
+        && validUberClosureRequest(request.resource.data);
 
-      // El chofer sólo puede volver a presentar una semana previamente rechazada.
+      // David prepara importes y comprobante. El chofer sólo confirma el resultado;
+      // esa confirmación es el instante en que Uber empieza a impactar el saldo.
       allow update: if isAdmin() || (
         signedIn()
         && owns(resource.data)
         && owns(request.resource.data)
-        && resource.data.reviewStatus == 'rejected'
-        && validUberWeeklyClosure(request.resource.data)
+        && resource.data.settlementWorkflowVersion == 'v82_admin_driver_confirmation'
+        && resource.data.reviewStatus == 'awaiting_driver_confirmation'
+        && resource.data.driverConfirmed == false
+        && request.resource.data.reviewStatus == 'approved'
+        && request.resource.data.status == 'approved'
+        && request.resource.data.driverConfirmed == true
+        && request.resource.data.driverConfirmedByUid == uid()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'weekLabel', 'weekStartMs', 'weekEndMs', 'weekDisplayEndMs', 'weekEndBoundaryMs', 'uploadDeadlineMs', 'uploadDeadlineLabel',
-          'driverName', 'grossAmount', 'totalAmount',
-          'driverShare', 'driverNetAmount',
-          'exploraShare', 'debtAmount',
-          'cashboxRate', 'cashboxAmount', 'uberCashboxAmount',
-          'receiptUrl', 'receiptPath',
-          'notificationPhotoUrl', 'telegramPhotoUrl', 'firebasePhotoUrl',
-          'reviewStatus', 'status', 'locked',
-          'createdAt', 'createdAtMs',
-          'updatedAt', 'updatedAtMs', 'version'
+          'driverConfirmed', 'driverConfirmedByUid', 'driverConfirmedAt', 'driverConfirmedAtMs',
+          'settlementBeforeConfirmation', 'telegramSettlementBeforeBalance',
+          'telegramSettlementAfterBalance', 'telegramSettlementPayer',
+          'reviewStatus', 'status', 'updatedAt', 'updatedAtMs'
         ])
       );
 

@@ -17,7 +17,7 @@ readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly START_DIR="$(pwd -P)"
 readonly RUN_ID="$(date -u +%Y%m%d-%H%M%S)"
 readonly LOG_DIR="${TMPDIR:-/tmp}/explora-deploy-${RUN_ID}"
-readonly GIT_COMMIT_MESSAGE="${GIT_COMMIT_MESSAGE:-Explora: cierre directo y Telegram completo}"
+readonly GIT_COMMIT_MESSAGE="${GIT_COMMIT_MESSAGE:-Explora: cierre Uber solicitado, preparado y confirmado}"
 
 PROJECT_DIR=""
 GIT_RESULT="No ejecutado"
@@ -217,6 +217,7 @@ validate_project() {
 
   node "$PROJECT_DIR/tests/closure-direct-flow.test.mjs"
   node "$PROJECT_DIR/tests/billing-driver-payment.test.mjs"
+  node "$PROJECT_DIR/tests/uber-weekly-split-flow.test.mjs"
   (
     cd "$PROJECT_DIR/functions"
     node --test tests/*.test.js
@@ -407,6 +408,7 @@ main() {
     functions/telegram-expense.js
     tests/closure-direct-flow.test.mjs
     tests/billing-driver-payment.test.mjs
+    tests/uber-weekly-split-flow.test.mjs
   )
   local required_file
   for required_file in "${required_files[@]}"; do

@@ -115,7 +115,7 @@
       .service-option{min-height:80px;padding:13px 11px}.service-option strong{font-size:12px}.service-option span{font-size:16px}
     }
   </style>
-  <link rel="stylesheet" href="./styles.css?v=20260901-77-cierre-directo" />
+  <link rel="stylesheet" href="./styles.css?v=20260902-82-uber-admin-confirma-chofer" />
 </head>
 <body>
 <section id="splashScreen" class="splash-screen" aria-live="polite" aria-label="Cargando Explora">
@@ -455,6 +455,13 @@
       <div><span id="operationPreviewImpactLabel">Impacto en la diferencia</span><strong id="operationPreviewImpact">$ 0</strong></div>
     </div>
 
+    <div id="operationPreviewUberBreakdown" class="operation-preview-uber-breakdown hidden" aria-live="polite">
+      <div><span>Uber en efectivo</span><strong id="operationPreviewUberCash">$ 0</strong></div>
+      <div><span>Impacto efectivo: 50% + caja chica 5%</span><strong id="operationPreviewUberCashImpact">+$ 0</strong></div>
+      <div><span>Uber por transferencia</span><strong id="operationPreviewUberTransfer">$ 0</strong></div>
+      <div><span>Impacto transferencia: 50% para el chofer</span><strong id="operationPreviewUberTransferImpact">−$ 0</strong></div>
+    </div>
+
     <div class="expense-success-balance">
       <h3>Así quedará tu saldo</h3>
       <div class="expense-success-state before">
@@ -494,32 +501,47 @@
     <form id="uberForm">
       <div id="uberPendingNotice" class="uber-pending-notice" aria-live="polite"></div>
       <div class="field">
-        <label for="uberWeekSelect">Semana cerrada a cargar</label>
+        <label for="uberWeekSelect">Semana de Uber (fecha automática)</label>
         <select id="uberWeekSelect" required></select>
-        <div class="file-note">Las semanas van de lunes a lunes. Solo aparecen las ya cerradas que todavía no tienen comprobante.</div>
+        <div class="file-note">La aplicación selecciona automáticamente la semana cerrada pendiente. Si hay más de una, podés elegir cuál completar.</div>
       </div>
       <div id="uberWeekSummary" class="uber-week-summary">
         <div><span>Inicio</span><strong id="uberWeekStartLabel">—</strong></div>
         <div><span>Cierre</span><strong id="uberWeekEndLabel">—</strong></div>
         <div><span>Estado</span><strong id="uberWeekStateLabel">Pendiente</strong></div>
       </div>
-      <div class="field"><label for="uberAmount">Monto total facturado en Uber</label><div class="money-entry"><span aria-hidden="true">$</span><input id="uberAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div></div>
-      <div class="field">
-        <label>Comprobante de la semana seleccionada</label>
-        <div class="photo-source-picker" data-photo-picker="uber">
-          <div class="photo-source-actions" aria-label="Elegir origen de la foto">
-            <button type="button" class="photo-source-action camera" data-photo-input="uberProofCamera">Sacar foto con la cámara</button>
-            <button type="button" class="photo-source-action gallery" data-photo-input="uberProof">Subir foto de galería</button>
-          </div>
-          <input id="uberProofCamera" class="photo-source-input" type="file" accept="image/*" capture="environment" data-photo-source="camera" tabindex="-1">
-          <input id="uberProof" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1">
-          <div class="photo-source-selection" data-photo-selection aria-live="polite">Ninguna foto seleccionada.</div>
-        </div>
-        <div class="file-note">El monto se suma al efectivo del chofer, se divide 50% para cada parte y genera 5% de caja chica.</div>
+      <div class="uber-driver-request-card">
+        <strong>David completará el cierre de Uber</strong>
+        <p>Al pedirlo, David recibirá el aviso y cargará cuánto fue en efectivo, cuánto fue por transferencia y el comprobante semanal. Tu saldo no cambiará hasta que revises y aceptes el resultado.</p>
       </div>
       <div id="uberStatus" class="status"></div>
-      <div class="modal-actions"><button type="button" class="secondary" data-close="uberModal">Cancelar</button><button id="saveUberBtn" type="submit" class="save">Registrar Uber</button></div>
+      <div class="modal-actions"><button type="button" class="secondary" data-close="uberModal">Cancelar</button><button id="saveUberBtn" type="submit" class="save">Pedir a David el cierre de Uber</button></div>
     </form>
+  </div>
+</div>
+
+<div id="uberDriverConfirmationModal" class="modal hidden uber-driver-confirmation-modal" data-tone="uber" role="dialog" aria-modal="true" aria-labelledby="uberDriverConfirmationTitle">
+  <div class="modal-card uber-driver-confirmation-card">
+    <p class="uber-reminder-kicker">CIERRE DE UBER PREPARADO</p>
+    <h2 id="uberDriverConfirmationTitle">Revisá tu cierre semanal</h2>
+    <div id="uberDriverConfirmationBody"></div>
+    <div id="uberDriverConfirmationStatus" class="status" aria-live="polite"></div>
+    <button id="confirmUberDriverResult" type="button" class="save">Confirmar resultados de Uber</button>
+  </div>
+</div>
+
+<div id="uberReminderModal" class="modal hidden uber-reminder-modal" data-tone="uber" role="dialog" aria-modal="true" aria-labelledby="uberReminderTitle">
+  <div class="modal-card uber-reminder-card">
+    <div class="uber-reminder-icon" aria-hidden="true">U</div>
+    <p class="uber-reminder-kicker">CIERRE SEMANAL DE UBER</p>
+    <h2 id="uberReminderTitle">Próximo cierre de Uber</h2>
+    <p id="uberReminderMessage">Pronto podrás pedirle a David tu cierre semanal de Uber.</p>
+    <div class="uber-reminder-date">
+      <span>Fecha de cierre automática</span>
+      <strong id="uberReminderCloseDate">—</strong>
+    </div>
+    <p class="uber-reminder-note">El cierre permite achicar o incrementar la deuda según el efectivo y la transferencia informados.</p>
+    <button id="confirmUberReminder" type="button" class="save">Entendido</button>
   </div>
 </div>
 
@@ -711,6 +733,6 @@
   </script>
 
 
-<script type="module" src="./app.js?v=20260901-77-cierre-directo"></script>
+<script type="module" src="./app.js?v=20260902-82-uber-admin-confirma-chofer"></script>
 </body>
 </html>

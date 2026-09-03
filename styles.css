@@ -3052,7 +3052,8 @@ a.proof:hover { background: #e3e7f0; }
 #uberWeekStateLabel { color: #9a6d00; }
 
 #uberWeekSelect:disabled,
-#uberAmount:disabled,
+#uberCashAmount:disabled,
+#uberTransferAmount:disabled,
 #uberProof:disabled {
   cursor: not-allowed;
   opacity: .62;
@@ -6368,4 +6369,461 @@ body.proof-image-viewer-open {
     height: clamp(190px, 60vw, 230px);
     min-height: 190px;
   }
+}
+
+/* =========================================================
+   EXPLORA v80 · Reparación exclusiva del cierre pendiente
+   Define el tono que faltaba y evita transparencias en iOS.
+   ========================================================= */
+.modal[data-tone="admin-pending"] {
+  --operation-tone: #4f5dff;
+  --operation-soft: #eef0ff;
+  --operation-ink: #26318f;
+}
+
+#adminPendingActionModal {
+  background: rgba(12, 19, 34, .68);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+#adminPendingActionModal .admin-pending-card {
+  width: min(100%, 470px);
+  border: 1px solid rgba(255, 255, 255, .88);
+  border-top: 3px solid rgba(79, 93, 255, .55);
+  background: #fff;
+  color: #101827;
+  box-shadow: 0 30px 90px rgba(5, 12, 26, .40);
+}
+
+#adminPendingActionModal .modal-head h2 {
+  color: #101827;
+}
+
+#adminPendingActionModal .x {
+  border: 1px solid #dce1ec;
+  background: #f3f5f9;
+  color: #172033;
+}
+
+#adminPendingActionModal .admin-pending-type {
+  color: #4655ee;
+}
+
+#adminPendingActionModal .admin-bank-card {
+  border-color: #d7deea;
+  background: #f5f7fb;
+  box-shadow: none;
+}
+
+#adminPendingActionModal .admin-pending-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+#adminPendingActionModal .admin-pending-actions button {
+  width: 100%;
+  min-height: 54px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+#adminPendingActionModal #adminPendingRejectBtn {
+  border: 1px solid #f0caca;
+  background: #fff6f6;
+  color: #a3272d !important;
+  box-shadow: none;
+}
+
+#adminPendingActionModal #adminPendingApproveBtn {
+  border: 1px solid #111a2e;
+  background: #111a2e;
+  color: #fff;
+  box-shadow: 0 9px 20px rgba(17, 26, 46, .20);
+}
+
+#adminPendingActionModal .admin-pending-reminder {
+  color: #667085;
+}
+
+/* v81 · Uber semanal separado en efectivo y transferencia. */
+.uber-payment-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.uber-payment-split .field {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: #fffdf5;
+}
+
+.operation-preview-uber-breakdown {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #f0d77e;
+  border-radius: 16px;
+  background: #fffaf0;
+}
+
+.operation-preview-uber-breakdown.hidden { display: none; }
+
+.operation-preview-uber-breakdown > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(118, 85, 0, .12);
+}
+
+.operation-preview-uber-breakdown > div:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.operation-preview-uber-breakdown span {
+  color: #6f6547;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.operation-preview-uber-breakdown strong {
+  flex: 0 0 auto;
+  color: #765500;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+#uberReminderModal {
+  background: rgba(15, 23, 42, .68);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+#uberReminderModal .uber-reminder-card {
+  width: min(92vw, 440px);
+  padding: 26px 22px max(24px, env(safe-area-inset-bottom));
+  border: 1px solid rgba(245, 197, 54, .55);
+  border-radius: 28px;
+  background: #fff;
+  text-align: center;
+}
+
+.uber-reminder-icon {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 13px;
+  border-radius: 18px;
+  background: #f6ce4e;
+  color: #171c2d;
+  font-size: 27px;
+  font-weight: 1000;
+}
+
+.uber-reminder-kicker {
+  margin: 0 0 7px;
+  color: #987000;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: .16em;
+}
+
+#uberReminderModal h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 25px;
+  line-height: 1.08;
+}
+
+#uberReminderMessage {
+  margin: 12px 0 16px;
+  color: #374151;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.42;
+}
+
+.uber-reminder-date {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border-radius: 17px;
+  background: #fff8dd;
+}
+
+.uber-reminder-date span {
+  color: #8a6a0a;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.uber-reminder-date strong {
+  color: #2c2512;
+  font-size: 15px;
+  text-transform: capitalize;
+}
+
+.uber-reminder-note {
+  margin: 13px 0 18px;
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+#confirmUberReminder {
+  width: 100%;
+  min-height: 56px;
+  background: #171c2d;
+  color: #fff;
+}
+
+@media (max-width: 620px) {
+  .uber-payment-split { grid-template-columns: 1fr; gap: 9px; }
+  .uber-payment-split .field { padding: 12px; border-radius: 16px; }
+  #uberModal .modal-card { max-height: calc(100dvh - 20px); overflow-y: auto; }
+  .operation-preview-uber-breakdown span { font-size: 10px; }
+  .operation-preview-uber-breakdown strong { font-size: 12px; }
+}
+
+@media (max-width: 620px) {
+  #adminPendingActionModal {
+    place-items: center;
+    padding:
+      max(12px, env(safe-area-inset-top))
+      max(10px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
+  }
+
+  #adminPendingActionModal .admin-pending-card {
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    padding: 20px;
+    border-radius: 27px;
+  }
+
+  #adminPendingActionModal .modal-head {
+    margin-bottom: 17px;
+  }
+
+  #adminPendingActionModal .modal-head h2 {
+    max-width: calc(100% - 54px);
+    font-size: clamp(24px, 7vw, 30px);
+    line-height: 1.04;
+  }
+
+  #adminPendingActionModal .admin-pending-driver {
+    font-size: 18px;
+  }
+
+  #adminPendingActionModal .admin-pending-amount {
+    margin: 10px 0 13px;
+    font-size: 34px;
+  }
+
+  #adminPendingActionModal .admin-pending-actions button {
+    min-height: 56px;
+    padding: 11px 8px;
+    font-size: 12px;
+    line-height: 1.15;
+  }
+
+  #adminPendingActionModal .admin-pending-reminder {
+    margin-top: 11px;
+    font-size: 10px;
+    line-height: 1.35;
+  }
+}
+
+/* v82 · Pedido Uber del chofer, preparación de David y aceptación final. */
+.uber-driver-request-card {
+  margin: 14px 0;
+  padding: 17px;
+  border: 1px solid #efd77d;
+  border-radius: 18px;
+  background: #fff9e6;
+}
+
+.uber-driver-request-card strong {
+  display: block;
+  color: #4e3b00;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.uber-driver-request-card p {
+  margin: 7px 0 0;
+  color: #665a36;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.admin-uber-week-label {
+  margin: 8px 0 14px;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.admin-uber-entry-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.admin-uber-entry-grid .field { margin: 0; }
+
+.admin-uber-calculation {
+  display: grid;
+  gap: 7px;
+  margin-top: 13px;
+  padding: 13px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.admin-uber-calculation > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.admin-uber-calculation b { color: #172033; font-size: 11px; }
+
+.admin-uber-calculation .admin-uber-balance-row {
+  margin-top: 4px;
+  padding-top: 9px;
+  border-top: 1px solid #dfe4ec;
+}
+
+.admin-uber-calculation .admin-uber-balance-row.result {
+  color: #3846d5;
+  font-size: 11px;
+}
+
+.admin-uber-calculation .admin-uber-balance-row.result b { color: #3846d5; font-size: 13px; }
+
+#adminPendingActionModal:has(#adminUberCalculation) .admin-pending-card {
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+}
+
+#adminPendingActionModal:has(#adminUberCalculation) .admin-pending-actions {
+  grid-template-columns: 1fr;
+}
+
+.uber-driver-confirmation-modal {
+  background: rgba(15, 23, 42, .72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.uber-driver-confirmation-card {
+  width: min(94vw, 470px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  padding: 24px;
+  border: 2px solid #f1d16c;
+  border-radius: 27px;
+  background: #fff;
+}
+
+.uber-driver-confirmation-card h2 {
+  margin: 0 0 14px;
+  color: #172033;
+  font-size: 25px;
+  line-height: 1.08;
+}
+
+.uber-driver-confirmation-week {
+  margin-bottom: 10px;
+  color: #6f5a13;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.uber-driver-proof {
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 11px;
+  border: 1px solid #e8cd6d;
+  border-radius: 14px;
+  background: #fff9e3;
+  color: #5e4800;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.uber-driver-result-grid {
+  display: grid;
+  gap: 7px;
+  padding: 13px;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.uber-driver-result-grid > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.uber-driver-result-grid b { color: #172033; }
+
+.uber-driver-balance-comparison {
+  display: grid;
+  gap: 8px;
+  margin: 13px 0;
+}
+
+.uber-driver-balance-comparison > div:not(.uber-driver-balance-arrow) {
+  display: grid;
+  gap: 4px;
+  padding: 13px;
+  border: 1px solid #e1e6ef;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.uber-driver-balance-comparison small {
+  color: #8a94a6;
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .1em;
+}
+
+.uber-driver-balance-comparison span { color: #4b5563; font-size: 11px; font-weight: 850; }
+.uber-driver-balance-comparison strong { color: #172033; font-size: 22px; }
+.uber-driver-balance-comparison .is-driver strong { color: #b52d32; }
+.uber-driver-balance-comparison .is-explora strong { color: #087744; }
+.uber-driver-balance-arrow { color: #9ca3af; text-align: center; font-weight: 950; }
+.uber-driver-confirmation-note { color: #6b7280; font-size: 10px; font-weight: 750; line-height: 1.4; }
+#confirmUberDriverResult { width: 100%; min-height: 56px; background: #171c2d; color: #fff; }
+
+@media (max-width: 620px) {
+  .admin-uber-entry-grid { grid-template-columns: 1fr; }
+  .uber-driver-confirmation-card { padding: 20px; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+  #adminPendingActionModal:has(#adminUberCalculation) .admin-pending-actions button { font-size: 10px; }
 }

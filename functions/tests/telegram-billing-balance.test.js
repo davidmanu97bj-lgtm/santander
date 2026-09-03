@@ -47,6 +47,64 @@ test("un cobro digital compensa la mitad, sin generar caja chica", () => {
   assert.equal(balance.amountToDriver, 0);
 });
 
+test("Uber semanal separa efectivo y transferencia con un solo comprobante", () => {
+  const balance = calculateOpenBillingBalance({
+    uberWeeks: [{
+      id:"uber-week-split",
+      grossAmount:30000,
+      totalAmount:30000,
+      cashAmount:10000,
+      uberCashAmount:10000,
+      transferAmount:20000,
+      uberTransferAmount:20000,
+      cashboxAmount:500,
+      reviewStatus:"pending",
+      createdAtMs:1000
+    }]
+  });
+  assert.equal(balance.uberGrossTotal, 30000);
+  assert.equal(balance.uberCashTotal, 10000);
+  assert.equal(balance.uberTransferTotal, 20000);
+  assert.equal(balance.uberCashboxGenerated, 500);
+  assert.equal(balance.amountFromDriver, 0);
+  assert.equal(balance.amountToDriver, 4500);
+});
+
+test("Uber en efectivo aplica 50% más caja chica y Uber transferencia aplica 50% digital", () => {
+  const cashOnly = calculateTeamRealtimeSettlementBalance({
+    uberWeeks: [{ grossAmount:10000, cashAmount:10000, transferAmount:0, reviewStatus:"pending", createdAtMs:1000 }]
+  });
+  assert.equal(cashOnly.amountFromDriver, 5500);
+  assert.equal(cashOnly.amountToDriver, 0);
+
+  const transferOnly = calculateTeamRealtimeSettlementBalance({
+    uberWeeks: [{ grossAmount:10000, cashAmount:0, transferAmount:10000, reviewStatus:"pending", createdAtMs:1000 }]
+  });
+  assert.equal(transferOnly.amountFromDriver, 0);
+  assert.equal(transferOnly.amountToDriver, 5000);
+});
+
+test("el Uber v82 no modifica saldos hasta que el chofer lo confirma", () => {
+  const prepared = {
+    grossAmount:30000,
+    cashAmount:10000,
+    transferAmount:20000,
+    cashboxAmount:500,
+    settlementWorkflowVersion:"v82_admin_driver_confirmation",
+    driverConfirmed:false,
+    reviewStatus:"awaiting_driver_confirmation",
+    createdAtMs:1000
+  };
+  const beforeConfirmation = calculateTeamRealtimeSettlementBalance({ uberWeeks:[prepared] });
+  assert.equal(beforeConfirmation.balance, 0);
+
+  const afterConfirmation = calculateTeamRealtimeSettlementBalance({
+    uberWeeks:[{ ...prepared, driverConfirmed:true, reviewStatus:"approved" }]
+  });
+  assert.equal(afterConfirmation.balance, -4500);
+  assert.equal(afterConfirmation.amountToDriver, 4500);
+});
+
 test("cambia a Explora como pagador cuando el digital supera efectivo + caja chica", () => {
   const balance = calculateOpenBillingBalance({
     records: [

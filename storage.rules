@@ -88,7 +88,7 @@ service firebase.storage {
     match /uber_weekly/{driverUid}/{weekId}/{fileName} {
       allow get, list: if isAuthorizedAdmin() || isOwner(driverUid);
 
-      allow create: if isOwner(driverUid)
+      allow create: if (isAuthorizedAdmin() || isOwner(driverUid))
         && validUberWeeklyUpload(driverUid, weekId);
 
       // La evidencia subida queda inmutable.

@@ -666,20 +666,83 @@ function closureTelegramText(data = {}) {
 
 function uberTelegramText(data = {}) {
   const review = telegramSafeText(data.reviewStatus || data.status).toLowerCase();
+  const workflow = telegramSafeText(data.settlementWorkflowVersion).toLowerCase();
+  const isRequest = workflow === "v82_admin_driver_confirmation" && review === "pending_admin_breakdown";
+  const isPrepared = workflow === "v82_admin_driver_confirmation" && review === "awaiting_driver_confirmation";
+  const isConfirmed = workflow === "v82_admin_driver_confirmation" && data.driverConfirmed === true && /approved|confirmed|completed/.test(review);
   const noData = data.noData === true || review === "no_data";
   const week = telegramSafeText(data.weekLabel || data.weekId || "—");
   const amount = noData ? 0 : Number(data.totalAmount || data.grossAmount || 0);
-  const stateLine = Number.isFinite(Number(data.telegramSettlementAfterBalance))
-    ? telegramSignedSettlementLine(Number(data.telegramSettlementAfterBalance))
+  const hasSplit = Object.prototype.hasOwnProperty.call(data, "cashAmount")
+    || Object.prototype.hasOwnProperty.call(data, "uberCashAmount")
+    || Object.prototype.hasOwnProperty.call(data, "transferAmount")
+    || Object.prototype.hasOwnProperty.call(data, "uberTransferAmount");
+  const cashAmount = noData ? 0 : hasSplit
+    ? Number(data.cashAmount ?? data.uberCashAmount ?? 0)
+    : amount;
+  const transferAmount = noData ? 0 : hasSplit
+    ? Number(data.transferAmount ?? data.uberTransferAmount ?? data.digitalAmount ?? 0)
+    : 0;
+  const cashboxAmount = noData ? 0 : Number(data.cashboxAmount ?? data.uberCashboxAmount ?? (cashAmount * 0.05));
+  const afterBalanceValue = Number(data.telegramSettlementAfterBalance ?? data.projectedSettlementAfterBalance);
+  const stateLine = Number.isFinite(afterBalanceValue)
+    ? telegramSignedSettlementLine(afterBalanceValue)
     : "Estado: Equilibrado";
+  if (isRequest) {
+    return [
+      "CHOFER PIDIÓ SU CIERRE SEMANAL DE UBER",
+      `Chofer: ${telegramDriverName(data)}`,
+      `Semana: ${week}`,
+      "Acción: David debe cargar efectivo, transferencia y comprobante.",
+      "Saldo: Sin cambios; pendiente de preparación.",
+      ...telegramDateTimeLines(data)
+    ].join("\n");
+  }
+  const beforeValue = Number(data.settlementBeforeConfirmation ?? data.settlementBeforeAdminProposal);
+  const beforeLine = Number.isFinite(beforeValue)
+    ? telegramSignedSettlementLine(beforeValue).replace("Estado:", "Saldo anterior:")
+    : "Saldo anterior: No disponible";
+  const title = isPrepared
+    ? "DAVID CARGÓ EL CIERRE SEMANAL DE UBER"
+    : isConfirmed
+      ? "CHOFER CONFIRMÓ SU CIERRE SEMANAL DE UBER"
+      : noData ? "CIERRE UBER SIN DATOS" : "CIERRE UBER REGISTRADO";
+  const stageDateData = isPrepared
+    ? { ...data, createdAt:data.preparedAt || data.updatedAt, createdAtMs:data.preparedAtMs || data.updatedAtMs }
+    : isConfirmed
+      ? { ...data, createdAt:data.driverConfirmedAt || data.updatedAt, createdAtMs:data.driverConfirmedAtMs || data.updatedAtMs }
+      : data;
   return [
-    noData ? "CIERRE UBER SIN DATOS" : "CIERRE UBER REGISTRADO",
+    title,
     `Chofer: ${telegramDriverName(data)}`,
-    `Monto: ${telegramMoney(amount)}`,
-    `Detalle: Semana ${week}${noData ? " · Sin datos" : ""}`,
+    `Monto total: ${telegramMoney(amount)}`,
+    `Efectivo: ${telegramMoney(cashAmount)}`,
+    `Transferencia: ${telegramMoney(transferAmount)}`,
+    `Caja chica: ${telegramMoney(cashboxAmount)}`,
+    `Detalle: Semana ${week}${noData ? " · Sin datos" : " · Comprobante semanal conjunto"}`,
+    beforeLine,
     stateLine,
-    ...telegramDateTimeLines(data)
+    ...(isPrepared ? ["Confirmación: Pendiente de aceptación del chofer; el saldo todavía no cambió."] : []),
+    ...(isConfirmed ? ["Confirmación: Aceptado por el chofer; saldo aplicado."] : []),
+    ...telegramDateTimeLines(stageDateData)
   ].join("\n");
+}
+
+function uberTelegramSettlementImpact(data = {}) {
+  const hasSplit = Object.prototype.hasOwnProperty.call(data, "cashAmount")
+    || Object.prototype.hasOwnProperty.call(data, "uberCashAmount")
+    || Object.prototype.hasOwnProperty.call(data, "transferAmount")
+    || Object.prototype.hasOwnProperty.call(data, "uberTransferAmount");
+  const grossAmount = Math.max(0, Number(data.totalAmount || data.grossAmount || data.amount || 0));
+  const cashAmount = Math.max(0, Number(hasSplit ? (data.cashAmount ?? data.uberCashAmount ?? 0) : grossAmount));
+  const transferAmount = Math.max(0, Number(hasSplit ? (data.transferAmount ?? data.uberTransferAmount ?? data.digitalAmount ?? 0) : 0));
+  return (cashAmount * 0.55) - (transferAmount * 0.50);
+}
+
+function normalizedTelegramSettlement(value) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount) || Math.abs(amount) <= 0.5) return 0;
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
 }
 
 const PROTECTED_ROOT_COLLECTIONS = new Set([
@@ -2931,8 +2994,8 @@ exports.notifyClosureTelegramGroupV1 = onDocumentWritten({
   });
 });
 
-// Telegram grupal · cierre semanal de Uber. onDocumentWritten permite volver a avisar
-// si un cierre rechazado es corregido y reenviado con el mismo ID.
+// Telegram grupal · tres etapas del cierre semanal de Uber:
+// pedido del chofer, preparación de David y confirmación final del chofer.
 exports.notifyUberClosureTelegramGroupV1 = onDocumentWritten({
   document: "uber_weekly_closures/{docId}",
   region: TELEGRAM_FUNCTION_REGION,
@@ -2946,34 +3009,52 @@ exports.notifyUberClosureTelegramGroupV1 = onDocumentWritten({
   if (!after) return { skipped: true, reason: "deleted" };
   const role = telegramSafeText(after.createdByRole).toLowerCase();
   if (role && role !== "driver" && role !== "chofer") return { skipped: true, reason: "not-driver-created" };
-  const review = telegramSafeText(after.reviewStatus || after.status).toLowerCase();
-  const isPending = review === "pending" || review === "pending_review";
-  const isNoData = after.noData === true || review === "no_data";
-  if (!isPending && !isNoData) return { skipped: true, reason: "not-submitted" };
-
   const beforeReview = telegramSafeText(before.reviewStatus || before.status).toLowerCase();
-  const beforeReceipt = telegramSafeText(before.receiptUrl || before.notificationPhotoUrl);
-  const afterReceipt = telegramSafeText(after.receiptUrl || after.notificationPhotoUrl);
+  const review = telegramSafeText(after.reviewStatus || after.status).toLowerCase();
+  const workflow = telegramSafeText(after.settlementWorkflowVersion).toLowerCase();
   const firstWrite = !event.data?.before?.exists;
-  const resubmitted = !firstWrite && (
-    beforeReview !== review ||
-    beforeReceipt !== afterReceipt ||
-    Number(before.updatedAtMs || 0) !== Number(after.updatedAtMs || 0)
-  );
-  if (!firstWrite && !resubmitted) return { skipped: true, reason: "no-new-submission" };
+  const isV82Stage = workflow === "v82_admin_driver_confirmation" && [
+    "pending_admin_breakdown", "awaiting_driver_confirmation", "approved", "rejected"
+  ].includes(review);
+  const isLegacyStage = ["pending", "pending_review", "no_data"].includes(review);
+  if (!isV82Stage && !isLegacyStage) return { skipped:true, reason:"not-an-uber-notification-stage" };
+  if (!firstWrite && beforeReview === review) return { skipped:true, reason:"stage-not-changed" };
 
   const docId = telegramSafeText(event.params?.docId || event.data?.after?.id);
-  const revisionKey = `${docId}_${Number(after.updatedAtMs || after.createdAtMs || Date.now())}`;
+  const revisionKey = `${docId}_${review}_${Number(after.updatedAtMs || after.createdAtMs || Date.now())}`;
+  const requirePhoto = review === "awaiting_driver_confirmation" || isLegacyStage && review !== "no_data";
+  let notificationData = after;
+  if (workflow === "v82_admin_driver_confirmation" && ["awaiting_driver_confirmation", "approved"].includes(review)) {
+    try {
+      const settlement = await teamRealtimeBalanceForDriver(telegramDriverUid(after));
+      const actualBalance = normalizedTelegramSettlement(settlement.balance);
+      const impact = uberTelegramSettlementImpact(after);
+      notificationData = review === "awaiting_driver_confirmation"
+        ? {
+            ...after,
+            settlementBeforeAdminProposal:actualBalance,
+            projectedSettlementAfterBalance:normalizedTelegramSettlement(actualBalance + impact),
+            telegramSettlementAfterBalance:normalizedTelegramSettlement(actualBalance + impact)
+          }
+        : {
+            ...after,
+            settlementBeforeConfirmation:normalizedTelegramSettlement(actualBalance - impact),
+            telegramSettlementAfterBalance:actualBalance
+          };
+    } catch (error) {
+      console.warn("[telegram uber] No se pudo recalcular el saldo; se usa la vista guardada.", error?.code || error?.message || error);
+    }
+  }
   return telegramProcessNotification({
     kind: "uber",
     docId,
     notificationKey: revisionKey,
     sourceCollection: "uber_weekly_closures",
     sourceDocumentId: docId,
-    data: after,
+    data: notificationData,
     eventId: event.id,
-    caption: uberTelegramText(after),
-    requirePhoto: !isNoData
+    caption: uberTelegramText(notificationData),
+    requirePhoto
   });
 });
 
