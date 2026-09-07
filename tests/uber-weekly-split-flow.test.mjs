@@ -60,7 +60,8 @@ assert.match(telegram, /DAVID CONFIRMÓ EL CIERRE SEMANAL DE UBER/);
 assert.match(telegram, /DAVID RECHAZÓ EL CIERRE SEMANAL DE UBER/);
 assert.match(telegram, /Comprobante: Adjunto/);
 assert.match(telegram, /Total para Explora:/);
-assert.match(telegram, /review !== "rejected"/);
+assert.match(telegram, /review === "pending_admin_review"/);
+assert.match(telegram, /El adjunto falló; se enviará el aviso como texto/);
 
 // Tanto el Home como Telegram excluyen el pedido hasta la aprobación administrativa.
 assert.match(app, /item\.adminConfirmed === true && \/approved\|confirmed\|completed\/\.test\(status\)/);

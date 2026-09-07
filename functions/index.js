@@ -579,12 +579,23 @@ async function telegramProcessNotification({
   try {
     let photoUrl = "";
     let message = null;
+    let attachmentWarning = "";
     if (requirePhoto) {
-      photoUrl = await telegramResolvePhotoUrl(kind, sourceDocumentId, data);
-      if (!photoUrl) throw new Error(`El documento ${sourceCollection || kind}/${sourceDocumentId} no contiene una URL de foto.`);
-      message = telegramAttachmentIsPdf(data, photoUrl)
-        ? await telegramSendDocument(photoUrl, caption)
-        : await telegramSendPhoto(photoUrl, caption);
+      try {
+        photoUrl = await telegramResolvePhotoUrl(kind, sourceDocumentId, data);
+        if (!photoUrl) throw new Error(`El documento ${sourceCollection || kind}/${sourceDocumentId} no contiene una URL de foto.`);
+        message = telegramAttachmentIsPdf(data, photoUrl)
+          ? await telegramSendDocument(photoUrl, caption)
+          : await telegramSendPhoto(photoUrl, caption);
+      } catch (attachmentError) {
+        // Nunca perder una notificación operativa solo porque Telegram/Firebase
+        // no pudo descargar el comprobante. El aviso textual tiene prioridad.
+        attachmentWarning = telegramSafeText(attachmentError?.message || attachmentError).slice(0, 700);
+        console.warn(`[telegram ${kind}] El adjunto falló; se enviará el aviso como texto.`, attachmentWarning);
+        message = await telegramSendText(`${caption}
+
+Comprobante: cargado en Explora; el adjunto no pudo enviarse a Telegram.`);
+      }
     } else {
       message = await telegramSendText(caption);
     }
@@ -593,13 +604,14 @@ async function telegramProcessNotification({
       telegramMessageId: message?.message_id || null,
       telegramChatId: telegramSafeText(message?.chat?.id),
       photoUrl: photoUrl || FieldValue.delete(),
+      attachmentWarning: attachmentWarning || FieldValue.delete(),
       sentAt: FieldValue.serverTimestamp(),
       sentAtMs: Date.now(),
       updatedAt: FieldValue.serverTimestamp(),
       updatedAtMs: Date.now(),
       lastError: FieldValue.delete()
     }, { merge: true });
-    return { sent: true, messageId: message?.message_id || null };
+    return { sent: true, messageId: message?.message_id || null, attachmentFallback: Boolean(attachmentWarning) };
   } catch (error) {
     await ref.set({
       status: "error",
@@ -3067,8 +3079,10 @@ exports.notifyUberClosureTelegramGroupV1 = onDocumentWritten({
 
   const docId = telegramSafeText(event.params?.docId || event.data?.after?.id);
   const revisionKey = `${docId}_${review}_${Number(after.updatedAtMs || after.createdAtMs || Date.now())}`;
+  // En v84 la foto es necesaria para el PEDIDO inicial. La decisión de David
+  // se manda como texto para que una falla del adjunto nunca impida la confirmación.
   const requirePhoto = isV84Stage
-    ? review !== "rejected"
+    ? review === "pending_admin_review"
     : review === "awaiting_driver_confirmation" || isLegacyStage && review !== "no_data";
   let notificationData = after;
   if (workflow === "v84_driver_submission_admin_review" && review === "approved") {

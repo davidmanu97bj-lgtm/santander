@@ -12,3 +12,10 @@ test("Telegram reconoce proofUrl de cierres Uber", () => {
   assert.match(source, /notifyUberClosureTelegramGroupV1/);
   assert.match(source, /document: "uber_weekly_closures\/{docId}"/);
 });
+
+
+test("Telegram Uber no pierde el aviso si falla la foto", () => {
+  assert.match(source, /El adjunto falló; se enviará el aviso como texto/);
+  assert.ok(source.includes("Comprobante: cargado en Explora; el adjunto no pudo enviarse a Telegram."));
+  assert.match(source, /review === "pending_admin_review"/);
+});

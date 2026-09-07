@@ -270,6 +270,9 @@ function uberCashboxAmount(data = {}) {
 function uberImpactsSettlement(data = {}) {
   const workflow = safeText(data.settlementWorkflowVersion || data.workflowVersion).toLowerCase();
   const status = safeText(data.reviewStatus || data.status).toLowerCase();
+  if (workflow === "v84_driver_submission_admin_review") {
+    return data.adminConfirmed === true && /approved|confirmed|completed/.test(status);
+  }
   if (workflow === "v82_admin_driver_confirmation") {
     return data.driverConfirmed === true && /approved|confirmed|completed/.test(status);
   }
