@@ -4,6 +4,7 @@ import fs from "node:fs";
 const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const rules = fs.readFileSync(new URL("../firestore.rules", import.meta.url), "utf8");
+const storageRules = fs.readFileSync(new URL("../storage.rules", import.meta.url), "utf8");
 const telegram = fs.readFileSync(new URL("../functions/index.js", import.meta.url), "utf8");
 const balance = fs.readFileSync(new URL("../functions/telegram-billing-balance.js", import.meta.url), "utf8");
 
@@ -19,15 +20,18 @@ assert.doesNotMatch(html, /id="uberTransferAmount"/);
 assert.doesNotMatch(html, /id="adminUberCashAmount"/);
 assert.doesNotMatch(html, /id="adminUberTransferAmount"/);
 
-// La vista previa usa 50% Explora + 5% caja chica y deja 45% al chofer.
+// La vista previa deja sólo las dos cifras necesarias: total semanal y 50% + 5%.
 assert.match(app, /function uberDriverSubmissionDelta\(grossAmount = 0\)/);
 assert.match(app, /Number\(grossAmount \|\| 0\)\) \* 0\.55/);
-assert.match(app, /driverShare = amount - exploraShare - cashboxAmount/);
+assert.match(app, /impactLabel: "Total para Explora 50% \+ 5% de caja chica"/);
+assert.doesNotMatch(html, /operationPreviewUberGross|operationPreviewUberExplora|operationPreviewUberCashbox|operationPreviewUberDriver/);
 assert.match(app, /settlementWorkflowVersion: "v84_driver_submission_admin_review"/);
 assert.match(app, /reviewStatus: "pending_admin_review"/);
 assert.match(app, /adminConfirmed:false/);
 assert.match(app, /selectedPhotoFile\("uber"\)/);
 assert.match(app, /openOperationPreview\(\{ kind:"uber", amount, formId:"uberForm" \}\)/);
+assert.match(html, /El envío solo avisa por Telegram y no modifica el saldo hasta que David confirme/);
+assert.match(html, /se contabilizará como efectivo/);
 
 // El Admin ve el comprobante, puede corregir el total y es quien confirma el impacto.
 assert.match(app, /id="adminUberVerifiedAmount"/);
@@ -37,13 +41,18 @@ assert.match(app, /adminConfirmed:true/);
 assert.match(app, /reviewStatus:"approved"/);
 assert.match(app, /Cierre confirmado\. El saldo ya fue actualizado\./);
 
-// Las reglas exigen monto, foto, reparto 50/5/45 y estado pendiente del Admin.
+// Las reglas validan propiedad, monto, foto y estado pendiente sin depender de
+// cálculos derivados del cliente; además la app consulta el ID determinístico
+// antes de subir para separar duplicados de verdaderos problemas de permisos.
 assert.match(rules, /data\.settlementWorkflowVersion == 'v84_driver_submission_admin_review'/);
-assert.match(rules, /data\.exploraShare \* 2 == data\.grossAmount/);
-assert.match(rules, /data\.cashboxAmount \* 20 == data\.grossAmount/);
-assert.match(rules, /data\.driverShare == data\.grossAmount - data\.exploraShare - data\.cashboxAmount/);
+assert.match(rules, /data\.grossAmount > 0/);
 assert.match(rules, /data\.reviewStatus == 'pending_admin_review'/);
 assert.match(rules, /data\.proofUrl\.size\(\) > 0/);
+assert.match(rules, /resource\.data\.driverUid == uid\(\)/);
+assert.doesNotMatch(rules, /data\.exploraShare \* 2 == data\.grossAmount/);
+assert.match(app, /async function resolveUberSubmissionTarget/);
+assert.match(app, /Verificando semana/);
+assert.match(storageRules, /allow update: if \(isAuthorizedAdmin\(\) \|\| isOwner\(driverUid\)\)/);
 
 // Telegram cubre el envío con foto y la aprobación/rechazo de David.
 assert.match(telegram, /CHOFER ENVIÓ SU CIERRE SEMANAL DE UBER/);
