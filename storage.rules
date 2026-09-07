@@ -46,16 +46,17 @@ service firebase.storage {
     }
 
     function validUberWeeklyUpload(driverUid, weekId) {
+      // La ruta ya obliga a que cada chofer escriba únicamente dentro de su UID.
+      // No dependemos de customMetadata para autorizar la foto: en algunos clientes
+      // móviles esos metadatos pueden no llegar a Rules como se espera y provocar
+      // storage/unauthorized aunque la imagen y el propietario sean correctos.
       return request.resource != null
         && request.resource.size > 0
         && request.resource.size <= 15 * 1024 * 1024
         && request.resource.contentType != null
         && request.resource.contentType.matches('image/.*')
-        && request.resource.metadata != null
-        && request.resource.metadata.module == 'uber_weekly'
-        && request.resource.metadata.driverUid == driverUid
-        && request.resource.metadata.weekId == weekId
-        && request.resource.metadata.uploadedByUid == request.auth.uid;
+        && driverUid.size() > 0
+        && weekId.size() > 0;
     }
 
     function validMileageKind(kind) {
@@ -91,8 +92,11 @@ service firebase.storage {
       allow create: if (isAuthorizedAdmin() || isOwner(driverUid))
         && validUberWeeklyUpload(driverUid, weekId);
 
-      // La evidencia subida queda inmutable.
-      allow update: if false;
+      // Si la foto llegó a Storage pero el alta Firestore falló o se cortó la red,
+      // el mismo chofer puede reintentar el mismo archivo sin recibir
+      // storage/unauthorized. Sólo puede hacerlo dentro de su propio UID.
+      allow update: if (isAuthorizedAdmin() || isOwner(driverUid))
+        && validUberWeeklyUpload(driverUid, weekId);
       allow delete: if isAuthorizedAdmin();
     }
 

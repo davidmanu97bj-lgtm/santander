@@ -1349,6 +1349,29 @@ function selectedPendingUberWeek() {
   const selectedStart = $("uberWeekSelect")?.value || "";
   return pendingUberWeeks().find(week => week.weekStartDate === selectedStart) || null;
 }
+
+async function resolveUberSubmissionTarget(userUid, week, maxRevisions = 20) {
+  const normalizedWeekId = String(week?.weekKey || "").replace(/[^a-zA-Z0-9_-]/g, "_");
+  if (!userUid || !normalizedWeekId) throw new Error("No se pudo identificar la semana de Uber.");
+
+  // No dependemos sólo del listener local: consultamos los IDs determinísticos
+  // para distinguir un cierre ya existente de un verdadero error de permisos.
+  // Si un intento fue rechazado, avanzamos a la siguiente revisión disponible.
+  for (let revision = 1; revision <= maxRevisions; revision += 1) {
+    const id = `uber_${userUid}_${normalizedWeekId}_v84_r${revision}`;
+    const refDoc = doc(db, ROOT_COLLECTIONS.uber, id);
+    const snap = await getDoc(refDoc);
+    if (!snap.exists()) return { id, ref:refDoc, revision, blocked:false };
+
+    const data = snap.data() || {};
+    const state = String(data.reviewStatus || data.status || "").toLowerCase();
+    if (/reject|rechaz|cancel|anulad/.test(state)) continue;
+
+    return { id, ref:refDoc, revision, blocked:true, state, data };
+  }
+
+  throw new Error("Hay demasiados intentos anteriores para esta semana. David debe revisar el historial de Uber.");
+}
 function updateUberWeekSummary() {
   const week = selectedPendingUberWeek();
   const startLabel = $("uberWeekStartLabel");
@@ -4181,11 +4204,11 @@ function previewDefinition(kind, amount, details = {}) {
     },
     uber: {
       title: "Confirmar cierre semanal de Uber",
-      subtitle: "Revisá el reparto 55/45 y cómo quedaría el saldo si David lo aprueba.",
+      subtitle: "Esto se contabilizará como efectivo a cargo del chofer. Revisá el reparto 55/45 y cómo quedaría el saldo si David lo aprueba.",
       amountLabel: "Ganancias semanales",
-      impactLabel: "Total para Explora (50% + 5%)",
+      impactLabel: "Total para Explora 50% + 5% de caja chica",
       delta: uberDriverSubmissionDelta(value),
-      notice: "Al enviar se guardará el comprobante y Telegram avisará a David. El saldo no cambiará hasta su aprobación.",
+      notice: "Al enviar se guardará el comprobante y Telegram avisará a David. El saldo no cambiará hasta su aprobación. Cuando David lo confirme, este cierre se contabilizará como efectivo porque el dinero queda a cargo del chofer.",
       confirmLabel: "Enviar a David"
     }
   };
@@ -4219,17 +4242,6 @@ function renderOperationPreview() {
   $("operationPreviewAmount").textContent = money(pendingOperationPreview.amount);
   $("operationPreviewImpactLabel").textContent = definition.impactLabel;
   $("operationPreviewImpact").textContent = signedMoney(definition.delta);
-  const uberBreakdown = $("operationPreviewUberBreakdown");
-  const isUber = pendingOperationPreview.kind === "uber";
-  uberBreakdown?.classList.toggle("hidden", !isUber);
-  if (isUber) {
-    const grossAmount = Math.max(0, Number(pendingOperationPreview.amount || 0));
-    $("operationPreviewUberGross").textContent = money(grossAmount);
-    $("operationPreviewUberExplora").textContent = money(grossAmount * 0.50);
-    $("operationPreviewUberCashbox").textContent = money(grossAmount * 0.05);
-    $("operationPreviewUberDriver").textContent = money(grossAmount * 0.45);
-    $("operationPreviewUberImpact").textContent = signedMoney(grossAmount * 0.55);
-  }
   $("operationPreviewBeforeLabel").textContent = beforeState.label;
   $("operationPreviewBeforeAmount").textContent = money(beforeState.amount);
   $("operationPreviewAfterLabel").textContent = afterState.label;
@@ -5303,21 +5315,23 @@ $("uberForm")?.addEventListener("submit", async e => {
   $("uberStatus").textContent = "";
 
   try {
-    const normalizedWeekId = week.weekKey.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const rejectedAttempts = uberClosures.filter(item => {
-      const sameWeek = item.weekStartDate === week.weekStartDate || item.weekCloseDate === week.weekCloseDate || item.weekKey === week.weekKey;
-      const state = String(item.reviewStatus || item.status || "").toLowerCase();
-      return sameWeek && /reject|rechaz|cancel|anulad/.test(state);
-    }).length;
-    const uberDocumentId = `uber_${user.uid}_${normalizedWeekId}_v84_r${rejectedAttempts + 1}`;
-    const uberDocRef = doc(db, ROOT_COLLECTIONS.uber, uberDocumentId);
-    const existing = await getDoc(uberDocRef);
-    if (existing.exists() || isUberWeekLoaded(week)) {
-      $("uberStatus").textContent = `El cierre de ${week.label} ya fue solicitado.`;
+    if (isUberWeekLoaded(week)) {
+      $("uberStatus").textContent = `El cierre de ${week.label} ya fue solicitado y está pendiente de revisión.`;
       $("uberStatus").className = "status error";
       renderUberWeekSelector();
       return;
     }
+
+    $("saveUberBtn").textContent = "Verificando semana…";
+    const submissionTarget = await resolveUberSubmissionTarget(user.uid, week);
+    if (submissionTarget.blocked) {
+      $("uberStatus").textContent = `El cierre de ${week.label} ya fue solicitado y está pendiente de revisión.`;
+      $("uberStatus").className = "status error";
+      renderUberWeekSelector();
+      return;
+    }
+    const uberDocumentId = submissionTarget.id;
+    const uberDocRef = submissionTarget.ref;
 
     const cleanName = String(file.name || "comprobante.jpg").replace(/[^a-zA-Z0-9._-]/g, "_");
     const proofPath = `uber_weekly/${user.uid}/${week.weekKey}/${uberDocumentId}_${cleanName}`;
@@ -5433,16 +5447,21 @@ $("uberForm")?.addEventListener("submit", async e => {
     const remaining = pendingUberWeeks().length;
     $("uberStatus").textContent = remaining
       ? `Cierre enviado a David. Quedan ${remaining} ${remaining === 1 ? "semana pendiente" : "semanas pendientes"}.`
-      : `Comprobante enviado a David. Tu saldo no cambiará hasta que lo confirme.`;
+      : `Comprobante enviado a David por Telegram. Tu saldo no cambiará hasta que lo confirme y recién ahí se contabilizará como efectivo.`;
     $("uberStatus").className = "status success";
     $("saveUberBtn").textContent = "Enviado ✓";
     $("uberForm").reset();
     if (!remaining) closeModalAndGoTop("uberModal", 1300);
   } catch (err) {
     console.error(err);
-    $("uberStatus").textContent = err?.code === "permission-denied"
-      ? "Ese cierre ya fue solicitado o no tenés permiso para repetirlo."
-      : "No se pudo enviar el cierre de Uber. Podés reintentar sin duplicarlo.";
+    const code = firebaseErrorCode(err);
+    if (code.includes("permission-denied") || code.includes("storage/unauthorized")) {
+      $("uberStatus").textContent = "Firebase bloqueó el envío por permisos. Esta versión incluye las reglas corregidas de Firestore y Storage; desplegalas junto con la app y volvé a intentar.";
+    } else if (code.includes("already-exists")) {
+      $("uberStatus").textContent = `El cierre de ${week.label} ya fue solicitado y está pendiente de revisión.`;
+    } else {
+      $("uberStatus").textContent = "No se pudo enviar el cierre de Uber. Podés reintentar sin duplicarlo.";
+    }
     $("uberStatus").className = "status error";
   } finally {
     releaseSubmissionLock("uber");

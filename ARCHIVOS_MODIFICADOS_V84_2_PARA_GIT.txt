@@ -1,0 +1,10 @@
+ARCHIVOS MODIFICADOS · EXPLORA v84.2
+
+- index.html
+- styles.css
+- app.js
+- firestore.rules
+- storage.rules
+- tests/uber-weekly-split-flow.test.mjs
+- CAMBIOS_UBER_MENUS_PERMISOS_v84_2.txt
+- ARCHIVOS_MODIFICADOS_V84_2_PARA_GIT.txt
