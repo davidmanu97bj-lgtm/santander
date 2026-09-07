@@ -1,0 +1,17 @@
+ARCHIVOS MODIFICADOS · EXPLORA v84
+
+- index.html
+- styles.css
+- app.js
+- firestore.rules
+- functions/index.js
+- functions/telegram-billing-balance.js
+- functions/tests/telegram-billing-balance.test.js
+- functions/tests/unified-main-preview-contract.test.js
+- tests/uber-weekly-split-flow.test.mjs
+- DESPLEGAR_EXPLORA_COMPLETO.sh
+- CAMBIOS_UBER_CHOFER_ADMIN_v84.txt
+- ARCHIVOS_MODIFICADOS_V84_PARA_GIT.txt
+
+El ZIP pequeño conserva estas rutas dentro de la carpeta santander-main.
+El ZIP completo incluye todo el proyecto y el mismo SH autogestionable.

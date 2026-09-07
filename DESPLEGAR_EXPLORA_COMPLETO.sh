@@ -17,7 +17,7 @@ readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly START_DIR="$(pwd -P)"
 readonly RUN_ID="$(date -u +%Y%m%d-%H%M%S)"
 readonly LOG_DIR="${TMPDIR:-/tmp}/explora-deploy-${RUN_ID}"
-readonly GIT_COMMIT_MESSAGE="${GIT_COMMIT_MESSAGE:-Explora: cierre Uber solicitado, preparado y confirmado}"
+readonly GIT_COMMIT_MESSAGE="${GIT_COMMIT_MESSAGE:-Explora v84: chofer carga Uber y Admin confirma 55/45}"
 
 PROJECT_DIR=""
 GIT_RESULT="No ejecutado"
@@ -25,6 +25,9 @@ RULES_RESULT="Pendiente"
 FUNCTIONS_RESULT="Pendiente"
 HOSTING_RESULT="Pendiente"
 VERIFY_RESULT="Pendiente"
+HOSTING_PUBLIC_DIR=""
+HOSTING_CONFIG_FILE=""
+FIREBASE_LATEST_FALLBACK_USED=0
 declare -a FIREBASE_CMD=()
 
 mkdir -p "$LOG_DIR"
@@ -167,6 +170,7 @@ firebase_exec() {
 }
 
 configure_firebase_cli() {
+  export FIREBASE_SUPPRESS_REGION_WARNING="${FIREBASE_SUPPRESS_REGION_WARNING:-true}"
   if command -v firebase >/dev/null 2>&1; then
     FIREBASE_CMD=(firebase)
   else
@@ -175,6 +179,16 @@ configure_firebase_cli() {
   fi
 
   firebase_exec --version | tee "$LOG_DIR/firebase-version.log"
+}
+
+switch_to_latest_firebase_cli() {
+  if [[ "$FIREBASE_LATEST_FALLBACK_USED" == "1" || "${FIREBASE_CMD[0]:-}" == "npx" ]]; then
+    return 1
+  fi
+  FIREBASE_LATEST_FALLBACK_USED=1
+  FIREBASE_CMD=(npx --yes firebase-tools@latest)
+  warn "El Firebase CLI instalado tuvo un error interno; el próximo intento usará automáticamente la versión oficial más reciente."
+  return 0
 }
 
 check_firebase_access() {
@@ -203,6 +217,41 @@ install_functions_dependencies() {
     || die "no se pudieron instalar las dependencias exactas de Functions."
 }
 
+prepare_hosting_bundle() {
+  HOSTING_PUBLIC_DIR="$LOG_DIR/hosting-public"
+  HOSTING_CONFIG_FILE="$LOG_DIR/firebase-hosting.json"
+  mkdir -p "$HOSTING_PUBLIC_DIR/assets"
+
+  local -a root_files=(
+    index.html
+    styles.css
+    app.js
+    firebase-config.js
+    service-worker.js
+    manifest.json
+    icon-192.png
+    icon-512.png
+  )
+  local source_file
+  for source_file in "${root_files[@]}"; do
+    install -m 0644 "$PROJECT_DIR/$source_file" "$HOSTING_PUBLIC_DIR/$source_file"
+  done
+  install -m 0644 "$PROJECT_DIR/assets/explora-logo.png" "$HOSTING_PUBLIC_DIR/assets/explora-logo.png"
+  install -m 0644 "$PROJECT_DIR/assets/explora-logo-login.png" "$HOSTING_PUBLIC_DIR/assets/explora-logo-login.png"
+
+  printf '%s\n' \
+    '{' \
+    '  "hosting": {' \
+    "    \"public\": \"$HOSTING_PUBLIC_DIR\"," \
+    '    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],' \
+    '    "rewrites": [{"source": "**", "destination": "/index.html"}]' \
+    '  }' \
+    '}' >"$HOSTING_CONFIG_FILE"
+
+  node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));' "$HOSTING_CONFIG_FILE"
+  info "Hosting limpio preparado: $(find "$HOSTING_PUBLIC_DIR" -type f | wc -l | tr -d ' ') archivos necesarios."
+}
+
 validate_project() {
   node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));' "$PROJECT_DIR/firebase.json"
   grep -Fq "$FIREBASE_PROJECT_ID" "$PROJECT_DIR/firebase-config.js" \
@@ -218,10 +267,12 @@ validate_project() {
   node "$PROJECT_DIR/tests/closure-direct-flow.test.mjs"
   node "$PROJECT_DIR/tests/billing-driver-payment.test.mjs"
   node "$PROJECT_DIR/tests/uber-weekly-split-flow.test.mjs"
+  node "$PROJECT_DIR/tests/cloud-shell-deploy-resilience.test.mjs"
   (
     cd "$PROJECT_DIR/functions"
     node --test tests/*.test.js
   )
+  prepare_hosting_bundle
 }
 
 update_git() {
@@ -313,7 +364,15 @@ run_firebase_stage() {
     firebase_exec deploy \
       --project "$FIREBASE_PROJECT_ID" \
       --non-interactive \
-      "$@" 2>&1 | tee -a "$log_file"
+      "$@" 2>&1 | tee -a "$log_file" | awk '
+        /Deploy complete!/ { completed = 1; print; fflush(); next }
+        /^Error: An unexpected error has occurred\.$/ {
+          if (!completed) print "Firebase interrumpió este intento; el SH continuará con la recuperación automática."
+          fflush()
+          next
+        }
+        { print; fflush() }
+      '
     rc=${PIPESTATUS[0]}
     set -e
 
@@ -325,13 +384,17 @@ run_firebase_stage() {
     # cerrar telemetría. Sólo se acepta como éxito si Firebase escribió la
     # confirmación literal del despliegue.
     if grep -Fq "Deploy complete!" "$log_file"; then
-      warn "$stage_label fue confirmado por Firebase aunque el CLI terminó con código $rc."
+      info "$stage_label terminado: Firebase confirmó el despliegue correctamente."
       return 0
     fi
 
     if grep -Eqi 'permission denied|does not have permission|not authorized|authentication|login required' "$log_file"; then
       warn "$stage_label se detuvo por permisos; no se harán reintentos inútiles."
       return "$rc"
+    fi
+
+    if grep -Fq "Error: An unexpected error has occurred." "$log_file"; then
+      switch_to_latest_firebase_cli || true
     fi
 
     if [[ "$attempt" -lt "$attempts" ]]; then
@@ -381,7 +444,7 @@ verify_telegram_functions() {
 
 main() {
   line
-  info "EXPLORA · DESPLIEGUE COMPLETO"
+  info "EXPLORA v84 · DESPLIEGUE COMPLETO"
   info "Proyecto Firebase: $FIREBASE_PROJECT_ID"
   line
 
@@ -409,6 +472,11 @@ main() {
     tests/closure-direct-flow.test.mjs
     tests/billing-driver-payment.test.mjs
     tests/uber-weekly-split-flow.test.mjs
+    tests/cloud-shell-deploy-resilience.test.mjs
+    assets/explora-logo.png
+    assets/explora-logo-login.png
+    icon-192.png
+    icon-512.png
   )
   local required_file
   for required_file in "${required_files[@]}"; do
@@ -421,6 +489,8 @@ main() {
   require_command node
   require_command npm
   require_command git
+  require_command install
+  require_command awk
 
   local node_major
   node_major="$(node -p 'process.versions.node.split(".")[0]')"
@@ -482,6 +552,7 @@ main() {
     hosting \
     "Firebase Hosting" \
     5 \
+    --config "$HOSTING_CONFIG_FILE" \
     --only hosting \
     || die "Hosting no pudo desplegarse. Rules y Functions sí quedaron actualizadas; volvé a ejecutar este mismo SH."
   HOSTING_RESULT="Desplegado"

@@ -1,0 +1,42 @@
+EXPLORA · CIERRE SEMANAL DE UBER v84
+
+FLUJO DEL CHOFER
+
+- Cargar Uber abre la semana cerrada pendiente automáticamente.
+- El chofer ingresa un único dato: Ganancias netas de la semana.
+- El comprobante es obligatorio y puede sacarse con la cámara o elegirse de la galería.
+- La ayuda dentro de la app muestra cómo entrar en Uber Driver y qué número copiar.
+- Antes de enviar aparece el cálculo completo y el saldo proyectado.
+- Enviar avisa a David por Telegram con la foto, pero no modifica el saldo.
+
+REGLA DE CÁLCULO
+
+- Explora: 50% del total.
+- Caja chica: 5% del total.
+- Chofer: conserva 45% del total.
+- Como el 100% del dinero de Uber queda en poder del chofer, el impacto total
+  hacia Explora es 55% del cierre semanal.
+
+CONFIRMACIÓN ADMINISTRATIVA
+
+- David recibe un menú pendiente con chofer, semana, monto y comprobante ampliable.
+- Puede corregir el monto si la imagen muestra otro total.
+- Debe marcar que verificó comprobante y semana.
+- Al confirmar, recién en ese instante el 55% impacta en el saldo.
+- También puede rechazar; la semana queda liberada para que el chofer la cargue otra vez.
+- Los pedidos creados con el menú v82 se pueden liberar sin alterar los saldos.
+
+TELEGRAM Y COMPROBANTES
+
+- Telegram informa el envío del chofer con foto, monto y reparto 50/5/45.
+- Telegram informa la confirmación o rechazo de David.
+- La aprobación muestra saldo anterior y saldo nuevo.
+- El comprobante confirmado aparece en el historial del chofer.
+- El chofer recibe dentro de la app la respuesta de David con el detalle final.
+
+SEGURIDAD
+
+- Una solicitud pendiente o rechazada no participa de la calculadora.
+- Solo una aprobación administrativa válida puede modificar el saldo.
+- El identificador semanal evita duplicados y permite un nuevo intento después de un rechazo.
+

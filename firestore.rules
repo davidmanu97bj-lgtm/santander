@@ -505,26 +505,39 @@ service cloud.firestore {
           && data.weekId is string
           && data.weekId.size() > 0
           && data.locked == true
-          && data.settlementWorkflowVersion == 'v82_admin_driver_confirmation'
-          && data.driverConfirmed == false
-          && data.grossAmount == 0
-          && data.totalAmount == 0
-          && data.amount == 0
-          && data.cashAmount == 0
-          && data.uberCashAmount == 0
+          && data.settlementWorkflowVersion == 'v84_driver_submission_admin_review'
+          && data.driverSubmitted == true
+          && data.adminConfirmed == false
+          && data.grossAmount is number
+          && data.grossAmount > 0
+          && data.totalAmount == data.grossAmount
+          && data.amount == data.grossAmount
+          && data.cashAmount == data.grossAmount
+          && data.uberCashAmount == data.grossAmount
           && data.transferAmount == 0
           && data.uberTransferAmount == 0
           && data.digitalAmount == 0
-          && data.exploraShare == 0
-          && data.debtAmount == 0
+          && data.exploraShare is number
+          && data.exploraShare * 2 == data.grossAmount
+          && data.cashboxAmount is number
+          && data.cashboxAmount * 20 == data.grossAmount
+          && data.uberCashboxAmount == data.cashboxAmount
+          && data.driverShare is number
+          && data.driverShare == data.grossAmount - data.exploraShare - data.cashboxAmount
+          && data.driverNetAmount == data.driverShare
+          && data.debtAmount == data.exploraShare + data.cashboxAmount
           && data.cashboxRate == 0.05
-          && data.cashboxAmount == 0
-          && data.uberCashboxAmount == 0
-          && data.settlementImpact == 0
-          && data.receiptUrl == ''
-          && data.receiptPath == ''
-          && data.reviewStatus == 'pending_admin_breakdown'
-          && data.status == 'pending_admin_breakdown';
+          && data.settlementImpact == data.debtAmount
+          && data.proofUrl is string
+          && data.proofUrl.size() > 0
+          && data.proofPath is string
+          && data.proofPath.size() > 0
+          && data.receiptUrl == data.proofUrl
+          && data.receiptPath == data.proofPath
+          && data.telegramPhotoUrl == data.proofUrl
+          && data.notificationPhotoUrl == data.proofUrl
+          && data.reviewStatus == 'pending_admin_review'
+          && data.status == 'pending_admin_review';
       }
 
       // La transacción consulta primero un ID determinístico aunque el documento aún no exista.
@@ -538,8 +551,9 @@ service cloud.firestore {
         && owns(request.resource.data)
         && validUberClosureRequest(request.resource.data);
 
-      // David prepara importes y comprobante. El chofer sólo confirma el resultado;
-      // esa confirmación es el instante en que Uber empieza a impactar el saldo.
+      // El chofer crea el pedido con monto y comprobante. Únicamente David puede
+      // aprobar, corregir o rechazar; su confirmación es la que impacta el saldo.
+      // Se conserva la confirmación v82 sólo para documentos históricos ya creados.
       allow update: if isAdmin() || (
         signedIn()
         && owns(resource.data)
