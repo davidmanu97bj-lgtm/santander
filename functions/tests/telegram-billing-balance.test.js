@@ -105,6 +105,36 @@ test("el Uber v82 no modifica saldos hasta que el chofer lo confirma", () => {
   assert.equal(afterConfirmation.amountToDriver, 4500);
 });
 
+test("el Uber v84 queda pendiente hasta que David confirma y luego aplica 55%", () => {
+  const submitted = {
+    grossAmount:100000,
+    totalAmount:100000,
+    cashAmount:100000,
+    transferAmount:0,
+    cashboxAmount:5000,
+    settlementWorkflowVersion:"v84_driver_submission_admin_review",
+    driverSubmitted:true,
+    adminConfirmed:false,
+    reviewStatus:"pending_admin_review",
+    createdAtMs:1000
+  };
+  const pending = calculateTeamRealtimeSettlementBalance({ uberWeeks:[submitted] });
+  assert.equal(pending.balance, 0);
+
+  const approved = calculateTeamRealtimeSettlementBalance({
+    uberWeeks:[{ ...submitted, adminConfirmed:true, reviewStatus:"approved" }]
+  });
+  assert.equal(approved.balance, 55000);
+  assert.equal(approved.amountFromDriver, 55000);
+  assert.equal(approved.amountToDriver, 0);
+
+  const approvedOpen = calculateOpenBillingBalance({
+    uberWeeks:[{ ...submitted, adminConfirmed:true, reviewStatus:"approved" }]
+  });
+  assert.equal(approvedOpen.uberGrossTotal, 100000);
+  assert.equal(approvedOpen.uberCashboxGenerated, 5000);
+});
+
 test("cambia a Explora como pagador cuando el digital supera efectivo + caja chica", () => {
   const balance = calculateOpenBillingBalance({
     records: [

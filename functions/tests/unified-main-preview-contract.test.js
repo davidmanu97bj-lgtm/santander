@@ -33,10 +33,12 @@ test("cobro y gasto exigen el segundo aviso antes de cualquier escritura", () =>
   assert.match(appSource, /form\.dataset\.previewConfirmed = "true"/);
 });
 
-test("la vista previa usa las reglas de efectivo, digital y gasto", () => {
+test("la vista previa usa las reglas de efectivo, digital, gasto y Uber 55/45", () => {
   assert.match(appSource, /cash:[\s\S]*?delta: value \* 0\.55/);
   assert.match(appSource, /digital:[\s\S]*?delta: value \* -0\.50/);
   assert.match(appSource, /expense:[\s\S]*?delta: value \* -0\.50/);
-  assert.match(appSource, /cashAmount \* 0\.55/);
-  assert.match(appSource, /transferAmount \* -0\.50/);
+  assert.match(appSource, /uber:[\s\S]*?delta: uberDriverSubmissionDelta\(value\)/);
+  assert.match(appSource, /operationPreviewUberExplora/);
+  assert.match(appSource, /operationPreviewUberCashbox/);
+  assert.match(appSource, /operationPreviewUberDriver/);
 });
