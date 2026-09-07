@@ -115,7 +115,7 @@
       .service-option{min-height:80px;padding:13px 11px}.service-option strong{font-size:12px}.service-option span{font-size:16px}
     }
   </style>
-  <link rel="stylesheet" href="./styles.css?v=20260902-82-uber-admin-confirma-chofer" />
+  <link rel="stylesheet" href="./styles.css?v=20260907-84-3-calculo-telegram" />
 </head>
 <body>
 <section id="splashScreen" class="splash-screen" aria-live="polite" aria-label="Cargando Explora">
@@ -455,13 +455,6 @@
       <div><span id="operationPreviewImpactLabel">Impacto en la diferencia</span><strong id="operationPreviewImpact">$ 0</strong></div>
     </div>
 
-    <div id="operationPreviewUberBreakdown" class="operation-preview-uber-breakdown hidden" aria-live="polite">
-      <div><span>Uber en efectivo</span><strong id="operationPreviewUberCash">$ 0</strong></div>
-      <div><span>Impacto efectivo: 50% + caja chica 5%</span><strong id="operationPreviewUberCashImpact">+$ 0</strong></div>
-      <div><span>Uber por transferencia</span><strong id="operationPreviewUberTransfer">$ 0</strong></div>
-      <div><span>Impacto transferencia: 50% para el chofer</span><strong id="operationPreviewUberTransferImpact">−$ 0</strong></div>
-    </div>
-
     <div class="expense-success-balance">
       <h3>Así quedará tu saldo</h3>
       <div class="expense-success-state before">
@@ -497,7 +490,7 @@
 
 <div id="uberModal" class="modal hidden" data-tone="uber">
   <div class="modal-card">
-    <div class="modal-head"><h2>Cargar Uber</h2><button class="x" data-close="uberModal">×</button></div>
+    <div class="modal-head"><h2>Cargar cierre de Uber</h2><button class="x" data-close="uberModal">×</button></div>
     <form id="uberForm">
       <div id="uberPendingNotice" class="uber-pending-notice" aria-live="polite"></div>
       <div class="field">
@@ -510,23 +503,67 @@
         <div><span>Cierre</span><strong id="uberWeekEndLabel">—</strong></div>
         <div><span>Estado</span><strong id="uberWeekStateLabel">Pendiente</strong></div>
       </div>
+      <button id="openUberHelpBtn" class="uber-help-button" type="button">
+        <span class="uber-help-icon" aria-hidden="true">i</span>
+        <span><strong>¿Dónde encuentro este monto?</strong><small>Ver guía paso a paso</small></span>
+        <b aria-hidden="true">›</b>
+      </button>
+      <div class="field">
+        <label for="uberGrossAmount">Ganancias netas de la semana</label>
+        <div class="money-entry uber-money-entry"><span aria-hidden="true">$</span><input id="uberGrossAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div>
+        <div class="file-note">Ingresá el total semanal finalizado que muestra Uber. Todo ese dinero está en poder del chofer.</div>
+      </div>
+      <div class="field">
+        <label>Comprobante semanal de Uber</label>
+        <div class="photo-source-picker" data-photo-picker="uber">
+          <div class="photo-source-actions" aria-label="Elegir origen de la foto de Uber">
+            <button type="button" class="photo-source-action camera" data-photo-input="uberProofCamera">Sacar foto con la cámara</button>
+            <button type="button" class="photo-source-action gallery" data-photo-input="uberProof">Subir foto de galería</button>
+          </div>
+          <input id="uberProofCamera" class="photo-source-input" type="file" accept="image/*" capture="environment" data-photo-source="camera" tabindex="-1">
+          <input id="uberProof" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1">
+          <div class="photo-source-selection" data-photo-selection aria-live="polite">Ninguna foto seleccionada.</div>
+        </div>
+        <div class="file-note">La imagen debe mostrar la semana elegida y el total de ganancias.</div>
+      </div>
       <div class="uber-driver-request-card">
-        <strong>David completará el cierre de Uber</strong>
-        <p>Al pedirlo, David recibirá el aviso y cargará cuánto fue en efectivo, cuánto fue por transferencia y el comprobante semanal. Tu saldo no cambiará hasta que revises y aceptes el resultado.</p>
+        <strong>David verificará el comprobante</strong>
+        <p>El envío solo avisa por Telegram y no modifica el saldo hasta que David confirme. Como este dinero queda a cargo del chofer, se contabilizará como efectivo: puede achicar un saldo a tu favor o aumentar una deuda con Explora.</p>
       </div>
       <div id="uberStatus" class="status"></div>
-      <div class="modal-actions"><button type="button" class="secondary" data-close="uberModal">Cancelar</button><button id="saveUberBtn" type="submit" class="save">Pedir a David el cierre de Uber</button></div>
+      <div class="modal-actions"><button type="button" class="secondary" data-close="uberModal">Cancelar</button><button id="saveUberBtn" type="submit" class="save">Revisar cálculo</button></div>
     </form>
+  </div>
+</div>
+
+<div id="uberHelpModal" class="modal hidden uber-help-modal" data-tone="uber" role="dialog" aria-modal="true" aria-labelledby="uberHelpTitle">
+  <div class="modal-card uber-help-card">
+    <div class="modal-head"><h2 id="uberHelpTitle">Cómo encontrar el monto</h2><button class="x" data-close="uberHelpModal">×</button></div>
+    <p class="uber-help-intro">Seguí estos pasos en Uber Driver:</p>
+    <ol class="uber-help-steps">
+      <li><b>1</b><span>Abrí <strong>Uber Driver</strong>.</span></li>
+      <li><b>2</b><span>Entrá en <strong>Menú → Ganancias</strong>.</span></li>
+      <li><b>3</b><span>Elegí la <strong>semana anterior</strong> que ya terminó.</span></li>
+      <li><b>4</b><span>Copiá el total de <strong>Ganancias netas</strong>.</span></li>
+    </ol>
+    <div class="uber-example-screen" aria-label="Ejemplo del dato que debe buscarse en Uber Driver">
+      <div class="uber-example-head"><span>Ganancias</span><small>Semana anterior</small></div>
+      <div class="uber-example-target"><small>Ganancias de la semana</small><strong>$ 100.000</strong><em>ESTE ES EL NÚMERO</em></div>
+      <div class="uber-example-row"><span>Tarifa bruta</span><b>$ 128.400</b></div>
+      <div class="uber-example-row"><span>Promociones</span><b>$ 12.300</b></div>
+    </div>
+    <div class="uber-help-warning"><b aria-hidden="true">!</b><span><strong>No uses saldo, retiros ni tarifa bruta.</strong><small>La semana debe estar finalizada.</small></span></div>
+    <button id="closeUberHelpBtn" type="button" class="save">Entendido</button>
   </div>
 </div>
 
 <div id="uberDriverConfirmationModal" class="modal hidden uber-driver-confirmation-modal" data-tone="uber" role="dialog" aria-modal="true" aria-labelledby="uberDriverConfirmationTitle">
   <div class="modal-card uber-driver-confirmation-card">
-    <p class="uber-reminder-kicker">CIERRE DE UBER PREPARADO</p>
-    <h2 id="uberDriverConfirmationTitle">Revisá tu cierre semanal</h2>
+    <p class="uber-reminder-kicker">RESPUESTA DE DAVID</p>
+    <h2 id="uberDriverConfirmationTitle">Cierre semanal de Uber</h2>
     <div id="uberDriverConfirmationBody"></div>
     <div id="uberDriverConfirmationStatus" class="status" aria-live="polite"></div>
-    <button id="confirmUberDriverResult" type="button" class="save">Confirmar resultados de Uber</button>
+    <button id="confirmUberDriverResult" type="button" class="save">Entendido</button>
   </div>
 </div>
 
@@ -535,12 +572,12 @@
     <div class="uber-reminder-icon" aria-hidden="true">U</div>
     <p class="uber-reminder-kicker">CIERRE SEMANAL DE UBER</p>
     <h2 id="uberReminderTitle">Próximo cierre de Uber</h2>
-    <p id="uberReminderMessage">Pronto podrás pedirle a David tu cierre semanal de Uber.</p>
+    <p id="uberReminderMessage">Pronto podrás cargar tu cierre semanal de Uber.</p>
     <div class="uber-reminder-date">
       <span>Fecha de cierre automática</span>
       <strong id="uberReminderCloseDate">—</strong>
     </div>
-    <p class="uber-reminder-note">El cierre permite achicar o incrementar la deuda según el efectivo y la transferencia informados.</p>
+    <p class="uber-reminder-note">Al cargar el total y el comprobante podrás ver cuánto cambiaría el saldo antes de enviarlo a David.</p>
     <button id="confirmUberReminder" type="button" class="save">Entendido</button>
   </div>
 </div>
@@ -733,6 +770,6 @@
   </script>
 
 
-<script type="module" src="./app.js?v=20260902-82-uber-admin-confirma-chofer"></script>
+<script type="module" src="./app.js?v=20260907-84-3-calculo-telegram"></script>
 </body>
 </html>

@@ -497,34 +497,42 @@ service cloud.firestore {
 
     match /uber_weekly_closures/{closureId} {
       function validUberClosureRequest(data) {
+        // El chofer sólo envía semana + monto + comprobante. Ese alta NO modifica
+        // el saldo: David recalcula 50% + 5% al aprobar. Por eso Rules valida los
+        // datos autoritativos y evita bloquear el envío por campos derivados o
+        // redondeos del cliente.
         return data.driverUid == uid()
           && data.choferUid == uid()
+          && data.uid == uid()
           && data.driverId == uid()
           && data.createdByUid == uid()
+          && data.operatorUid == uid()
           && data.closureId == closureId
+          && closureId.matches('^uber_' + uid() + '_.*$')
           && data.weekId is string
           && data.weekId.size() > 0
+          && data.weekKey == data.weekId
           && data.locked == true
-          && data.settlementWorkflowVersion == 'v82_admin_driver_confirmation'
-          && data.driverConfirmed == false
-          && data.grossAmount == 0
-          && data.totalAmount == 0
-          && data.amount == 0
-          && data.cashAmount == 0
-          && data.uberCashAmount == 0
+          && data.settlementWorkflowVersion == 'v84_driver_submission_admin_review'
+          && data.driverSubmitted == true
+          && data.adminConfirmed == false
+          && data.grossAmount is number
+          && data.grossAmount > 0
+          && data.totalAmount == data.grossAmount
+          && data.amount == data.grossAmount
+          && data.cashAmount == data.grossAmount
+          && data.uberCashAmount == data.grossAmount
           && data.transferAmount == 0
           && data.uberTransferAmount == 0
           && data.digitalAmount == 0
-          && data.exploraShare == 0
-          && data.debtAmount == 0
-          && data.cashboxRate == 0.05
-          && data.cashboxAmount == 0
-          && data.uberCashboxAmount == 0
-          && data.settlementImpact == 0
-          && data.receiptUrl == ''
-          && data.receiptPath == ''
-          && data.reviewStatus == 'pending_admin_breakdown'
-          && data.status == 'pending_admin_breakdown';
+          && data.proofUrl is string
+          && data.proofUrl.size() > 0
+          && data.proofPath is string
+          && data.proofPath.size() > 0
+          && data.receiptUrl == data.proofUrl
+          && data.receiptPath == data.proofPath
+          && data.reviewStatus == 'pending_admin_review'
+          && data.status == 'pending_admin_review';
       }
 
       // La transacción consulta primero un ID determinístico aunque el documento aún no exista.
@@ -532,14 +540,19 @@ service cloud.firestore {
         || owns(resource.data)
         || (signedIn() && closureId.matches('^uber_' + uid() + '_.*$'));
 
-      allow list: if isAdmin() || owns(resource.data);
+      // La app escucha únicamente where("driverUid", "==", uid()). Esta regla
+      // explícita permite a Firestore demostrar la propiedad de la consulta sin
+      // depender de aliases históricos.
+      allow list: if isAdmin()
+        || (signedIn() && resource.data.driverUid == uid());
 
       allow create: if signedIn()
         && owns(request.resource.data)
         && validUberClosureRequest(request.resource.data);
 
-      // David prepara importes y comprobante. El chofer sólo confirma el resultado;
-      // esa confirmación es el instante en que Uber empieza a impactar el saldo.
+      // El chofer crea el pedido con monto y comprobante. Únicamente David puede
+      // aprobar, corregir o rechazar; su confirmación es la que impacta el saldo.
+      // Se conserva la confirmación v82 sólo para documentos históricos ya creados.
       allow update: if isAdmin() || (
         signedIn()
         && owns(resource.data)
