@@ -14,3 +14,7 @@ credentials*.json
 
 # Paquetes de entrega
 *.zip
+
+# Paquetes de Hosting y registros de despliegue
+dist/
+.deploy/

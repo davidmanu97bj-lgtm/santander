@@ -3,22 +3,11 @@
     "rules": "firestore.rules"
   },
   "hosting": {
-    "public": ".",
+    "public": "dist",
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**",
-      "functions/**",
-      "tests/**",
-      "tools/**",
-      "*.md",
-      "*.zip",
-      "*.json.map",
-      "*.txt",
-      "*.sh",
-      "CLOUD_SHELL_DESPLEGAR.md",
-      "CONFIGURAR_FIREBASE.md",
-      "MIGRACION_SANTANDER_A_BARBERIA.md"
+      "**/node_modules/**"
     ],
     "rewrites": [
       {
