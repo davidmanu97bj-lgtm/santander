@@ -7351,3 +7351,6 @@ body:has(:is(#chargeModal, #managementModal):not(.hidden)) { overflow:hidden; }
 #managementProof::file-selector-button { border:0; background:#e5efff; color:#155bbc; border-radius:8px; padding:10px 12px; margin-right:12px; font-weight:600; cursor:pointer; }
 @media(max-width:480px) { .management-action { padding:18px; gap:12px; } .management-action-copy strong { font-size:18px; } .management-action-copy small { font-size:12px; } }
 @media(prefers-reduced-motion:reduce) { .management-action { transition:none; } }
+
+/* Accesos secundarios retirados de la vista del conductor. */
+#driverDashboard .driver-other-actions { display:none; }
