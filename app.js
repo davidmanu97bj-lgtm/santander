@@ -161,6 +161,7 @@ let selectedAdminClosureId = "";
 const RECENT_RECEIPTS_LIMIT = 10;
 const RECEIPTS_PAGE_SIZE = 10;
 let visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
+let receiptSortOrder = "newest";
 let pendingOperationPreview = null;
 // Primera semana administrada por este selector. Desde aquí, toda semana
 // cerrada sin comprobante permanece pendiente hasta que el chofer la cargue.
@@ -1025,6 +1026,21 @@ function movementIsDeleted(item = {}) {
 function cashboxIsExcluded(item = {}) {
   return item.excludeFromCashbox === true || item.cashboxExcluded === true || item.cajaChicaEliminada === true || item.ignoreCashbox === true || item.noCashbox === true;
 }
+function digitalCashboxAmount(records = []) {
+  return records
+    .filter(item => !movementIsDeleted(item) && !isSettlementAdjustment(item) && !isReimbursementCompensation(item))
+    .filter(item => item.method === "digital" && !cashboxIsExcluded(item))
+    .filter(item => item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1")
+    .reduce((sum, item) => sum + Number(item.amount || 0) * 0.05, 0);
+}
+function grossFlowPrincipalDelta(records = []) {
+  // Legacy calculators already include 50% of each payment. New receipts add
+  // the other 50% with the same sign; cashbox is counted separately, exactly once.
+  return records
+    .filter(item => !movementIsDeleted(item) && !isSettlementAdjustment(item) && !isReimbursementCompensation(item))
+    .filter(item => item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1" && ["cash", "digital"].includes(item.method))
+    .reduce((sum, item) => sum + Number(item.amount || 0) * (item.method === "cash" ? 0.50 : -0.50), 0);
+}
 function revenueTotalFor(method) {
   return openBillingPayments()
     .filter(p => !movementIsDeleted(p) && p.method === method && !isSettlementAdjustment(p) && !isReimbursementCompensation(p))
@@ -1253,11 +1269,11 @@ function settlementMovementDeltaSince(cutoffMs, sourcePayments = payments, sourc
   const uberTransferRevenue = scopedUber.reduce((sum, item) => sum + uberTransferRevenueOf(item), 0);
   const uberRevenue = uberCashRevenue + uberTransferRevenue;
 
-  const cashBox = (cashboxEligibleCash + uberCashRevenue) * 0.05;
+  const cashBox = (cashboxEligibleCash + uberCashRevenue) * 0.05 + digitalCashboxAmount(scopedPayments);
   const automaticExpenseImpact = automaticExpenseBillingImpactTotal(sourceExpenses, cutoffMs);
   const delta = (cashRevenue * 0.50) + (uberCashRevenue * 0.50) + cashBox
     - (digitalRevenue * 0.50) - (uberTransferRevenue * 0.50)
-    - automaticExpenseImpact - driverPaid + exploraPaid;
+    - automaticExpenseImpact - driverPaid + exploraPaid + grossFlowPrincipalDelta(scopedPayments);
 
   return {
     cashRevenue, digitalRevenue, uberRevenue, uberCashRevenue, uberTransferRevenue, cashBox, automaticExpenseImpact,
@@ -1584,7 +1600,7 @@ function openBillingPayments() {
 }
 
 function openCashboxAmount() {
-  // Caja chica = 5% de (Efectivo + Uber) dentro del período abierto heredado
+  // Caja chica = 5% de efectivo, Uber y digitales con la nueva regla dentro del período abierto heredado
   // de Santander. Desde la migración en adelante no vuelve a reiniciarse.
   const baseline = billingMigrationBaselineMs();
   const regularCash = payments
@@ -1597,7 +1613,8 @@ function openCashboxAmount() {
     .filter(item => recordTimestampMs(item) > baseline)
     .filter(uberImpactsSettlement)
     .reduce((sum,item) => sum + uberCashRevenueOf(item), 0);
-  return (regularCash + uberCash) * 0.05;
+  const digitalCashbox = digitalCashboxAmount(payments.filter(item => recordTimestampMs(item) > baseline));
+  return (regularCash + uberCash) * 0.05 + digitalCashbox;
 }
 
 function openExpenses() {
@@ -1614,7 +1631,8 @@ function openExpenses() {
 //   se descuenta de lo que el chofer debe a Explora o se suma a lo que Explora debe al chofer.
 // - Deudas y adelantos continúan como módulos separados.
 
-// - Explora → Chofer: 50% de Digital que no se haya aplicado a un adelanto + 50% de Gastos.
+// - Cobros nuevos: efectivo +100% +5%; digital -100% +5% de caja chica.
+//   Los registros anteriores conservan su regla. Gastos reintegran siempre 50%.
 // - El saldo positivo identifica quién debe compensar; el negativo, quién recibe.
 // - Ambas billeteras muestran siempre el mismo saldo con signos opuestos.
 function settlementModel() {
@@ -1633,9 +1651,9 @@ function settlementModel() {
   const cash = cashRevenue;
   const digital = digitalRevenue;
   const expense = billingExpensesTotal();
-  const cashShare = cashRevenue * 0.50;
+  const cashShare = cashRevenue * 0.50 + grossFlowPrincipalDelta(openBillingPayments().filter(item => item.method === "cash"));
   const uberShare = uberRevenue * 0.50;
-  const digitalShare = digitalRevenue * 0.50;
+  const digitalShare = digitalRevenue * 0.50 - grossFlowPrincipalDelta(openBillingPayments().filter(item => item.method === "digital"));
   const cashBox = openCashboxAmount();
   const expenseHalf = expense * 0.50;
   // Toda deuda creada por Explora se incorpora al saldo central al 100 %.
@@ -1830,16 +1848,15 @@ function openAdvanceModal() {
 }
 
 
-function buildUnifiedReceipts() {
+function buildUnifiedReceipts(order = "newest") {
   const regularPayments = payments
     .filter(item => !movementIsDeleted(item))
-    .map(item => ({ ...item, _sortPriority: 2 }));
+    .map(item => ({ ...item, _receiptGroupKey:`payment:${item.id}`, _sortPriority: 2 }));
 
-  // Cada cobro en efectivo muestra dos comprobantes visuales: el cobro y el
-  // 5 % que se generó automáticamente. El segundo se deriva del primero para
+  // Cada cobro con caja chica muestra el ingreso y su 5% separado. El segundo se deriva del primero para
   // que una corrección o eliminación nunca deje valores huérfanos.
   const cashboxReceipts = regularPayments
-    .filter(item => item.method === "cash")
+    .filter(item => item.method === "cash" || (item.method === "digital" && item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1"))
     .filter(item => !isSettlementAdjustment(item) && !isReimbursementCompensation(item))
     .filter(item => !cashboxIsExcluded(item))
     .map(item => ({
@@ -1847,8 +1864,9 @@ function buildUnifiedReceipts() {
       id: `${item.id}_cashbox_5`,
       type: "cashbox_receipt",
       service: "Caja chica 5%",
-      detail: `Generada automáticamente por el cobro en efectivo${item.detail ? ` · ${item.detail}` : ""}`,
+      detail: `A favor de Explora · Incluida en el cobro ${item.method === "cash" ? "en efectivo (en poder del chofer)" : "digital (recibido por Explora)"}${item.detail ? ` · ${item.detail}` : ""}`,
       amount: Number(item.amount || 0) * 0.05,
+      _cashboxGrossAmount: Number(item.amount || 0),
       proofUrl: "",
       proofPath: "",
       _sortPriority: 1
@@ -1909,43 +1927,77 @@ function buildUnifiedReceipts() {
 
   const expenseReceipts = expenses
     .filter(item => !movementIsDeleted(item))
-    .map(item => ({
+    .flatMap(item => {
+      const expense = {
       ...item,
+      _receiptGroupKey:`expense:${item.id}`,
       method: "expense",
       type: "expense_receipt",
-      service: "Gasto",
+      service: `Gasto · ${String(item.detail || item.expenseType || "Varios").slice(0, 60)}`,
       detail: `${item.detail || "Gasto"} · Explora reconoce 50%: ${money(Number(item.amount || 0) * 0.5)}`,
       _sortPriority: 2
-    }));
+      };
+      if (item.receiptFlowVersion !== "gross_expense_reimbursement_50_v1") return [expense];
+      return [expense, {
+        ...expense,
+        id:`${item.id}_reimbursement_50`,
+        type:"expense_reimbursement_receipt",
+        service:"Reintegro de gasto",
+        detail:`Explora devuelve el 50% de ${money(item.amount)} · ${item.detail || "Gasto"}`,
+        amount:Number(item.amount || 0) * 0.50,
+        _expenseGrossAmount:Number(item.amount || 0),
+        proofUrl:"", proofPath:"",
+        _sortPriority:1
+      }];
+    });
 
-  return [
+  return sortUnifiedReceipts([
     ...regularPayments,
     ...cashboxReceipts,
     ...debtReceipts,
     ...advanceReceipts,
     ...uberReceipts,
     ...expenseReceipts
-  ].sort((a, b) => {
-    const byDate = recordTimestampMs(b) - recordTimestampMs(a);
-    if (byDate) return byDate;
-    return Number(b._sortPriority || 0) - Number(a._sortPriority || 0);
+  ], order);
+}
+
+function receiptGroupKey(item) {
+  return item._receiptGroupKey || `${item.method || item.type}:${item.id}`;
+}
+
+function sortUnifiedReceipts(receipts, order = "newest") {
+  return [...receipts].sort((a, b) => {
+    const byDate = recordTimestampMs(a) - recordTimestampMs(b);
+    if (byDate) return order === "oldest" ? byDate : -byDate;
+    const byGroup = receiptGroupKey(a).localeCompare(receiptGroupKey(b));
+    const byStep = Number(a._sortPriority || 0) - Number(b._sortPriority || 0);
+    return byGroup || (order === "oldest" ? -byStep : byStep);
   });
+}
+
+function visibleReceiptRows(receipts, limit) {
+  let end = Math.min(limit, receipts.length);
+  while (end > 0 && end < receipts.length && receiptGroupKey(receipts[end - 1]) === receiptGroupKey(receipts[end])) end += 1;
+  return receipts.slice(0, end);
 }
 
 function render() {
   syncDriverDebtConfirmationModal();
   syncUberDriverConfirmationModal();
   const model = settlementModel();
-  const receipts = buildUnifiedReceipts();
-  const visibleReceipts = receipts.slice(0, Math.max(RECENT_RECEIPTS_LIMIT, visibleReceiptCount));
+  const receipts = buildUnifiedReceipts(receiptSortOrder);
+  const visibleReceipts = visibleReceiptRows(receipts, Math.max(RECENT_RECEIPTS_LIMIT, visibleReceiptCount));
 
-  setAnimatedMoney("settlementTotal", model.balance);
+  setAnimatedMoney("settlementTotal", Math.abs(model.balance));
   renderWalletStatus("settlementDirection", model.balance);
+  $("settlementDirection").textContent = settlementPreviewCopy(model.balance).label;
+  $("driverBalanceCard").dataset.state = model.balance > 0.5 ? "owing" : model.balance < -0.5 ? "receiving" : "balanced";
+  $("driverBalanceBadge").textContent = model.balance > 0.5 ? "Por liquidar" : model.balance < -0.5 ? "A tu favor" : "Al día";
   $("receiptCount").textContent = receipts.length;
 
   const toggle = $("receiptsToggle");
-  toggle.classList.toggle("hidden", visibleReceiptCount >= receipts.length);
-  toggle.textContent = "Ver más comprobantes";
+  toggle.classList.toggle("hidden", visibleReceipts.length >= receipts.length);
+  toggle.textContent = "Ver más movimientos";
 
   renderUberPendingBadge();
   renderList("receiptList", visibleReceipts);
@@ -2302,10 +2354,41 @@ function receiptFooterLabel(item = {}) {
     : `${date.toLocaleDateString("es-AR", { day:"2-digit", month:"2-digit", year:"2-digit" })} · ${time}`;
 }
 
+// Historical balances must come from the operation's saved snapshot. Never
+// backfill old receipts from today's balance or count the cashbox detail twice.
+function receiptBalanceSnapshot(item = {}) {
+  if (item.type === "cash_advance" || Number(item.amountCorrectionCount || 0) > 0 || cashboxIsExcluded(item)) return null;
+  const before = item.telegramSettlementBeforeBalance ?? item.settlementBeforeAdminDecision;
+  const after = item.telegramSettlementAfterBalance ?? item.settlementAfterAdminDecision;
+  const valid = value => (typeof value === "number" || (typeof value === "string" && value.trim() !== "")) && Number.isFinite(Number(value));
+  if (!valid(before) || !valid(after)) return null;
+  let start = Number(before), finish = Number(after);
+  const currentFlow = item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1";
+  if (currentFlow && ["cash", "digital"].includes(item.method) && !isSettlementAdjustment(item) && !isReimbursementCompensation(item)) {
+    const principal = Number(item.type === "cashbox_receipt" ? item._cashboxGrossAmount : item.amount);
+    if (!Number.isFinite(principal)) return null;
+    const intermediate = start + principal * (item.method === "cash" ? 1 : -1);
+    if (item.type === "cashbox_receipt") start = intermediate;
+    else finish = intermediate;
+  } else if (item.receiptFlowVersion === "gross_expense_reimbursement_50_v1" && ["expense_receipt", "expense_reimbursement_receipt"].includes(item.type)) {
+    const grossExpense = Number(item.type === "expense_reimbursement_receipt" ? item._expenseGrossAmount : item.amount);
+    if (!Number.isFinite(grossExpense)) return null;
+    const intermediate = start - grossExpense;
+    if (item.type === "expense_reimbursement_receipt") start = intermediate;
+    else finish = intermediate;
+  } else if (item.type === "cashbox_receipt") return null;
+  return { before:start, after:finish, movementImpact:finish - start };
+}
+
+function receiptBalanceLabel(value) {
+  const state = settlementPreviewCopy(value);
+  return `${state.label}${state.amount ? ` ${money(state.amount)}` : ""}`;
+}
+
 function renderList(containerId, items) {
   const box = $(containerId);
   if (!items.length) {
-    box.innerHTML = `<div class="empty">Los cobros, gastos, Uber y deudas aparecerán acá.</div>`;
+    box.innerHTML = `<div class="driver-empty"><span aria-hidden="true">↗</span><strong>Tu historial empieza acá</strong><p>Registrá un cobro o un gasto para ver tus movimientos.</p></div>`;
     return;
   }
 
@@ -2314,9 +2397,10 @@ function renderList(containerId, items) {
     const debtCompensation = isReimbursementCompensation(item);
     const cashAdvance = isCashAdvance(item);
     const expenseReceipt = isExpenseReceipt(item);
+    const expenseReimbursement = item.type === "expense_reimbursement_receipt";
     const cashboxReceipt = isCashboxReceipt(item);
     const adminDebt = isAdminDebt(item);
-    const digitalReceipt = item.method === "digital" && !isSettlementAdjustment(item);
+    const digitalReceipt = item.method === "digital" && !isSettlementAdjustment(item) && !cashboxReceipt && !debtCompensation && !cashAdvance && !adminDebt;
     const regularCashReceipt = item.method === "cash"
       && !isSettlementAdjustment(item)
       && !adminDebt
@@ -2355,7 +2439,7 @@ function renderList(containerId, items) {
     const icon = cashboxReceipt
       ? `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="2"/><circle cx="16" cy="16" r="2"/><path d="M7 17 17 7"/></svg>`
       : expenseReceipt
-        ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`
+        ? `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>`
         : uberReceipt
           ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h14M7 16l1-5h8l1 5M8 11l1.2-3h5.6l1.2 3M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>`
           : debtCompensation
@@ -2365,11 +2449,12 @@ function renderList(containerId, items) {
               : adminDebt
                 ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M12 19h.01M5 21h14L12 3 5 21Z"/></svg>`
                 : digitalReceipt
-                  ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>`
-                  : `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
+                  ? `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>`
+                  : isSettlementAdjustment(item)
+                    ? `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/></svg>`
+                    : `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><ellipse cx="12" cy="12" rx="3" ry="4"/><path d="M5 8h.01M19 16h.01"/></svg>`;
 
-    const amountPrefix = debtCompensation ? "−" : "+";
-    const receiptToneClass = expenseReceipt
+    const receiptToneClass = expenseReimbursement ? "receipt-tone-cash" : expenseReceipt
       ? "receipt-tone-expense"
       : uberReceipt
         ? "receipt-tone-uber"
@@ -2379,30 +2464,22 @@ function renderList(containerId, items) {
             ? "receipt-tone-digital"
             : "receipt-tone-other";
 
-    const receiptClass = [
-      item.method === "digital" ? "receipt-digital" : "receipt-cash",
-      receiptToneClass,
-      isSettlementAdjustment(item) ? "receipt-adjustment" : "",
-      adminDebt ? "receipt-debt" : "",
-      expenseReceipt ? "receipt-expense" : "",
-      uberReceipt ? "receipt-uber" : "",
-      cashboxReceipt ? "receipt-cashbox" : "",
-      debtCompensation ? "receipt-debt-compensation" : "",
-      cashAdvance ? "receipt-advance" : ""
-    ].filter(Boolean).join(" ");
-
-    return `<article class="receipt ${receiptClass}">
-      <div class="receipt-main">
-        <span class="receipt-icon">${icon}</span>
-        <div class="receipt-copy">
-          <strong>${escapeHtml(item.service || "Comprobante")}</strong>
-          <small>${escapeHtml(item.detail || "Operación registrada")}</small>
-        </div>
-        <div class="amount">${amountPrefix}${money(item.amount)}</div>
-      </div>
-      <div class="receipt-footer">
-        <span>${receiptFooterLabel(item)}</span>${proof}
-      </div>
+    const snapshot = receiptBalanceSnapshot(item);
+    const impact = snapshot?.movementImpact || 0;
+    const currentRule = item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1";
+    const title = cashboxReceipt && currentRule ? `Caja ${item.method === "cash" ? "efectivo" : "digital"} · 5%` : regularCashReceipt ? "Cobro en efectivo" : digitalReceipt ? "Cobro digital" : item.service || proofLabel;
+    const strip = snapshot
+      ? `<div class="movement-balances" aria-label="Saldo histórico de esta operación">
+          <div><span>Antes</span><p>${escapeHtml(receiptBalanceLabel(snapshot.before))}</p></div>
+          <div><span>Impacto</span><strong class="${impact > 0 ? "positive" : impact < 0 ? "negative" : "neutral"}">${impact > 0 ? "+" : impact < 0 ? "−" : ""}${money(Math.abs(impact))}</strong></div>
+          <div><span>Después</span><p>${escapeHtml(receiptBalanceLabel(snapshot.after))}</p></div>
+        </div>`
+      : `<div class="movement-no-snapshot"><span>${cashboxReceipt ? "Incluida en el cobro · a favor de Explora" : cashAdvance ? "Adelanto · cuenta separada" : "Saldo histórico no disponible"}</span><strong>${money(item.amount)}</strong></div>`;
+    return `<article class="movement-card ${receiptToneClass}">
+      <details class="movement-details">
+        <summary><span class="movement-icon">${icon}</span><span class="movement-copy"><strong>${escapeHtml(title)}</strong></span><span class="movement-date">${receiptFooterLabel(item)}</span><span class="movement-chevron" aria-hidden="true">›</span></summary>
+        <div class="movement-attachment"><p>${escapeHtml(item.detail || "Operación registrada")}</p>${currentRule && !cashboxIsExcluded(item) && (regularCashReceipt || digitalReceipt) ? `<p>El 100% ${regularCashReceipt ? "del efectivo queda en poder del chofer y suma al saldo" : "del digital lo recibe Explora y resta del saldo"}. La caja chica de 5% se suma una sola vez, en la tarjeta siguiente.</p>` : ""}${proof}${snapshot ? `<small>Saldo positivo: el chofer debe a Explora. Saldo negativo: Explora debe al chofer. Los importes muestran el paso histórico de esta tarjeta.</small>` : ""}</div>
+      </details>${strip}
     </article>`;
   }).join("");
 }
@@ -2410,6 +2487,41 @@ function renderList(containerId, items) {
 $("receiptsToggle")?.addEventListener("click", () => {
   visibleReceiptCount += RECEIPTS_PAGE_SIZE;
   render();
+});
+
+$("receiptSort")?.addEventListener("change", event => {
+  receiptSortOrder = event.target.value;
+  visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
+  render();
+});
+
+let driverProfileOpener = null;
+function openDriverProfile(opener) {
+  if (!auth.currentUser || isAdminProfile()) return;
+  driverProfileOpener = opener;
+  $("driverProfileName").textContent = currentProfile?.displayName || auth.currentUser.displayName || "Conductor";
+  $("driverProfileEmail").textContent = auth.currentUser.email || "";
+  $("driverProfileModal").classList.remove("hidden");
+  $("driverProfileModal").querySelector("[data-close]").focus();
+}
+$("driverProfileBtn")?.addEventListener("click", event => openDriverProfile(event.currentTarget));
+document.querySelectorAll("[data-driver-nav]").forEach(button => {
+  button.addEventListener("click", () => {
+    const destination = button.dataset.driverNav;
+    if (destination === "profile") { openDriverProfile(button); return; }
+    document.querySelectorAll("[data-driver-nav]").forEach(item => item.removeAttribute("aria-current"));
+    button.setAttribute("aria-current", "page");
+    const target = destination === "history" ? $("driverHistory") : destination === "charges" ? $("driverQuickActions") : $("app");
+    target.scrollIntoView({ behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block:"start" });
+    if (destination !== "home") target.focus({ preventScroll:true });
+  });
+});
+$("driverProfileModal")?.addEventListener("keydown", event => {
+  const close = $("driverProfileModal").querySelector("[data-close]");
+  const last = $("logoutBtn");
+  if (event.key === "Escape") close.click();
+  if (event.key === "Tab" && event.shiftKey && document.activeElement === close) { event.preventDefault(); last.focus(); }
+  else if (event.key === "Tab" && !event.shiftKey && document.activeElement === last) { event.preventDefault(); close.focus(); }
 });
 
 async function loadProfile(user) {
@@ -2483,15 +2595,15 @@ function subscribeToday(user) {
     }).catch(err => console.warn("EXPLORA_HISTORY_LOAD", collectionName, err));
 
     // Luego mantiene en vivo el camino canónico driverUid para todos los movimientos nuevos.
-    return onSnapshot(ownedQuery(collectionName, uid), snap => {
+    return onSnapshot(ownedQuery(collectionName, uid), { includeMetadataChanges:true }, snap => {
       const canon = snap.docs.map(d => ({ id:d.id, ...d.data() }));
       setCanonicalRows(collectionName, uid, canon);
       const merged = mergeOwnedRows(collectionName, uid, canon);
       assign(merged.map(row => normalizer(row.id, row)).sort((a,b)=>recordTimestampMs(b)-recordTimestampMs(a)));
       render();
       afterRender?.();
-      $("syncStatus").textContent = "En tiempo real";
-      $("syncStatus").className = "sync ok";
+      $("syncStatus").textContent = snap.metadata.fromCache ? "Sincronizando…" : "En tiempo real";
+      $("syncStatus").className = snap.metadata.fromCache ? "sync" : "sync ok";
     }, err => {
       console.error(`Firestore ${collectionName} snapshot error:`, err);
       onError?.(err);
@@ -2549,6 +2661,7 @@ function isAdminProfile() {
 
 function applyRoleUI() {
   const admin = isAdminProfile();
+  $("app").classList.toggle("driver-view", !admin);
   resetTeamRealtimeDisclosure();
   $("driverDashboard")?.classList.toggle("hidden", admin);
   $("adminDashboard")?.classList.toggle("hidden", !admin);
@@ -2559,7 +2672,7 @@ function applyRoleUI() {
   // Todos los accesos visuales de este cambio deben tolerar que el elemento haya
   // sido retirado para no interrumpir el arranque ni dejar el splash en Cargando.
   const closeDayButton = $("closeDayBtn");
-  if (closeDayButton) closeDayButton.textContent = admin ? "Gestionar cierres" : "Pedir cierre";
+  if (closeDayButton) closeDayButton.setAttribute("aria-label", admin ? "Gestionar cierres" : "Pedir cierre");
   $("addDebtBtn")?.classList.toggle("hidden", !admin);
   $("advanceBox")?.classList.toggle("hidden", admin);
 }
@@ -2832,10 +2945,10 @@ function adminBillingBalanceForDriver(driver = {}) {
   const uberTransferRevenue = activeUber.reduce((sum, item) => sum + uberTransferRevenueOf(item), 0);
 
   const automaticExpenseImpact = automaticExpenseBillingImpactTotal(driverExpenses, baseline);
-  const cashBox = (cashboxEligibleCash + uberCashRevenue) * 0.05;
+  const cashBox = (cashboxEligibleCash + uberCashRevenue) * 0.05 + digitalCashboxAmount(driverPayments);
   const balance = (cashRevenue * 0.50) + (uberCashRevenue * 0.50) + cashBox + adminDebtTotal
     - (digitalRevenue * 0.50) - (uberTransferRevenue * 0.50)
-    - automaticExpenseImpact - driverPaid + exploraPaid;
+    - automaticExpenseImpact - driverPaid + exploraPaid + grossFlowPrincipalDelta(driverPayments);
   return Math.abs(balance) > 0.5 ? balance : 0;
 }
 
@@ -4062,6 +4175,8 @@ $("adminManageClosuresBtn")?.addEventListener("click", () => {
 
 onAuthStateChanged(auth, async user => {
   if (!user) {
+    $("driverProfileModal")?.classList.add("hidden");
+    driverProfileOpener = null;
     if (unsubscribePayments) unsubscribePayments();
     if (unsubscribeExpenses) unsubscribeExpenses();
     if (unsubscribeUber) unsubscribeUber();
@@ -4166,6 +4281,7 @@ document.querySelectorAll("[data-mode]").forEach(btn => {
 document.querySelectorAll("[data-close]").forEach(btn => {
   btn.addEventListener("click", () => {
     $(btn.dataset.close).classList.add("hidden");
+    if (btn.dataset.close === "driverProfileModal") driverProfileOpener?.focus();
     window.setTimeout(maybeShowDriverDebtConfirmation, 0);
     window.setTimeout(maybeShowUberDriverConfirmation, 100);
     window.setTimeout(maybeShowUberReminder, 220);
@@ -4214,20 +4330,20 @@ function previewDefinition(kind, amount, details = {}) {
   const definitions = {
     cash: {
       title: "Confirmar cobro en efectivo",
-      subtitle: "El cobro suma 50% para Explora y 5% de caja chica.",
+      subtitle: "El efectivo suma su importe completo y luego suma 5% de caja chica a favor de Explora.",
       amountLabel: "Cobro en efectivo",
-      impactLabel: "50% + caja chica 5%",
-      delta: value * 0.55,
+      impactLabel: "Efectivo 100% + caja chica 5%",
+      delta: value * 1.05,
       notice: "Al confirmar se crearán dos comprobantes: el cobro y su caja chica 5%.",
       confirmLabel: "Confirmar cobro"
     },
     digital: {
       title: "Confirmar cobro digital",
-      subtitle: "El 50% del cobro compensa la diferencia a favor del chofer.",
+      subtitle: "El digital resta su importe completo y luego suma 5% de caja chica a favor de Explora.",
       amountLabel: "Cobro digital",
-      impactLabel: "50% del cobro",
-      delta: value * -0.50,
-      notice: "Al confirmar se guardará el comprobante digital y se enviará el aviso.",
+      impactLabel: "Digital −100% + caja chica 5%",
+      delta: value * -0.95,
+      notice: "Al confirmar se guardará el cobro y su caja chica 5%, sin duplicar el impacto en el saldo.",
       confirmLabel: "Confirmar cobro"
     },
     expense: {
@@ -4562,7 +4678,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
   try {
     const enteredDetail = $("detail").value.trim();
     const settlementBeforeCharge = settlementModel().balance;
-    const chargeDelta = mode === "cash" ? amount * 0.55 : amount * -0.50;
+    const chargeDelta = mode === "cash" ? amount * 1.05 : amount * -0.95;
     const settlementAfterCharge = normalizedSettlementBalance(settlementBeforeCharge + chargeDelta);
     fingerprint = await buildSubmissionFingerprint("charge", {
       mode,
@@ -4635,8 +4751,13 @@ $("chargeForm")?.addEventListener("submit", async e => {
         receiptUrl: proofUrl,
         receiptPath: proofPath,
         receiptRequired: mode === "digital",
-        cashboxRate: mode === "cash" ? 0.05 : 0,
-        cashboxAmount: mode === "cash" ? amount * 0.05 : 0,
+        settlementRuleVersion: "gross_cash_digital_cashbox_5_v1",
+        grossAmount: amount,
+        principalMovementAmount: mode === "cash" ? amount : -amount,
+        cashboxRate: 0.05,
+        cashboxAmount: amount * 0.05,
+        cashboxBeneficiary: "explora",
+        moneyHolder: mode === "cash" ? "driver" : "explora",
         telegramSettlementBeforeBalance: settlementBeforeCharge,
         telegramSettlementAfterBalance: settlementAfterCharge,
         telegramSettlementPayer: settlementAfterCharge > 0.5 ? "driver" : settlementAfterCharge < -0.5 ? "explora" : "balanced",
@@ -5222,6 +5343,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
       autoApplyToBilling: true,
       gastoAuto50: true,
       billingImpactMode: "auto_50",
+      receiptFlowVersion: "gross_expense_reimbursement_50_v1",
       billingImpactAmount: recognizedExpense,
       // Telegram recibe el gasto nuevo, el 50% reconocido y el saldo final de facturación.
       telegramExpenseLoadedAmount: amount,
