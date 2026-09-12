@@ -16,6 +16,7 @@ const {
 } = require("./telegram-billing-balance");
 const { isAdminDebtPayment } = require("./telegram-debt-payment");
 const { isAdminDriverDebt } = require("./telegram-driver-debt");
+const { prepareInvoiceDraft } = require("./arca-invoice-draft");
 
 const PROJECT_ID = "explora-control-operativo";
 const STORAGE_BUCKET = `${PROJECT_ID}.firebasestorage.app`;
@@ -32,6 +33,30 @@ const DELETION_JOBS_COLLECTION = "admin_driver_deletion_jobs";
 const ADMIN_AUDIT_COLLECTION = "admin_audit";
 const TEAM_REALTIME_BALANCES_COLLECTION = "team_realtime_balances";
 const PAGE_SIZE = 180;
+
+// Internal draft only; never contacts ARCA or emits a fiscal document.
+exports.prepareArcaInvoiceDraft = onDocumentWritten({document:"billing_records/{paymentId}",region:"southamerica-east1",retry:true}, async event => {
+  if (!event.data) return;
+  const paymentRef = db.collection("billing_records").doc(event.params.paymentId);
+  const draftRef = db.collection("arca_invoice_drafts").doc(event.params.paymentId);
+  await db.runTransaction(async transaction => {
+    // Read current source, rather than an older out-of-order event snapshot.
+    const [paymentSnapshot,existing] = await Promise.all([transaction.get(paymentRef),transaction.get(draftRef)]);
+    if (existing.exists && !["preparation","cancelled"].includes(existing.data().status)) return;
+    const payment = paymentSnapshot.exists ? paymentSnapshot.data() : null;
+    if (!payment || payment.deleted === true || payment.isDeleted === true || payment.eliminado === true || payment.status === "deleted") {
+      if (existing.exists) transaction.update(draftRef,{status:"cancelled",updatedAt:FieldValue.serverTimestamp()});
+      return;
+    }
+    const draft = prepareInvoiceDraft(payment,event.params.paymentId,{
+      cuit:process.env.ARCA_ISSUER_CUIT,
+      legalName:process.env.ARCA_ISSUER_LEGAL_NAME,
+      pointOfSale:process.env.ARCA_POINT_OF_SALE
+    });
+    if (!draft) return;
+    transaction.set(draftRef,{...draft,createdAt:existing.exists ? existing.data().createdAt : FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
+  });
+});
 const MAX_SCANNED_DOCUMENTS = 25000;
 
 

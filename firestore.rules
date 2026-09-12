@@ -1156,6 +1156,13 @@ service cloud.firestore {
     }
 
     // =========================================================
+    // Borradores fiscales internos: solo Admin consulta, solo servidor escribe.
+    // No se exponen datos fiscales de clientes a otros choferes.
+    match /arca_invoice_drafts/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // DENEGACIÓN FINAL
     // =========================================================
 

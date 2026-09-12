@@ -7264,3 +7264,65 @@ body.proof-image-viewer-open {
 }
 @media (prefers-reduced-motion: reduce) { .driver-action, .movement-chevron { transition: none !important; } }
 @media (prefers-contrast: more) { #app.driver-view { --driver-muted: #43557d; } .movement-card { border-color: #889bbd; } }
+
+/* Cobros: pantalla de revisión y preparación fiscal. */
+body:has(#chargeModal:not(.hidden)) { overflow:hidden; }
+#chargeModal { --charge-accent:#009b61; --charge-tint:#e3f7ef; --charge-ink:#10164c; --charge-muted:#64779f; background:#f5faff; overflow-y:auto; align-items:flex-start; padding:24px 16px; }
+#chargeModal[data-tone="digital"] { --charge-accent:#1177ef; --charge-tint:#e5efff; }
+#chargeModal .charge-screen-card { width:100%; max-width:780px; margin:0 auto; padding:12px 0 32px; border:0; box-shadow:none; background:transparent; max-height:none; overflow:visible; color:var(--charge-ink); }
+.charge-brand { display:flex; flex-direction:column; margin:0 0 22px; }
+.charge-brand strong { color:#10164c; font-size:24px; letter-spacing:-.7px; }
+.charge-brand span { color:#64779f; font-size:14px; }
+.charge-back { border:0; background:transparent; color:#64779f; padding:8px 0; font-size:16px; cursor:pointer; }
+.charge-heading { display:flex; align-items:center; gap:18px; margin:18px 0 24px; }
+.charge-heading h2 { color:#10164c; font-size:32px; line-height:1.1; letter-spacing:-1px; margin:0 0 7px; }
+.charge-heading p { color:#64779f; font-size:16px; margin:0; }
+.charge-icon { display:grid; place-items:center; width:76px; height:76px; flex-shrink:0; background:var(--charge-tint); color:var(--charge-accent); border-radius:24px; }
+.charge-icon svg { width:40px; height:40px; fill:none; stroke:currentColor; stroke-width:2; }
+#chargeForm { display:grid; gap:14px; }
+#chargeModal .charge-panel { margin:0; padding:20px; background:white; border:1px solid #e3eaf4; border-radius:19px; box-shadow:0 5px 18px #152d6110; }
+#chargeModal h3, #chargeModal .charge-panel > label { display:block; color:#10164c; margin:0 0 14px; font-size:20px; font-weight:700; letter-spacing:-.4px; }
+#chargeModal input, #chargeModal select { color:#10164c; background:#f9fbff; border:1px solid #ccd8ed; border-radius:10px; width:100%; min-width:0; font:inherit; padding:12px; }
+#chargeModal input:focus, #chargeModal select:focus { outline:2px solid var(--charge-accent); outline-offset:2px; }
+#chargeModal .money-entry { border:1px solid #ccd8ed; background:#f9fbff; border-radius:12px; padding:7px 14px; display:flex; align-items:center; }
+#chargeModal .money-entry span { font-size:38px; color:#10164c; font-weight:700; }
+#chargeModal #chargeAmount { font-size:42px; font-weight:700; letter-spacing:-1.5px; border:0; background:transparent; padding:4px; }
+.charge-two-columns { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+#chargeModal .charge-trip .field { margin-bottom:12px; }
+#chargeModal .charge-trip label { color:#64779f; font-size:13px; }
+.charge-extra summary { color:var(--charge-accent); cursor:pointer; font-size:14px; padding:8px 0; }
+.charge-extra[open] summary { margin-bottom:12px; }
+.charge-breakdown > div, .charge-invoice-total { display:flex; justify-content:space-between; gap:16px; padding:11px 0; border-bottom:1px solid #edf1f8; color:#64779f; }
+.charge-breakdown strong, .charge-invoice-total strong { color:#10164c; white-space:nowrap; }
+.charge-breakdown .charge-net { border-bottom:0; font-weight:600; }
+.charge-account { display:grid; grid-template-columns:1fr 1fr 1fr; text-align:center; align-items:stretch; }
+.charge-account > div { display:flex; flex-direction:column; justify-content:center; gap:8px; padding:8px; min-width:0; }
+.charge-account > div + div { border-left:1px solid #d8e1f2; }
+.charge-account span, .charge-account small { color:#64779f; font-size:13px; line-height:1.3; }
+.charge-account strong { font-size:22px; color:#10164c; }
+#chargeModal .positive { color:#00993d; } #chargeModal .negative { color:#e62632; }
+.charge-fiscal-heading { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+#chargeModal .charge-fiscal-heading h3 { margin:0; }
+.charge-fiscal-heading > span { font-size:11px; color:#6a5918; border-radius:20px; background:#fff4cb; padding:5px 9px; }
+.charge-fiscal p { color:#64779f; font-size:14px; margin:12px 0 0; }
+.charge-fiscal small { display:block; color:#64779f; font-size:12px; line-height:1.5; margin-top:10px; }
+#chargeModal .modal-actions { display:grid; grid-template-columns:auto 1fr; gap:12px; margin:0; }
+#chargeModal #saveChargeBtn { background:var(--charge-accent); color:white; font-size:20px; min-height:60px; border:0; border-radius:15px; }
+#chargeModal .photo-source-picker { border:1px dashed #c4d6f1; padding:14px; border-radius:12px; }
+#chargeModal .photo-source-action { color:var(--charge-accent); background:var(--charge-tint); border:0; }
+@media(max-width:600px) {
+  #chargeModal { padding:16px 14px; }
+  .charge-heading { gap:12px; margin:14px 0 20px; }
+  .charge-heading h2 { font-size:25px; }
+  .charge-heading p { font-size:13px; line-height:1.4; }
+  .charge-icon { width:57px; height:57px; border-radius:17px; }
+  .charge-icon svg { width:31px; height:31px; }
+  #chargeModal .charge-panel { padding:15px; border-radius:16px; }
+  #chargeModal h3, #chargeModal .charge-panel > label { font-size:18px; }
+  #chargeModal #chargeAmount { font-size:35px; }
+  .charge-two-columns { gap:10px; }
+  .charge-account strong { font-size:17px; overflow-wrap:anywhere; }
+  .charge-account span, .charge-account small { font-size:11px; }
+  .charge-breakdown > div { font-size:14px; }
+  #chargeModal input, #chargeModal select { font-size:16px; }
+}

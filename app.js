@@ -2001,6 +2001,7 @@ function render() {
 
   renderUberPendingBadge();
   renderList("receiptList", visibleReceipts);
+  if (!$("chargeModal").classList.contains("hidden")) renderChargePreview();
   window.setTimeout(maybeShowDriverDebtConfirmation, 0);
   window.setTimeout(maybeShowUberDriverConfirmation, 120);
   window.setTimeout(maybeShowUberReminder, 260);
@@ -4265,17 +4266,64 @@ document.querySelectorAll("[data-mode]").forEach(btn => {
   btn.addEventListener("click", () => {
     const mode = btn.dataset.mode;
     $("chargeForm").reset();
+    clearPhotoPicker("digital");
     delete $("chargeForm").dataset.previewConfirmed;
     $("chargeMode").value = mode;
     $("chargeModal").dataset.tone = mode;
     $("chargeTitle").textContent = mode === "cash" ? "Cobro en efectivo" : "Cobro digital";
+    $("chargeIntro").textContent = mode === "cash" ? "El dinero queda en tu poder." : "El pago ingresa a Explora. Adjuntá el comprobante.";
+    $("chargeIcon").innerHTML = mode === "cash" ? '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><ellipse cx="12" cy="12" rx="3" ry="4"/></svg>' : '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>';
+    $("chargeDigitalTypeField").classList.toggle("hidden", mode !== "digital");
+    $("chargeServiceDate").value = localDayKey();
     $("proofField").classList.toggle("hidden", mode !== "digital");
     $("chargeStatus").textContent = "";
     $("chargeStatus").className = "status";
     $("saveChargeBtn").disabled = false;
-    $("saveChargeBtn").textContent = "Registrar cobro";
+    $("saveChargeBtn").textContent = "Confirmar cobro";
     $("chargeModal").classList.remove("hidden");
+    renderChargePreview();
+    $("chargeModal").scrollTop = 0;
+    $("chargeAmount").focus({preventScroll:true});
   });
+});
+
+function chargeDraftRequest() {
+  return {
+    version:"arca_preparation_v1",
+    serviceDate:$("chargeServiceDate").value,
+    origin:$("chargeOrigin").value.trim(), destination:$("chargeDestination").value.trim(),
+    distanceKm:Number($("chargeDistance").value), scope:$("chargeTripScope").value,
+    paymentChannel:$("chargeMode").value === "cash" ? "cash" : $("chargeDigitalType").value,
+    customer:{name:$("chargeCustomerName").value.trim(), documentType:$("chargeCustomerDocType").value, documentNumber:$("chargeCustomerDoc").value.trim(), vatCondition:$("chargeCustomerVat").value}
+  };
+}
+
+function renderChargePreview() {
+  const amount = parseMoneyInput($("chargeAmount").value) || 0;
+  const cash = $("chargeMode").value === "cash";
+  const principal = cash ? amount : -amount;
+  const fee = amount * 0.05;
+  const impact = normalizedSettlementBalance(principal + fee);
+  const before = settlementModel().balance;
+  const after = normalizedSettlementBalance(before + impact);
+  const signed = value => `${value > 0 ? "+" : value < 0 ? "−" : ""}${money(Math.abs(value))}`;
+  $("chargeGross").textContent = money(amount);
+  $("chargeInvoiceTotal").textContent = money(amount);
+  $("chargePrincipalLabel").textContent = cash ? "Efectivo · 100%" : "Digital · −100%";
+  for (const [id,value] of [["chargePrincipal",principal],["chargeCashbox",fee],["chargeNet",impact]]) {
+    $(id).textContent = signed(value);
+    $(id).className = value > 0 ? "positive" : value < 0 ? "negative" : "neutral";
+  }
+  $("chargeAccountPreview").innerHTML = `<div><span>Antes</span><small>${escapeHtml(settlementPreviewCopy(before).label)}</small><strong>${money(Math.abs(before))}</strong></div><div><span>Impacto</span><strong class="${impact < 0 ? "negative" : "positive"}">${signed(impact)}</strong></div><div><span>Después</span><small>${escapeHtml(settlementPreviewCopy(after).label)}</small><strong>${money(Math.abs(after))}</strong></div>`;
+}
+$("chargeAmount")?.addEventListener("input", renderChargePreview);
+$("chargeModal")?.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !$("saveChargeBtn").disabled) $("chargeModal").classList.add("hidden");
+  if (event.key === "Tab") {
+    const controls = [...$("chargeModal").querySelectorAll('button,input,select,summary')].filter(el => el.tabIndex >= 0 && !el.disabled && el.getClientRects().length);
+    if (event.shiftKey && document.activeElement === controls[0]) { event.preventDefault(); controls.at(-1).focus(); }
+    else if (!event.shiftKey && document.activeElement === controls.at(-1)) { event.preventDefault(); controls[0].focus(); }
+  }
 });
 
 document.querySelectorAll("[data-close]").forEach(btn => {
@@ -4334,7 +4382,7 @@ function previewDefinition(kind, amount, details = {}) {
       amountLabel: "Cobro en efectivo",
       impactLabel: "Efectivo 100% + caja chica 5%",
       delta: value * 1.05,
-      notice: "Al confirmar se crearán dos comprobantes: el cobro y su caja chica 5%.",
+      notice: "Se guardarán el cobro y su caja chica en el historial. ARCA desactivada: preparación de factura sin validez fiscal.",
       confirmLabel: "Confirmar cobro"
     },
     digital: {
@@ -4343,7 +4391,7 @@ function previewDefinition(kind, amount, details = {}) {
       amountLabel: "Cobro digital",
       impactLabel: "Digital −100% + caja chica 5%",
       delta: value * -0.95,
-      notice: "Al confirmar se guardará el cobro y su caja chica 5%, sin duplicar el impacto en el saldo.",
+      notice: "Se guardarán el cobro y su caja chica en el historial. ARCA desactivada: preparación de factura sin validez fiscal.",
       confirmLabel: "Confirmar cobro"
     },
     expense: {
@@ -4639,6 +4687,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
   const service = mode === "cash" ? "Cobro en efectivo" : "Cobro digital";
   const amount = parseMoneyInput($("chargeAmount").value);
   const file = selectedPhotoFile("digital");
+  const invoiceRequest = chargeDraftRequest();
 
   if (!amount || amount <= 0) {
     $("chargeStatus").textContent = "Ingresá un importe válido.";
@@ -4648,6 +4697,16 @@ $("chargeForm")?.addEventListener("submit", async e => {
 
   if (mode === "digital" && !file) {
     $("chargeStatus").textContent = "Adjuntá el comprobante del cobro digital.";
+    $("chargeStatus").className = "status error";
+    return;
+  }
+  if (!invoiceRequest.origin || !invoiceRequest.destination || !Number.isFinite(invoiceRequest.distanceKm) || invoiceRequest.distanceKm <= 0 || !invoiceRequest.serviceDate) {
+    $("chargeStatus").textContent = "Completá origen, destino, kilómetros y fecha del servicio.";
+    $("chargeStatus").className = "status error";
+    return;
+  }
+  if (invoiceRequest.customer.documentType !== "unidentified" && !invoiceRequest.customer.documentNumber) {
+    $("chargeStatus").textContent = "Completá el número de documento del cliente o seleccioná Sin informar.";
     $("chargeStatus").className = "status error";
     return;
   }
@@ -4683,7 +4742,8 @@ $("chargeForm")?.addEventListener("submit", async e => {
     fingerprint = await buildSubmissionFingerprint("charge", {
       mode,
       amount,
-      detail:enteredDetail
+      detail:enteredDetail,
+      invoiceRequest
     });
     operation = reservePendingOperation("payment", user.uid, fingerprint);
     paymentRef = doc(db, ROOT_COLLECTIONS.payments, operation.operationId);
@@ -4739,6 +4799,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
         finalPrice: amount,
         service,
         serviceDescription: service,
+        invoiceRequest,
         detail: paymentDetail,
         notes: paymentDetail,
         advanceRepaymentAmount: repaymentPlan.totalApplied,
@@ -4825,7 +4886,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
     releaseSubmissionLock("charge");
     if (!completedSuccessfully) {
       $("saveChargeBtn").disabled = false;
-      $("saveChargeBtn").textContent = "Registrar cobro";
+      $("saveChargeBtn").textContent = "Confirmar cobro";
     }
   }
 });
