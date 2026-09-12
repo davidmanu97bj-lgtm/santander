@@ -8,6 +8,7 @@ firebase-debug.log
 # Archivos locales o sensibles
 .env
 .env.*
+.secret.local
 service-account*.json
 serviceAccount*.json
 credentials*.json

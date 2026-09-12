@@ -17,6 +17,7 @@ const {
 const { isAdminDebtPayment } = require("./telegram-debt-payment");
 const { isAdminDriverDebt } = require("./telegram-driver-debt");
 const { prepareInvoiceDraft } = require("./arca-invoice-draft");
+const { validateRouteRequest, queryRouteService, RouteError } = require("./route-service");
 
 const PROJECT_ID = "explora-control-operativo";
 const STORAGE_BUCKET = `${PROJECT_ID}.firebasestorage.app`;
@@ -33,6 +34,40 @@ const DELETION_JOBS_COLLECTION = "admin_driver_deletion_jobs";
 const ADMIN_AUDIT_COLLECTION = "admin_audit";
 const TEAM_REALTIME_BALANCES_COLLECTION = "team_realtime_balances";
 const PAGE_SIZE = 180;
+
+const OPENROUTESERVICE_API_KEY = defineSecret("OPENROUTESERVICE_API_KEY");
+exports.exploraRoute = onCall({region:"southamerica-east1", secrets:[OPENROUTESERVICE_API_KEY], timeoutSeconds:30, maxInstances:3}, async request => {
+  const uid = await assertTeamRealtimeViewer(request);
+  try {
+    const data = validateRouteRequest(request.data);
+    const key = OPENROUTESERVICE_API_KEY.value();
+    if (!key) return await queryRouteService(data,key);
+    // Server-only counters; fixed documents avoid accumulating per-query data.
+    const globalRef = db.collection("route_usage").doc("global");
+    const userRef = db.collection("route_usage").doc(uid);
+    const day = new Date().toISOString().slice(0,10);
+    const minute = Math.floor(Date.now() / 60000);
+    await db.runTransaction(async tx => {
+      const [globalSnap,userSnap] = await Promise.all([tx.get(globalRef),tx.get(userRef)]);
+      const global = globalSnap.data() || {}, user = userSnap.data() || {};
+      const search = global.day === day ? Number(global.search || 0) : 0;
+      const route = global.day === day ? Number(global.route || 0) : 0;
+      const recent = user.minute === minute ? Number(user.recent || 0) : 0;
+      const globalRecent = global.minute === minute ? Number(global.recent || 0) : 0;
+      const daily = user.day === day ? Number(user.daily || 0) : 0;
+      if (recent >= 15 || globalRecent >= 35 || daily >= 200 || (data.action === "search" ? search >= 800 : route >= 1500)) {
+        throw new HttpsError("resource-exhausted","Se alcanzó el límite de consultas. Podés completar el recorrido manualmente.");
+      }
+      tx.set(globalRef,{day,minute,recent:globalRecent+1,search:search+(data.action === "search" ? 1 : 0),route:route+(data.action === "route" ? 1 : 0)});
+      tx.set(userRef,{day,minute,recent:recent+1,daily:daily+1});
+    });
+    return await queryRouteService(data,key);
+  } catch (error) {
+    if (error instanceof RouteError) throw new HttpsError(error.code,error.message);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("unavailable","No pudimos consultar las direcciones. Podés completar el recorrido manualmente.");
+  }
+});
 
 // Internal draft only; never contacts ARCA or emits a fiscal document.
 exports.prepareArcaInvoiceDraft = onDocumentWritten({document:"billing_records/{paymentId}",region:"southamerica-east1",retry:true}, async event => {

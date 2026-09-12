@@ -7381,3 +7381,12 @@ body .money-entry input:focus { outline:none !important; border-color:transparen
 .charge-step-track { display:flex; gap:8px; margin-bottom:8px; }
 .charge-step-track span { flex:1; height:4px; border-radius:4px; background:#e3eaf4; }
 .charge-step-track span.complete { background:var(--charge-accent); }
+
+.route-search-row{display:flex;align-items:stretch;gap:8px}
+.route-search-row input{min-width:0;flex:1}
+.route-search-button{flex:none;border-radius:12px;padding:10px 14px}
+.route-results{display:grid;gap:6px;margin-top:6px}
+.route-result{text-align:left;background:#f5f8fc;color:#101642;border:1px solid #e0e7f0;border-radius:12px;padding:12px;font:inherit;cursor:pointer}
+.route-result:hover,.route-result:focus-visible{background:#e8f5f0;outline:2px solid #569583;outline-offset:1px}
+.route-attribution{font-size:11px;color:#697998}
+.route-attribution a{color:inherit}

@@ -24,6 +24,7 @@ const auth = getAuth(app);
 const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 const storage = getStorage(app);
 const functions = getFunctions(app, "southamerica-east1");
+const exploraRouteCallable = httpsCallable(functions, "exploraRoute");
 const adminCreateDriverCallable = httpsCallable(functions, "adminCreateDriver");
 const adminUpdateDriverCallable = httpsCallable(functions, "adminUpdateDriver");
 const ensureTeamRealtimeBalancesCallable = httpsCallable(functions, "ensureTeamRealtimeBalances");
@@ -4268,6 +4269,7 @@ document.querySelectorAll("[data-mode]").forEach(btn => {
   btn.addEventListener("click", () => {
     const mode = btn.dataset.mode;
     $("chargeForm").reset();
+    resetChargeRoute();
     syncChargeCustomerFields();
     clearPhotoPicker("digital");
     delete $("chargeForm").dataset.previewConfirmed;
@@ -6356,4 +6358,98 @@ $("chargeStepBack").addEventListener("click", () => {
   const step = Number($("chargeForm").dataset.step || 0);
   if (step === 0) $("chargeModal").classList.add("hidden");
   else { const steps = chargeSteps(); showChargeStep(steps[steps.indexOf(step) - 1]); }
+});
+
+const chargeRouteState = { version:0, points:{}, searches:{}, automatic:false };
+function resetChargeRoute() {
+  chargeRouteState.version++;
+  chargeRouteState.points = {};
+  chargeRouteState.searches = {};
+  chargeRouteState.automatic = false;
+  for (const part of ["Origin","Destination"]) {
+    $("route"+part+"Results").replaceChildren();
+    document.querySelector('[data-route-search="'+part+'"]').disabled = false;
+  }
+  $("chargeRouteStatus").textContent = "Buscá y elegí ambos lugares para calcular los kilómetros, o completalos manualmente.";
+}
+function invalidateChargeRoute(part) {
+  chargeRouteState.version++;
+  delete chargeRouteState.points[part];
+  chargeRouteState.searches[part] = (chargeRouteState.searches[part] || 0) + 1;
+  $("route"+part+"Results").replaceChildren();
+  $("chargeDistance").value = "";
+  chargeRouteState.automatic = false;
+  $("chargeRouteStatus").textContent = "Recorrido modificado. Elegí los lugares o ingresá los kilómetros nuevamente.";
+}
+function routeFailureMessage(error) {
+  const code = String(error?.code || "");
+  if (code.endsWith("failed-precondition") || code.endsWith("not-found")) return "La búsqueda todavía no está disponible. Podés completar el recorrido y los kilómetros manualmente.";
+  if (code.endsWith("resource-exhausted")) return "Se alcanzó el límite de consultas. Podés completar el recorrido manualmente.";
+  return "No pudimos consultar las direcciones. Reintentá o completá el recorrido manualmente.";
+}
+async function calculateChargeRoute() {
+  const origin = chargeRouteState.points.Origin, destination = chargeRouteState.points.Destination;
+  if (!origin || !destination) {
+    $("chargeRouteStatus").textContent = "Elegí el otro punto para calcular los kilómetros.";
+    return;
+  }
+  const version = ++chargeRouteState.version;
+  $("chargeDistance").value = "";
+  $("chargeRouteStatus").textContent = "Calculando recorrido…";
+  try {
+    const response = await exploraRouteCallable({action:"route",origin:origin.coordinates,destination:destination.coordinates});
+    if (version !== chargeRouteState.version) return;
+    const distance = response.data?.distanceKm;
+    if (!Number.isFinite(distance) || distance <= 0) throw new Error("Invalid distance");
+    $("chargeDistance").value = String(distance);
+    chargeRouteState.automatic = true;
+    $("chargeRouteStatus").textContent = "Kilómetros calculados por carretera. Revisá que correspondan al servicio realizado; podés corregirlos.";
+  } catch (error) {
+    if (version === chargeRouteState.version) $("chargeRouteStatus").textContent = routeFailureMessage(error);
+  }
+}
+for (const part of ["Origin","Destination"]) {
+  $("charge"+part).addEventListener("input", () => invalidateChargeRoute(part));
+  const button = document.querySelector('[data-route-search="'+part+'"]');
+  button.addEventListener("click", async () => {
+    const query = $("charge"+part).value.trim();
+    if (query.length < 3) {
+      $("chargeRouteStatus").textContent = "Escribí al menos 3 caracteres para buscar.";
+      return;
+    }
+    const session = chargeRouteState.version;
+    const token = (chargeRouteState.searches[part] || 0) + 1;
+    chargeRouteState.searches[part] = token;
+    button.disabled = true;
+    $("route"+part+"Results").replaceChildren();
+    $("chargeRouteStatus").textContent = "Buscando direcciones…";
+    try {
+      const response = await exploraRouteCallable({action:"search",query});
+      if (session !== chargeRouteState.version || token !== chargeRouteState.searches[part]) return;
+      const places = response.data?.places || [];
+      $("chargeRouteStatus").textContent = places.length ? "Seleccioná la dirección que corresponde." : "No encontramos ese lugar. Probá agregando la ciudad o completá los datos manualmente.";
+      for (const place of places) {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.className = "route-result";
+        option.textContent = place.label;
+        option.addEventListener("click", () => {
+          $("charge"+part).value = place.label;
+          chargeRouteState.points[part] = place;
+          $("route"+part+"Results").replaceChildren();
+          calculateChargeRoute();
+        });
+        $("route"+part+"Results").append(option);
+      }
+    } catch (error) {
+      if (session === chargeRouteState.version && token === chargeRouteState.searches[part]) $("chargeRouteStatus").textContent = routeFailureMessage(error);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+$("chargeDistance").addEventListener("input", () => {
+  chargeRouteState.version++;
+  chargeRouteState.automatic = false;
+  $("chargeRouteStatus").textContent = "Kilómetros ingresados manualmente.";
 });
