@@ -59,7 +59,7 @@ function clearPhotoPicker(key) {
   delete picker.dataset.selectedInput;
   const selection = picker.querySelector("[data-photo-selection]");
   if (selection) {
-    selection.textContent = "Ninguna foto seleccionada.";
+    selection.textContent = key === "management" ? "Ningún comprobante seleccionado." : "Ninguna foto seleccionada.";
     selection.classList.remove("has-photo");
   }
 }
@@ -92,7 +92,7 @@ function initializePhotoSourcePickers() {
         picker.dataset.selectedInput = input.id;
         const selection = picker.querySelector("[data-photo-selection]");
         if (selection) {
-          const source = input.dataset.photoSource === "camera" ? "Foto tomada" : "Foto de galería";
+          const source = input.dataset.photoSource === "camera" ? "Foto tomada" : input.dataset.photoSource === "file" ? "Archivo seleccionado" : "Foto de galería";
           selection.textContent = `${source}: ${file.name || "imagen seleccionada"}`;
           selection.classList.add("has-photo");
         }
@@ -6240,7 +6240,7 @@ $("managementForm").addEventListener("submit", async event => {
   const direction = managementDirection;
   const amount = parseMoneyInput($("managementAmount").value);
   if (!user || !["driver_to_explora","explora_to_driver"].includes(direction) || !(amount > 0)) return;
-  const proof = $("managementProof").files?.[0];
+  const proof = selectedPhotoFile("management");
   if (!proof || proof.size <= 0 || proof.size > 15 * 1024 * 1024 || !(proof.type.startsWith("image/") || proof.type === "application/pdf")) {
     $("managementStatus").textContent = "Adjuntá un comprobante en imagen o PDF de hasta 15 MB.";
     $("managementStatus").className = "status error";
@@ -6249,6 +6249,7 @@ $("managementForm").addEventListener("submit", async event => {
   if (!acquireSubmissionLock("management")) return;
   $("managementConfirm").disabled = true;
   $("managementBack").disabled = true;
+  setPhotoPickerDisabled("management", true);
   $("managementStatus").textContent = "Guardando…";
   let operation, reference, fingerprint;
   try {
@@ -6297,5 +6298,6 @@ $("managementForm").addEventListener("submit", async event => {
   } finally {
     releaseSubmissionLock("management");
     $("managementBack").disabled = false;
+    setPhotoPickerDisabled("management", false);
   }
 });
