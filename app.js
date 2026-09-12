@@ -6346,7 +6346,7 @@ function validateChargeStep(step) {
     showChargeStep(0); $("chargeStatus").textContent = "Ingresá un importe válido."; return false;
   }
   if (step === 1 && (!$("chargeOrigin").value.trim() || !$("chargeDestination").value.trim())) {
-    showChargeStep(1); $("chargeStatus").textContent = "Completá origen y destino."; return false;
+    showChargeStep(1); $("chargeStatus").textContent = "Elegí un recorrido de la lista."; return false;
   }
   if (step === 2 && $("chargeMode").value === "digital" && !selectedPhotoFile("digital")) {
     showChargeStep(2); $("chargeStatus").textContent = "Adjuntá la foto del comprobante digital."; return false;
@@ -6362,6 +6362,7 @@ $("chargeStepBack").addEventListener("click", () => {
 
 const chargeRouteState = { version:0, points:{}, searches:{}, automatic:false };
 function resetChargeRoute() {
+  renderSavedChargeRoutes();
   chargeRouteState.version++;
   chargeRouteState.points = {};
   chargeRouteState.searches = {};
@@ -6370,9 +6371,10 @@ function resetChargeRoute() {
     $("route"+part+"Results").replaceChildren();
     document.querySelector('[data-route-search="'+part+'"]').disabled = false;
   }
-  $("chargeRouteStatus").textContent = "Buscá lugares hasta 100 km de Puerto Iguazú, incluyendo Brasil y Paraguay.";
+  $("chargeRouteStatus").textContent = "Elegí un recorrido para ver los kilómetros.";
 }
 function invalidateChargeRoute(part) {
+  $("chargeSavedRoute").value = "";
   chargeRouteState.version++;
   delete chargeRouteState.points[part];
   chargeRouteState.searches[part] = (chargeRouteState.searches[part] || 0) + 1;
@@ -6453,4 +6455,44 @@ $("chargeDistance").addEventListener("input", () => {
   chargeRouteState.version++;
   chargeRouteState.automatic = false;
   $("chargeRouteStatus").textContent = "Kilómetros ingresados manualmente.";
+});
+
+// Fixed catalogue: selecting a route never calls the maps provider.
+function readSavedChargeRoutes() {
+  // Only independently calculated combinations; reverse routes are not inferred.
+  return [{
+    id:"igr-airport-to-terminal",
+    origin:{label:"Aeropuerto de Puerto Iguazú",coordinates:[-54.476003,-25.731431],country:"ARG"},
+    destination:{label:"Terminal de Puerto Iguazú",coordinates:[-54.571137,-25.598439],country:"ARG"},
+    distance:20.2, source:"HeiGIT", verifiedOn:"2026-09-12"
+  }];
+}
+function renderSavedChargeRoutes(selectedId = "") {
+  const select = $("chargeSavedRoute");
+  select.replaceChildren(new Option("Elegí un recorrido",""));
+  for (const item of readSavedChargeRoutes()) {
+    select.add(new Option(item.origin.label+" → "+item.destination.label+" · "+item.distance+" km",item.id));
+  }
+  select.value = selectedId;
+}
+$("chargeSavedRoute").addEventListener("change", () => {
+  const item = readSavedChargeRoutes().find(item=>item.id===$("chargeSavedRoute").value);
+  chargeRouteState.version++;
+  for (const part of ["Origin","Destination"]) $("route"+part+"Results").replaceChildren();
+  if (!item) {
+    chargeRouteState.points = {};
+    $("chargeOrigin").value = "";
+    $("chargeDestination").value = "";
+    $("chargeDistance").value = "";
+    chargeRouteState.automatic = false;
+    $("chargeRouteStatus").textContent = "Elegí un recorrido de la lista.";
+    return;
+  }
+  chargeRouteState.points = {Origin:item.origin,Destination:item.destination};
+  $("chargeOrigin").value = item.origin.label;
+  $("chargeDestination").value = item.destination.label;
+  $("chargeDistance").value = String(item.distance);
+  chargeRouteState.automatic = true;
+  $("chargeTripScope").value = [item.origin.country,item.destination.country].some(country=>["BRA","BR","PRY","PY"].includes(country)) ? "international" : "national";
+  $("chargeRouteStatus").textContent = item.distance > 100 ? "Recorrido guardado: supera los 100 km por carretera. Revisá el servicio." : "Recorrido guardado seleccionado. Revisá que corresponda al servicio realizado.";
 });
