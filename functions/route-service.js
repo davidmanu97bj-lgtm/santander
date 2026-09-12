@@ -1,5 +1,14 @@
 "use strict";
 
+// Search radius is geographical; it is not road distance or fiscal eligibility.
+const LOCAL_CENTER = [-54.5736,-25.5972];
+function withinSearchArea(point) {
+  const radians = degrees => degrees * Math.PI / 180;
+  const dLat = radians(point[1]-LOCAL_CENTER[1]), dLon = radians(point[0]-LOCAL_CENTER[0]);
+  const a = Math.sin(dLat/2)**2 + Math.cos(radians(LOCAL_CENTER[1])) * Math.cos(radians(point[1])) * Math.sin(dLon/2)**2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a),Math.sqrt(Math.max(0,1-a))) <= 100;
+}
+
 class RouteError extends Error {
   constructor(code, message) { super(message); this.code = code; }
 }
@@ -26,6 +35,10 @@ async function queryRouteService(data, key, fetcher = fetch) {
   if (request.action === "search") {
     url.searchParams.set("text",request.query);
     url.searchParams.set("size","5");
+    url.searchParams.set("boundary.country","ARG,BRA,PRY");
+    url.searchParams.set("boundary.circle.lon",String(LOCAL_CENTER[0]));
+    url.searchParams.set("boundary.circle.lat",String(LOCAL_CENTER[1]));
+    url.searchParams.set("boundary.circle.radius","100");
     url.searchParams.set("focus.point.lon","-54.5736");
     url.searchParams.set("focus.point.lat","-25.5972");
   } else {
@@ -42,8 +55,10 @@ async function queryRouteService(data, key, fetcher = fetch) {
     const places = (Array.isArray(body.features) ? body.features : []).slice(0,5).flatMap(feature => {
       try {
         const point = coordinates(feature.geometry?.coordinates);
+        const country = String(feature.properties?.country_a || "").toUpperCase();
+        if (!["ARG","AR","BRA","BR","PRY","PY"].includes(country) || !withinSearchArea(point)) return [];
         const label = String(feature.properties?.label || "").trim().slice(0,160);
-        return label ? [{ label, coordinates:point }] : [];
+        return label ? [{ label, coordinates:point, country }] : [];
       } catch { return []; }
     });
     return { places };

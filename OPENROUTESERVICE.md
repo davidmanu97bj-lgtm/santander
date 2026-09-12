@@ -1,6 +1,6 @@
 # Activación de direcciones y kilómetros
 
-La pantalla de cobros consulta la función autenticada `exploraRoute`. La clave nunca se incluye en el navegador ni en Git. La integración no emite facturas ni determina exenciones fiscales. El kilometraje es una estimación por carretera, editable por el chofer; el tipo nacional/internacional sigue siendo declarado por el usuario.
+La pantalla de cobros consulta la función autenticada `exploraRoute`. La clave nunca se incluye en el navegador ni en Git. La integración no emite facturas ni determina exenciones fiscales. El kilometraje es una estimación por carretera, editable por el chofer; el tipo nacional/internacional se propone según el país de los puntos elegidos y puede corregirse por el usuario.
 
 1. Crear una cuenta en https://account.heigit.org y solicitar una clave Standard gratuita. Revisar allí las condiciones y cupos vigentes, incluido uso comercial y atribución.
 2. Guardar la clave desde un terminal privado con `firebase functions:secrets:set OPENROUTESERVICE_API_KEY --project explora-control-operativo`. No pegarla en el chat, archivos públicos o código. Para emulación, usar `.secret.local` (ignorado por Git).
@@ -14,3 +14,5 @@ La interfaz busca al pulsar Buscar para evitar consultas por cada letra. Si falt
 Documentación: https://giscience.github.io/openrouteservice/api-reference/endpoints/geocoder/ y https://giscience.github.io/openrouteservice/api-reference/endpoints/directions/
 
 La integración usa los endpoints actuales de HeiGIT: /pelias/v1/search y /openrouteservice/v2/directions/driving-car/json en api.heigit.org. Migración oficial: https://ask.openrouteservice.org/t/deprecating-api-openrouteservice-org-in-favour-of-api-heigit-org/7912
+
+La búsqueda se limita a un radio geográfico de 100 km desde Puerto Iguazú (-54.5736, -25.5972), en Argentina, Brasil y Paraguay, con filtro de país y distancia también sobre los resultados. No es un límite de kilómetros por carretera ni acredita una exención de IVA. Un recorrido calculado mayor a 100 km muestra aviso y conserva su distancia real.

@@ -6370,7 +6370,7 @@ function resetChargeRoute() {
     $("route"+part+"Results").replaceChildren();
     document.querySelector('[data-route-search="'+part+'"]').disabled = false;
   }
-  $("chargeRouteStatus").textContent = "Buscá y elegí ambos lugares para calcular los kilómetros, o completalos manualmente.";
+  $("chargeRouteStatus").textContent = "Buscá lugares hasta 100 km de Puerto Iguazú, incluyendo Brasil y Paraguay.";
 }
 function invalidateChargeRoute(part) {
   chargeRouteState.version++;
@@ -6403,7 +6403,8 @@ async function calculateChargeRoute() {
     if (!Number.isFinite(distance) || distance <= 0) throw new Error("Invalid distance");
     $("chargeDistance").value = String(distance);
     chargeRouteState.automatic = true;
-    $("chargeRouteStatus").textContent = "Kilómetros calculados por carretera. Revisá que correspondan al servicio realizado; podés corregirlos.";
+    $("chargeTripScope").value = [origin.country,destination.country].some(country => ["BRA","BR","PRY","PY"].includes(country)) ? "international" : "national";
+    $("chargeRouteStatus").textContent = distance > 100 ? "El recorrido por carretera supera los 100 km, aunque los lugares estén dentro del radio de búsqueda. Revisá el servicio." : "Kilómetros calculados por carretera. Revisá que correspondan al servicio realizado; podés corregirlos.";
   } catch (error) {
     if (version === chargeRouteState.version) $("chargeRouteStatus").textContent = routeFailureMessage(error);
   }
@@ -6427,7 +6428,7 @@ for (const part of ["Origin","Destination"]) {
       const response = await exploraRouteCallable({action:"search",query});
       if (session !== chargeRouteState.version || token !== chargeRouteState.searches[part]) return;
       const places = response.data?.places || [];
-      $("chargeRouteStatus").textContent = places.length ? "Seleccioná la dirección que corresponde." : "No encontramos ese lugar. Probá agregando la ciudad o completá los datos manualmente.";
+      $("chargeRouteStatus").textContent = places.length ? "Seleccioná la dirección que corresponde." : "No encontramos ese lugar dentro de los 100 km de Puerto Iguazú. Probá otro nombre o completá los datos manualmente.";
       for (const place of places) {
         const option = document.createElement("button");
         option.type = "button";
