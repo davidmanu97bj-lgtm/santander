@@ -7348,9 +7348,18 @@ body:has(:is(#chargeModal, #managementModal):not(.hidden)) { overflow:hidden; }
 .management-action-copy strong { font-size:21px; letter-spacing:-.4px; }
 .management-action-copy small { color:#64779f; font-size:14px; }
 .management-chevron { font-size:30px; color:#90a0bd; }
-#managementProof::file-selector-button { border:0; background:#e5efff; color:#155bbc; border-radius:8px; padding:10px 12px; margin-right:12px; font-weight:600; cursor:pointer; }
 @media(max-width:480px) { .management-action { padding:18px; gap:12px; } .management-action-copy strong { font-size:18px; } .management-action-copy small { font-size:12px; } }
 @media(prefers-reduced-motion:reduce) { .management-action { transition:none; } }
 
 /* Accesos secundarios retirados de la vista del conductor. */
 #driverDashboard .driver-other-actions { display:none; }
+
+#managementModal .photo-source-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+#managementModal .photo-source-action { display:flex; align-items:center; gap:12px; padding:18px; min-height:90px; border:1px solid #dce6f4; border-radius:16px; background:#fff; color:#10164c; text-align:left; box-shadow:0 3px 12px #152d6109; }
+#managementModal .photo-source-action svg { width:28px; height:28px; flex-shrink:0; fill:none; stroke:var(--charge-accent); stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+#managementModal .photo-source-action span { flex:1; font-size:16px; font-weight:650; }
+#managementModal .photo-source-action small { display:block; margin-top:5px; font-size:12px; font-weight:400; color:#64779f; }
+#managementModal .photo-source-action b { font-size:24px; color:#90a0bd; }
+#managementModal .photo-source-action:hover { border-color:var(--charge-accent); background:var(--charge-tint); }
+#managementModal .photo-source-action:focus-visible { outline:2px solid var(--charge-accent); outline-offset:3px; }
+@media(max-width:520px) { #managementModal .photo-source-actions { grid-template-columns:1fr; } }

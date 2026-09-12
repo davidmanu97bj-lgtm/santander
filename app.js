@@ -6241,8 +6241,8 @@ $("managementForm").addEventListener("submit", async event => {
   const amount = parseMoneyInput($("managementAmount").value);
   if (!user || !["driver_to_explora","explora_to_driver"].includes(direction) || !(amount > 0)) return;
   const proof = selectedPhotoFile("management");
-  if (!proof || proof.size <= 0 || proof.size > 15 * 1024 * 1024 || !(proof.type.startsWith("image/") || proof.type === "application/pdf")) {
-    $("managementStatus").textContent = "Adjuntá un comprobante en imagen o PDF de hasta 15 MB.";
+  if (!proof || proof.size <= 0 || proof.size > 15 * 1024 * 1024 || !proof.type.startsWith("image/")) {
+    $("managementStatus").textContent = "Adjuntá una foto del comprobante de hasta 15 MB.";
     $("managementStatus").className = "status error";
     return;
   }
