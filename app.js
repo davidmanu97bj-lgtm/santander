@@ -4319,13 +4319,7 @@ function renderChargePreview() {
   const before = settlementModel().balance;
   const after = normalizedSettlementBalance(before + impact);
   const signed = value => `${value > 0 ? "+" : value < 0 ? "−" : ""}${money(Math.abs(value))}`;
-  $("chargeGross").textContent = money(amount);
   $("chargeInvoiceTotal").textContent = money(amount);
-  $("chargePrincipalLabel").textContent = cash ? "Efectivo · 100%" : "Digital · −100%";
-  for (const [id,value] of [["chargePrincipal",principal],["chargeCashbox",fee]]) {
-    $(id).textContent = signed(value);
-    $(id).className = value > 0 ? "positive" : value < 0 ? "negative" : "neutral";
-  }
   const row = (start, delta, end) => `<div><span>Antes</span><small>${escapeHtml(settlementPreviewCopy(start).label)}</small><strong>${money(Math.abs(start))}</strong></div><div><span>Impacto</span><strong class="${delta < 0 ? "negative" : delta > 0 ? "positive" : "neutral"}">${signed(delta)}</strong></div><div><span>Después</span><small>${escapeHtml(settlementPreviewCopy(end).label)}</small><strong>${money(Math.abs(end))}</strong></div>`;
   const afterPrincipal = normalizedSettlementBalance(before + principal);
   $("chargeAccountTitle").textContent = cash ? "Cobro en efectivo · 100%" : "Cobro digital · 100%";
