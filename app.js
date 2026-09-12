@@ -4320,11 +4320,15 @@ function renderChargePreview() {
   $("chargeGross").textContent = money(amount);
   $("chargeInvoiceTotal").textContent = money(amount);
   $("chargePrincipalLabel").textContent = cash ? "Efectivo · 100%" : "Digital · −100%";
-  for (const [id,value] of [["chargePrincipal",principal],["chargeCashbox",fee],["chargeNet",impact]]) {
+  for (const [id,value] of [["chargePrincipal",principal],["chargeCashbox",fee]]) {
     $(id).textContent = signed(value);
     $(id).className = value > 0 ? "positive" : value < 0 ? "negative" : "neutral";
   }
-  $("chargeAccountPreview").innerHTML = `<div><span>Antes</span><small>${escapeHtml(settlementPreviewCopy(before).label)}</small><strong>${money(Math.abs(before))}</strong></div><div><span>Impacto</span><strong class="${impact < 0 ? "negative" : "positive"}">${signed(impact)}</strong></div><div><span>Después</span><small>${escapeHtml(settlementPreviewCopy(after).label)}</small><strong>${money(Math.abs(after))}</strong></div>`;
+  const row = (start, delta, end) => `<div><span>Antes</span><small>${escapeHtml(settlementPreviewCopy(start).label)}</small><strong>${money(Math.abs(start))}</strong></div><div><span>Impacto</span><strong class="${delta < 0 ? "negative" : delta > 0 ? "positive" : "neutral"}">${signed(delta)}</strong></div><div><span>Después</span><small>${escapeHtml(settlementPreviewCopy(end).label)}</small><strong>${money(Math.abs(end))}</strong></div>`;
+  const afterPrincipal = normalizedSettlementBalance(before + principal);
+  $("chargeAccountTitle").textContent = cash ? "Cobro en efectivo · 100%" : "Cobro digital · 100%";
+  $("chargeAccountPreview").innerHTML = row(before, principal, afterPrincipal);
+  $("chargeCashboxPreview").innerHTML = row(afterPrincipal, fee, after);
 }
 $("chargeAmount")?.addEventListener("input", renderChargePreview);
 $("chargeModal")?.addEventListener("keydown", event => {
@@ -4452,12 +4456,16 @@ function renderOperationPreview() {
   $("operationPreviewAmountLabel").textContent = definition.amountLabel;
   $("operationPreviewAmount").textContent = money(pendingOperationPreview.amount);
   $("operationPreviewImpactLabel").textContent = definition.impactLabel;
-  $("operationPreviewImpact").textContent = signedMoney(definition.delta);
+  const isCharge = ["cash","digital"].includes(pendingOperationPreview.kind);
+  const principal = pendingOperationPreview.amount * (pendingOperationPreview.kind === "cash" ? 1 : -1);
+  $("operationPreviewImpact").textContent = isCharge
+    ? `${signedMoney(principal)} / caja ${signedMoney(pendingOperationPreview.amount * 0.05)}`
+    : signedMoney(definition.delta);
   $("operationPreviewBeforeLabel").textContent = beforeState.label;
   $("operationPreviewBeforeAmount").textContent = money(beforeState.amount);
   $("operationPreviewAfterLabel").textContent = afterState.label;
   $("operationPreviewAfterAmount").textContent = money(afterState.amount);
-  $("operationPreviewImpactText").textContent = operationImpactMessage(definition.delta, pendingOperationPreview.afterBalance);
+  $("operationPreviewImpactText").textContent = isCharge ? "Se registra primero el cobro completo y después la caja chica. El resultado incluye ambos movimientos." : operationImpactMessage(definition.delta, pendingOperationPreview.afterBalance);
   $("operationPreviewNotice").textContent = pendingOperationPreview.kind === "uber"
     ? `${definition.notice} Nada se guarda antes de tocar Enviar a David.`
     : `${definition.notice} Nada se guarda antes de confirmar.`;
