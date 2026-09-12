@@ -35,8 +35,8 @@ test("cobro y gasto exigen el segundo aviso antes de cualquier escritura", () =>
 
 test("la vista previa usa las reglas de efectivo, digital y gasto", () => {
   const { previewDefinition, uberSettlementDelta, uberDriverSubmissionDelta } = require('../../tests/support/frontend-functions.cjs')();
-  assert.equal(previewDefinition('cash', 10000).delta, 5500);
-  assert.equal(previewDefinition('digital', 10000).delta, -5000);
+  assert.equal(previewDefinition('cash', 10000).delta, 10500);
+  assert.equal(previewDefinition('digital', 10000).delta, -9500);
   assert.equal(previewDefinition('expense', 10000).delta, -5000);
   assert.equal(previewDefinition('cash', -100).delta, 0);
   assert.equal(uberSettlementDelta(10000, 20000), -4500);

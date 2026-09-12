@@ -1870,7 +1870,7 @@ function financialBillingClosurePatch(closure = {}, movement = {}, { cashboxOnly
   const cash = Math.max(0, oldCash - (!cashboxOnly && method === "cash" ? amount : 0));
   const digital = Math.max(0, oldDigital - (!cashboxOnly && method !== "cash" ? amount : 0));
   const cashboxExcluded = movement.excludeFromCashbox === true || movement.cashboxExcluded === true || movement.cajaChicaEliminada === true || movement.ignoreCashbox === true || movement.noCashbox === true;
-  const cashboxGenerates = method === "cash" && !cashboxExcluded;
+  const cashboxGenerates = (method === "cash" || movement.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1") && !cashboxExcluded;
   const oldCashboxGross = financialNumber(closure.billingCashboxGross ?? closure.cashboxGross ?? oldCash);
   const oldEligibleGross = financialNumber(closure.billingCashboxEligibleGross ?? closure.cashboxEligibleGross ?? oldCashboxGross);
   const cashboxGross = Math.max(0, oldCashboxGross - (cashboxGenerates ? amount : 0));
@@ -2022,7 +2022,7 @@ function financialBillingAmountCorrectionPatch(closure = {}, movement = {}, newA
   const cash = Math.max(0, oldCash + (!cashboxOnly && method === "cash" ? delta : 0));
   const digital = Math.max(0, oldDigital + (!cashboxOnly && method !== "cash" ? delta : 0));
   const cashboxExcluded = movement.excludeFromCashbox === true || movement.cashboxExcluded === true || movement.cajaChicaEliminada === true || movement.ignoreCashbox === true || movement.noCashbox === true;
-  const cashboxGenerates = method === "cash" && !cashboxExcluded;
+  const cashboxGenerates = (method === "cash" || movement.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1") && !cashboxExcluded;
   const oldCashboxGross = financialNumber(closure.billingCashboxGross ?? closure.cashboxGross ?? oldCash);
   const oldEligibleGross = financialNumber(closure.billingCashboxEligibleGross ?? closure.cashboxEligibleGross ?? oldCashboxGross);
   const cashboxGross = Math.max(0, oldCashboxGross + (cashboxGenerates ? delta : 0));
@@ -2097,7 +2097,7 @@ async function financialAdjustClosures({ type, driverUid, documentId, movement, 
     if (type === "gasto" && kind === "gastos") patch = financialExpenseClosurePatch(closure, movement);
     if (settlementPayment && financialIsBillingClosure(kind)) patch = financialBillingSettlementClosurePatch(closure, movement);
     else if (type === "cobro" && financialIsBillingClosure(kind)) patch = financialBillingClosurePatch(closure, movement, { cashboxOnly:!inBillingIds && inCashboxIds });
-    if (type === "caja_chica" && financialIsBillingClosure(kind) && financialMethodOf(movement) === "cash") patch = financialBillingClosurePatch(closure, movement, { cashboxOnly:true });
+    if (type === "caja_chica" && financialIsBillingClosure(kind) && (financialMethodOf(movement) === "cash" || movement.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1")) patch = financialBillingClosurePatch(closure, movement, { cashboxOnly:true });
     if ((type === "cobro" || type === "caja_chica") && kind === "caja_chica" && financialMethodOf(movement) === "cash") patch = financialCashboxClosurePatch(closure, movement);
     if (!patch) continue;
     const primaryIds = Array.isArray(closure[includeField]) ? closure[includeField].map(text) : [];
@@ -2375,6 +2375,11 @@ exports.adminModifyBillingAmount = onCall({ region:"southamerica-east1", timeout
       amountCorrectedAt:FieldValue.serverTimestamp(), updatedAt:FieldValue.serverTimestamp(), updatedAtMs:Date.now(),
       version:"v67-admin-financial-actions"
     };
+    if (paymentData.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1") {
+      paymentUpdate.grossAmount = newAmount;
+      paymentUpdate.principalMovementAmount = financialMethodOf(paymentData) === "cash" ? newAmount : -newAmount;
+      paymentUpdate.cashboxAmount = newAmount * 0.05;
+    }
     for (const key of ["valor", "billingAmount", "finalPrice", "finalAmount", "totalAmount", "importe", "price", "total"]) {
       if (Object.prototype.hasOwnProperty.call(paymentData, key)) paymentUpdate[key] = newAmount;
     }
@@ -2878,6 +2883,12 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
     isCash ? "COBRO EN EFECTIVO REGISTRADO" : "COBRO DIGITAL REGISTRADO",
     `Chofer: ${telegramDriverName(data)}`,
     `Monto: ${telegramMoney(telegramAmount(data))}`,
+    ...(data.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1" ? [
+      `Impacto del cobro: ${isCash ? "+" : "−"}${telegramMoney(telegramAmount(data))}`,
+      `Caja chica 5% a favor de Explora: ${telegramMoney(telegramAmount(data) * 0.05)}`,
+      `Impacto total con caja chica: ${isCash ? "+" : "−"}${telegramMoney(telegramAmount(data) * (isCash ? 1.05 : 0.95))}`,
+      isCash ? "El chofer conserva el 100% del efectivo." : "Explora recibe el 100% del digital."
+    ] : []),
     `Detalle: ${notes ? notes.slice(0, 300) : (isCash ? "Cobro en efectivo" : "Cobro digital")}`,
     balanceLine,
     ...telegramDateTimeLines(data)
