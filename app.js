@@ -4699,8 +4699,10 @@ $("chargeForm")?.addEventListener("submit", async e => {
   if ($( "saveChargeBtn").disabled) return;
   const step = Number($("chargeForm").dataset.step || 0);
   if (!validateChargeStep(step)) return;
-  if (step < 3) { showChargeStep(step + 1); return; }
-  for (let i = 0; i < 3; i++) { if (!validateChargeStep(i)) return; }
+  const steps = chargeSteps();
+  const nextStep = steps[steps.indexOf(step) + 1];
+  if (nextStep !== undefined) { showChargeStep(nextStep); return; }
+  for (const previousStep of steps) { if (!validateChargeStep(previousStep)) return; }
   const user = auth.currentUser;
   if (!user) return;
   const mode = $("chargeMode").value;
@@ -6316,13 +6318,18 @@ function renderExpensePreview() {
 }
 $("expenseAmount").addEventListener("input", renderExpensePreview);
 
+function chargeSteps() {
+  return $("chargeMode").value === "digital" ? [0,1,2,3,4] : [0,1,3,4];
+}
 function showChargeStep(step) {
   $("chargeForm").dataset.step = String(step);
   document.querySelectorAll("[data-charge-step]").forEach(panel => panel.classList.toggle("hidden", Number(panel.dataset.chargeStep) !== step));
-  const names = ["Monto", "Servicio realizado", "Factura de Explora", "Movimientos en tu cuenta"];
-  $("chargeStepLabel").textContent = "Paso " + (step + 1) + " de 4 · " + names[step];
-  document.querySelectorAll(".charge-step-track span").forEach((bar,index) => bar.classList.toggle("complete", index <= step));
-  $("saveChargeBtn").textContent = step === 3 ? "Confirmar cobro" : "Continuar";
+  const names = ["Monto", "Servicio realizado", "Foto del comprobante", "Factura de Explora", "Movimientos en tu cuenta"];
+  const steps = chargeSteps();
+  const position = steps.indexOf(step);
+  $("chargeStepLabel").textContent = "Paso " + (position + 1) + " de " + steps.length + " · " + names[step];
+  document.querySelector(".charge-step-track").innerHTML = steps.map((value,index) => index <= position ? '<span class="complete"></span>' : '<span></span>').join("");
+  $("saveChargeBtn").textContent = step === 4 ? "Confirmar cobro" : "Continuar";
   $("chargeStepBack").textContent = step === 0 ? "Cancelar" : "Atrás";
   $("chargeStatus").textContent = "";
   renderChargePreview();
@@ -6339,8 +6346,8 @@ function validateChargeStep(step) {
   if (step === 1 && (!$("chargeOrigin").value.trim() || !$("chargeDestination").value.trim())) {
     showChargeStep(1); $("chargeStatus").textContent = "Completá origen y destino."; return false;
   }
-  if (step === 1 && $("chargeMode").value === "digital" && !selectedPhotoFile("digital")) {
-    showChargeStep(1); $("chargeStatus").textContent = "Adjuntá la foto del comprobante digital."; return false;
+  if (step === 2 && $("chargeMode").value === "digital" && !selectedPhotoFile("digital")) {
+    showChargeStep(2); $("chargeStatus").textContent = "Adjuntá la foto del comprobante digital."; return false;
   }
   return true;
 }
@@ -6348,5 +6355,5 @@ $("chargeStepBack").addEventListener("click", () => {
   if ($("saveChargeBtn").disabled) return;
   const step = Number($("chargeForm").dataset.step || 0);
   if (step === 0) $("chargeModal").classList.add("hidden");
-  else showChargeStep(step - 1);
+  else { const steps = chargeSteps(); showChargeStep(steps[steps.indexOf(step) - 1]); }
 });
