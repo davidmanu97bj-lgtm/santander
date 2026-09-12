@@ -97,19 +97,20 @@ test('gasto 50000 y reintegro 25000 muestran dos pasos y compensan solo 25000', 
   const rows=result.receipts.filter(row=>row.method==='expense');
   const timeline=vm.runInNewContext(`${declarations}\nreceipts.map(receiptBalanceSnapshot)`,{receipts:rows});
   assert.deepEqual(JSON.parse(JSON.stringify(timeline)),[
-    {before:10000,after:-40000,movementImpact:-50000},
-    {before:-40000,after:-15000,movementImpact:25000}
+    {before:-40000,after:-15000,movementImpact:25000},
+    {before:10000,after:-40000,movementImpact:-50000}
   ]);
+  assert.equal(timeline[0].after,result.balance,'el Después de la primera tarjeta coincide con el resultado actual');
 });
 
-test('cada caja y reintegro sigue a su operación en ambos órdenes, incluso con fechas iguales', () => {
+test('más recientes muestra primero caja o reintegro y más antiguos muestra primero su operación', () => {
   const result = frontend({records:[payment('cash',100000),payment('digital',100000)],expenses:[{id:'expense',amount:50000,createdAtMs:1000,receiptFlowVersion:'gross_expense_reimbursement_50_v1'}]});
   for (const order of ['newest','oldest']) {
     const rows=vm.runInNewContext(`${declarations}\nsortUnifiedReceipts(receipts,order)`,{receipts:result.receipts,order});
     assert.equal(rows.length,6);
     for (let i=0;i<rows.length;i+=2) {
-      assert.equal(rows[i]._sortPriority,2);
-      assert.equal(rows[i+1]._sortPriority,1);
+      assert.equal(rows[i]._sortPriority,order === 'newest' ? 1 : 2);
+      assert.equal(rows[i+1]._sortPriority,order === 'newest' ? 2 : 1);
       assert.equal(rows[i]._receiptGroupKey,rows[i+1]._receiptGroupKey);
     }
     const page=vm.runInNewContext(`${declarations}\nvisibleReceiptRows(receipts,3)`,{receipts:rows});

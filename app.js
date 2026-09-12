@@ -1970,7 +1970,8 @@ function sortUnifiedReceipts(receipts, order = "newest") {
     const byDate = recordTimestampMs(a) - recordTimestampMs(b);
     if (byDate) return order === "oldest" ? byDate : -byDate;
     const byGroup = receiptGroupKey(a).localeCompare(receiptGroupKey(b));
-    return byGroup || Number(b._sortPriority || 0) - Number(a._sortPriority || 0);
+    const byStep = Number(a._sortPriority || 0) - Number(b._sortPriority || 0);
+    return byGroup || (order === "oldest" ? -byStep : byStep);
   });
 }
 
