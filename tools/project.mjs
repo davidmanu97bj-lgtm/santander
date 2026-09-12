@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const PROJECT_ID = 'explora-control-operativo';
 export const HOSTING_FILES = [
-  'index.html', 'app.js', 'styles.css', 'firebase-config.js',
+  'index.html', 'app.js', 'tourism-catalog.js', 'styles.css', 'firebase-config.js',
   'service-worker.js', 'manifest.json', 'icon-192.png', 'icon-512.png',
   'assets/explora-logo.png', 'assets/explora-logo-login.png'
 ];

@@ -1,3 +1,4 @@
+import { tourismCatalog, tourismRoute } from "./tourism-catalog.js";
 import * as firebaseSettings from "./firebase-config.js?v=20260824-15";
 
 const { firebaseConfig, BUSINESS_ID, USER_EMAIL_DOMAIN } = firebaseSettings;
@@ -6338,6 +6339,9 @@ function showChargeStep(step) {
   $("chargeModal").scrollTop = 0;
 }
 function validateChargeStep(step) {
+  if (step === 1 && !tourismRoute($("tourismOrigin").value,$("tourismDestination").value)) {
+    showChargeStep(1); $("chargeRouteStatus").textContent="Elegí dos lugares diferentes de la lista."; return false;
+  }
   const panel = document.querySelector('[data-charge-step="' + step + '"]');
   for (const field of panel.querySelectorAll("input,select")) {
     if (!field.disabled && !field.checkValidity()) { showChargeStep(step); field.reportValidity(); return false; }
@@ -6362,7 +6366,7 @@ $("chargeStepBack").addEventListener("click", () => {
 
 const chargeRouteState = { version:0, points:{}, searches:{}, automatic:false };
 function resetChargeRoute() {
-  renderSavedChargeRoutes();
+  renderTourismSelectors();
   chargeRouteState.version++;
   chargeRouteState.points = {};
   chargeRouteState.searches = {};
@@ -6374,7 +6378,6 @@ function resetChargeRoute() {
   $("chargeRouteStatus").textContent = "Elegí un recorrido para ver los kilómetros.";
 }
 function invalidateChargeRoute(part) {
-  $("chargeSavedRoute").value = "";
   chargeRouteState.version++;
   delete chargeRouteState.points[part];
   chargeRouteState.searches[part] = (chargeRouteState.searches[part] || 0) + 1;
@@ -6457,42 +6460,31 @@ $("chargeDistance").addEventListener("input", () => {
   $("chargeRouteStatus").textContent = "Kilómetros ingresados manualmente.";
 });
 
-// Fixed catalogue: selecting a route never calls the maps provider.
-function readSavedChargeRoutes() {
-  // Only independently calculated combinations; reverse routes are not inferred.
-  return [{
-    id:"igr-airport-to-terminal",
-    origin:{label:"Aeropuerto de Puerto Iguazú",coordinates:[-54.476003,-25.731431],country:"ARG"},
-    destination:{label:"Terminal de Puerto Iguazú",coordinates:[-54.571137,-25.598439],country:"ARG"},
-    distance:20.2, source:"HeiGIT", verifiedOn:"2026-09-12"
-  }];
-}
-function renderSavedChargeRoutes(selectedId = "") {
-  const select = $("chargeSavedRoute");
-  select.replaceChildren(new Option("Elegí un recorrido",""));
-  for (const item of readSavedChargeRoutes()) {
-    select.add(new Option(item.origin.label+" → "+item.destination.label+" · "+item.distance+" km",item.id));
+function renderTourismSelectors() {
+  for (const part of ["Origin","Destination"]) {
+    const select=$("tourism"+part);
+    select.replaceChildren(new Option("Elegí "+(part==="Origin"?"la salida":"la llegada"),""));
+    for (const city of [...new Set(tourismCatalog.places.map(p=>p.city))]) {
+      const group=document.createElement("optgroup");group.label=city;
+      for (const p of tourismCatalog.places.filter(p=>p.city===city)) group.append(new Option(p.name,p.id));
+      select.append(group);
+    }
   }
-  select.value = selectedId;
 }
-$("chargeSavedRoute").addEventListener("change", () => {
-  const item = readSavedChargeRoutes().find(item=>item.id===$("chargeSavedRoute").value);
+function selectTourismRoute() {
   chargeRouteState.version++;
-  for (const part of ["Origin","Destination"]) $("route"+part+"Results").replaceChildren();
-  if (!item) {
-    chargeRouteState.points = {};
-    $("chargeOrigin").value = "";
-    $("chargeDestination").value = "";
-    $("chargeDistance").value = "";
-    chargeRouteState.automatic = false;
-    $("chargeRouteStatus").textContent = "Elegí un recorrido de la lista.";
-    return;
+  const originId=$("tourismOrigin").value, destinationId=$("tourismDestination").value;
+  const route=tourismRoute(originId,destinationId);
+  $("chargeOrigin").value="";$("chargeDestination").value="";$("chargeDistance").value="";
+  chargeRouteState.points={};
+  if (!route) {
+    $("chargeRouteStatus").textContent=originId && destinationId ? "Elegí dos lugares diferentes con un recorrido disponible." : "Elegí salida y llegada de la lista.";return;
   }
-  chargeRouteState.points = {Origin:item.origin,Destination:item.destination};
-  $("chargeOrigin").value = item.origin.label;
-  $("chargeDestination").value = item.destination.label;
-  $("chargeDistance").value = String(item.distance);
-  chargeRouteState.automatic = true;
-  $("chargeTripScope").value = [item.origin.country,item.destination.country].some(country=>["BRA","BR","PRY","PY"].includes(country)) ? "international" : "national";
-  $("chargeRouteStatus").textContent = item.distance > 100 ? "Recorrido guardado: supera los 100 km por carretera. Revisá el servicio." : "Recorrido guardado seleccionado. Revisá que corresponda al servicio realizado.";
-});
+  chargeRouteState.points={Origin:route.origin,Destination:route.destination};
+  $("chargeOrigin").value=route.origin.name+" · "+route.origin.city;
+  $("chargeDestination").value=route.destination.name+" · "+route.destination.city;
+  $("chargeDistance").value=String(route.distance);
+  $("chargeTripScope").value=[route.origin.country,route.destination.country].some(c=>["BRA","BR","PRY","PY"].includes(c))?"international":"national";
+  $("chargeRouteStatus").textContent=route.distance>100?"Este recorrido supera los 100 km por carretera.":"Recorrido seleccionado. Kilómetros precalculados por carretera.";
+}
+for(const part of ["Origin","Destination"]) $("tourism"+part).addEventListener("change",selectTourismRoute);
