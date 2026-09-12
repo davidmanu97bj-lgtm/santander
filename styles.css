@@ -227,9 +227,9 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: #9897fb;
+  border-color: #929aa7;
   background: #fff;
-  box-shadow: 0 0 0 4px rgba(79, 76, 245, .10);
+  box-shadow: 0 2px 5px rgba(15, 23, 42, .06);
 }
 
 .money-input {
@@ -251,9 +251,9 @@ textarea:focus {
 }
 
 .money-entry:focus-within {
-  border-color: #9897fb;
+  border-color: #929aa7;
   background: #fff;
-  box-shadow: 0 0 0 4px rgba(79, 76, 245, .10);
+  box-shadow: 0 2px 5px rgba(15, 23, 42, .06);
 }
 
 .money-entry > span {
@@ -3080,8 +3080,8 @@ a.proof:hover { background: #e3e7f0; }
 .modal[data-tone] select:focus,
 .modal[data-tone] textarea:focus,
 .modal[data-tone] .money-entry:focus-within {
-  border-color: color-mix(in srgb, var(--operation-tone) 62%, #fff);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--operation-tone) 9%, transparent);
+  border-color: #929aa7;
+  box-shadow: 0 2px 5px rgba(15, 23, 42, .06);
 }
 
 .modal[data-tone] .save,
@@ -7283,7 +7283,7 @@ body:has(:is(#chargeModal, #managementModal):not(.hidden)) { overflow:hidden; }
 :is(#chargeModal, #managementModal) .charge-panel { margin:0; padding:20px; background:white; border:1px solid #e3eaf4; border-radius:19px; box-shadow:0 5px 18px #152d6110; }
 :is(#chargeModal, #managementModal) h3, :is(#chargeModal, #managementModal) .charge-panel > label { display:block; color:#10164c; margin:0 0 14px; font-size:20px; font-weight:700; letter-spacing:-.4px; }
 :is(#chargeModal, #managementModal) input, :is(#chargeModal, #managementModal) select { color:#10164c; background:#f9fbff; border:1px solid #ccd8ed; border-radius:10px; width:100%; min-width:0; font:inherit; padding:12px; }
-:is(#chargeModal, #managementModal) input:focus, :is(#chargeModal, #managementModal) select:focus { outline:2px solid var(--charge-accent); outline-offset:2px; }
+:is(#chargeModal, #managementModal) input:focus, :is(#chargeModal, #managementModal) select:focus { outline:none; border-color:#929aa7; box-shadow:0 2px 5px rgba(15,23,42,.06); }
 :is(#chargeModal, #managementModal) .money-entry { border:1px solid #ccd8ed; background:#f9fbff; border-radius:12px; padding:7px 14px; display:flex; align-items:center; }
 :is(#chargeModal, #managementModal) .money-entry span { font-size:38px; color:#10164c; font-weight:700; }
 :is(#chargeModal, #managementModal) :is(#chargeAmount, #managementAmount) { font-size:42px; font-weight:700; letter-spacing:-1.5px; border:0; background:transparent; padding:4px; }
@@ -7363,3 +7363,7 @@ body:has(:is(#chargeModal, #managementModal):not(.hidden)) { overflow:hidden; }
 #managementModal .photo-source-action:hover { border-color:var(--charge-accent); background:var(--charge-tint); }
 #managementModal .photo-source-action:focus-visible { outline:2px solid var(--charge-accent); outline-offset:3px; }
 @media(max-width:520px) { #managementModal .photo-source-actions { grid-template-columns:1fr; } }
+
+/* Un único borde de enfoque para el importe, sin recuadro dentro del campo. */
+body .money-entry:focus-within { border-color:#929aa7; background:#fff; box-shadow:0 2px 5px rgba(15,23,42,.06); }
+body .money-entry input:focus { outline:none !important; border-color:transparent !important; box-shadow:none !important; background:transparent; }
