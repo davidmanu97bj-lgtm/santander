@@ -4728,11 +4728,6 @@ $("chargeForm")?.addEventListener("submit", async e => {
     $("chargeStatus").className = "status error";
     return;
   }
-  if ($("chargeForm").dataset.previewConfirmed !== "true") {
-    openOperationPreview({ kind:mode, amount, formId:"chargeForm" });
-    return;
-  }
-  delete $("chargeForm").dataset.previewConfirmed;
   if (!acquireSubmissionLock("charge")) {
     $("chargeStatus").textContent = "Este cobro ya se está procesando.";
     $("chargeStatus").className = "status";

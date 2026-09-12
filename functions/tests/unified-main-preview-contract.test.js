@@ -23,12 +23,13 @@ test("efectivo genera su comprobante y otro comprobante de caja chica 5%", () =>
   assert.match(appSource, /service: "Caja chica 5%"/);
 });
 
-test("cobro y gasto exigen el segundo aviso antes de cualquier escritura", () => {
+test("cobro guarda directamente con bloqueo y gasto conserva el segundo aviso", () => {
   const chargePreview = appSource.indexOf('openOperationPreview({ kind:mode, amount, formId:"chargeForm" })');
-  const chargeWrite = appSource.indexOf('acquireSubmissionLock("charge")', chargePreview);
+  const chargeWrite = appSource.indexOf('acquireSubmissionLock("charge")');
   const expensePreview = appSource.indexOf('openOperationPreview({ kind:"expense", amount, formId:"expenseForm" })');
   const expenseWrite = appSource.indexOf('acquireSubmissionLock("expense")', expensePreview);
-  assert.ok(chargePreview > -1 && chargeWrite > chargePreview);
+  assert.equal(chargePreview, -1);
+  assert.ok(chargeWrite > -1);
   assert.ok(expensePreview > -1 && expenseWrite > expensePreview);
   assert.match(appSource, /form\.dataset\.previewConfirmed = "true"/);
 });
