@@ -2002,6 +2002,7 @@ function render() {
   renderUberPendingBadge();
   renderList("receiptList", visibleReceipts);
   if (!$("chargeModal").classList.contains("hidden")) renderChargePreview();
+  if (!$("managementModal").classList.contains("hidden")) renderManagementPreview();
   window.setTimeout(maybeShowDriverDebtConfirmation, 0);
   window.setTimeout(maybeShowUberDriverConfirmation, 120);
   window.setTimeout(maybeShowUberReminder, 260);
@@ -2429,7 +2430,7 @@ function renderList(containerId, items) {
                   : uberReceipt
                     ? "Uber"
                     : isSettlementAdjustment(item)
-                      ? "Cierre"
+                      ? (item.internalManagement ? "Gestión" : "Cierre")
                       : "Operación registrada";
     const proof = proofUrl
       ? (imageProof
@@ -2673,7 +2674,7 @@ function applyRoleUI() {
   // Todos los accesos visuales de este cambio deben tolerar que el elemento haya
   // sido retirado para no interrumpir el arranque ni dejar el splash en Cargando.
   const closeDayButton = $("closeDayBtn");
-  if (closeDayButton) closeDayButton.setAttribute("aria-label", admin ? "Gestionar cierres" : "Pedir cierre");
+  if (closeDayButton) closeDayButton.setAttribute("aria-label", admin ? "Gestionar cierres" : "Gestión");
   $("addDebtBtn")?.classList.toggle("hidden", !admin);
   $("advanceBox")?.classList.toggle("hidden", admin);
 }
@@ -5826,6 +5827,7 @@ function openAdminPayment(closureId) {
 }
 
 $("closeDayBtn")?.addEventListener("click", () => {
+  if (!isAdminProfile()) { openManagement(); return; }
   render();
   $("closeModal").classList.remove("hidden");
   if (isAdminProfile()) {
@@ -6195,4 +6197,94 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("pageshow", () => {
   if (isAdminProfile()) setTimeout(maybeShowAdminPendingAction, 120);
+});
+
+let managementDirection = "";
+function openManagement() {
+  managementDirection = "";
+  $("managementForm").classList.add("hidden");
+  $("managementChoices").classList.remove("hidden");
+  $("managementTitle").textContent = "Gestión";
+  $("managementModal").classList.remove("hidden");
+}
+function selectManagement(direction) {
+  managementDirection = direction;
+  $("managementForm").reset();
+  $("managementStatus").textContent = "";
+  $("managementStatus").className = "status";
+  const paying = direction === "driver_to_explora";
+  $("managementTitle").textContent = paying ? "Pagar a Explora" : "Cobrar a Explora";
+  $("managementIntro").textContent = paying ? "Registrá el dinero que entregás a Explora." : "Registrá el dinero que recibís de Explora.";
+  $("managementConfirm").textContent = paying ? "Confirmar pago" : "Confirmar cobro";
+  $("managementConfirm").disabled = false;
+  $("managementModal").dataset.tone = paying ? "digital" : "cash";
+  $("managementChoices").classList.add("hidden");
+  $("managementForm").classList.remove("hidden");
+  renderManagementPreview();
+}
+function renderManagementPreview() {
+  if (!managementDirection) return;
+  const amount = parseMoneyInput($("managementAmount").value) || 0;
+  const before = settlementModel().balance;
+  const delta = amount * (managementDirection === "driver_to_explora" ? -1 : 1);
+  const after = normalizedSettlementBalance(before + delta);
+  $("managementPreview").innerHTML = '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(before))+'</small></div><div><span>Impacto</span><strong class="'+(delta < 0 ? 'negative' : 'positive')+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(after))+'</small></div>';
+}
+$("managementPay").addEventListener("click", () => selectManagement("driver_to_explora"));
+$("managementCollect").addEventListener("click", () => selectManagement("explora_to_driver"));
+$("managementBack").addEventListener("click", openManagement);
+$("managementAmount").addEventListener("input", renderManagementPreview);
+$("managementForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  const user = auth.currentUser;
+  const direction = managementDirection;
+  const amount = parseMoneyInput($("managementAmount").value);
+  if (!user || !["driver_to_explora","explora_to_driver"].includes(direction) || !(amount > 0)) return;
+  if (!acquireSubmissionLock("management")) return;
+  $("managementConfirm").disabled = true;
+  $("managementBack").disabled = true;
+  $("managementStatus").textContent = "Guardando…";
+  let operation, reference, fingerprint;
+  try {
+    const detail = $("managementNote").value.trim();
+    fingerprint = await buildSubmissionFingerprint("management", {direction,amount,detail});
+    operation = reservePendingOperation("management", user.uid, fingerprint);
+    reference = doc(db, ROOT_COLLECTIONS.payments, operation.operationId);
+    const before = settlementModel().balance;
+    const after = normalizedSettlementBalance(before + amount * (direction === "driver_to_explora" ? -1 : 1));
+    await runTransactionWithRetry(async transaction => {
+      const existing = await transaction.get(reference);
+      if (existing.exists()) return;
+      transaction.set(reference, {
+        type:"settlement_adjustment", operationType:"settlement_adjustment", internalManagement:true,
+        adjustmentDirection:direction, affectsBillingSettlement:true, internalSettlementAdjustment:true,
+        method:direction === "driver_to_explora" ? "digital" : "cash",
+        paymentMethod:direction === "driver_to_explora" ? "digital" : "cash",
+        amount,monto:amount,service:direction === "driver_to_explora" ? "Pago a Explora" : "Cobro a Explora",
+        detail,notes:detail,sourceModule:"gestion",status:"completed",
+        driverUid:user.uid,choferUid:user.uid,uid:user.uid,ownerUid:user.uid,driverId:user.uid,operatorUid:user.uid,
+        operatorName:currentDriverName(),driverName:currentDriverName(),businessId:BUSINESS_ID,
+        dayKey:localDayKey(),weeklyPeriodId:currentWeeklyPeriodId(),
+        telegramSettlementBeforeBalance:before,telegramSettlementAfterBalance:after,
+        idempotencyKey:operation.operationId,clientOperationId:operation.operationId,submissionFingerprint:fingerprint,idempotencyVersion:1,
+        createdAtMs:operation.createdAtMs,createdAt:serverTimestamp()
+      });
+    });
+    clearPendingOperation("management",user.uid,fingerprint,operation.operationId);
+    $("managementStatus").textContent = "Movimiento registrado.";
+    closeModalAndGoTop("managementModal", 700);
+  } catch (error) {
+    const committed = reference && operation && await confirmCommittedOperation(reference,operation.operationId,fingerprint);
+    if (committed) {
+      clearPendingOperation("management",user.uid,fingerprint,operation.operationId);
+      closeModalAndGoTop("managementModal",700);
+    } else {
+      $("managementStatus").textContent = "No pudimos confirmar el movimiento. Reintentá: no se duplicará.";
+      $("managementStatus").className = "status error";
+      $("managementConfirm").disabled = false;
+    }
+  } finally {
+    releaseSubmissionLock("management");
+    $("managementBack").disabled = false;
+  }
 });

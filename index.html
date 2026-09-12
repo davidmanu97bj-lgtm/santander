@@ -221,7 +221,7 @@
         <button type="button" data-mode="cash" class="driver-action tone-cash"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><ellipse cx="12" cy="12" rx="3" ry="4"/><path d="M5 8h.01M19 8h.01M5 16h.01M19 16h.01"/></svg><span>Cobrar<br>efectivo</span></button>
         <button type="button" data-mode="digital" class="driver-action tone-digital"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg><span>Cobrar<br>digital</span></button>
         <button id="addExpenseBtn" type="button" class="driver-action tone-expense"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21V3h11v18M2 21h14M3 10h11M14 8h2l3 3v6a2 2 0 0 0 4 0V8l-4-4M20 5v4h3"/></svg><span>Cargar<br>gasto</span></button>
-        <button id="closeDayBtn" type="button" class="driver-action tone-close" aria-label="Pedir cierre"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m7 12 3 3 7-7"/></svg><span>Cierre</span></button>
+        <button id="closeDayBtn" type="button" class="driver-action tone-close" aria-label="Gestión"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m7 12 3 3 7-7"/></svg><span>Gestión</span></button>
       </section>
       <div class="driver-other-actions">
         <button id="addUberBtn" type="button">Cargar Uber <b id="uberPendingBadge" class="operation-pending-badge hidden" aria-label="Semanas de Uber pendientes">0</b><span aria-hidden="true">↗</span></button>
@@ -665,6 +665,7 @@
   </div>
 </div>
 
+<div id="managementModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="managementTitle"><div class="charge-screen-card"><header class="charge-brand"><strong>Explora Iguazú</strong><span>App del conductor</span></header><button type="button" class="charge-back" data-close="managementModal">‹ Inicio</button><h2 id="managementTitle">Gestión</h2><div id="managementChoices" class="charge-panel"><button type="button" id="managementPay" class="btn primary">Pagar a Explora</button><button type="button" id="managementCollect" class="btn primary">Cobrar a Explora</button></div><form id="managementForm" class="hidden"><button type="button" id="managementBack" class="charge-back">‹ Gestión</button><p id="managementIntro"></p><section class="charge-panel"><div class="field"><label for="managementAmount">Importe</label><div class="money-entry"><span>$</span><input id="managementAmount" type="text" inputmode="numeric" data-money-input required placeholder="0" autocomplete="off"></div></div><div class="field"><label for="managementNote">Nota (opcional)</label><input id="managementNote" maxlength="300"></div></section><section class="charge-panel"><h3>Resultado en tu cuenta</h3><div id="managementPreview" class="charge-account" aria-live="polite"></div></section><p class="file-note">Operación interna · Sin caja chica ni factura ARCA.</p><button id="managementConfirm" class="btn primary" type="submit">Confirmar</button><div id="managementStatus" class="status" role="status"></div></form></div></div>
 <div id="closeModal" class="modal hidden">
   <div class="modal-card">
     <div class="modal-head"><h2 id="closeModalTitle">Pedir cierre</h2><button class="x" data-close="closeModal">×</button></div>

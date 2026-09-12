@@ -117,3 +117,14 @@ test('más recientes muestra primero caja o reintegro y más antiguos muestra pr
     assert.equal(page.length,4,'la paginación mantiene completa la última pareja');
   }
 });
+
+test('Gestión mueve el 100% sin ingresos de viajes, caja chica ni borrador ARCA', () => {
+  const {prepareInvoiceDraft} = require('../functions/arca-invoice-draft.js');
+  for (const [direction,method,expected] of [['driver_to_explora','digital',-100000],['explora_to_driver','cash',100000]]) {
+    const row=payment(method,100000,false,{type:'settlement_adjustment',operationType:'settlement_adjustment',internalManagement:true,internalSettlementAdjustment:true,affectsBillingSettlement:true,adjustmentDirection:direction,telegramSettlementBeforeBalance:0,telegramSettlementAfterBalance:expected});
+    const result=assertBalance({records:[row]},expected);
+    assert.equal(result.cashbox,0);
+    assert.equal(result.receipts.length,1);
+    assert.equal(prepareInvoiceDraft(row,'internal'),null);
+  }
+});

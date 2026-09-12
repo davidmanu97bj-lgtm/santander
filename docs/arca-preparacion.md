@@ -64,3 +64,14 @@ Documentación oficial consultada:
 - https://www.argentina.gob.ar/normativa/nacional/decreto-280-1997-42701/actualizacion
 
 Requisitos del receptor: https://www.afip.gob.ar/fe/emision-autorizacion/datos-comprobantes.asp
+
+## Gestión interna
+
+El acceso del conductor «Gestión» ofrece Pagar a Explora (impacto −100%) y
+Cobrar a Explora (impacto +100%). Se registra el dinero efectivamente entregado
+o recibido, con importe, nota opcional y Antes/Impacto/Después. No solicita una
+transferencia bancaria ni representa un pedido pendiente de aprobación.
+Los movimientos usan `settlement_adjustment`, conservan el historial y no generan
+caja chica, ingresos por viajes ni solicitud fiscal. La confirmación es única y
+reutiliza el identificador de operación ante reintentos. Los cierres históricos
+y la gestión de cierres del administrador conservan su tratamiento anterior.
