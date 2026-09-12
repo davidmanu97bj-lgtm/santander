@@ -6240,6 +6240,12 @@ $("managementForm").addEventListener("submit", async event => {
   const direction = managementDirection;
   const amount = parseMoneyInput($("managementAmount").value);
   if (!user || !["driver_to_explora","explora_to_driver"].includes(direction) || !(amount > 0)) return;
+  const proof = $("managementProof").files?.[0];
+  if (!proof || proof.size <= 0 || proof.size > 15 * 1024 * 1024 || !(proof.type.startsWith("image/") || proof.type === "application/pdf")) {
+    $("managementStatus").textContent = "Adjuntá un comprobante en imagen o PDF de hasta 15 MB.";
+    $("managementStatus").className = "status error";
+    return;
+  }
   if (!acquireSubmissionLock("management")) return;
   $("managementConfirm").disabled = true;
   $("managementBack").disabled = true;
@@ -6250,6 +6256,10 @@ $("managementForm").addEventListener("submit", async event => {
     fingerprint = await buildSubmissionFingerprint("management", {direction,amount,detail});
     operation = reservePendingOperation("management", user.uid, fingerprint);
     reference = doc(db, ROOT_COLLECTIONS.payments, operation.operationId);
+    const proofPath = "billing_receipts/" + user.uid + "/" + localDayKey() + "/" + operation.operationId + "_" + proof.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+    const storageRef = ref(storage, proofPath);
+    await retryFirebaseOperation(() => uploadBytes(storageRef, proof), 4);
+    const proofUrl = await retryFirebaseOperation(() => getDownloadURL(storageRef), 4);
     const before = settlementModel().balance;
     const after = normalizedSettlementBalance(before + amount * (direction === "driver_to_explora" ? -1 : 1));
     await runTransactionWithRetry(async transaction => {
@@ -6257,6 +6267,7 @@ $("managementForm").addEventListener("submit", async event => {
       if (existing.exists()) return;
       transaction.set(reference, {
         type:"settlement_adjustment", operationType:"settlement_adjustment", internalManagement:true,
+        proofUrl,proofPath,receiptUrl:proofUrl,receiptPath:proofPath,receiptRequired:true,
         adjustmentDirection:direction, affectsBillingSettlement:true, internalSettlementAdjustment:true,
         method:direction === "driver_to_explora" ? "digital" : "cash",
         paymentMethod:direction === "driver_to_explora" ? "digital" : "cash",
