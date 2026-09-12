@@ -7326,3 +7326,6 @@ body:has(#chargeModal:not(.hidden)) { overflow:hidden; }
   .charge-breakdown > div { font-size:14px; }
   #chargeModal input, #chargeModal select { font-size:16px; }
 }
+
+.charge-invoice-toggle { display:flex; align-items:center; gap:10px; cursor:pointer; font-size:14px; margin:16px 0; }
+#chargeModal .charge-invoice-toggle input { width:18px; height:18px; flex:0 0 18px; accent-color:var(--charge-accent); }

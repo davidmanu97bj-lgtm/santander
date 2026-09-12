@@ -11,6 +11,7 @@ function prepareInvoiceDraft(payment, paymentId, issuer = {}) {
   const date = text(request.serviceDate,10);
   const customer = request.customer || {};
   const missing = [];
+  if (customer.requested === true && (!text(customer.name) || !text(customer.documentNumber))) missing.push("customerReview");
   if (!Number.isFinite(amount) || amount <= 0) missing.push("amount");
   if (!origin || !destination) missing.push("route");
   if (!Number.isFinite(distance) || distance <= 0 || distance > 20000) missing.push("distanceKm");
@@ -29,7 +30,7 @@ function prepareInvoiceDraft(payment, paymentId, issuer = {}) {
     paymentMethod:payment.method, paymentChannel:text(request.paymentChannel,20),
     service:{date,origin,destination,distanceKm:Number.isFinite(distance) ? distance : null,scope:text(request.scope,20)},
     description:`Traslado de pasajeros con chofer. ${date}. Origen: ${origin}. Destino: ${destination}. Recorrido informado: ${Number.isFinite(distance) ? distance : "pendiente"} km.`,
-    customer:{name:text(customer.name),documentType:text(customer.documentType,20),documentNumber:text(customer.documentNumber,30),vatCondition:text(customer.vatCondition,30)},
+    customer:{requested:customer.requested === true,name:text(customer.name),documentType:text(customer.documentType,20),documentNumber:text(customer.documentNumber,30),vatCondition:text(customer.vatCondition,30)},
     reviewReason:request.scope === "international" ? "international_transport" : distance <= 100 ? "national_taxi_eligibility" : "national_over_100km",
     blockers:[...missing,"issuer_registration_unverified","tax_treatment_unverified","receiver_requirements_unverified","arca_connection_not_configured"],
     // This identifier must be reused by a future issuer to reconcile uncertain responses.

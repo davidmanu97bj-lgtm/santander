@@ -4,7 +4,9 @@ Estado: preparación interna, sin conexión a ARCA ni emisión fiscal.
 
 Los nuevos cobros guardan `invoiceRequest` con fecha, recorrido real, kilómetros,
 trayecto nacional/internacional y medio de pago. El formulario habitual no pide
-nombre, documento ni condición de IVA del pasajero. Antes de emitir, la futura
+nombre, documento ni condición de IVA del pasajero salvo que se active
+«El pasajero pide factura a su nombre». Al activarla se guardan esos datos
+en el borrador; al desactivarla no se incluyen. Antes de emitir, la futura
 integración deberá evaluar si corresponde identificar al receptor según importe
 y tipo de comprobante; no se presupone que todos los clientes sean consumidores
 finales. Los datos históricos del cliente se conservan. El servidor

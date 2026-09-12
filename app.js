@@ -4266,6 +4266,7 @@ document.querySelectorAll("[data-mode]").forEach(btn => {
   btn.addEventListener("click", () => {
     const mode = btn.dataset.mode;
     $("chargeForm").reset();
+    syncChargeCustomerFields();
     clearPhotoPicker("digital");
     delete $("chargeForm").dataset.previewConfirmed;
     $("chargeMode").value = mode;
@@ -4287,6 +4288,15 @@ document.querySelectorAll("[data-mode]").forEach(btn => {
   });
 });
 
+function syncChargeCustomerFields() {
+  const enabled = $("chargeNamedInvoice").checked;
+  $("chargeCustomerFields").classList.toggle("hidden", !enabled);
+  $("chargeNamedInvoice").setAttribute("aria-expanded", String(enabled));
+  for (const id of ["chargeCustomerName","chargeCustomerDocType","chargeCustomerDoc","chargeCustomerVat"]) $(id).disabled = !enabled;
+  $("chargeCustomerName").required = enabled;
+  $("chargeCustomerDoc").required = enabled;
+}
+$("chargeNamedInvoice")?.addEventListener("change", syncChargeCustomerFields);
 function chargeDraftRequest() {
   return {
     version:"arca_preparation_v1",
@@ -4294,7 +4304,7 @@ function chargeDraftRequest() {
     origin:$("chargeOrigin").value.trim(), destination:$("chargeDestination").value.trim(),
     distanceKm:Number($("chargeDistance").value), scope:$("chargeTripScope").value,
     paymentChannel:$("chargeMode").value === "cash" ? "cash" : $("chargeDigitalType").value,
-    customer:{}
+    customer:$("chargeNamedInvoice").checked ? {requested:true,name:$("chargeCustomerName").value.trim(),documentType:$("chargeCustomerDocType").value,documentNumber:$("chargeCustomerDoc").value.trim(),vatCondition:$("chargeCustomerVat").value} : {}
   };
 }
 
@@ -4859,6 +4869,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
     completedSuccessfully = true;
     $("saveChargeBtn").textContent = "Éxito ✓";
     $("chargeForm").reset();
+    syncChargeCustomerFields();
     closeModalAndGoTop("chargeModal", 1200);
   } catch (err) {
     console.error(err);
@@ -4872,6 +4883,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
       completedSuccessfully = true;
       $("saveChargeBtn").textContent = "Éxito ✓";
       $("chargeForm").reset();
+    syncChargeCustomerFields();
       closeModalAndGoTop("chargeModal", 1200);
     } else {
       $("chargeStatus").textContent = "No pudimos confirmar el cobro. Podés volver a tocar Registrar: se reintentará la misma operación sin duplicarla.";
