@@ -7266,10 +7266,10 @@ body.proof-image-viewer-open {
 @media (prefers-contrast: more) { #app.driver-view { --driver-muted: #43557d; } .movement-card { border-color: #889bbd; } }
 
 /* Cobros: pantalla de revisión y preparación fiscal. */
-body:has(:is(#chargeModal, #managementModal):not(.hidden)) { overflow:hidden; }
-:is(#chargeModal, #managementModal) { --charge-accent:#009b61; --charge-tint:#e3f7ef; --charge-ink:#10164c; --charge-muted:#64779f; background:#f5faff; overflow-y:auto; align-items:flex-start; padding:24px 16px; }
-:is(#chargeModal, #managementModal)[data-tone="digital"] { --charge-accent:#1177ef; --charge-tint:#e5efff; }
-:is(#chargeModal, #managementModal) .charge-screen-card { width:100%; max-width:780px; margin:0 auto; padding:12px 0 32px; border:0; box-shadow:none; background:transparent; max-height:none; overflow:visible; color:var(--charge-ink); }
+body:has(:is(#chargeModal, #managementModal, #expenseModal):not(.hidden)) { overflow:hidden; }
+:is(#chargeModal, #managementModal, #expenseModal) { --charge-accent:#009b61; --charge-tint:#e3f7ef; --charge-ink:#10164c; --charge-muted:#64779f; background:#f5faff; overflow-y:auto; align-items:flex-start; padding:24px 16px; }
+:is(#chargeModal, #managementModal, #expenseModal)[data-tone="digital"] { --charge-accent:#1177ef; --charge-tint:#e5efff; }
+:is(#chargeModal, #managementModal, #expenseModal) .charge-screen-card { width:100%; max-width:780px; margin:0 auto; padding:12px 0 32px; border:0; box-shadow:none; background:transparent; max-height:none; overflow:visible; color:var(--charge-ink); }
 .charge-brand { display:flex; flex-direction:column; margin:0 0 22px; }
 .charge-brand strong { color:#10164c; font-size:24px; letter-spacing:-.7px; }
 .charge-brand span { color:#64779f; font-size:14px; }
@@ -7279,17 +7279,17 @@ body:has(:is(#chargeModal, #managementModal):not(.hidden)) { overflow:hidden; }
 .charge-heading p { color:#64779f; font-size:16px; margin:0; }
 .charge-icon { display:grid; place-items:center; width:76px; height:76px; flex-shrink:0; background:var(--charge-tint); color:var(--charge-accent); border-radius:24px; }
 .charge-icon svg { width:40px; height:40px; fill:none; stroke:currentColor; stroke-width:2; }
-:is(#chargeForm, #managementForm) { display:grid; gap:14px; }
-:is(#chargeModal, #managementModal) .charge-panel { margin:0; padding:20px; background:white; border:1px solid #e3eaf4; border-radius:19px; box-shadow:0 5px 18px #152d6110; }
-:is(#chargeModal, #managementModal) h3, :is(#chargeModal, #managementModal) .charge-panel > label { display:block; color:#10164c; margin:0 0 14px; font-size:20px; font-weight:700; letter-spacing:-.4px; }
-:is(#chargeModal, #managementModal) input, :is(#chargeModal, #managementModal) select { color:#10164c; background:#f9fbff; border:1px solid #ccd8ed; border-radius:10px; width:100%; min-width:0; font:inherit; padding:12px; }
-:is(#chargeModal, #managementModal) input:focus, :is(#chargeModal, #managementModal) select:focus { outline:none; border-color:#929aa7; box-shadow:0 2px 5px rgba(15,23,42,.06); }
-:is(#chargeModal, #managementModal) .money-entry { border:1px solid #ccd8ed; background:#f9fbff; border-radius:12px; padding:7px 14px; display:flex; align-items:center; }
-:is(#chargeModal, #managementModal) .money-entry span { font-size:38px; color:#10164c; font-weight:700; }
-:is(#chargeModal, #managementModal) :is(#chargeAmount, #managementAmount) { font-size:42px; font-weight:700; letter-spacing:-1.5px; border:0; background:transparent; padding:4px; }
+:is(#chargeForm, #managementForm, #expenseForm) { display:grid; gap:14px; }
+:is(#chargeModal, #managementModal, #expenseModal) .charge-panel { margin:0; padding:20px; background:white; border:1px solid #e3eaf4; border-radius:19px; box-shadow:0 5px 18px #152d6110; }
+:is(#chargeModal, #managementModal, #expenseModal) h3, :is(#chargeModal, #managementModal, #expenseModal) .charge-panel > label { display:block; color:#10164c; margin:0 0 14px; font-size:20px; font-weight:700; letter-spacing:-.4px; }
+:is(#chargeModal, #managementModal, #expenseModal) input, :is(#chargeModal, #managementModal, #expenseModal) select { color:#10164c; background:#f9fbff; border:1px solid #ccd8ed; border-radius:10px; width:100%; min-width:0; font:inherit; padding:12px; }
+:is(#chargeModal, #managementModal, #expenseModal) input:focus, :is(#chargeModal, #managementModal, #expenseModal) select:focus { outline:none; border-color:#929aa7; box-shadow:0 2px 5px rgba(15,23,42,.06); }
+:is(#chargeModal, #managementModal, #expenseModal) .money-entry { border:1px solid #ccd8ed; background:#f9fbff; border-radius:12px; padding:7px 14px; display:flex; align-items:center; }
+:is(#chargeModal, #managementModal, #expenseModal) .money-entry span { font-size:38px; color:#10164c; font-weight:700; }
+:is(#chargeModal, #managementModal, #expenseModal) :is(#chargeAmount, #managementAmount, #expenseAmount) { font-size:42px; font-weight:700; letter-spacing:-1.5px; border:0; background:transparent; padding:4px; }
 .charge-two-columns { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-:is(#chargeModal, #managementModal) .charge-trip .field { margin-bottom:12px; }
-:is(#chargeModal, #managementModal) .charge-trip label { color:#64779f; font-size:13px; }
+:is(#chargeModal, #managementModal, #expenseModal) .charge-trip .field { margin-bottom:12px; }
+:is(#chargeModal, #managementModal, #expenseModal) .charge-trip label { color:#64779f; font-size:13px; }
 .charge-extra summary { color:var(--charge-accent); cursor:pointer; font-size:14px; padding:8px 0; }
 .charge-extra[open] summary { margin-bottom:12px; }
 .charge-breakdown > div, .charge-invoice-total { display:flex; justify-content:space-between; gap:16px; padding:11px 0; border-bottom:1px solid #edf1f8; color:#64779f; }
@@ -7300,35 +7300,35 @@ body:has(:is(#chargeModal, #managementModal):not(.hidden)) { overflow:hidden; }
 .charge-account > div + div { border-left:1px solid #d8e1f2; }
 .charge-account span, .charge-account small { color:#64779f; font-size:13px; line-height:1.3; }
 .charge-account strong { font-size:22px; color:#10164c; }
-:is(#chargeModal, #managementModal) .positive { color:#00993d; } :is(#chargeModal, #managementModal) .negative { color:#e62632; }
+:is(#chargeModal, #managementModal, #expenseModal) .positive { color:#00993d; } :is(#chargeModal, #managementModal, #expenseModal) .negative { color:#e62632; }
 .charge-fiscal-heading { display:flex; justify-content:space-between; align-items:center; gap:8px; }
-:is(#chargeModal, #managementModal) .charge-fiscal-heading h3 { margin:0; }
+:is(#chargeModal, #managementModal, #expenseModal) .charge-fiscal-heading h3 { margin:0; }
 .charge-fiscal-heading > span { font-size:11px; color:#6a5918; border-radius:20px; background:#fff4cb; padding:5px 9px; }
 .charge-fiscal p { color:#64779f; font-size:14px; margin:12px 0 0; }
 .charge-fiscal small { display:block; color:#64779f; font-size:12px; line-height:1.5; margin-top:10px; }
-:is(#chargeModal, #managementModal) .modal-actions { display:grid; grid-template-columns:auto 1fr; gap:12px; margin:0; }
-:is(#chargeModal, #managementModal) :is(#saveChargeBtn, #managementConfirm) { background:var(--charge-accent); color:white; font-size:20px; min-height:60px; border:0; border-radius:15px; }
-:is(#chargeModal, #managementModal) .photo-source-picker { border:1px dashed #c4d6f1; padding:14px; border-radius:12px; }
-:is(#chargeModal, #managementModal) .photo-source-action { color:var(--charge-accent); background:var(--charge-tint); border:0; }
+:is(#chargeModal, #managementModal, #expenseModal) .modal-actions { display:grid; grid-template-columns:auto 1fr; gap:12px; margin:0; }
+:is(#chargeModal, #managementModal, #expenseModal) :is(#saveChargeBtn, #managementConfirm, #saveExpenseBtn) { background:var(--charge-accent); color:white; font-size:20px; min-height:60px; border:0; border-radius:15px; }
+:is(#chargeModal, #managementModal, #expenseModal) .photo-source-picker { border:1px dashed #c4d6f1; padding:14px; border-radius:12px; }
+:is(#chargeModal, #managementModal, #expenseModal) .photo-source-action { color:var(--charge-accent); background:var(--charge-tint); border:0; }
 @media(max-width:600px) {
-  :is(#chargeModal, #managementModal) { padding:16px 14px; }
+  :is(#chargeModal, #managementModal, #expenseModal) { padding:16px 14px; }
   .charge-heading { gap:12px; margin:14px 0 20px; }
   .charge-heading h2 { font-size:25px; }
   .charge-heading p { font-size:13px; line-height:1.4; }
   .charge-icon { width:57px; height:57px; border-radius:17px; }
   .charge-icon svg { width:31px; height:31px; }
-  :is(#chargeModal, #managementModal) .charge-panel { padding:15px; border-radius:16px; }
-  :is(#chargeModal, #managementModal) h3, :is(#chargeModal, #managementModal) .charge-panel > label { font-size:18px; }
-  :is(#chargeModal, #managementModal) :is(#chargeAmount, #managementAmount) { font-size:35px; }
+  :is(#chargeModal, #managementModal, #expenseModal) .charge-panel { padding:15px; border-radius:16px; }
+  :is(#chargeModal, #managementModal, #expenseModal) h3, :is(#chargeModal, #managementModal, #expenseModal) .charge-panel > label { font-size:18px; }
+  :is(#chargeModal, #managementModal, #expenseModal) :is(#chargeAmount, #managementAmount, #expenseAmount) { font-size:35px; }
   .charge-two-columns { gap:10px; }
   .charge-account strong { font-size:17px; overflow-wrap:anywhere; }
   .charge-account span, .charge-account small { font-size:11px; }
   .charge-breakdown > div { font-size:14px; }
-  :is(#chargeModal, #managementModal) input, :is(#chargeModal, #managementModal) select { font-size:16px; }
+  :is(#chargeModal, #managementModal, #expenseModal) input, :is(#chargeModal, #managementModal, #expenseModal) select { font-size:16px; }
 }
 
 .charge-invoice-toggle { display:flex; align-items:center; gap:10px; cursor:pointer; font-size:14px; margin:16px 0; }
-:is(#chargeModal, #managementModal) .charge-invoice-toggle input { width:18px; height:18px; flex:0 0 18px; accent-color:var(--charge-accent); }
+:is(#chargeModal, #managementModal, #expenseModal) .charge-invoice-toggle input { width:18px; height:18px; flex:0 0 18px; accent-color:var(--charge-accent); }
 
 #managementChoices { display:grid; gap:16px; }
 #managementModal { color:#10164c; }
@@ -7367,3 +7367,10 @@ body:has(:is(#chargeModal, #managementModal):not(.hidden)) { overflow:hidden; }
 /* Un único borde de enfoque para el importe, sin recuadro dentro del campo. */
 body .money-entry:focus-within { border-color:#929aa7; background:#fff; box-shadow:0 2px 5px rgba(15,23,42,.06); }
 body .money-entry input:focus { outline:none !important; border-color:transparent !important; box-shadow:none !important; background:transparent; }
+
+#expenseModal { --charge-accent:#f66b16; --charge-tint:#fff0e6; }
+#expenseModal .expense-quick-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:24px; }
+#expenseModal .expense-quick-option { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:108px; padding:14px 8px; border:1px solid #e3eaf4; border-radius:16px; background:#f9fbff; color:#10164c; font-size:16px; font-weight:650; }
+#expenseModal .expense-quick-option svg { width:32px; height:32px; fill:none; stroke:#f66b16; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+#expenseModal .expense-quick-option.selected, #expenseModal .expense-quick-option[aria-pressed="true"] { border-color:#f66b16; background:#fff0e6; box-shadow:inset 0 0 0 1px #f66b16; }
+@media(max-width:480px) { #expenseModal .expense-quick-options { gap:8px; } #expenseModal .expense-quick-option { font-size:13px; } }

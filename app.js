@@ -2003,6 +2003,7 @@ function render() {
   renderList("receiptList", visibleReceipts);
   if (!$("chargeModal").classList.contains("hidden")) renderChargePreview();
   if (!$("managementModal").classList.contains("hidden")) renderManagementPreview();
+  if (!$("expenseModal").classList.contains("hidden")) renderExpensePreview();
   window.setTimeout(maybeShowDriverDebtConfirmation, 0);
   window.setTimeout(maybeShowUberDriverConfirmation, 120);
   window.setTimeout(maybeShowUberReminder, 260);
@@ -4908,8 +4909,10 @@ $("addExpenseBtn")?.addEventListener("click", () => {
   $("expenseStatus").textContent = "";
   $("expenseStatus").className = "status";
   $("saveExpenseBtn").disabled = false;
-  $("saveExpenseBtn").textContent = "Registrar gasto";
+  $("saveExpenseBtn").textContent = "Confirmar gasto";
   $("expenseModal").classList.remove("hidden");
+  $("expenseModal").scrollTop = 0;
+  renderExpensePreview();
 });
 
 $("addDebtBtn")?.addEventListener("click", () => {
@@ -5471,7 +5474,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
     releaseSubmissionLock("expense");
     if (!completedSuccessfully) {
       $("saveExpenseBtn").disabled = false;
-      $("saveExpenseBtn").textContent = "Registrar gasto";
+      $("saveExpenseBtn").textContent = "Confirmar gasto";
     }
   }
 });
@@ -6301,3 +6304,14 @@ $("managementForm").addEventListener("submit", async event => {
     setPhotoPickerDisabled("management", false);
   }
 });
+
+function renderExpensePreview() {
+  const amount = parseMoneyInput($("expenseAmount").value) || 0;
+  const before = settlementModel().balance;
+  const intermediate = normalizedSettlementBalance(before - amount);
+  const after = normalizedSettlementBalance(before - amount * 0.5);
+  const row = (start,delta,end) => '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(start))+'</small></div><div><span>Impacto</span><strong class="'+(delta < 0 ? "negative" : "positive")+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(end))+'</small></div>';
+  $("expenseGrossPreview").innerHTML = row(before,-amount,intermediate);
+  $("expenseRefundPreview").innerHTML = row(intermediate,amount * 0.5,after);
+}
+$("expenseAmount").addEventListener("input", renderExpensePreview);
