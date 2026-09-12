@@ -265,18 +265,19 @@
     <div class="charge-brand"><strong>Explora Iguazú</strong><span>App del conductor</span></div>
     <button class="charge-back" type="button" data-close="chargeModal">‹ Cobros</button>
     <div class="charge-heading"><span id="chargeIcon" class="charge-icon" aria-hidden="true"></span><div><h2 id="chargeTitle">Nuevo cobro</h2><p id="chargeIntro"></p></div></div>
-    <form id="chargeForm">
+    <form id="chargeForm" novalidate><div id="chargeStepLabel" class="charge-step-label" role="status" aria-live="polite"></div><div class="charge-step-track" aria-hidden="true"><span></span><span></span><span></span><span></span></div><section data-charge-step="0" class="charge-step">
       <input type="hidden" id="chargeMode">
       <div id="chargeDigitalTypeField" class="charge-panel hidden"><label for="chargeDigitalType">Tipo de pago</label><select id="chargeDigitalType"><option value="transfer">Transferencia</option><option value="card">Tarjeta</option><option value="qr">QR</option></select></div>
       <div class="field charge-panel charge-amount-panel">
         <label for="chargeAmount">Monto cobrado</label>
         <div class="money-entry"><span aria-hidden="true">$</span><input id="chargeAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div>
       </div>
+</section><section data-charge-step="1" class="charge-step hidden">
       <div class="charge-panel charge-trip"><h3>Servicio realizado</h3>
         <div class="charge-two-columns"><div class="field"><label for="chargeOrigin">Origen</label><input id="chargeOrigin" placeholder="Hotel, dirección o aeropuerto" maxlength="160" required></div><div class="field"><label for="chargeDestination">Destino</label><input id="chargeDestination" placeholder="Destino del pasajero" maxlength="160" required></div></div>
         <div class="charge-two-columns"><div class="field"><label for="chargeDistance">Recorrido del pasajero (km)</label><input id="chargeDistance" type="number" inputmode="decimal" min="0.1" max="20000" step="0.1" placeholder="0" required></div><div class="field"><label for="chargeTripScope">Trayecto</label><select id="chargeTripScope"><option value="national">Nacional</option><option value="international">Internacional</option></select></div></div>
         <div class="field"><label for="chargeServiceDate">Fecha del servicio</label><input id="chargeServiceDate" type="date" required></div>
-        <div class="charge-named-invoice"><label class="charge-invoice-toggle"><input id="chargeNamedInvoice" type="checkbox" aria-controls="chargeCustomerFields" aria-expanded="false">El pasajero pide factura a su nombre</label><div id="chargeCustomerFields" class="hidden"><div class="field"><label for="chargeCustomerName">Nombre o razón social</label><input id="chargeCustomerName" maxlength="160" disabled></div><div class="charge-two-columns"><div class="field"><label for="chargeCustomerDocType">Documento</label><select id="chargeCustomerDocType" disabled><option value="DNI">DNI</option><option value="CUIT">CUIT</option><option value="passport">Pasaporte</option></select></div><div class="field"><label for="chargeCustomerDoc">Número</label><input id="chargeCustomerDoc" maxlength="30" autocomplete="off" disabled></div></div><div class="field"><label for="chargeCustomerVat">Condición frente al IVA</label><select id="chargeCustomerVat" disabled><option value="consumer">Consumidor final</option><option value="registered">Responsable inscripto</option><option value="monotributo">Monotributista</option><option value="exempt">Exento</option><option value="pending">Por confirmar</option></select></div></div></div>
+
         <details class="charge-extra"><summary>Agregar una nota (opcional)</summary><div class="field"><label for="detail">Detalle adicional</label><input id="detail" placeholder="Opcional" maxlength="300"></div></details>
       </div>
       <div id="proofField" class="field charge-panel hidden">
@@ -292,10 +293,14 @@
         </div>
         <div class="file-note">Solo se aceptan fotos tomadas con la cámara o elegidas desde la galería.</div>
       </div>
+</section><section data-charge-step="2" class="charge-step hidden">
       <section class="charge-panel"><h3>Movimientos en tu cuenta</h3><h4 id="chargeAccountTitle">Cobro</h4><div id="chargeAccountPreview" class="charge-account" aria-live="polite"></div><h4>Caja chica · 5%</h4><div id="chargeCashboxPreview" class="charge-account" aria-live="polite"></div></section>
+</section><section data-charge-step="3" class="charge-step hidden">
+        <div class="charge-named-invoice"><label class="charge-invoice-toggle"><input id="chargeNamedInvoice" type="checkbox" aria-controls="chargeCustomerFields" aria-expanded="false">El pasajero pide factura a su nombre</label><div id="chargeCustomerFields" class="hidden"><div class="field"><label for="chargeCustomerName">Nombre o razón social</label><input id="chargeCustomerName" maxlength="160" disabled></div><div class="charge-two-columns"><div class="field"><label for="chargeCustomerDocType">Documento</label><select id="chargeCustomerDocType" disabled><option value="DNI">DNI</option><option value="CUIT">CUIT</option><option value="passport">Pasaporte</option></select></div><div class="field"><label for="chargeCustomerDoc">Número</label><input id="chargeCustomerDoc" maxlength="30" autocomplete="off" disabled></div></div><div class="field"><label for="chargeCustomerVat">Condición frente al IVA</label><select id="chargeCustomerVat" disabled><option value="consumer">Consumidor final</option><option value="registered">Responsable inscripto</option><option value="monotributo">Monotributista</option><option value="exempt">Exento</option><option value="pending">Por confirmar</option></select></div></div></div>
       <section class="charge-panel charge-fiscal"><div class="charge-fiscal-heading"><h3>Factura de Explora</h3><span>Preparación</span></div><p>Régimen general · IVA por confirmar</p><div class="charge-invoice-total"><span>Total a facturar</span><strong id="chargeInvoiceTotal">$ 0</strong></div><small>Emisión ARCA desactivada. Se guardan los datos para preparar la factura, sin validez fiscal.</small></section>
+</section>
       <div id="chargeStatus" class="status" aria-live="polite"></div>
-      <div class="modal-actions"><button type="button" class="secondary" data-close="chargeModal">Cancelar</button><button id="saveChargeBtn" type="submit" class="save">Confirmar cobro</button></div>
+      <div class="modal-actions"><button id="chargeStepBack" type="button" class="secondary">Cancelar</button><button id="saveChargeBtn" type="submit" class="save">Confirmar cobro</button></div>
     </form>
   </div>
 </div>
