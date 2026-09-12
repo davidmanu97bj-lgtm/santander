@@ -10,7 +10,8 @@ test("rutas: sin clave no consulta y devuelve un error recuperable", async () =>
 });
 test("rutas: búsqueda acotada, clave solo en cabecera y resultados sanitizados", async () => {
   const result = await queryRouteService({action:"search",query:"Hotel Iguazú"},"test-key",async (url,options)=> {
-    assert.equal(url.hostname,"api.openrouteservice.org");
+    assert.equal(url.hostname,"api.heigit.org");
+    assert.equal(url.pathname,"/pelias/v1/search");
     assert.equal(url.searchParams.get("text"),"Hotel Iguazú");
     assert.equal(url.searchParams.get("size"),"5");
     assert.equal(url.searchParams.has("api_key"),false);
@@ -21,7 +22,7 @@ test("rutas: búsqueda acotada, clave solo en cabecera y resultados sanitizados"
 });
 test("rutas: calcula kilómetros por carretera y conserva orden longitud latitud",async()=> {
   const result = await queryRouteService({action:"route",origin:[-54,-25],destination:[-55,-26]},"test-key",async(url,options)=> {
-    assert.equal(url.pathname,"/v2/directions/driving-car/json");
+    assert.equal(url.pathname,"/openrouteservice/v2/directions/driving-car/json");
     assert.deepEqual(JSON.parse(options.body).coordinates,[[-54,-25],[-55,-26]]);
     return {ok:true,json:async()=>({routes:[{summary:{distance:12345}}]})};
   });

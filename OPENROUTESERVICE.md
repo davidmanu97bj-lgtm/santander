@@ -12,3 +12,5 @@ La función solo admite usuarios habilitados y limita consultas en contadores pr
 La interfaz busca al pulsar Buscar para evitar consultas por cada letra. Si falta la clave, falla el proveedor o se agota el cupo, se permite completar los datos manualmente. Modificar un punto invalida los kilómetros previos; respuestas tardías no deben sobrescribir una corrección manual. No incluye mapa interactivo ni seguimiento GPS.
 
 Documentación: https://giscience.github.io/openrouteservice/api-reference/endpoints/geocoder/ y https://giscience.github.io/openrouteservice/api-reference/endpoints/directions/
+
+La integración usa los endpoints actuales de HeiGIT: /pelias/v1/search y /openrouteservice/v2/directions/driving-car/json en api.heigit.org. Migración oficial: https://ask.openrouteservice.org/t/deprecating-api-openrouteservice-org-in-favour-of-api-heigit-org/7912

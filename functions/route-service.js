@@ -21,7 +21,7 @@ function validateRouteRequest(data = {}) {
 async function queryRouteService(data, key, fetcher = fetch) {
   const request = validateRouteRequest(data);
   if (!key) throw new RouteError("failed-precondition", "La búsqueda de direcciones todavía no está activada. Podés completar los datos manualmente.");
-  const url = new URL(request.action === "search" ? "https://api.openrouteservice.org/geocode/search" : "https://api.openrouteservice.org/v2/directions/driving-car/json");
+  const url = new URL(request.action === "search" ? "https://api.heigit.org/pelias/v1/search" : "https://api.heigit.org/openrouteservice/v2/directions/driving-car/json");
   const options = { headers:{ Authorization:key, "Content-Type":"application/json" }, signal:AbortSignal.timeout(12000) };
   if (request.action === "search") {
     url.searchParams.set("text",request.query);
