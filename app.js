@@ -6319,7 +6319,7 @@ $("expenseAmount").addEventListener("input", renderExpensePreview);
 function showChargeStep(step) {
   $("chargeForm").dataset.step = String(step);
   document.querySelectorAll("[data-charge-step]").forEach(panel => panel.classList.toggle("hidden", Number(panel.dataset.chargeStep) !== step));
-  const names = ["Monto", "Servicio realizado", "Movimientos en tu cuenta", "Factura de Explora"];
+  const names = ["Monto", "Servicio realizado", "Factura de Explora", "Movimientos en tu cuenta"];
   $("chargeStepLabel").textContent = "Paso " + (step + 1) + " de 4 · " + names[step];
   document.querySelectorAll(".charge-step-track span").forEach((bar,index) => bar.classList.toggle("complete", index <= step));
   $("saveChargeBtn").textContent = step === 3 ? "Confirmar cobro" : "Continuar";
