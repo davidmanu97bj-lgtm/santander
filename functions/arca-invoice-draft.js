@@ -20,7 +20,6 @@ function prepareInvoiceDraft(payment, paymentId, issuer = {}) {
   if (!/^\d{11}$/.test(cuit)) missing.push("issuerCuit");
   if (!text(issuer.legalName)) missing.push("issuerLegalName");
   if (!issuer.pointOfSale) missing.push("pointOfSale");
-  if (!text(customer.name) || !text(customer.documentNumber) || customer.vatCondition === "pending" || !customer.vatCondition) missing.push("customerReview");
   return {
     version:"arca_preparation_v1", paymentId, driverUid:text(payment.driverUid),
     status:"preparation", fiscalValidity:false, emissionEnabled:false,
@@ -32,7 +31,7 @@ function prepareInvoiceDraft(payment, paymentId, issuer = {}) {
     description:`Traslado de pasajeros con chofer. ${date}. Origen: ${origin}. Destino: ${destination}. Recorrido informado: ${Number.isFinite(distance) ? distance : "pendiente"} km.`,
     customer:{name:text(customer.name),documentType:text(customer.documentType,20),documentNumber:text(customer.documentNumber,30),vatCondition:text(customer.vatCondition,30)},
     reviewReason:request.scope === "international" ? "international_transport" : distance <= 100 ? "national_taxi_eligibility" : "national_over_100km",
-    blockers:[...missing,"issuer_registration_unverified","tax_treatment_unverified","arca_connection_not_configured"],
+    blockers:[...missing,"issuer_registration_unverified","tax_treatment_unverified","receiver_requirements_unverified","arca_connection_not_configured"],
     // This identifier must be reused by a future issuer to reconcile uncertain responses.
     idempotencyKey:`billing:${paymentId}`
   };

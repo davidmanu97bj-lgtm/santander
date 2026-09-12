@@ -25,5 +25,5 @@ test('conserva antiguos y detecta datos incompletos sin fabricar autorización',
   const data=payment();data.invoiceRequest.origin='';data.invoiceRequest.distanceKm=NaN;
   const draft=prepareInvoiceDraft(data,'test');
   assert.ok(draft.blockers.includes('route'));assert.ok(draft.blockers.includes('distanceKm'));
-  assert.ok(draft.blockers.includes('issuerCuit'));assert.ok(draft.blockers.includes('customerReview'));
+  assert.ok(draft.blockers.includes('issuerCuit'));assert.ok(!draft.blockers.includes('customerReview'));assert.ok(draft.blockers.includes('receiver_requirements_unverified'));
 });

@@ -3,7 +3,11 @@
 Estado: preparación interna, sin conexión a ARCA ni emisión fiscal.
 
 Los nuevos cobros guardan `invoiceRequest` con fecha, recorrido real, kilómetros,
-trayecto nacional/internacional, medio de pago y datos del cliente. El servidor
+trayecto nacional/internacional y medio de pago. El formulario habitual no pide
+nombre, documento ni condición de IVA del pasajero. Antes de emitir, la futura
+integración deberá evaluar si corresponde identificar al receptor según importe
+y tipo de comprobante; no se presupone que todos los clientes sean consumidores
+finales. Los datos históricos del cliente se conservan. El servidor
 genera un único borrador en `arca_invoice_drafts/{paymentId}`. Relee el cobro
 actual en una transacción para tolerar eventos repetidos o fuera de orden;
 actualiza correcciones y cancela borradores de cobros eliminados. No modifica
@@ -56,3 +60,5 @@ Documentación oficial consultada:
 - https://www.afip.gob.ar/ws/documentacion/wsaa.asp
 - https://www.afip.gob.ar/fe/emision-autorizacion/solicitud-autorizacion.asp
 - https://www.argentina.gob.ar/normativa/nacional/decreto-280-1997-42701/actualizacion
+
+Requisitos del receptor: https://www.afip.gob.ar/fe/emision-autorizacion/datos-comprobantes.asp

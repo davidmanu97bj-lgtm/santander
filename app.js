@@ -4294,7 +4294,7 @@ function chargeDraftRequest() {
     origin:$("chargeOrigin").value.trim(), destination:$("chargeDestination").value.trim(),
     distanceKm:Number($("chargeDistance").value), scope:$("chargeTripScope").value,
     paymentChannel:$("chargeMode").value === "cash" ? "cash" : $("chargeDigitalType").value,
-    customer:{name:$("chargeCustomerName").value.trim(), documentType:$("chargeCustomerDocType").value, documentNumber:$("chargeCustomerDoc").value.trim(), vatCondition:$("chargeCustomerVat").value}
+    customer:{}
   };
 }
 
@@ -4702,11 +4702,6 @@ $("chargeForm")?.addEventListener("submit", async e => {
   }
   if (!invoiceRequest.origin || !invoiceRequest.destination || !Number.isFinite(invoiceRequest.distanceKm) || invoiceRequest.distanceKm <= 0 || !invoiceRequest.serviceDate) {
     $("chargeStatus").textContent = "Completá origen, destino, kilómetros y fecha del servicio.";
-    $("chargeStatus").className = "status error";
-    return;
-  }
-  if (invoiceRequest.customer.documentType !== "unidentified" && !invoiceRequest.customer.documentNumber) {
-    $("chargeStatus").textContent = "Completá el número de documento del cliente o seleccioná Sin informar.";
     $("chargeStatus").className = "status error";
     return;
   }
