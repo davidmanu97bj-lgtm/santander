@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {tourismCatalog as c,tourismRoute} from '../tourism-catalog.js';
+import {tourismCatalog as c,tourismRoute,searchTourismPlaces} from '../tourism-catalog.js';
 test('catálogo: seis ciudades, identificadores únicos y matriz completa de ida y vuelta',()=>{
  assert.equal(new Set(c.places.map(p=>p.city)).size,6);
  assert.equal(new Set(c.places.map(p=>p.id)).size,c.places.length);
@@ -16,7 +16,7 @@ test('catálogo: seis ciudades, identificadores únicos y matriz completa de ida
    count++;
   }
  }
- assert.equal(count,1640);
+ assert.equal(count,1722);
 });
 test('catálogo: conserva la medición comprobada aeropuerto-terminal y rechaza opciones inválidas',()=>{
  const airport=c.places.find(p=>p.name==='Aeropuerto Internacional de Puerto Iguazú');
@@ -24,4 +24,14 @@ test('catálogo: conserva la medición comprobada aeropuerto-terminal y rechaza 
  assert.equal(tourismRoute(airport.id,terminal.id).distance,20.2);
  assert.equal(tourismRoute('missing',terminal.id),null);
  assert.equal(tourismRoute(airport.id,''),null);
+});
+
+test("búsqueda local tolera tildes, fragmentos y errores sin elegir automáticamente",()=>{
+ assert.ok(searchTourismPlaces("catarats arg").some(p=>p.id==="cataratas-argentina"));
+ assert.ok(searchTourismPlaces("picafloerz").some(p=>p.name.includes("Picaflores")));
+ assert.ok(searchTourismPlaces("iguazu").length>0);
+ assert.deepEqual(searchTourismPlaces("zzzzzzzz"),[]);
+ assert.deepEqual(searchTourismPlaces(""),[]);
+ const point=c.places.find(p=>p.id==="cataratas-argentina");
+ assert.ok(point && c.places.every(p=>p.id===point.id || tourismRoute(p.id,point.id)));
 });

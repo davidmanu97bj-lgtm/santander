@@ -1,4 +1,4 @@
-import { tourismCatalog, tourismRoute } from "./tourism-catalog.js";
+import { tourismCatalog, tourismRoute, searchTourismPlaces } from "./tourism-catalog.js";
 import * as firebaseSettings from "./firebase-config.js?v=20260824-15";
 
 const { firebaseConfig, BUSINESS_ID, USER_EMAIL_DOMAIN } = firebaseSettings;
@@ -6462,13 +6462,8 @@ $("chargeDistance").addEventListener("input", () => {
 
 function renderTourismSelectors() {
   for (const part of ["Origin","Destination"]) {
-    const select=$("tourism"+part);
-    select.replaceChildren(new Option("Elegí "+(part==="Origin"?"la salida":"la llegada"),""));
-    for (const city of [...new Set(tourismCatalog.places.map(p=>p.city))]) {
-      const group=document.createElement("optgroup");group.label=city;
-      for (const p of tourismCatalog.places.filter(p=>p.city===city)) group.append(new Option(p.name,p.id));
-      select.append(group);
-    }
+    $("tourism"+part).value="";$("tourism"+part+"Search").value="";
+    $("tourism"+part+"Matches").replaceChildren();
   }
 }
 function selectTourismRoute() {
@@ -6487,4 +6482,29 @@ function selectTourismRoute() {
   $("chargeTripScope").value=[route.origin.country,route.destination.country].some(c=>["BRA","BR","PRY","PY"].includes(c))?"international":"national";
   $("chargeRouteStatus").textContent=route.distance>100?"Este recorrido supera los 100 km por carretera.":"Recorrido seleccionado. Kilómetros precalculados por carretera.";
 }
-for(const part of ["Origin","Destination"]) $("tourism"+part).addEventListener("change",selectTourismRoute);
+
+for(const part of ["Origin","Destination"]) {
+  const input=$("tourism"+part+"Search"), matches=$("tourism"+part+"Matches");
+  input.addEventListener("input",()=>{
+    $("tourism"+part).value=""; selectTourismRoute();
+    matches.replaceChildren();
+    const places=searchTourismPlaces(input.value);
+    for(const place of places){
+      const button=document.createElement("button");
+      button.type="button";button.className="route-result";
+      button.textContent=place.name+" · "+place.city;
+      button.addEventListener("click",()=>{
+        input.value=place.name+" · "+place.city;
+        $("tourism"+part).value=place.id;
+        matches.replaceChildren();
+        selectTourismRoute();
+      });
+      matches.append(button);
+    }
+    if(input.value.trim().length>=2&&!places.length)matches.textContent="No hay coincidencias en los lugares cargados.";
+  });
+  input.addEventListener("keydown",event=>{
+    if(event.key==="ArrowDown"&&matches.querySelector("button")){event.preventDefault();matches.querySelector("button").focus();}
+    if(event.key==="Escape")matches.replaceChildren();
+  });
+}

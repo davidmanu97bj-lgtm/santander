@@ -1,6 +1,6 @@
 # Catálogo turístico precalculado
 
-41 puntos y 1.640 combinaciones direccionales. Fuente de coordenadas: HeiGIT/Pelias. Distancias en automóvil: HeiGIT/OpenRouteService Matrix, calculadas el 12/09/2026, en kilómetros. No son distancias de Google ni una certificación fiscal.
+42 puntos y 1.722 combinaciones direccionales. Fuente de coordenadas: HeiGIT/Pelias. Distancias en automóvil: HeiGIT/OpenRouteService Matrix, calculadas el 12/09/2026, en kilómetros. No son distancias de Google ni una certificación fiscal.
 
 La aplicación usa este catálogo sin consultar mapas al cobrar. Las distancias son estimadas por carretera, no mediciones GPS del servicio. No se representa la totalidad de los establecimientos turísticos de la región.
 
@@ -67,7 +67,7 @@ La aplicación usa este catálogo sin consultar mapas al cobrar. Las distancias 
 
 ## Pendientes de acceso preciso
 
-Gran Meliá, acceso argentino al Parque Nacional Iguazú, Templo Budista y Belmond Hotel das Cataratas: los puntos iniciales se ajustaban a calles a más de 150 m. No se publicaron esos recorridos. La Costanera de Hernandarias se reemplazó por su acceso identificado. Aeropuerto de Foz conserva ajuste de 150,53 m; revisar accesos en uso operativo. Museo Nuestra Señora del Iguazú y Mina Don José: no se encontró una coincidencia geográfica inequívoca.
+Gran Meliá, estacionamiento argentino del Parque Nacional Iguazú, Templo Budista y Belmond Hotel das Cataratas: los puntos iniciales se ajustaban a calles a más de 150 m. No se publicaron esos recorridos. La Costanera de Hernandarias se reemplazó por su acceso identificado. Aeropuerto de Foz conserva ajuste de 150,53 m; revisar accesos en uso operativo. Museo Nuestra Señora del Iguazú y Mina Don José: no se encontró una coincidencia geográfica inequívoca.
 
 ## Fuentes para identificar atractivos
 
@@ -78,3 +78,9 @@ Gran Meliá, acceso argentino al Parque Nacional Iguazú, Templo Budista y Belmo
 - https://www.itaipu.gov.py/turismo/visitas
 - https://senatur.gov.py/informaciones-turisticas/
 - https://giscience.github.io/openrouteservice/api-reference/endpoints/matrix/
+
+## Cataratas Argentina
+
+Se incorpora el acceso vial identificado por HeiGIT/Pelias como Acceso a las Cataratas del Iguazú, en [-54.475139,-25.689604], con ajuste a carretera de 0,07 m. Las distancias terminan en ese acceso vial y no en el estacionamiento, que continúa pendiente de coordenadas verificadas. Referencia oficial del acceso: https://iguazuargentina.com/planifica-tu-visita/faqs/ . La terminal de Puerto Iguazú hasta este acceso arroja 14,5 km. No presentar esa cifra como distancia hasta el estacionamiento.
+
+El buscador local elimina tildes y permite prefijos y pequeños errores (incluida transposición); solo se guarda una selección explícita del catálogo. Cambiar el texto invalida la selección y la distancia.
