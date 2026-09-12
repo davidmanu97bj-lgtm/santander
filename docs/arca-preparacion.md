@@ -75,3 +75,11 @@ Los movimientos usan `settlement_adjustment`, conservan el historial y no genera
 caja chica, ingresos por viajes ni solicitud fiscal. La confirmación es única y
 reutiliza el identificador de operación ante reintentos. Los cierres históricos
 y la gestión de cierres del administrador conservan su tratamiento anterior.
+
+## Gastos nuevos: regla de saldo confirmada
+
+Los gastos con `receiptFlowVersion: gross_expense_driver_debit_50_v2` suman
+el 100% al saldo del chofer; el reintegro resta el 50%. Por ejemplo, desde cero,
+50.000 de gasto y −25.000 de reintegro dejan 25.000 a pagar a Explora.
+El gasto conserva el color rojo y el reintegro verde, independientemente del signo.
+Los registros anteriores conservan su versión y los cierres no se recalculan.

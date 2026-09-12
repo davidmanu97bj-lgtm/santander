@@ -128,3 +128,13 @@ test('Gestión mueve el 100% sin ingresos de viajes, caja chica ni borrador ARCA
     assert.equal(prepareInvoiceDraft(row,'internal'),null);
   }
 });
+
+test('gasto nuevo suma 100% y reintegro resta 50%, conservando gastos anteriores', () => {
+  const expense={id:'v2',amount:50000,driverUid:'test-driver',createdAtMs:2000,autoApplyToBilling:true,receiptFlowVersion:'gross_expense_driver_debit_50_v2',telegramSettlementBeforeBalance:0,telegramSettlementAfterBalance:25000};
+  const result=assertBalance({expenses:[expense]},25000);
+  const timeline=vm.runInNewContext(`${declarations}\nreceipts.map(receiptBalanceSnapshot)`,{receipts:result.receipts});
+  assert.deepEqual(JSON.parse(JSON.stringify(timeline)),[{before:50000,after:25000,movementImpact:-25000},{before:0,after:50000,movementImpact:50000}]);
+  assertBalance({expenses:[expense,{id:'old',amount:20000,driverUid:'test-driver',createdAtMs:1000,autoApplyToBilling:true,receiptFlowVersion:'gross_expense_reimbursement_50_v1'}]},15000);
+  assertBalance({expenses:[{...expense,amount:60000}]},30000);
+  assertBalance({expenses:[{...expense,deleted:true}]},0);
+});

@@ -1092,7 +1092,7 @@ function automaticExpenseBillingImpactTotal(sourceExpenses = expenses, baseline 
     .filter(item => !movementIsDeleted(item))
     .filter(item => recordTimestampMs(item) > baseline)
     .filter(expenseUsesAutomaticBilling50)
-    .reduce((sum, item) => sum + (Number(item.amount || 0) * 0.50), 0);
+    .reduce((sum, item) => sum + (Number(item.amount || 0) * (item.receiptFlowVersion === "gross_expense_driver_debit_50_v2" ? -0.50 : 0.50)), 0);
 }
 function isAdminSettlementDebt(item = {}) {
   const type = String(item.type || item.debtType || "").toLowerCase();
@@ -1937,7 +1937,7 @@ function buildUnifiedReceipts(order = "newest") {
       detail: `${item.detail || "Gasto"} · Explora reconoce 50%: ${money(Number(item.amount || 0) * 0.5)}`,
       _sortPriority: 2
       };
-      if (item.receiptFlowVersion !== "gross_expense_reimbursement_50_v1") return [expense];
+      if (!["gross_expense_reimbursement_50_v1","gross_expense_driver_debit_50_v2"].includes(item.receiptFlowVersion)) return [expense];
       return [expense, {
         ...expense,
         id:`${item.id}_reimbursement_50`,
@@ -2373,10 +2373,10 @@ function receiptBalanceSnapshot(item = {}) {
     const intermediate = start + principal * (item.method === "cash" ? 1 : -1);
     if (item.type === "cashbox_receipt") start = intermediate;
     else finish = intermediate;
-  } else if (item.receiptFlowVersion === "gross_expense_reimbursement_50_v1" && ["expense_receipt", "expense_reimbursement_receipt"].includes(item.type)) {
+  } else if (["gross_expense_reimbursement_50_v1","gross_expense_driver_debit_50_v2"].includes(item.receiptFlowVersion) && ["expense_receipt", "expense_reimbursement_receipt"].includes(item.type)) {
     const grossExpense = Number(item.type === "expense_reimbursement_receipt" ? item._expenseGrossAmount : item.amount);
     if (!Number.isFinite(grossExpense)) return null;
-    const intermediate = start - grossExpense;
+    const intermediate = start + grossExpense * (item.receiptFlowVersion === "gross_expense_driver_debit_50_v2" ? 1 : -1);
     if (item.type === "expense_reimbursement_receipt") start = intermediate;
     else finish = intermediate;
   } else if (item.type === "cashbox_receipt") return null;
@@ -2474,7 +2474,7 @@ function renderList(containerId, items) {
     const strip = snapshot
       ? `<div class="movement-balances" aria-label="Saldo histórico de esta operación">
           <div><span>Antes</span><p>${escapeHtml(receiptBalanceLabel(snapshot.before))}</p></div>
-          <div><span>Impacto</span><strong class="${impact > 0 ? "positive" : impact < 0 ? "negative" : "neutral"}">${impact > 0 ? "+" : impact < 0 ? "−" : ""}${money(Math.abs(impact))}</strong></div>
+          <div><span>Impacto</span><strong class="${expenseReceipt ? "negative" : expenseReimbursement ? "positive" : impact > 0 ? "positive" : impact < 0 ? "negative" : "neutral"}">${impact > 0 ? "+" : impact < 0 ? "−" : ""}${money(Math.abs(impact))}</strong></div>
           <div><span>Después</span><p>${escapeHtml(receiptBalanceLabel(snapshot.after))}</p></div>
         </div>`
       : `<div class="movement-no-snapshot"><span>${cashboxReceipt ? "Incluida en el cobro · a favor de Explora" : cashAdvance ? "Adelanto · cuenta separada" : "Saldo histórico no disponible"}</span><strong>${money(item.amount)}</strong></div>`;
@@ -4412,10 +4412,10 @@ function previewDefinition(kind, amount, details = {}) {
     },
     expense: {
       title: "Confirmar gasto",
-      subtitle: "Explora reconoce automáticamente el 50% del gasto.",
+      subtitle: "El gasto suma el 100% y el reintegro resta el 50%.",
       amountLabel: "Gasto total",
-      impactLabel: "Explora reconoce 50%",
-      delta: value * -0.50,
+      impactLabel: "Impacto total del gasto y reintegro",
+      delta: value * 0.50,
       notice: "Al confirmar el gasto impactará en el saldo y se enviará a Telegram.",
       confirmLabel: "Confirmar gasto"
     },
@@ -5378,7 +5378,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
     const settlementBeforeExpense = settlementModel();
     const recognizedExpense = amount * 0.50;
     expenseBeforeBalance = settlementBeforeExpense.balance;
-    const rawAfterBalance = expenseBeforeBalance - recognizedExpense;
+    const rawAfterBalance = expenseBeforeBalance + recognizedExpense;
     expenseAfterBalance = Math.abs(rawAfterBalance) > 0.5 ? rawAfterBalance : 0;
 
     // IMPORTANTE: no hacemos transaction.get(expenseRef) antes de crear el gasto.
@@ -5418,7 +5418,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
       autoApplyToBilling: true,
       gastoAuto50: true,
       billingImpactMode: "auto_50",
-      receiptFlowVersion: "gross_expense_reimbursement_50_v1",
+      receiptFlowVersion: "gross_expense_driver_debit_50_v2",
       billingImpactAmount: recognizedExpense,
       // Telegram recibe el gasto nuevo, el 50% reconocido y el saldo final de facturación.
       telegramExpenseLoadedAmount: amount,
@@ -5463,7 +5463,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
         const committedSnapshot = await getDoc(expenseRef);
         const committedData = committedSnapshot.exists() ? committedSnapshot.data() : {};
         expenseBeforeBalance = Number(committedData.telegramSettlementBeforeBalance ?? expenseBeforeBalance ?? 0);
-        expenseAfterBalance = Number(committedData.telegramSettlementAfterBalance ?? (expenseBeforeBalance - amount * 0.50));
+        expenseAfterBalance = Number(committedData.telegramSettlementAfterBalance ?? (expenseBeforeBalance + amount * 0.50));
       } catch (_) {}
       closeModalAndGoTop("expenseModal", 1200);
     } else {
@@ -6308,10 +6308,10 @@ $("managementForm").addEventListener("submit", async event => {
 function renderExpensePreview() {
   const amount = parseMoneyInput($("expenseAmount").value) || 0;
   const before = settlementModel().balance;
-  const intermediate = normalizedSettlementBalance(before - amount);
-  const after = normalizedSettlementBalance(before - amount * 0.5);
-  const row = (start,delta,end) => '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(start))+'</small></div><div><span>Impacto</span><strong class="'+(delta < 0 ? "negative" : "positive")+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(end))+'</small></div>';
-  $("expenseGrossPreview").innerHTML = row(before,-amount,intermediate);
-  $("expenseRefundPreview").innerHTML = row(intermediate,amount * 0.5,after);
+  const intermediate = normalizedSettlementBalance(before + amount);
+  const after = normalizedSettlementBalance(before + amount * 0.5);
+  const row = (start,delta,end) => '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(start))+'</small></div><div><span>Impacto</span><strong class="'+(delta > 0 ? "negative" : "positive")+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(end))+'</small></div>';
+  $("expenseGrossPreview").innerHTML = row(before,amount,intermediate);
+  $("expenseRefundPreview").innerHTML = row(intermediate,-amount * 0.5,after);
 }
 $("expenseAmount").addEventListener("input", renderExpensePreview);

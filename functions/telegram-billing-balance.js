@@ -384,10 +384,11 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
   }
 
   let expenseTotal = 0;
+  let newExpenseTotal = 0;
   for (const expense of expenses || []) {
     if (!expense || movementIsDeleted(expense) || isSimulated(expense)) continue;
     const amount = amountOf(expense);
-    if (amount > 0) expenseTotal += amount;
+    if (amount > 0) { expenseTotal += amount; if (expense.receiptFlowVersion === "gross_expense_driver_debit_50_v2") newExpenseTotal += amount; }
   }
 
   let adminDebtTotal = 0;
@@ -417,7 +418,7 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
   // El chofer paga el gasto y Explora reconoce el 50%, por eso ese 50%
   // se suma al saldo a favor del chofer antes de aplicar pagos de cierre.
   const newPrincipalDelta = grossFlowPrincipalDelta(records.filter(item => item?.excludeFromBillingSettlement !== true && item?.internalSettlementAdjustment !== true));
-  const netBeforePayments = roundMoney(netBeforeCashboxToDriver - cashboxTotal + expenseShare - adminDebtTotal - newPrincipalDelta);
+  const netBeforePayments = roundMoney(netBeforeCashboxToDriver - cashboxTotal + expenseShare - newExpenseTotal - adminDebtTotal - newPrincipalDelta);
 
   driverSettlementTotal = roundMoney(driverSettlementTotal);
   exploraSettlementTotal = roundMoney(exploraSettlementTotal);
@@ -473,7 +474,7 @@ function teamAutomaticExpenseImpact(expenses = [], cutoffMs = 0) {
     .filter(item => item && !movementIsDeleted(item) && !isSimulated(item))
     .filter(item => rowMs(item) > cutoffMs)
     .filter(teamExpenseUsesAutomaticBilling50)
-    .reduce((sum, item) => sum + (amountOf(item) * 0.50), 0));
+    .reduce((sum, item) => sum + (amountOf(item) * (item.receiptFlowVersion === "gross_expense_driver_debit_50_v2" ? -0.50 : 0.50)), 0));
 }
 
 function latestTeamReimbursementAnchor(records = [], baseline = 0) {
