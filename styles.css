@@ -7212,8 +7212,6 @@ body.proof-image-viewer-open {
 .driver-nav [data-driver-nav="home"][aria-current] svg { fill: currentColor; }
 .driver-profile-card { color: #0b104b; }
 #driverProfileName { margin: 22px 0 6px; font-size: 23px; font-weight: 700; }
-#driverProfileEmail { color: #7283a6; overflow-wrap: anywhere; }
-.driver-profile-role { display: block; margin: 16px 0 28px; color: #7283a6; font-size: 13px; }
 #driverProfileModal #logoutBtn { width: 100%; min-height: 46px; }
 .driver-view button:focus-visible, .driver-view select:focus-visible, .driver-view summary:focus-visible { outline: 3px solid #408ff5; outline-offset: 3px; }
 @media (max-width: 600px) {
