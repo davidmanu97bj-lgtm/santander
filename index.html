@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#050505" />
+  <meta name="theme-color" content="#ffffff" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Explora" />
-  <link rel="manifest" href="./manifest.json?v=20260824-1" />
-  <link rel="apple-touch-icon" href="./icon-192.png" />
-  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+  <link rel="manifest" href="./manifest.json?v=20260913-identidad-explora" />
+  <link rel="apple-touch-icon" href="./icon-192.png?v=20260913-identidad-explora" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png?v=20260913-identidad-explora" />
   <title>Explora — Control operativo</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
-  <link rel="modulepreload" href="./app.js?v=20260913-sin-aviso-uber" />
+  <link rel="modulepreload" href="./app.js?v=20260913-identidad-explora" />
   <style>
     :root{
       --bg:#f3f5f7;--panel:#ffffff;--ink:#0e1116;--muted:#737a85;--line:#e7eaee;
@@ -117,12 +117,12 @@
       .service-option{min-height:80px;padding:13px 11px}.service-option strong{font-size:12px}.service-option span{font-size:16px}
     }
   </style>
-  <link rel="stylesheet" href="./styles.css?v=20260913-sin-aviso-uber" />
+  <link rel="stylesheet" href="./styles.css?v=20260913-identidad-explora" />
 </head>
 <body>
 <section id="splashScreen" class="splash-screen" aria-live="polite" aria-label="Cargando Explora">
   <div class="splash-content">
-    <img src="./assets/explora-logo.png" alt="Explora" class="splash-logo" />
+    <span class="explora-wordmark splash-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span>
     <div class="splash-progress" role="progressbar" aria-label="Cargando" aria-valuemin="0" aria-valuemax="100" aria-valuenow="4">
       <svg viewBox="0 0 120 120" aria-hidden="true">
         <circle class="splash-progress-track" cx="60" cy="60" r="48" pathLength="100" />
@@ -137,12 +137,12 @@
 <section id="loginScreen" class="login-screen hidden" aria-label="Ingresar a EXPLORA">
   <form id="loginForm" class="login-card" autocomplete="off">
     <div class="explora-login-brand">
-      <img src="./assets/explora-logo-login.png?v=20260826-71-login-logo-fix" alt="EXPLORA" class="explora-login-brand-image" width="997" height="312" decoding="sync" fetchpriority="high" onerror="this.onerror=null;this.src='./icon-512.png?v=20260824-2';this.style.width='128px';this.style.height='128px';this.style.objectFit='contain';this.style.margin='0 auto 12px';">
-      <p>VIAJES Y SERVICIOS</p>
+      <span class="explora-wordmark explora-login-brand-image"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span>
     </div>
+    <div class="explora-login-intro"><h1>Acceso a Explora</h1><p>Ingresá con tu usuario y clave.</p></div>
     <div class="explora-login-field">
       <label for="user">Usuario</label>
-      <input id="user" name="explora_usuario_manual" type="text" inputmode="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="marcelo" required>
+      <input id="user" name="explora_usuario_manual" type="text" inputmode="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Ingresá tu usuario" required>
     </div>
     <div class="explora-login-field">
       <label for="pass">Clave de acceso</label>
@@ -158,10 +158,9 @@
 
 <section id="app" class="app hidden">
   <header class="topbar">
-    <div class="brandline"><div class="brand-logo-shell"><img src="./assets/explora-logo.png" alt="Explora" class="explora-logo topbar-logo"></div><span id="operatorName" class="operator-greeting">Hola de nuevo!</span></div>
+    <div class="brandline"><div class="brand-logo-shell"><span class="explora-wordmark topbar-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span></div><span id="operatorName" class="operator-greeting">Hola de nuevo!</span></div>
     <div class="driver-brand" aria-label="Explora Iguazú, app del conductor">
-      <svg class="driver-brand-mark" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="falls" x2="1" y2="1"><stop stop-color="#00b4a8"/><stop offset="1" stop-color="#00677c"/></linearGradient></defs><rect x="3" y="5" width="58" height="54" rx="12" fill="url(#falls)"/><path d="M14 5c8 10-2 22 4 34M27 5c-5 13 0 22 4 37M39 5c-8 20 1 29 5 40M51 5c-6 17-4 30 3 43" fill="none" stroke="white" stroke-width="4"/><path d="M3 40c20-9 31 18 58 14v5H15A12 12 0 0 1 3 47Z" fill="#0b174b"/><path d="M3 41c23-2 31 21 58 13-25 16-33-5-58-8Z" fill="#5be1d7"/></svg>
-      <div><strong>Explora Iguazú</strong><span>App del conductor</span></div>
+      <span class="explora-wordmark driver-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span>
     </div>
     <button id="driverProfileBtn" class="driver-profile-button" type="button" aria-label="Abrir perfil"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg></button>
   </header>
@@ -226,7 +225,7 @@
         <button id="addExpenseBtn" type="button" class="driver-action tone-expense"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21V3h11v18M2 21h14M3 10h11M14 8h2l3 3v6a2 2 0 0 0 4 0V8l-4-4M20 5v4h3"/></svg><span>Cargar<br>gasto</span></button>
         <button id="closeDayBtn" type="button" class="driver-action tone-close" aria-label="Gestión"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m7 12 3 3 7-7"/></svg><span>Gestión</span></button>
       </section>
-      <button id="addUberBtn" class="driver-uber-action hidden" type="button"><span class="uber-action-icon" aria-hidden="true">U</span><span>Liquidar UBER de la semana</span><b id="uberPendingBadge" class="hidden" aria-hidden="true">0</b><span class="uber-action-arrow" aria-hidden="true">›</span></button>
+      <button id="addUberBtn" class="driver-uber-action hidden" type="button"><img class="uber-action-icon" src="./assets/uber-logo.svg?v=20260913-identidad-explora" alt="" width="60" height="21"><span>Liquidar UBER de la semana</span><b id="uberPendingBadge" class="hidden" aria-hidden="true">0</b><span class="uber-action-arrow" aria-hidden="true">›</span></button>
       <div class="driver-other-actions">
         <span id="advanceBox"><button id="requestAdvanceBtn" type="button">Pedir adelanto <span aria-hidden="true">↗</span></button></span>
       </div>
@@ -283,7 +282,7 @@
 </div>
 <div id="chargeModal" class="modal charge-screen hidden" role="dialog" aria-modal="true" aria-labelledby="chargeTitle">
   <div class="modal-card charge-screen-card">
-    <div class="charge-brand"><strong>Explora Iguazú</strong><span>App del conductor</span></div>
+    <div class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span></div>
     <button class="charge-back" type="button" data-close="chargeModal">‹ Cobros</button>
     <div class="charge-heading"><span id="chargeIcon" class="charge-icon" aria-hidden="true"></span><div><h2 id="chargeTitle">Nuevo cobro</h2><p id="chargeIntro"></p></div></div>
     <form id="chargeForm" novalidate><div id="chargeStepLabel" class="charge-step-label" role="status" aria-live="polite"></div><div class="charge-step-track" aria-hidden="true"><span></span><span></span><span></span><span></span></div><section data-charge-step="0" class="charge-step">
@@ -391,7 +390,7 @@
 
       <div id="driverCreateFields">
         <div class="field"><label for="newDriverName">Nombre del chofer</label><input id="newDriverName" autocomplete="off" required></div>
-        <div class="field"><label for="newDriverUsername">ID de acceso</label><input id="newDriverUsername" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="ej. marcelo" required></div>
+        <div class="field"><label for="newDriverUsername">ID de acceso</label><input id="newDriverUsername" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="ej. usuario" required></div>
         <div class="field"><label for="newDriverPassword">Clave inicial</label><input id="newDriverPassword" type="password" autocomplete="new-password" minlength="6" required></div>
       </div>
 
@@ -475,7 +474,7 @@
   </div>
 </div>
 
-<div id="expenseModal" class="modal hidden" data-tone="expense" role="dialog" aria-modal="true" aria-labelledby="expenseTitle"><div class="charge-screen-card"><header class="charge-brand"><strong>Explora Iguazú</strong><span>App del conductor</span></header><button type="button" class="charge-back" data-close="expenseModal">‹ Inicio</button><div class="charge-heading"><span class="charge-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 21V3h10v18M4 10h10M2 21h14M14 7h2l4 4v7a1 1 0 0 0 2 0V8l-4-4"/></svg></span><div><h2 id="expenseTitle">Cargar gasto</h2><p>Explora reconoce el 50% del gasto registrado.</p></div></div><form id="expenseForm"><section class="charge-panel"><h3>Tipo de gasto</h3><div class="expense-quick-options" aria-label="Motivos frecuentes del gasto"><button type="button" class="expense-quick-option" data-expense-detail="Combustible" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V3h10v18M4 10h10M2 21h14M14 7h2l4 4v7a1 1 0 0 0 2 0V8l-4-4"/></svg><span>Combustible</span></button><button type="button" class="expense-quick-option" data-expense-detail="Lavadero" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 2-6h12l2 6M3 12h18v7H3zM6 19v2M18 19v2M6 15h2M16 15h2M5 2v1M12 1v2M19 2v1"/></svg><span>Lavadero</span></button><button type="button" class="expense-quick-option" data-expense-detail="Otro" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>Otro</span></button></div><div class="field"><label for="expenseAmount">Monto del gasto</label><div class="money-entry"><span>$</span><input id="expenseAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div></div><div class="field"><label for="expenseDetail">Detalle</label><input id="expenseDetail" placeholder="Ej. Carga en YPF" required></div></section><section class="charge-panel"><h3>Foto del comprobante obligatoria</h3>        <div class="photo-source-picker" data-photo-picker="expense">
+<div id="expenseModal" class="modal hidden" data-tone="expense" role="dialog" aria-modal="true" aria-labelledby="expenseTitle"><div class="charge-screen-card"><header class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span></header><button type="button" class="charge-back" data-close="expenseModal">‹ Inicio</button><div class="charge-heading"><span class="charge-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 21V3h10v18M4 10h10M2 21h14M14 7h2l4 4v7a1 1 0 0 0 2 0V8l-4-4"/></svg></span><div><h2 id="expenseTitle">Cargar gasto</h2><p>Explora reconoce el 50% del gasto registrado.</p></div></div><form id="expenseForm"><section class="charge-panel"><h3>Tipo de gasto</h3><div class="expense-quick-options" aria-label="Motivos frecuentes del gasto"><button type="button" class="expense-quick-option" data-expense-detail="Combustible" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V3h10v18M4 10h10M2 21h14M14 7h2l4 4v7a1 1 0 0 0 2 0V8l-4-4"/></svg><span>Combustible</span></button><button type="button" class="expense-quick-option" data-expense-detail="Lavadero" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 2-6h12l2 6M3 12h18v7H3zM6 19v2M18 19v2M6 15h2M16 15h2M5 2v1M12 1v2M19 2v1"/></svg><span>Lavadero</span></button><button type="button" class="expense-quick-option" data-expense-detail="Otro" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>Otro</span></button></div><div class="field"><label for="expenseAmount">Monto del gasto</label><div class="money-entry"><span>$</span><input id="expenseAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div></div><div class="field"><label for="expenseDetail">Detalle</label><input id="expenseDetail" placeholder="Ej. Carga en YPF" required></div></section><section class="charge-panel"><h3>Foto del comprobante obligatoria</h3>        <div class="photo-source-picker" data-photo-picker="expense">
           <div class="photo-source-actions" aria-label="Elegir origen de la foto">
             <button type="button" class="photo-source-action camera" data-photo-input="expenseProofCamera">Sacar foto con la cámara</button>
             <button type="button" class="photo-source-action gallery" data-photo-input="expenseProof">Subir foto de galería</button>
@@ -538,9 +537,9 @@
 
 <div id="uberModal" class="modal hidden" data-tone="cash" role="dialog" aria-modal="true" aria-labelledby="uberTitle">
   <div class="modal-card charge-screen-card">
-    <div class="charge-brand"><strong>Explora Iguazú</strong><span>App del conductor</span></div>
+    <div class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span></div>
     <button class="charge-back" type="button" data-close="uberModal">‹ Inicio</button>
-    <div class="charge-heading"><span class="charge-icon uber-heading-icon" aria-hidden="true">U</span><div><h2 id="uberTitle">Liquidar UBER</h2><p id="uberWeekCaption"></p></div></div>
+    <div class="charge-heading"><span class="charge-icon uber-heading-icon" aria-hidden="true"><img src="./assets/uber-logo.svg?v=20260913-identidad-explora" alt="" width="72" height="25"></span><div><h2 id="uberTitle">Liquidar UBER</h2><p id="uberWeekCaption"></p></div></div>
     <form id="uberForm" novalidate>
       <div id="uberStepLabel" class="charge-step-label" role="status" aria-live="polite"></div>
       <div id="uberStepTrack" class="charge-step-track" aria-hidden="true"></div>
@@ -666,7 +665,7 @@
   </div>
 </div>
 
-<div id="managementModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="managementTitle"><div class="charge-screen-card"><header class="charge-brand"><strong>Explora Iguazú</strong><span>App del conductor</span></header><button type="button" class="charge-back" data-close="managementModal">‹ Inicio</button><h2 id="managementTitle">Gestión</h2><div id="managementChoices"><button type="button" id="managementPay" class="management-action management-pay"><span class="management-action-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></span><span class="management-action-copy"><strong>Pagar a Explora</strong><small>Registrar dinero entregado</small></span><span class="management-chevron" aria-hidden="true">›</span></button><button type="button" id="managementCollect" class="management-action management-collect"><span class="management-action-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 7 7 17M7 7v10h10"/></svg></span><span class="management-action-copy"><strong>Cobrar a Explora</strong><small>Registrar dinero recibido</small></span><span class="management-chevron" aria-hidden="true">›</span></button></div><form id="managementForm" class="hidden"><button type="button" id="managementBack" class="charge-back">‹ Gestión</button><p id="managementIntro"></p><section class="charge-panel"><div class="field"><label for="managementAmount">Importe</label><div class="money-entry"><span>$</span><input id="managementAmount" type="text" inputmode="numeric" data-money-input required placeholder="0" autocomplete="off"></div></div><div class="field"><label for="managementNote">Nota (opcional)</label><input id="managementNote" maxlength="300"></div></section><section class="charge-panel management-proof-panel"><h3>Comprobante obligatorio</h3><p class="file-note">Adjuntá una foto del comprobante. Máximo 15 MB.</p><div class="photo-source-picker" data-photo-picker="management"><div class="photo-source-actions" aria-label="Elegir comprobante"><button type="button" class="photo-source-action camera" data-photo-input="managementProofCamera"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h4l2-3h4l2 3h4a2 2 0 0 1 2 2v11H2V8a2 2 0 0 1 2-2Z"/><circle cx="12" cy="12" r="4"/></svg><span>Sacar foto<small>Usar la cámara</small></span><b aria-hidden="true">›</b></button><button type="button" class="photo-source-action gallery" data-photo-input="managementProofGallery"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></svg><span>Fotos / Galería<small>Elegir una foto</small></span><b aria-hidden="true">›</b></button></div><input id="managementProofCamera" class="photo-source-input" type="file" accept="image/*" capture="environment" data-photo-source="camera" tabindex="-1"><input id="managementProofGallery" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1"><div class="photo-source-selection" data-photo-selection aria-live="polite">Ningún comprobante seleccionado.</div></div></section><section class="charge-panel"><h3>Resultado en tu cuenta</h3><div id="managementPreview" class="charge-account" aria-live="polite"></div></section><p class="file-note">Operación interna · Sin caja chica ni factura ARCA.</p><button id="managementConfirm" class="btn primary" type="submit">Confirmar</button><div id="managementStatus" class="status" role="status"></div></form></div></div>
+<div id="managementModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="managementTitle"><div class="charge-screen-card"><header class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span></header><button type="button" class="charge-back" data-close="managementModal">‹ Inicio</button><h2 id="managementTitle">Gestión</h2><div id="managementChoices"><button type="button" id="managementPay" class="management-action management-pay"><span class="management-action-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></span><span class="management-action-copy"><strong>Pagar a Explora</strong><small>Registrar dinero entregado</small></span><span class="management-chevron" aria-hidden="true">›</span></button><button type="button" id="managementCollect" class="management-action management-collect"><span class="management-action-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 7 7 17M7 7v10h10"/></svg></span><span class="management-action-copy"><strong>Cobrar a Explora</strong><small>Registrar dinero recibido</small></span><span class="management-chevron" aria-hidden="true">›</span></button></div><form id="managementForm" class="hidden"><button type="button" id="managementBack" class="charge-back">‹ Gestión</button><p id="managementIntro"></p><section class="charge-panel"><div class="field"><label for="managementAmount">Importe</label><div class="money-entry"><span>$</span><input id="managementAmount" type="text" inputmode="numeric" data-money-input required placeholder="0" autocomplete="off"></div></div><div class="field"><label for="managementNote">Nota (opcional)</label><input id="managementNote" maxlength="300"></div></section><section class="charge-panel management-proof-panel"><h3>Comprobante obligatorio</h3><p class="file-note">Adjuntá una foto del comprobante. Máximo 15 MB.</p><div class="photo-source-picker" data-photo-picker="management"><div class="photo-source-actions" aria-label="Elegir comprobante"><button type="button" class="photo-source-action camera" data-photo-input="managementProofCamera"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h4l2-3h4l2 3h4a2 2 0 0 1 2 2v11H2V8a2 2 0 0 1 2-2Z"/><circle cx="12" cy="12" r="4"/></svg><span>Sacar foto<small>Usar la cámara</small></span><b aria-hidden="true">›</b></button><button type="button" class="photo-source-action gallery" data-photo-input="managementProofGallery"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></svg><span>Fotos / Galería<small>Elegir una foto</small></span><b aria-hidden="true">›</b></button></div><input id="managementProofCamera" class="photo-source-input" type="file" accept="image/*" capture="environment" data-photo-source="camera" tabindex="-1"><input id="managementProofGallery" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1"><div class="photo-source-selection" data-photo-selection aria-live="polite">Ningún comprobante seleccionado.</div></div></section><section class="charge-panel"><h3>Resultado en tu cuenta</h3><div id="managementPreview" class="charge-account" aria-live="polite"></div></section><p class="file-note">Operación interna · Sin caja chica ni factura ARCA.</p><button id="managementConfirm" class="btn primary" type="submit">Confirmar</button><div id="managementStatus" class="status" role="status"></div></form></div></div>
 <div id="closeModal" class="modal hidden">
   <div class="modal-card">
     <div class="modal-head"><h2 id="closeModalTitle">Pedir cierre</h2><button class="x" data-close="closeModal">×</button></div>
@@ -798,6 +797,6 @@
   </script>
 
 
-<script type="module" src="./app.js?v=20260913-sin-aviso-uber"></script>
+<script type="module" src="./app.js?v=20260913-identidad-explora"></script>
 </body>
 </html>

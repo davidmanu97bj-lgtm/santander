@@ -60,9 +60,7 @@ button { touch-action: manipulation; }
     max(24px, env(safe-area-inset-top))
     24px
     max(24px, env(safe-area-inset-bottom));
-  background:
-    radial-gradient(circle at 50% 48%, rgba(29, 136, 80, .055), transparent 31rem),
-    #020303;
+  background: #fff;
   opacity: 1;
   transition: opacity .22s ease;
 }
@@ -109,10 +107,10 @@ button { touch-action: manipulation; }
   stroke-width: 8;
 }
 
-.splash-progress-track { stroke: #0b2417; }
+.splash-progress-track { stroke: #edf0f3; }
 
 .splash-progress-arc {
-  stroke: #36df7b;
+  stroke: #303a49;
   stroke-linecap: round;
   stroke-dasharray: 100;
   stroke-dashoffset: 96;
@@ -122,7 +120,7 @@ button { touch-action: manipulation; }
 }
 
 .splash-progress-dot {
-  fill: #68f49f;
+  fill: #303a49;
   transition: cx .18s ease-out, cy .18s ease-out;
 }
 
@@ -3131,118 +3129,54 @@ a.proof:hover { background: #e3e7f0; }
   }
 }
 
-/* Login EXPLORA: réplica visual del proyecto Santander anterior */
-.login-screen{
-  position:fixed;
-  inset:0;
-  z-index:4000;
-  min-height:100dvh;
-  overflow-y:auto;
-  padding:max(22px,env(safe-area-inset-top)) 18px max(22px,env(safe-area-inset-bottom));
-  background:
-    radial-gradient(circle at 15% 0%,rgba(212,175,55,.14),transparent 34%),
-    linear-gradient(180deg,#050607,#010203);
-  color:#fff;
-  place-items:center;
+/* Acceso con la identidad actual de Explora. */
+.login-screen {
+  position:fixed; inset:0; z-index:4000; min-height:100dvh; overflow-y:auto;
+  padding:max(24px,env(safe-area-inset-top)) 18px max(24px,env(safe-area-inset-bottom));
+  background:#fff; color:#171c2b; place-items:center; color-scheme:light;
 }
-.login-screen:not(.hidden){display:grid!important}
-.login-screen.hidden{display:none!important}
-.login-card{
-  width:min(100%,420px)!important;
-  border:1px solid rgba(255,255,255,.10)!important;
-  border-radius:26px!important;
-  background:linear-gradient(180deg,rgba(20,23,26,.94),rgba(8,10,12,.98))!important;
-  box-shadow:0 24px 80px rgba(0,0,0,.48),inset 0 1px 0 rgba(255,255,255,.035)!important;
-  padding:24px!important;
-  backdrop-filter:none!important;
-  -webkit-backdrop-filter:none!important;
+.login-screen:not(.hidden) { display:grid!important; }
+.login-screen.hidden { display:none!important; }
+.login-card {
+  width:min(100%,432px)!important; padding:36px!important;
+  border:1px solid #e5e8ed!important; border-radius:22px!important;
+  background:#fff!important; box-shadow:0 14px 48px #17202e08!important;
+  backdrop-filter:none!important; -webkit-backdrop-filter:none!important;
 }
-.explora-login-brand{text-align:center;margin-bottom:24px;isolation:isolate}
-.explora-login-brand-image{
-  display:block;
-  width:min(100%,310px);
-  max-width:100%;
-  height:auto;
-  object-fit:contain;
-  object-position:center;
-  margin:0 auto 8px;
-  filter:drop-shadow(0 8px 24px rgba(205,154,48,.16));
-  user-select:none;
-  -webkit-user-drag:none;
+.explora-login-brand { display:flex; justify-content:center; margin:2px 0 32px; }
+.explora-login-brand-image { width:100%; max-width:290px; }
+.explora-login-intro { margin-bottom:28px; text-align:left; }
+.explora-login-intro h1 { margin:0; color:#151922; font-size:24px; font-weight:650; letter-spacing:-.6px; line-height:1.3; }
+.explora-login-intro p { margin:8px 0 0; color:#717783; font-size:14px; font-weight:400; line-height:1.5; }
+.explora-login-field { margin:18px 0; }
+.explora-login-field label { display:block; color:#343a46; font-size:14px; font-weight:550; margin-bottom:9px; }
+.explora-login-field input {
+  width:100%; min-height:52px; border:1px solid #dce1e7!important; border-radius:11px!important;
+  background:#fff!important; color:#171c2b!important; outline:none; padding:13px 14px!important;
+  font-size:16px!important; font-weight:400; box-shadow:none!important; -webkit-text-fill-color:#171c2b;
+  transition:border-color .15s,box-shadow .15s;
 }
-.explora-login-brand p{
-  margin:8px 0 0;
-  color:#d7b66a;
-  font-size:10px;
-  letter-spacing:.30em;
-  margin-left:.30em;
-  font-weight:800;
+.explora-login-field input::placeholder { color:#9197a1; -webkit-text-fill-color:#9197a1; opacity:1; }
+.explora-login-field input:focus { border-color:#747e8b!important; box-shadow:0 0 0 3px #18223509!important; }
+.explora-login-field input:autofill { -webkit-text-fill-color:#171c2b; box-shadow:0 0 0 100px #fff inset!important; }
+.explora-password-wrap { position:relative; display:flex; align-items:center; }
+.explora-password-wrap input { padding-right:74px!important; }
+.explora-password-toggle {
+  position:absolute; right:6px; top:50%; transform:translateY(-50%); min-width:56px; height:40px;
+  border:0; border-radius:8px; background:transparent; color:#5e6877; font-size:13px; font-weight:600;
+  cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent;
 }
-.explora-login-field{margin:14px 0}
-.explora-login-field label{
-  display:block;
-  color:#c9cdd2;
-  font-size:14px;
-  font-weight:750;
-  margin-bottom:8px;
+.explora-password-toggle:hover { background:#f3f5f7; }
+.explora-login-submit {
+  width:100%; min-height:52px; margin-top:10px; border:0; border-radius:11px;
+  background:#171c26; color:#fff; font-size:16px; font-weight:600; cursor:pointer; transition:background .15s;
 }
-.explora-login-field input{
-  width:100%;
-  min-height:54px;
-  border:1px solid rgba(255,255,255,.10)!important;
-  border-radius:15px!important;
-  background:rgba(0,0,0,.23)!important;
-  color:#fff!important;
-  outline:none;
-  padding:12px 14px!important;
-  font-size:16px!important;
-  box-shadow:none!important;
-  -webkit-text-fill-color:#fff;
-}
-.explora-login-field input::placeholder{color:#8d9298;opacity:1}
-.explora-login-field input:focus{
-  border-color:rgba(245,185,66,.45)!important;
-  box-shadow:0 0 0 3px rgba(245,185,66,.08)!important;
-}
-.explora-password-wrap{position:relative;display:flex;align-items:center}
-.explora-password-wrap input{padding-right:74px!important}
-.explora-password-toggle{
-  position:absolute;
-  right:8px;
-  top:50%;
-  transform:translateY(-50%);
-  min-width:56px;
-  height:38px;
-  border:0;
-  border-radius:12px;
-  background:rgba(245,185,66,.12);
-  color:#f3c45d;
-  font-weight:850;
-  cursor:pointer;
-  touch-action:manipulation;
-  -webkit-tap-highlight-color:transparent;
-}
-.explora-login-submit{
-  width:100%;
-  min-height:56px;
-  margin-top:12px;
-  border:0;
-  border-radius:16px;
-  background:linear-gradient(180deg,#ffc848,#f0a927);
-  color:#15100a;
-  font-size:17px;
-  font-weight:950;
-  cursor:pointer;
-}
-.explora-login-submit:disabled{opacity:.65;cursor:not-allowed}
-.explora-login-msg{
-  min-height:22px;
-  margin-top:12px;
-  color:#ffb4b4;
-  line-height:1.35;
-  font-size:14px;
-}
-@media(max-width:390px){.explora-login-brand-image{width:min(100%,270px)}}
+.explora-login-submit:hover { background:#303947; }
+.explora-login-submit:focus-visible, .explora-password-toggle:focus-visible { outline:2px solid #687586; outline-offset:3px; }
+.explora-login-submit:disabled { opacity:.65; cursor:not-allowed; }
+.explora-login-msg { min-height:0; margin-top:16px; color:#b42318; line-height:1.4; font-size:14px; }
+.explora-login-msg:empty { display:none; }
+@media(max-width:480px) { .login-card { padding:28px 24px!important; } .explora-login-brand-image { max-width:260px; } }
 
 @media (max-width: 560px) {
   .brandline { gap: 9px; }
@@ -3994,13 +3928,13 @@ a.proof:hover { background: #e3e7f0; }
 /* === iOS: cubrir toda la pantalla del login y evitar franja blanca inferior === */
 html {
   min-height: 100%;
-  background: #010203 !important;
+  background: #fff !important;
 }
 
 body {
   min-height: 100vh;
   min-height: 100dvh;
-  background: #010203;
+  background: #fff;
   overscroll-behavior-y: none;
 }
 
@@ -4011,9 +3945,7 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   bottom: 0;
-  background:
-    radial-gradient(circle at 15% 0%, rgba(212,175,55,.14), transparent 34%),
-    linear-gradient(180deg, #050607 0%, #010203 100%) !important;
+  background: #fff !important;
 }
 
 /* Al entrar a la app, recupera el fondo normal de Explora. */
@@ -7407,12 +7339,13 @@ body .money-entry input:focus { outline:none !important; border-color:transparen
 .driver-uber-action.hidden { display:none; }
 .driver-uber-action:hover { border-color:#8bcbb0; background:#edf9f2; }
 .driver-uber-action:focus-visible { outline:2px solid #008b5c; outline-offset:3px; }
-.uber-action-icon { display:grid; place-items:center; width:30px; height:30px; border-radius:9px; background:#111b29; color:white; font-size:18px; font-weight:700; }
+.uber-action-icon { display:block; width:54px; height:auto; flex:0 0 54px; object-fit:contain; }
 .uber-action-arrow { margin-left:auto; color:#738b81; font-size:26px; }
 #uberModal form { display:grid; gap:14px; }
 #uberModal [data-uber-step].hidden { display:none; }
 #uberModal .charge-heading h2 { font-size:clamp(25px,5vw,36px); }
-#uberModal .uber-heading-icon { font-weight:750; font-size:36px; background:#111b29; color:white; }
+#uberModal .uber-heading-icon { background:transparent; border-radius:0; color:#000; }
+#uberModal .uber-heading-icon img { display:block; width:100%; height:auto; object-fit:contain; }
 #uberModal .modal-actions { display:grid; grid-template-columns:auto 1fr; gap:12px; }
 #uberModal #saveUberBtn { background:var(--charge-accent); color:#fff; border:0; border-radius:15px; min-height:56px; font-size:19px; }
 #uberModal .photo-source-action { display:flex; align-items:center; justify-content:center; gap:10px; padding:18px 12px; border-radius:14px; min-height:80px; }
@@ -7431,3 +7364,16 @@ body .money-entry input:focus { outline:none !important; border-color:transparen
 .uber-scan-example.hidden { display:none; }
 .uber-scan-example > p { font-size:14px; color:#64779f; }
 .uber-scan-example > button { width:100%; margin-top:14px; }
+
+/* One original wordmark, framed without changing its artwork. */
+.explora-wordmark { position:relative; display:block; aspect-ratio:1849 / 538; overflow:hidden; flex-shrink:0; }
+.explora-wordmark > img { position:absolute; left:-1.731%; top:-27.138%; width:105.03%; max-width:none; height:auto; display:block; user-select:none; -webkit-user-drag:none; }
+.explora-wordmark.splash-logo { width:min(78vw,380px); filter:none; }
+.splash-progress { width:44px; height:44px; margin-top:32px; filter:none; }
+.splash-content p { color:#687180; font-size:13px; font-weight:500; letter-spacing:.02em; margin-top:16px; }
+.driver-brand-logo { width:240px; max-width:100%; }
+.charge-brand-logo { width:210px; max-width:100%; }
+.topbar-logo { width:100%; }
+#app:not(.driver-view) .topbar { background:#fff; border-bottom:1px solid #e5e8ed; box-shadow:0 4px 16px #17202e05; }
+#app:not(.driver-view) .operator-greeting { color:#343a46; font-weight:600; }
+@media(max-width:480px) { .driver-brand-logo { width:min(220px,62vw); } .charge-brand-logo { width:195px; } }
