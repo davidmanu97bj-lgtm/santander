@@ -2505,7 +2505,6 @@ function openDriverProfile(opener) {
   if (!auth.currentUser || isAdminProfile()) return;
   driverProfileOpener = opener;
   $("driverProfileName").textContent = currentProfile?.displayName || auth.currentUser.displayName || "Conductor";
-  $("driverProfileEmail").textContent = auth.currentUser.email || "";
   $("driverProfileModal").classList.remove("hidden");
   $("driverProfileModal").querySelector("[data-close]").focus();
 }
