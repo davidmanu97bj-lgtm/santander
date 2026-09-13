@@ -40,13 +40,15 @@ export function normalizeTripDraft(input) {
   const phone = String(input.phone || '').trim().replace(/[\s().-]+/g,'');
   if (!validDay(serviceDate)) throw new Error('Elegí un día válido en Mi calendario.');
   if (!detail || detail.length > 500) throw new Error('Escribí el detalle del viaje (hasta 500 caracteres).');
-  if (!/^\+?[0-9]{7,15}$/.test(phone)) throw new Error('Ingresá un teléfono válido, con código de país si es WhatsApp.');
+  if (phone && !/^\+?[0-9]{7,15}$/.test(phone)) throw new Error('Ingresá un teléfono válido o dejá el campo vacío.');
   return {serviceDate,detail,phone};
 }
 export function tripsForDay(rows, date, driverUid = null) {
-  return rows.filter(row => row.serviceDate === date && (!driverUid || row.driverUid === driverUid))
+  return activeTrips(rows).filter(row => row.serviceDate === date && (!driverUid || row.driverUid === driverUid))
     .sort((a,b) => String(a.driverName).localeCompare(String(b.driverName),'es') || String(a.id).localeCompare(String(b.id)));
 }
+export function activeTrips(rows) { return rows.filter(row => !row.deletedAt); }
+export function canManageTrip(trip, user) { return Boolean(user?.uid && (user.isAdmin || trip.driverUid === user.uid)); }
 
 // One listener per visible month, shared by both calendars. No background polling.
 export function createMonthFeed({listen,onChange,maxCache=4}) {

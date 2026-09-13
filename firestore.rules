@@ -102,13 +102,19 @@ service cloud.firestore {
         && request.resource.data.detail.size() > 0
         && request.resource.data.detail.size() <= 500
         && request.resource.data.phone is string
-        && request.resource.data.phone.matches('[+]?[0-9]{7,15}')
+        && (request.resource.data.phone == '' || request.resource.data.phone.matches('[+]?[0-9]{7,15}'))
         && request.resource.data.idempotencyKey == tripId
         && request.resource.data.submissionFingerprint is string
         && request.resource.data.submissionFingerprint.size() > 0
         && request.resource.data.submissionFingerprint.size() <= 100
         && request.resource.data.createdAt == request.time;
-      allow update: if false;
+      allow update: if isActiveTeamViewer()
+        && (resource.data.driverUid == uid() || isAdmin())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deletedAt','deletedBy'])
+        && ((request.resource.data.keys().hasAll(['deletedAt','deletedBy'])
+            && request.resource.data.deletedAt == request.time
+            && request.resource.data.deletedBy == uid())
+          || !request.resource.data.keys().hasAny(['deletedAt','deletedBy']));
       allow delete: if isAdmin();
     }
 

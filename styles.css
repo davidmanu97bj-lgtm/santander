@@ -7462,11 +7462,13 @@ body:has(#tripCalendarModal:not(.hidden)) { overflow: hidden; }
 #tripCalendarModal .trip-day { min-width: 0; min-height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 6px 0; background: #f8fafc; border: 1px solid transparent; border-radius: 12px; color: var(--calendar-ink); box-shadow: none; }
 .trip-day-number { font-size: 15px; font-weight: 550; }
 .trip-day-count { font-size: 10px; line-height: 1; color: #287468; white-space: nowrap; }
-#tripCalendarModal .trip-day.today { border-color: #bdd9d2; }
 #tripCalendarModal .trip-day.has-trips { background: #ebf7f3; }
 #tripCalendarModal [data-calendar="all"] .trip-day.has-trips { background: #eef3fa; }
+#tripCalendarModal .trip-day.today:not([aria-pressed="true"]) { background: #fff0dc; color: #894400; border-color: #edbd73; }
 #tripCalendarModal .trip-day[aria-pressed="true"] { background: var(--calendar-accent); color: #fff; border-color: var(--calendar-accent); }
-#tripCalendarModal [data-calendar="all"] .trip-day[aria-pressed="true"] { background: #34577e; border-color: #34577e; }
+#tripCalendarModal [data-calendar="all"] .trip-day[aria-pressed="true"] { background: var(--calendar-accent); border-color: var(--calendar-accent); }
+.trip-today-label { font-size: 9px; line-height: 1; font-weight: 700; background: #ffdda2; color: #754000; border-radius: 5px; padding: 2px 4px; }
+.trip-day.today:not([aria-pressed="true"]) .trip-day-count { color: #894400; }
 .trip-day[aria-pressed="true"] .trip-day-count { color: #fff; }
 .trip-month-status { min-height: 28px; padding-top: 10px; font-size: 11px; text-align: right; color: var(--calendar-muted); }
 .trip-month-status.error, .trip-booking-status { color: #ad382f; }
@@ -7475,6 +7477,7 @@ body:has(#tripCalendarModal:not(.hidden)) { overflow: hidden; }
 .trip-booking-form h4 { font-size: 18px; }
 #calendarBookingDate { color: #537568; font-size: 13px; line-height: 1.5; text-transform: none; margin: 8px 0 20px; }
 .trip-booking-form label { display: block; margin: 16px 0 8px; font-size: 14px; font-weight: 600; color: var(--calendar-ink); }
+.trip-optional { font-weight: 400; color: var(--calendar-muted); }
 .trip-booking-form input, .trip-booking-form textarea { width: 100%; max-width: 100%; min-height: 48px; padding: 12px; border: 1px solid #d7e2df; border-radius: 11px; background: #fff; font: inherit; font-size: 16px; color: var(--calendar-ink); outline: none; }
 .trip-booking-form textarea { resize: vertical; }
 .trip-booking-form input:focus, .trip-booking-form textarea:focus { border-color: #89a49a; box-shadow: 0 0 0 3px #72968812; }
@@ -7490,6 +7493,12 @@ body:has(#tripCalendarModal:not(.hidden)) { overflow: hidden; }
 .trip-contact { flex-wrap: wrap; gap: 4px 10px; font-size: 13px; }
 .trip-contact a { color: #496485; min-height: 36px; display: inline-flex; align-items: center; text-decoration: none; }
 .trip-contact .trip-whatsapp { color: #168354; }
+.trip-delete { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 8px 10px; margin-top: 10px; border: 1px solid #eedbd8; border-radius: 10px; color: #a0443a; background: #fff; font-size: 12px !important; }
+.trip-delete svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.trip-action-notice:empty { display: none; }
+.trip-action-notice { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #e8f5ee; color: #236044; border-radius: 12px; padding: 10px 12px; margin: 10px 0; font-size: 13px; line-height: 1.5; }
+.trip-action-notice.error { background: #fff0ec; color: #a0443a; }
+.trip-action-notice button { background: #fff; color: inherit; border: 1px solid #cddfd4; border-radius: 9px; padding: 9px 12px; min-height: 40px; }
 .trip-add-for-day { background: #fff; border: 1px solid #d9e7e1; border-radius: 12px; color: #247767; padding: 12px 15px; min-height: 46px; width: 100%; margin-top: 10px; font-size: 14px !important; }
 @media (max-width: 480px) {
   .trip-calendar-panel { padding: 16px 12px; border-radius: 18px; }

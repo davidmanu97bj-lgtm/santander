@@ -1,6 +1,6 @@
 import { tourismCatalog, tourismRoute, searchTourismPlaces, tourismCountryNames } from "./tourism-catalog.js";
-import { mountTripCalendar } from "./trip-calendar.js";
-import { monthRange, normalizeTripDraft } from "./calendar-core.js";
+import { mountTripCalendar } from "./trip-calendar.js?v=20260913-calendario-detalles";
+import { monthRange, normalizeTripDraft, canManageTrip } from "./calendar-core.js?v=20260913-calendario-detalles";
 import * as firebaseSettings from "./firebase-config.js?v=20260824-15";
 
 const { firebaseConfig, BUSINESS_ID, USER_EMAIL_DOMAIN } = firebaseSettings;
@@ -13,7 +13,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
   initializeFirestore, collection, addDoc, doc, getDoc, getDocFromServer, getDocs, setDoc,
-  onSnapshot, serverTimestamp, query, where, or, orderBy, limit, writeBatch, runTransaction
+  onSnapshot, serverTimestamp, deleteField, query, where, or, orderBy, limit, writeBatch, runTransaction
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import {
   getStorage, ref, uploadBytes, getDownloadURL
@@ -2522,7 +2522,7 @@ function openDriverProfile(opener) {
 }
 $("driverProfileBtn")?.addEventListener("click", event => openDriverProfile(event.currentTarget));
 const tripCalendar = mountTripCalendar({
-  getUser: () => auth.currentUser ? {uid:auth.currentUser.uid,name:currentDriverName()} : null,
+  getUser: () => auth.currentUser ? {uid:auth.currentUser.uid,name:currentDriverName(),isAdmin:isAdminProfile()} : null,
   listenMonth(month, onRows, onError) {
     const {start,end} = monthRange(month);
     return onSnapshot(query(collection(db,"trip_calendar"),
@@ -2549,6 +2549,22 @@ const tripCalendar = mountTripCalendar({
       });
     });
     clearPendingOperation("calendar",user.uid,fingerprint,operation.operationId);
+  },
+  async setTripDeleted(id, deleted) {
+    const user = auth.currentUser && {uid:auth.currentUser.uid,isAdmin:isAdminProfile()};
+    if (!user || typeof id !== "string" || !id || id.includes("/")) throw new Error("Viaje inválido.");
+    return runTransaction(db,async transaction => {
+      const target=doc(db,"trip_calendar",id),snapshot=await transaction.get(target);
+      if (!snapshot.exists()) {
+        if (deleted) return false;
+        throw new Error("El viaje ya no está disponible.");
+      }
+      const trip=snapshot.data();
+      if (!canManageTrip(trip,user)) throw Object.assign(new Error("No podés modificar este viaje."),{code:"permission-denied"});
+      if (Boolean(trip.deletedAt) === deleted) return false;
+      transaction.update(target,deleted ? {deletedAt:serverTimestamp(),deletedBy:user.uid} : {deletedAt:deleteField(),deletedBy:deleteField()});
+      return true;
+    });
   }
 });
 $("adminCalendarBtn")?.addEventListener("click",event => tripCalendar.open(event.currentTarget));

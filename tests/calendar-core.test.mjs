@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {todayKey,validDay,shiftMonth,monthRange,monthCells,normalizeTripDraft,tripsForDay,createMonthFeed} from '../calendar-core.js';
+import {todayKey,validDay,shiftMonth,monthRange,monthCells,normalizeTripDraft,tripsForDay,activeTrips,canManageTrip,createMonthFeed} from '../calendar-core.js';
 
 test('calendar dates use Argentina, leap years and cross-year navigation',()=>{
   assert.equal(todayKey(new Date('2026-09-14T01:00:00Z')),'2026-09-13');
@@ -16,12 +16,24 @@ test('calendar dates use Argentina, leap years and cross-year navigation',()=>{
   assert.equal(monthCells('2026-02').length,35);
   assert.equal(monthCells('2028-02').filter(Boolean).length,29);
 });
-test('trip details and phone are required; names and local phone formats normalize safely',()=>{
+test('trip date/detail are required and the optional phone is validated only when provided',()=>{
   assert.deepEqual(normalizeTripDraft({serviceDate:'2026-09-14',detail:'  Aeropuerto  ',phone:'+54 (9) 3757-123456'}),{
     serviceDate:'2026-09-14',detail:'Aeropuerto',phone:'+5493757123456'});
   const base={serviceDate:'2026-09-14',detail:'Traslado',phone:'3757123456'};
-  for(const patch of [{serviceDate:'2026-02-30'},{detail:' '},{detail:'x'.repeat(501)},{phone:''},{phone:'123'},{phone:'javascript:alert(1)'},{phone:'9'.repeat(16)}])
+  assert.equal(normalizeTripDraft({...base,phone:''}).phone,'');
+  assert.equal(normalizeTripDraft({...base,phone:undefined}).phone,'');
+  for(const patch of [{serviceDate:'2026-02-30'},{detail:' '},{detail:'x'.repeat(501)},{phone:'123'},{phone:'javascript:alert(1)'},{phone:'9'.repeat(16)}])
     assert.throws(()=>normalizeTripDraft({...base,...patch}));
+});
+test('deleted trips disappear from personal and team lists and only owner/admin can manage them',()=>{
+  const own={id:'one',driverUid:'a',driverName:'Ana',serviceDate:'2026-09-14'},deleted={...own,id:'two',deletedAt:{seconds:1}};
+  assert.deepEqual(activeTrips([own,deleted]),[own]);
+  assert.equal(tripsForDay([own,deleted],'2026-09-14','a').length,1);
+  assert.equal(tripsForDay([own,deleted],'2026-09-14').length,1);
+  assert.equal(canManageTrip(own,{uid:'a'}),true);
+  assert.equal(canManageTrip(own,{uid:'b'}),false);
+  assert.equal(canManageTrip(own,{uid:'b',isAdmin:true}),true);
+  assert.equal(canManageTrip(own,null),false);
 });
 test('two trips on one day stay separate and personal filtering excludes other drivers',()=>{
   const rows=[{id:'1',driverUid:'a',serviceDate:'2026-09-14',driverName:'Ana'},

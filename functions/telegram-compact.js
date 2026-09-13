@@ -46,13 +46,18 @@ function invoiceFilename(invoice) {
   return `${prefix}-${Number(invoice.issuer.pointOfSale)}-${Number(invoice.number)}.pdf`;
 }
 const calendarDate = value => /^20\d{2}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('/') : 'Fecha no disponible';
-function calendarSummary({driverName,serviceDate}) {
-  return ['🗓 Viaje agendado',`👤 ${clean(driverName,120)}`,`📅 ${calendarDate(serviceDate)}`].join('\n');
+function calendarSummary({driverName,serviceDate,detail}) {
+  return ['🗓 Viaje agendado',`Chofer: ${clean(driverName,120)}`,`Día: ${calendarDate(serviceDate)}`,`Detalle: ${clean(detail,500) || 'Sin detalle'}`].join('\n');
 }
-function calendarCoincidenceSummary({driverName,serviceDate,coincidences,otherDrivers=[]}) {
-  const names=otherDrivers.slice(0,3).map(name=>clean(name,120)).join(', ');
-  return ['🗓 Coincidencia en Todos',`📅 ${calendarDate(serviceDate)}`,`👤 ${clean(driverName,120)}`,
-    `Ya ${coincidences===1?'hay otro viaje':'hay otros '+coincidences+' viajes'} ese día.`,
-    ...(names?[`Chofer${otherDrivers.length===1?'':'es'}: ${names}${otherDrivers.length>3?' y '+(otherDrivers.length-3)+' más':''}`]:[])].join('\n');
+function calendarCoincidenceMessages({matchingTrips=[]}) {
+  const groups=[];let current='',size=0;
+  // Keep complete trip details. Large lists are split below Telegram's text limit.
+  for(const [index,trip] of matchingTrips.entries()) {
+    const entry=[`${index+1}. Chofer: ${clean(trip.driverName,120)}`,`Día: ${calendarDate(trip.serviceDate)}`,`Detalle: ${clean(trip.detail,500) || 'Sin detalle'}`].join('\n');
+    if(size+entry.length+2>3800 && current){groups.push(current);current='';size=0;}
+    current+=(current?'\n\n':'')+entry;size=current.length;
+  }
+  if(current)groups.push(current);
+  return groups.map((group,index)=>`🗓 Coincidencias en Todos${groups.length>1?` · ${index+1}/${groups.length}`:''}\n\n${group}`);
 }
-module.exports = {balanceLine,billingSummary,expenseSummary,managementSummary,uberSummary,richMessage,invoiceFilename,calendarSummary,calendarCoincidenceSummary};
+module.exports = {balanceLine,billingSummary,expenseSummary,managementSummary,uberSummary,richMessage,invoiceFilename,calendarSummary,calendarCoincidenceMessages};
