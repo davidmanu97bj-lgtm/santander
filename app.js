@@ -1,3 +1,4 @@
+import { tourismCatalog, tourismRoute, searchTourismPlaces, tourismCountryNames } from "./tourism-catalog.js";
 import * as firebaseSettings from "./firebase-config.js?v=20260824-15";
 
 const { firebaseConfig, BUSINESS_ID, USER_EMAIL_DOMAIN } = firebaseSettings;
@@ -10,7 +11,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
   initializeFirestore, collection, addDoc, doc, getDoc, getDocFromServer, getDocs, setDoc,
-  onSnapshot, serverTimestamp, query, where, limit, writeBatch, runTransaction
+  onSnapshot, serverTimestamp, query, where, orderBy, limit, writeBatch, runTransaction
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import {
   getStorage, ref, uploadBytes, getDownloadURL
@@ -24,6 +25,7 @@ const auth = getAuth(app);
 const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 const storage = getStorage(app);
 const functions = getFunctions(app, "southamerica-east1");
+const exploraRouteCallable = httpsCallable(functions, "exploraRoute");
 const adminCreateDriverCallable = httpsCallable(functions, "adminCreateDriver");
 const adminUpdateDriverCallable = httpsCallable(functions, "adminUpdateDriver");
 const ensureTeamRealtimeBalancesCallable = httpsCallable(functions, "ensureTeamRealtimeBalances");
@@ -59,7 +61,7 @@ function clearPhotoPicker(key) {
   delete picker.dataset.selectedInput;
   const selection = picker.querySelector("[data-photo-selection]");
   if (selection) {
-    selection.textContent = "Ninguna foto seleccionada.";
+    selection.textContent = key === "management" ? "Ningún comprobante seleccionado." : "Ninguna foto seleccionada.";
     selection.classList.remove("has-photo");
   }
 }
@@ -92,7 +94,7 @@ function initializePhotoSourcePickers() {
         picker.dataset.selectedInput = input.id;
         const selection = picker.querySelector("[data-photo-selection]");
         if (selection) {
-          const source = input.dataset.photoSource === "camera" ? "Foto tomada" : "Foto de galería";
+          const source = input.dataset.photoSource === "camera" ? "Foto tomada" : input.dataset.photoSource === "file" ? "Archivo seleccionado" : "Foto de galería";
           selection.textContent = `${source}: ${file.name || "imagen seleccionada"}`;
           selection.classList.add("has-photo");
         }
@@ -161,6 +163,7 @@ let selectedAdminClosureId = "";
 const RECENT_RECEIPTS_LIMIT = 10;
 const RECEIPTS_PAGE_SIZE = 10;
 let visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
+let receiptSortOrder = "newest";
 let pendingOperationPreview = null;
 // Primera semana administrada por este selector. Desde aquí, toda semana
 // cerrada sin comprobante permanece pendiente hasta que el chofer la cargue.
@@ -1025,6 +1028,21 @@ function movementIsDeleted(item = {}) {
 function cashboxIsExcluded(item = {}) {
   return item.excludeFromCashbox === true || item.cashboxExcluded === true || item.cajaChicaEliminada === true || item.ignoreCashbox === true || item.noCashbox === true;
 }
+function digitalCashboxAmount(records = []) {
+  return records
+    .filter(item => !movementIsDeleted(item) && !isSettlementAdjustment(item) && !isReimbursementCompensation(item))
+    .filter(item => item.method === "digital" && !cashboxIsExcluded(item))
+    .filter(item => item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1")
+    .reduce((sum, item) => sum + Number(item.amount || 0) * 0.05, 0);
+}
+function grossFlowPrincipalDelta(records = []) {
+  // Legacy calculators already include 50% of each payment. New receipts add
+  // the other 50% with the same sign; cashbox is counted separately, exactly once.
+  return records
+    .filter(item => !movementIsDeleted(item) && !isSettlementAdjustment(item) && !isReimbursementCompensation(item))
+    .filter(item => item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1" && ["cash", "digital"].includes(item.method))
+    .reduce((sum, item) => sum + Number(item.amount || 0) * (item.method === "cash" ? 0.50 : -0.50), 0);
+}
 function revenueTotalFor(method) {
   return openBillingPayments()
     .filter(p => !movementIsDeleted(p) && p.method === method && !isSettlementAdjustment(p) && !isReimbursementCompensation(p))
@@ -1076,7 +1094,7 @@ function automaticExpenseBillingImpactTotal(sourceExpenses = expenses, baseline 
     .filter(item => !movementIsDeleted(item))
     .filter(item => recordTimestampMs(item) > baseline)
     .filter(expenseUsesAutomaticBilling50)
-    .reduce((sum, item) => sum + (Number(item.amount || 0) * 0.50), 0);
+    .reduce((sum, item) => sum + (Number(item.amount || 0) * (item.receiptFlowVersion === "gross_expense_driver_debit_50_v2" ? -0.50 : 0.50)), 0);
 }
 function isAdminSettlementDebt(item = {}) {
   const type = String(item.type || item.debtType || "").toLowerCase();
@@ -1253,11 +1271,11 @@ function settlementMovementDeltaSince(cutoffMs, sourcePayments = payments, sourc
   const uberTransferRevenue = scopedUber.reduce((sum, item) => sum + uberTransferRevenueOf(item), 0);
   const uberRevenue = uberCashRevenue + uberTransferRevenue;
 
-  const cashBox = (cashboxEligibleCash + uberCashRevenue) * 0.05;
+  const cashBox = (cashboxEligibleCash + uberCashRevenue) * 0.05 + digitalCashboxAmount(scopedPayments);
   const automaticExpenseImpact = automaticExpenseBillingImpactTotal(sourceExpenses, cutoffMs);
   const delta = (cashRevenue * 0.50) + (uberCashRevenue * 0.50) + cashBox
     - (digitalRevenue * 0.50) - (uberTransferRevenue * 0.50)
-    - automaticExpenseImpact - driverPaid + exploraPaid;
+    - automaticExpenseImpact - driverPaid + exploraPaid + grossFlowPrincipalDelta(scopedPayments);
 
   return {
     cashRevenue, digitalRevenue, uberRevenue, uberCashRevenue, uberTransferRevenue, cashBox, automaticExpenseImpact,
@@ -1584,7 +1602,7 @@ function openBillingPayments() {
 }
 
 function openCashboxAmount() {
-  // Caja chica = 5% de (Efectivo + Uber) dentro del período abierto heredado
+  // Caja chica = 5% de efectivo, Uber y digitales con la nueva regla dentro del período abierto heredado
   // de Santander. Desde la migración en adelante no vuelve a reiniciarse.
   const baseline = billingMigrationBaselineMs();
   const regularCash = payments
@@ -1597,7 +1615,8 @@ function openCashboxAmount() {
     .filter(item => recordTimestampMs(item) > baseline)
     .filter(uberImpactsSettlement)
     .reduce((sum,item) => sum + uberCashRevenueOf(item), 0);
-  return (regularCash + uberCash) * 0.05;
+  const digitalCashbox = digitalCashboxAmount(payments.filter(item => recordTimestampMs(item) > baseline));
+  return (regularCash + uberCash) * 0.05 + digitalCashbox;
 }
 
 function openExpenses() {
@@ -1614,7 +1633,8 @@ function openExpenses() {
 //   se descuenta de lo que el chofer debe a Explora o se suma a lo que Explora debe al chofer.
 // - Deudas y adelantos continúan como módulos separados.
 
-// - Explora → Chofer: 50% de Digital que no se haya aplicado a un adelanto + 50% de Gastos.
+// - Cobros nuevos: efectivo +100% +5%; digital -100% +5% de caja chica.
+//   Los registros anteriores conservan su regla. Gastos reintegran siempre 50%.
 // - El saldo positivo identifica quién debe compensar; el negativo, quién recibe.
 // - Ambas billeteras muestran siempre el mismo saldo con signos opuestos.
 function settlementModel() {
@@ -1633,9 +1653,9 @@ function settlementModel() {
   const cash = cashRevenue;
   const digital = digitalRevenue;
   const expense = billingExpensesTotal();
-  const cashShare = cashRevenue * 0.50;
+  const cashShare = cashRevenue * 0.50 + grossFlowPrincipalDelta(openBillingPayments().filter(item => item.method === "cash"));
   const uberShare = uberRevenue * 0.50;
-  const digitalShare = digitalRevenue * 0.50;
+  const digitalShare = digitalRevenue * 0.50 - grossFlowPrincipalDelta(openBillingPayments().filter(item => item.method === "digital"));
   const cashBox = openCashboxAmount();
   const expenseHalf = expense * 0.50;
   // Toda deuda creada por Explora se incorpora al saldo central al 100 %.
@@ -1830,16 +1850,15 @@ function openAdvanceModal() {
 }
 
 
-function buildUnifiedReceipts() {
+function buildUnifiedReceipts(order = "newest") {
   const regularPayments = payments
     .filter(item => !movementIsDeleted(item))
-    .map(item => ({ ...item, _sortPriority: 2 }));
+    .map(item => ({ ...item, _receiptGroupKey:`payment:${item.id}`, _sortPriority: 2 }));
 
-  // Cada cobro en efectivo muestra dos comprobantes visuales: el cobro y el
-  // 5 % que se generó automáticamente. El segundo se deriva del primero para
+  // Cada cobro con caja chica muestra el ingreso y su 5% separado. El segundo se deriva del primero para
   // que una corrección o eliminación nunca deje valores huérfanos.
   const cashboxReceipts = regularPayments
-    .filter(item => item.method === "cash")
+    .filter(item => item.method === "cash" || (item.method === "digital" && item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1"))
     .filter(item => !isSettlementAdjustment(item) && !isReimbursementCompensation(item))
     .filter(item => !cashboxIsExcluded(item))
     .map(item => ({
@@ -1847,8 +1866,9 @@ function buildUnifiedReceipts() {
       id: `${item.id}_cashbox_5`,
       type: "cashbox_receipt",
       service: "Caja chica 5%",
-      detail: `Generada automáticamente por el cobro en efectivo${item.detail ? ` · ${item.detail}` : ""}`,
+      detail: `A favor de Explora · Incluida en el cobro ${item.method === "cash" ? "en efectivo (en poder del chofer)" : "digital (recibido por Explora)"}${item.detail ? ` · ${item.detail}` : ""}`,
       amount: Number(item.amount || 0) * 0.05,
+      _cashboxGrossAmount: Number(item.amount || 0),
       proofUrl: "",
       proofPath: "",
       _sortPriority: 1
@@ -1909,46 +1929,83 @@ function buildUnifiedReceipts() {
 
   const expenseReceipts = expenses
     .filter(item => !movementIsDeleted(item))
-    .map(item => ({
+    .flatMap(item => {
+      const expense = {
       ...item,
+      _receiptGroupKey:`expense:${item.id}`,
       method: "expense",
       type: "expense_receipt",
-      service: "Gasto",
+      service: `Gasto · ${String(item.detail || item.expenseType || "Varios").slice(0, 60)}`,
       detail: `${item.detail || "Gasto"} · Explora reconoce 50%: ${money(Number(item.amount || 0) * 0.5)}`,
       _sortPriority: 2
-    }));
+      };
+      if (!["gross_expense_reimbursement_50_v1","gross_expense_driver_debit_50_v2"].includes(item.receiptFlowVersion)) return [expense];
+      return [expense, {
+        ...expense,
+        id:`${item.id}_reimbursement_50`,
+        type:"expense_reimbursement_receipt",
+        service:"Reintegro de gasto",
+        detail:`Explora devuelve el 50% de ${money(item.amount)} · ${item.detail || "Gasto"}`,
+        amount:Number(item.amount || 0) * 0.50,
+        _expenseGrossAmount:Number(item.amount || 0),
+        proofUrl:"", proofPath:"",
+        _sortPriority:1
+      }];
+    });
 
-  return [
+  return sortUnifiedReceipts([
     ...regularPayments,
     ...cashboxReceipts,
     ...debtReceipts,
     ...advanceReceipts,
     ...uberReceipts,
     ...expenseReceipts
-  ].sort((a, b) => {
-    const byDate = recordTimestampMs(b) - recordTimestampMs(a);
-    if (byDate) return byDate;
-    return Number(b._sortPriority || 0) - Number(a._sortPriority || 0);
+  ], order);
+}
+
+function receiptGroupKey(item) {
+  return item._receiptGroupKey || `${item.method || item.type}:${item.id}`;
+}
+
+function sortUnifiedReceipts(receipts, order = "newest") {
+  return [...receipts].sort((a, b) => {
+    const byDate = recordTimestampMs(a) - recordTimestampMs(b);
+    if (byDate) return order === "oldest" ? byDate : -byDate;
+    const byGroup = receiptGroupKey(a).localeCompare(receiptGroupKey(b));
+    const byStep = Number(a._sortPriority || 0) - Number(b._sortPriority || 0);
+    return byGroup || (order === "oldest" ? -byStep : byStep);
   });
+}
+
+function visibleReceiptRows(receipts, limit) {
+  let end = Math.min(limit, receipts.length);
+  while (end > 0 && end < receipts.length && receiptGroupKey(receipts[end - 1]) === receiptGroupKey(receipts[end])) end += 1;
+  return receipts.slice(0, end);
 }
 
 function render() {
   syncDriverDebtConfirmationModal();
   syncUberDriverConfirmationModal();
   const model = settlementModel();
-  const receipts = buildUnifiedReceipts();
-  const visibleReceipts = receipts.slice(0, Math.max(RECENT_RECEIPTS_LIMIT, visibleReceiptCount));
+  const receipts = buildUnifiedReceipts(receiptSortOrder);
+  const visibleReceipts = visibleReceiptRows(receipts, Math.max(RECENT_RECEIPTS_LIMIT, visibleReceiptCount));
 
-  setAnimatedMoney("settlementTotal", model.balance);
+  setAnimatedMoney("settlementTotal", Math.abs(model.balance));
   renderWalletStatus("settlementDirection", model.balance);
+  $("settlementDirection").textContent = settlementPreviewCopy(model.balance).label;
+  $("driverBalanceCard").dataset.state = model.balance > 0.5 ? "owing" : model.balance < -0.5 ? "receiving" : "balanced";
+  $("driverBalanceBadge").textContent = model.balance > 0.5 ? "Por liquidar" : model.balance < -0.5 ? "A tu favor" : "Al día";
   $("receiptCount").textContent = receipts.length;
 
   const toggle = $("receiptsToggle");
-  toggle.classList.toggle("hidden", visibleReceiptCount >= receipts.length);
-  toggle.textContent = "Ver más comprobantes";
+  toggle.classList.toggle("hidden", visibleReceipts.length >= receipts.length);
+  toggle.textContent = "Ver más movimientos";
 
   renderUberPendingBadge();
   renderList("receiptList", visibleReceipts);
+  if (!$("chargeModal").classList.contains("hidden")) renderChargePreview();
+  if (!$("managementModal").classList.contains("hidden")) renderManagementPreview();
+  if (!$("expenseModal").classList.contains("hidden")) renderExpensePreview();
   window.setTimeout(maybeShowDriverDebtConfirmation, 0);
   window.setTimeout(maybeShowUberDriverConfirmation, 120);
   window.setTimeout(maybeShowUberReminder, 260);
@@ -2302,10 +2359,41 @@ function receiptFooterLabel(item = {}) {
     : `${date.toLocaleDateString("es-AR", { day:"2-digit", month:"2-digit", year:"2-digit" })} · ${time}`;
 }
 
+// Historical balances must come from the operation's saved snapshot. Never
+// backfill old receipts from today's balance or count the cashbox detail twice.
+function receiptBalanceSnapshot(item = {}) {
+  if (item.type === "cash_advance" || Number(item.amountCorrectionCount || 0) > 0 || cashboxIsExcluded(item)) return null;
+  const before = item.telegramSettlementBeforeBalance ?? item.settlementBeforeAdminDecision;
+  const after = item.telegramSettlementAfterBalance ?? item.settlementAfterAdminDecision;
+  const valid = value => (typeof value === "number" || (typeof value === "string" && value.trim() !== "")) && Number.isFinite(Number(value));
+  if (!valid(before) || !valid(after)) return null;
+  let start = Number(before), finish = Number(after);
+  const currentFlow = item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1";
+  if (currentFlow && ["cash", "digital"].includes(item.method) && !isSettlementAdjustment(item) && !isReimbursementCompensation(item)) {
+    const principal = Number(item.type === "cashbox_receipt" ? item._cashboxGrossAmount : item.amount);
+    if (!Number.isFinite(principal)) return null;
+    const intermediate = start + principal * (item.method === "cash" ? 1 : -1);
+    if (item.type === "cashbox_receipt") start = intermediate;
+    else finish = intermediate;
+  } else if (["gross_expense_reimbursement_50_v1","gross_expense_driver_debit_50_v2"].includes(item.receiptFlowVersion) && ["expense_receipt", "expense_reimbursement_receipt"].includes(item.type)) {
+    const grossExpense = Number(item.type === "expense_reimbursement_receipt" ? item._expenseGrossAmount : item.amount);
+    if (!Number.isFinite(grossExpense)) return null;
+    const intermediate = start + grossExpense * (item.receiptFlowVersion === "gross_expense_driver_debit_50_v2" ? 1 : -1);
+    if (item.type === "expense_reimbursement_receipt") start = intermediate;
+    else finish = intermediate;
+  } else if (item.type === "cashbox_receipt") return null;
+  return { before:start, after:finish, movementImpact:finish - start };
+}
+
+function receiptBalanceLabel(value) {
+  const state = settlementPreviewCopy(value);
+  return `${state.label}${state.amount ? ` ${money(state.amount)}` : ""}`;
+}
+
 function renderList(containerId, items) {
   const box = $(containerId);
   if (!items.length) {
-    box.innerHTML = `<div class="empty">Los cobros, gastos, Uber y deudas aparecerán acá.</div>`;
+    box.innerHTML = `<div class="driver-empty"><span aria-hidden="true">↗</span><strong>Tu historial empieza acá</strong><p>Registrá un cobro o un gasto para ver tus movimientos.</p></div>`;
     return;
   }
 
@@ -2314,9 +2402,10 @@ function renderList(containerId, items) {
     const debtCompensation = isReimbursementCompensation(item);
     const cashAdvance = isCashAdvance(item);
     const expenseReceipt = isExpenseReceipt(item);
+    const expenseReimbursement = item.type === "expense_reimbursement_receipt";
     const cashboxReceipt = isCashboxReceipt(item);
     const adminDebt = isAdminDebt(item);
-    const digitalReceipt = item.method === "digital" && !isSettlementAdjustment(item);
+    const digitalReceipt = item.method === "digital" && !isSettlementAdjustment(item) && !cashboxReceipt && !debtCompensation && !cashAdvance && !adminDebt;
     const regularCashReceipt = item.method === "cash"
       && !isSettlementAdjustment(item)
       && !adminDebt
@@ -2344,7 +2433,7 @@ function renderList(containerId, items) {
                   : uberReceipt
                     ? "Uber"
                     : isSettlementAdjustment(item)
-                      ? "Cierre"
+                      ? (item.internalManagement ? "Gestión" : "Cierre")
                       : "Operación registrada";
     const proof = proofUrl
       ? (imageProof
@@ -2355,7 +2444,7 @@ function renderList(containerId, items) {
     const icon = cashboxReceipt
       ? `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="2"/><circle cx="16" cy="16" r="2"/><path d="M7 17 17 7"/></svg>`
       : expenseReceipt
-        ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`
+        ? `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>`
         : uberReceipt
           ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h14M7 16l1-5h8l1 5M8 11l1.2-3h5.6l1.2 3M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>`
           : debtCompensation
@@ -2365,11 +2454,12 @@ function renderList(containerId, items) {
               : adminDebt
                 ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M12 19h.01M5 21h14L12 3 5 21Z"/></svg>`
                 : digitalReceipt
-                  ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>`
-                  : `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
+                  ? `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>`
+                  : isSettlementAdjustment(item)
+                    ? `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/></svg>`
+                    : `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><ellipse cx="12" cy="12" rx="3" ry="4"/><path d="M5 8h.01M19 16h.01"/></svg>`;
 
-    const amountPrefix = debtCompensation ? "−" : "+";
-    const receiptToneClass = expenseReceipt
+    const receiptToneClass = expenseReimbursement ? "receipt-tone-cash" : expenseReceipt
       ? "receipt-tone-expense"
       : uberReceipt
         ? "receipt-tone-uber"
@@ -2379,30 +2469,22 @@ function renderList(containerId, items) {
             ? "receipt-tone-digital"
             : "receipt-tone-other";
 
-    const receiptClass = [
-      item.method === "digital" ? "receipt-digital" : "receipt-cash",
-      receiptToneClass,
-      isSettlementAdjustment(item) ? "receipt-adjustment" : "",
-      adminDebt ? "receipt-debt" : "",
-      expenseReceipt ? "receipt-expense" : "",
-      uberReceipt ? "receipt-uber" : "",
-      cashboxReceipt ? "receipt-cashbox" : "",
-      debtCompensation ? "receipt-debt-compensation" : "",
-      cashAdvance ? "receipt-advance" : ""
-    ].filter(Boolean).join(" ");
-
-    return `<article class="receipt ${receiptClass}">
-      <div class="receipt-main">
-        <span class="receipt-icon">${icon}</span>
-        <div class="receipt-copy">
-          <strong>${escapeHtml(item.service || "Comprobante")}</strong>
-          <small>${escapeHtml(item.detail || "Operación registrada")}</small>
-        </div>
-        <div class="amount">${amountPrefix}${money(item.amount)}</div>
-      </div>
-      <div class="receipt-footer">
-        <span>${receiptFooterLabel(item)}</span>${proof}
-      </div>
+    const snapshot = receiptBalanceSnapshot(item);
+    const impact = snapshot?.movementImpact || 0;
+    const currentRule = item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1";
+    const title = cashboxReceipt && currentRule ? `Caja ${item.method === "cash" ? "efectivo" : "digital"} · 5%` : regularCashReceipt ? "Cobro en efectivo" : digitalReceipt ? "Cobro digital" : item.service || proofLabel;
+    const strip = snapshot
+      ? `<div class="movement-balances" aria-label="Saldo histórico de esta operación">
+          <div><span>Antes</span><p>${escapeHtml(receiptBalanceLabel(snapshot.before))}</p></div>
+          <div><span>Impacto</span><strong class="${expenseReceipt ? "negative" : expenseReimbursement ? "positive" : impact > 0 ? "positive" : impact < 0 ? "negative" : "neutral"}">${impact > 0 ? "+" : impact < 0 ? "−" : ""}${money(Math.abs(impact))}</strong></div>
+          <div><span>Después</span><p>${escapeHtml(receiptBalanceLabel(snapshot.after))}</p></div>
+        </div>`
+      : `<div class="movement-no-snapshot"><span>${cashboxReceipt ? "Incluida en el cobro · a favor de Explora" : cashAdvance ? "Adelanto · cuenta separada" : "Saldo histórico no disponible"}</span><strong>${money(item.amount)}</strong></div>`;
+    return `<article class="movement-card ${receiptToneClass}">
+      <details class="movement-details">
+        <summary><span class="movement-icon">${icon}</span><span class="movement-copy"><strong>${escapeHtml(title)}</strong></span><span class="movement-date">${receiptFooterLabel(item)}</span><span class="movement-chevron" aria-hidden="true">›</span></summary>
+        <div class="movement-attachment"><p>${escapeHtml(item.detail || "Operación registrada")}</p>${currentRule && !cashboxIsExcluded(item) && (regularCashReceipt || digitalReceipt) ? `<p>El 100% ${regularCashReceipt ? "del efectivo queda en poder del chofer y suma al saldo" : "del digital lo recibe Explora y resta del saldo"}. La caja chica de 5% se suma una sola vez, en la tarjeta siguiente.</p>` : ""}${proof}${snapshot ? `<small>Saldo positivo: el chofer debe a Explora. Saldo negativo: Explora debe al chofer. Los importes muestran el paso histórico de esta tarjeta.</small>` : ""}</div>
+      </details>${strip}
     </article>`;
   }).join("");
 }
@@ -2410,6 +2492,41 @@ function renderList(containerId, items) {
 $("receiptsToggle")?.addEventListener("click", () => {
   visibleReceiptCount += RECEIPTS_PAGE_SIZE;
   render();
+});
+
+$("receiptSort")?.addEventListener("change", event => {
+  receiptSortOrder = event.target.value;
+  visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
+  render();
+});
+
+let driverProfileOpener = null;
+function openDriverProfile(opener) {
+  if (!auth.currentUser || isAdminProfile()) return;
+  driverProfileOpener = opener;
+  $("driverProfileName").textContent = currentProfile?.displayName || auth.currentUser.displayName || "Conductor";
+  $("driverProfileEmail").textContent = auth.currentUser.email || "";
+  $("driverProfileModal").classList.remove("hidden");
+  $("driverProfileModal").querySelector("[data-close]").focus();
+}
+$("driverProfileBtn")?.addEventListener("click", event => openDriverProfile(event.currentTarget));
+document.querySelectorAll("[data-driver-nav]").forEach(button => {
+  button.addEventListener("click", () => {
+    const destination = button.dataset.driverNav;
+    if (destination === "profile") { openDriverProfile(button); return; }
+    document.querySelectorAll("[data-driver-nav]").forEach(item => item.removeAttribute("aria-current"));
+    button.setAttribute("aria-current", "page");
+    const target = destination === "history" ? $("driverHistory") : destination === "charges" ? $("driverQuickActions") : $("app");
+    target.scrollIntoView({ behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block:"start" });
+    if (destination !== "home") target.focus({ preventScroll:true });
+  });
+});
+$("driverProfileModal")?.addEventListener("keydown", event => {
+  const close = $("driverProfileModal").querySelector("[data-close]");
+  const last = $("logoutBtn");
+  if (event.key === "Escape") close.click();
+  if (event.key === "Tab" && event.shiftKey && document.activeElement === close) { event.preventDefault(); last.focus(); }
+  else if (event.key === "Tab" && !event.shiftKey && document.activeElement === last) { event.preventDefault(); close.focus(); }
 });
 
 async function loadProfile(user) {
@@ -2483,15 +2600,15 @@ function subscribeToday(user) {
     }).catch(err => console.warn("EXPLORA_HISTORY_LOAD", collectionName, err));
 
     // Luego mantiene en vivo el camino canónico driverUid para todos los movimientos nuevos.
-    return onSnapshot(ownedQuery(collectionName, uid), snap => {
+    return onSnapshot(ownedQuery(collectionName, uid), { includeMetadataChanges:true }, snap => {
       const canon = snap.docs.map(d => ({ id:d.id, ...d.data() }));
       setCanonicalRows(collectionName, uid, canon);
       const merged = mergeOwnedRows(collectionName, uid, canon);
       assign(merged.map(row => normalizer(row.id, row)).sort((a,b)=>recordTimestampMs(b)-recordTimestampMs(a)));
       render();
       afterRender?.();
-      $("syncStatus").textContent = "En tiempo real";
-      $("syncStatus").className = "sync ok";
+      $("syncStatus").textContent = snap.metadata.fromCache ? "Sincronizando…" : "En tiempo real";
+      $("syncStatus").className = snap.metadata.fromCache ? "sync" : "sync ok";
     }, err => {
       console.error(`Firestore ${collectionName} snapshot error:`, err);
       onError?.(err);
@@ -2549,6 +2666,7 @@ function isAdminProfile() {
 
 function applyRoleUI() {
   const admin = isAdminProfile();
+  $("app").classList.toggle("driver-view", !admin);
   resetTeamRealtimeDisclosure();
   $("driverDashboard")?.classList.toggle("hidden", admin);
   $("adminDashboard")?.classList.toggle("hidden", !admin);
@@ -2559,7 +2677,7 @@ function applyRoleUI() {
   // Todos los accesos visuales de este cambio deben tolerar que el elemento haya
   // sido retirado para no interrumpir el arranque ni dejar el splash en Cargando.
   const closeDayButton = $("closeDayBtn");
-  if (closeDayButton) closeDayButton.textContent = admin ? "Gestionar cierres" : "Pedir cierre";
+  if (closeDayButton) closeDayButton.setAttribute("aria-label", admin ? "Gestionar cierres" : "Gestión");
   $("addDebtBtn")?.classList.toggle("hidden", !admin);
   $("advanceBox")?.classList.toggle("hidden", admin);
 }
@@ -2832,10 +2950,10 @@ function adminBillingBalanceForDriver(driver = {}) {
   const uberTransferRevenue = activeUber.reduce((sum, item) => sum + uberTransferRevenueOf(item), 0);
 
   const automaticExpenseImpact = automaticExpenseBillingImpactTotal(driverExpenses, baseline);
-  const cashBox = (cashboxEligibleCash + uberCashRevenue) * 0.05;
+  const cashBox = (cashboxEligibleCash + uberCashRevenue) * 0.05 + digitalCashboxAmount(driverPayments);
   const balance = (cashRevenue * 0.50) + (uberCashRevenue * 0.50) + cashBox + adminDebtTotal
     - (digitalRevenue * 0.50) - (uberTransferRevenue * 0.50)
-    - automaticExpenseImpact - driverPaid + exploraPaid;
+    - automaticExpenseImpact - driverPaid + exploraPaid + grossFlowPrincipalDelta(driverPayments);
   return Math.abs(balance) > 0.5 ? balance : 0;
 }
 
@@ -4062,6 +4180,8 @@ $("adminManageClosuresBtn")?.addEventListener("click", () => {
 
 onAuthStateChanged(auth, async user => {
   if (!user) {
+    $("driverProfileModal")?.classList.add("hidden");
+    driverProfileOpener = null;
     if (unsubscribePayments) unsubscribePayments();
     if (unsubscribeExpenses) unsubscribeExpenses();
     if (unsubscribeUber) unsubscribeUber();
@@ -4149,23 +4269,82 @@ onAuthStateChanged(auth, async user => {
 document.querySelectorAll("[data-mode]").forEach(btn => {
   btn.addEventListener("click", () => {
     const mode = btn.dataset.mode;
+    refreshArcaBillingStatus();
     $("chargeForm").reset();
+    resetChargeRoute();
+    syncChargeCustomerFields();
+    clearPhotoPicker("digital");
     delete $("chargeForm").dataset.previewConfirmed;
     $("chargeMode").value = mode;
     $("chargeModal").dataset.tone = mode;
     $("chargeTitle").textContent = mode === "cash" ? "Cobro en efectivo" : "Cobro digital";
+    $("chargeIntro").textContent = mode === "cash" ? "El dinero queda en tu poder." : "El pago ingresa a Explora. Adjuntá el comprobante.";
+    $("chargeIcon").innerHTML = mode === "cash" ? '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><ellipse cx="12" cy="12" rx="3" ry="4"/></svg>' : '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>';
+    $("chargeDigitalTypeField").classList.toggle("hidden", mode !== "digital");
+    $("chargeServiceDate").value = localDayKey();
     $("proofField").classList.toggle("hidden", mode !== "digital");
     $("chargeStatus").textContent = "";
     $("chargeStatus").className = "status";
     $("saveChargeBtn").disabled = false;
-    $("saveChargeBtn").textContent = "Registrar cobro";
+    $("saveChargeBtn").textContent = "Confirmar cobro";
     $("chargeModal").classList.remove("hidden");
+    showChargeStep(0);
+    renderChargePreview();
+    $("chargeModal").scrollTop = 0;
+    $("chargeAmount").focus({preventScroll:true});
   });
+});
+
+function syncChargeCustomerFields() {
+  const enabled = $("chargeNamedInvoice").checked;
+  $("chargeCustomerFields").classList.toggle("hidden", !enabled);
+  $("chargeNamedInvoice").setAttribute("aria-expanded", String(enabled));
+  for (const id of ["chargeCustomerName","chargeCustomerDocType","chargeCustomerDoc","chargeCustomerVat"]) $(id).disabled = !enabled;
+  $("chargeCustomerName").required = enabled;
+  $("chargeCustomerDoc").required = enabled;
+}
+$("chargeNamedInvoice")?.addEventListener("change", syncChargeCustomerFields);
+function chargeDraftRequest() {
+  return {
+    version:"arca_c_v1",
+    serviceDate:$("chargeServiceDate").value,
+    origin:$("chargeOrigin").value.trim(), destination:$("chargeDestination").value.trim(),
+    distanceKm:Number($("chargeDistance").value), scope:$("chargeTripScope").value,
+    paymentChannel:$("chargeMode").value === "cash" ? "cash" : $("chargeDigitalType").value,
+    customer:$("chargeNamedInvoice").checked ? {requested:true,name:$("chargeCustomerName").value.trim(),documentType:$("chargeCustomerDocType").value,documentNumber:$("chargeCustomerDoc").value.trim(),vatCondition:$("chargeCustomerVat").value} : {}
+  };
+}
+
+function renderChargePreview() {
+  const amount = parseMoneyInput($("chargeAmount").value) || 0;
+  const cash = $("chargeMode").value === "cash";
+  const principal = cash ? amount : -amount;
+  const fee = amount * 0.05;
+  const impact = normalizedSettlementBalance(principal + fee);
+  const before = settlementModel().balance;
+  const after = normalizedSettlementBalance(before + impact);
+  const signed = value => `${value > 0 ? "+" : value < 0 ? "−" : ""}${money(Math.abs(value))}`;
+  $("chargeInvoiceTotal").textContent = money(amount);
+  const row = (start, delta, end) => `<div><span>Antes</span><small>${escapeHtml(settlementPreviewCopy(start).label)}</small><strong>${money(Math.abs(start))}</strong></div><div><span>Impacto</span><strong class="${delta < 0 ? "negative" : delta > 0 ? "positive" : "neutral"}">${signed(delta)}</strong></div><div><span>Después</span><small>${escapeHtml(settlementPreviewCopy(end).label)}</small><strong>${money(Math.abs(end))}</strong></div>`;
+  const afterPrincipal = normalizedSettlementBalance(before + principal);
+  $("chargeAccountTitle").textContent = cash ? "Cobro en efectivo · 100%" : "Cobro digital · 100%";
+  $("chargeAccountPreview").innerHTML = row(before, principal, afterPrincipal);
+  $("chargeCashboxPreview").innerHTML = row(afterPrincipal, fee, after);
+}
+$("chargeAmount")?.addEventListener("input", renderChargePreview);
+$("chargeModal")?.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !$("saveChargeBtn").disabled) $("chargeModal").classList.add("hidden");
+  if (event.key === "Tab") {
+    const controls = [...$("chargeModal").querySelectorAll('button,input,select,summary')].filter(el => el.tabIndex >= 0 && !el.disabled && el.getClientRects().length);
+    if (event.shiftKey && document.activeElement === controls[0]) { event.preventDefault(); controls.at(-1).focus(); }
+    else if (!event.shiftKey && document.activeElement === controls.at(-1)) { event.preventDefault(); controls[0].focus(); }
+  }
 });
 
 document.querySelectorAll("[data-close]").forEach(btn => {
   btn.addEventListener("click", () => {
     $(btn.dataset.close).classList.add("hidden");
+    if (btn.dataset.close === "driverProfileModal") driverProfileOpener?.focus();
     window.setTimeout(maybeShowDriverDebtConfirmation, 0);
     window.setTimeout(maybeShowUberDriverConfirmation, 100);
     window.setTimeout(maybeShowUberReminder, 220);
@@ -4214,28 +4393,28 @@ function previewDefinition(kind, amount, details = {}) {
   const definitions = {
     cash: {
       title: "Confirmar cobro en efectivo",
-      subtitle: "El cobro suma 50% para Explora y 5% de caja chica.",
+      subtitle: "El efectivo suma su importe completo y luego suma 5% de caja chica a favor de Explora.",
       amountLabel: "Cobro en efectivo",
-      impactLabel: "50% + caja chica 5%",
-      delta: value * 0.55,
-      notice: "Al confirmar se crearán dos comprobantes: el cobro y su caja chica 5%.",
+      impactLabel: "Efectivo 100% + caja chica 5%",
+      delta: value * 1.05,
+      notice: "Se guardarán el cobro y su caja chica en el historial. ARCA desactivada: preparación de factura sin validez fiscal.",
       confirmLabel: "Confirmar cobro"
     },
     digital: {
       title: "Confirmar cobro digital",
-      subtitle: "El 50% del cobro compensa la diferencia a favor del chofer.",
+      subtitle: "El digital resta su importe completo y luego suma 5% de caja chica a favor de Explora.",
       amountLabel: "Cobro digital",
-      impactLabel: "50% del cobro",
-      delta: value * -0.50,
-      notice: "Al confirmar se guardará el comprobante digital y se enviará el aviso.",
+      impactLabel: "Digital −100% + caja chica 5%",
+      delta: value * -0.95,
+      notice: "Se guardarán el cobro y su caja chica en el historial. ARCA desactivada: preparación de factura sin validez fiscal.",
       confirmLabel: "Confirmar cobro"
     },
     expense: {
       title: "Confirmar gasto",
-      subtitle: "Explora reconoce automáticamente el 50% del gasto.",
+      subtitle: "El gasto suma el 100% y el reintegro resta el 50%.",
       amountLabel: "Gasto total",
-      impactLabel: "Explora reconoce 50%",
-      delta: value * -0.50,
+      impactLabel: "Impacto total del gasto y reintegro",
+      delta: value * 0.50,
       notice: "Al confirmar el gasto impactará en el saldo y se enviará a Telegram.",
       confirmLabel: "Confirmar gasto"
     },
@@ -4278,12 +4457,16 @@ function renderOperationPreview() {
   $("operationPreviewAmountLabel").textContent = definition.amountLabel;
   $("operationPreviewAmount").textContent = money(pendingOperationPreview.amount);
   $("operationPreviewImpactLabel").textContent = definition.impactLabel;
-  $("operationPreviewImpact").textContent = signedMoney(definition.delta);
+  const isCharge = ["cash","digital"].includes(pendingOperationPreview.kind);
+  const principal = pendingOperationPreview.amount * (pendingOperationPreview.kind === "cash" ? 1 : -1);
+  $("operationPreviewImpact").textContent = isCharge
+    ? `${signedMoney(principal)} / caja ${signedMoney(pendingOperationPreview.amount * 0.05)}`
+    : signedMoney(definition.delta);
   $("operationPreviewBeforeLabel").textContent = beforeState.label;
   $("operationPreviewBeforeAmount").textContent = money(beforeState.amount);
   $("operationPreviewAfterLabel").textContent = afterState.label;
   $("operationPreviewAfterAmount").textContent = money(afterState.amount);
-  $("operationPreviewImpactText").textContent = operationImpactMessage(definition.delta, pendingOperationPreview.afterBalance);
+  $("operationPreviewImpactText").textContent = isCharge ? "Se registra primero el cobro completo y después la caja chica. El resultado incluye ambos movimientos." : operationImpactMessage(definition.delta, pendingOperationPreview.afterBalance);
   $("operationPreviewNotice").textContent = pendingOperationPreview.kind === "uber"
     ? `${definition.notice} Nada se guarda antes de tocar Enviar a David.`
     : `${definition.notice} Nada se guarda antes de confirmar.`;
@@ -4517,12 +4700,20 @@ $("advanceForm")?.addEventListener("submit", async event => {
 
 $("chargeForm")?.addEventListener("submit", async e => {
   e.preventDefault();
+  if ($( "saveChargeBtn").disabled) return;
+  const step = Number($("chargeForm").dataset.step || 0);
+  if (!validateChargeStep(step)) return;
+  const steps = chargeSteps();
+  const nextStep = steps[steps.indexOf(step) + 1];
+  if (nextStep !== undefined) { showChargeStep(nextStep); return; }
+  for (const previousStep of steps) { if (!validateChargeStep(previousStep)) return; }
   const user = auth.currentUser;
   if (!user) return;
   const mode = $("chargeMode").value;
   const service = mode === "cash" ? "Cobro en efectivo" : "Cobro digital";
   const amount = parseMoneyInput($("chargeAmount").value);
   const file = selectedPhotoFile("digital");
+  const invoiceRequest = chargeDraftRequest();
 
   if (!amount || amount <= 0) {
     $("chargeStatus").textContent = "Ingresá un importe válido.";
@@ -4535,16 +4726,16 @@ $("chargeForm")?.addEventListener("submit", async e => {
     $("chargeStatus").className = "status error";
     return;
   }
+  if (!invoiceRequest.origin || !invoiceRequest.destination || !Number.isFinite(invoiceRequest.distanceKm) || invoiceRequest.distanceKm <= 0 || !invoiceRequest.serviceDate) {
+    $("chargeStatus").textContent = "Completá origen, destino, kilómetros y fecha del servicio.";
+    $("chargeStatus").className = "status error";
+    return;
+  }
   if (mode === "digital" && !advancesLoaded) {
     $("chargeStatus").textContent = "Esperá un momento mientras se actualiza el saldo de adelantos.";
     $("chargeStatus").className = "status error";
     return;
   }
-  if ($("chargeForm").dataset.previewConfirmed !== "true") {
-    openOperationPreview({ kind:mode, amount, formId:"chargeForm" });
-    return;
-  }
-  delete $("chargeForm").dataset.previewConfirmed;
   if (!acquireSubmissionLock("charge")) {
     $("chargeStatus").textContent = "Este cobro ya se está procesando.";
     $("chargeStatus").className = "status";
@@ -4562,12 +4753,13 @@ $("chargeForm")?.addEventListener("submit", async e => {
   try {
     const enteredDetail = $("detail").value.trim();
     const settlementBeforeCharge = settlementModel().balance;
-    const chargeDelta = mode === "cash" ? amount * 0.55 : amount * -0.50;
+    const chargeDelta = mode === "cash" ? amount * 1.05 : amount * -0.95;
     const settlementAfterCharge = normalizedSettlementBalance(settlementBeforeCharge + chargeDelta);
     fingerprint = await buildSubmissionFingerprint("charge", {
       mode,
       amount,
-      detail:enteredDetail
+      detail:enteredDetail,
+      invoiceRequest
     });
     operation = reservePendingOperation("payment", user.uid, fingerprint);
     paymentRef = doc(db, ROOT_COLLECTIONS.payments, operation.operationId);
@@ -4623,6 +4815,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
         finalPrice: amount,
         service,
         serviceDescription: service,
+        invoiceRequest,
         detail: paymentDetail,
         notes: paymentDetail,
         advanceRepaymentAmount: repaymentPlan.totalApplied,
@@ -4635,8 +4828,13 @@ $("chargeForm")?.addEventListener("submit", async e => {
         receiptUrl: proofUrl,
         receiptPath: proofPath,
         receiptRequired: mode === "digital",
-        cashboxRate: mode === "cash" ? 0.05 : 0,
-        cashboxAmount: mode === "cash" ? amount * 0.05 : 0,
+        settlementRuleVersion: "gross_cash_digital_cashbox_5_v1",
+        grossAmount: amount,
+        principalMovementAmount: mode === "cash" ? amount : -amount,
+        cashboxRate: 0.05,
+        cashboxAmount: amount * 0.05,
+        cashboxBeneficiary: "explora",
+        moneyHolder: mode === "cash" ? "driver" : "explora",
         telegramSettlementBeforeBalance: settlementBeforeCharge,
         telegramSettlementAfterBalance: settlementAfterCharge,
         telegramSettlementPayer: settlementAfterCharge > 0.5 ? "driver" : settlementAfterCharge < -0.5 ? "explora" : "balanced",
@@ -4676,12 +4874,13 @@ $("chargeForm")?.addEventListener("submit", async e => {
     $("chargeStatus").textContent = transactionResult?.alreadyRegistered
       ? "Éxito. El cobro ya estaba registrado y se mantuvo una sola vez."
       : mode === "cash"
-        ? "Éxito. Cobro en efectivo registrado correctamente."
-        : "Éxito. Cobro digital registrado correctamente.";
+        ? "Cobro en efectivo guardado. Consultá su factura en Perfil → Facturas de viajes."
+        : "Cobro digital guardado. Consultá su factura en Perfil → Facturas de viajes.";
     $("chargeStatus").className = "status success";
     completedSuccessfully = true;
     $("saveChargeBtn").textContent = "Éxito ✓";
     $("chargeForm").reset();
+    syncChargeCustomerFields();
     closeModalAndGoTop("chargeModal", 1200);
   } catch (err) {
     console.error(err);
@@ -4695,6 +4894,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
       completedSuccessfully = true;
       $("saveChargeBtn").textContent = "Éxito ✓";
       $("chargeForm").reset();
+    syncChargeCustomerFields();
       closeModalAndGoTop("chargeModal", 1200);
     } else {
       $("chargeStatus").textContent = "No pudimos confirmar el cobro. Podés volver a tocar Registrar: se reintentará la misma operación sin duplicarla.";
@@ -4704,7 +4904,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
     releaseSubmissionLock("charge");
     if (!completedSuccessfully) {
       $("saveChargeBtn").disabled = false;
-      $("saveChargeBtn").textContent = "Registrar cobro";
+      $("saveChargeBtn").textContent = "Confirmar cobro";
     }
   }
 });
@@ -4715,8 +4915,10 @@ $("addExpenseBtn")?.addEventListener("click", () => {
   $("expenseStatus").textContent = "";
   $("expenseStatus").className = "status";
   $("saveExpenseBtn").disabled = false;
-  $("saveExpenseBtn").textContent = "Registrar gasto";
+  $("saveExpenseBtn").textContent = "Confirmar gasto";
   $("expenseModal").classList.remove("hidden");
+  $("expenseModal").scrollTop = 0;
+  renderExpensePreview();
 });
 
 $("addDebtBtn")?.addEventListener("click", () => {
@@ -5182,7 +5384,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
     const settlementBeforeExpense = settlementModel();
     const recognizedExpense = amount * 0.50;
     expenseBeforeBalance = settlementBeforeExpense.balance;
-    const rawAfterBalance = expenseBeforeBalance - recognizedExpense;
+    const rawAfterBalance = expenseBeforeBalance + recognizedExpense;
     expenseAfterBalance = Math.abs(rawAfterBalance) > 0.5 ? rawAfterBalance : 0;
 
     // IMPORTANTE: no hacemos transaction.get(expenseRef) antes de crear el gasto.
@@ -5222,6 +5424,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
       autoApplyToBilling: true,
       gastoAuto50: true,
       billingImpactMode: "auto_50",
+      receiptFlowVersion: "gross_expense_driver_debit_50_v2",
       billingImpactAmount: recognizedExpense,
       // Telegram recibe el gasto nuevo, el 50% reconocido y el saldo final de facturación.
       telegramExpenseLoadedAmount: amount,
@@ -5266,7 +5469,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
         const committedSnapshot = await getDoc(expenseRef);
         const committedData = committedSnapshot.exists() ? committedSnapshot.data() : {};
         expenseBeforeBalance = Number(committedData.telegramSettlementBeforeBalance ?? expenseBeforeBalance ?? 0);
-        expenseAfterBalance = Number(committedData.telegramSettlementAfterBalance ?? (expenseBeforeBalance - amount * 0.50));
+        expenseAfterBalance = Number(committedData.telegramSettlementAfterBalance ?? (expenseBeforeBalance + amount * 0.50));
       } catch (_) {}
       closeModalAndGoTop("expenseModal", 1200);
     } else {
@@ -5277,7 +5480,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
     releaseSubmissionLock("expense");
     if (!completedSuccessfully) {
       $("saveExpenseBtn").disabled = false;
-      $("saveExpenseBtn").textContent = "Registrar gasto";
+      $("saveExpenseBtn").textContent = "Confirmar gasto";
     }
   }
 });
@@ -5633,6 +5836,7 @@ function openAdminPayment(closureId) {
 }
 
 $("closeDayBtn")?.addEventListener("click", () => {
+  if (!isAdminProfile()) { openManagement(); return; }
   render();
   $("closeModal").classList.remove("hidden");
   if (isAdminProfile()) {
@@ -6003,3 +6207,373 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pageshow", () => {
   if (isAdminProfile()) setTimeout(maybeShowAdminPendingAction, 120);
 });
+
+let managementDirection = "";
+function openManagement() {
+  managementDirection = "";
+  $("managementForm").classList.add("hidden");
+  $("managementChoices").classList.remove("hidden");
+  $("managementTitle").textContent = "Gestión";
+  $("managementModal").classList.remove("hidden");
+}
+function selectManagement(direction) {
+  managementDirection = direction;
+  $("managementForm").reset();
+  $("managementStatus").textContent = "";
+  $("managementStatus").className = "status";
+  const paying = direction === "driver_to_explora";
+  $("managementTitle").textContent = paying ? "Pagar a Explora" : "Cobrar a Explora";
+  $("managementIntro").textContent = paying ? "Registrá el dinero que entregás a Explora." : "Registrá el dinero que recibís de Explora.";
+  $("managementConfirm").textContent = paying ? "Confirmar pago" : "Confirmar cobro";
+  $("managementConfirm").disabled = false;
+  $("managementModal").dataset.tone = paying ? "digital" : "cash";
+  $("managementChoices").classList.add("hidden");
+  $("managementForm").classList.remove("hidden");
+  renderManagementPreview();
+}
+function renderManagementPreview() {
+  if (!managementDirection) return;
+  const amount = parseMoneyInput($("managementAmount").value) || 0;
+  const before = settlementModel().balance;
+  const delta = amount * (managementDirection === "driver_to_explora" ? -1 : 1);
+  const after = normalizedSettlementBalance(before + delta);
+  $("managementPreview").innerHTML = '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(before))+'</small></div><div><span>Impacto</span><strong class="'+(delta < 0 ? 'negative' : 'positive')+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(after))+'</small></div>';
+}
+$("managementPay").addEventListener("click", () => selectManagement("driver_to_explora"));
+$("managementCollect").addEventListener("click", () => selectManagement("explora_to_driver"));
+$("managementBack").addEventListener("click", openManagement);
+$("managementAmount").addEventListener("input", renderManagementPreview);
+$("managementForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  const user = auth.currentUser;
+  const direction = managementDirection;
+  const amount = parseMoneyInput($("managementAmount").value);
+  if (!user || !["driver_to_explora","explora_to_driver"].includes(direction) || !(amount > 0)) return;
+  const proof = selectedPhotoFile("management");
+  if (!proof || proof.size <= 0 || proof.size > 15 * 1024 * 1024 || !proof.type.startsWith("image/")) {
+    $("managementStatus").textContent = "Adjuntá una foto del comprobante de hasta 15 MB.";
+    $("managementStatus").className = "status error";
+    return;
+  }
+  if (!acquireSubmissionLock("management")) return;
+  $("managementConfirm").disabled = true;
+  $("managementBack").disabled = true;
+  setPhotoPickerDisabled("management", true);
+  $("managementStatus").textContent = "Guardando…";
+  let operation, reference, fingerprint;
+  try {
+    const detail = $("managementNote").value.trim();
+    fingerprint = await buildSubmissionFingerprint("management", {direction,amount,detail});
+    operation = reservePendingOperation("management", user.uid, fingerprint);
+    reference = doc(db, ROOT_COLLECTIONS.payments, operation.operationId);
+    const proofPath = "billing_receipts/" + user.uid + "/" + localDayKey() + "/" + operation.operationId + "_" + proof.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+    const storageRef = ref(storage, proofPath);
+    await retryFirebaseOperation(() => uploadBytes(storageRef, proof), 4);
+    const proofUrl = await retryFirebaseOperation(() => getDownloadURL(storageRef), 4);
+    const before = settlementModel().balance;
+    const after = normalizedSettlementBalance(before + amount * (direction === "driver_to_explora" ? -1 : 1));
+    await runTransactionWithRetry(async transaction => {
+      const existing = await transaction.get(reference);
+      if (existing.exists()) return;
+      transaction.set(reference, {
+        type:"settlement_adjustment", operationType:"settlement_adjustment", internalManagement:true,
+        proofUrl,proofPath,receiptUrl:proofUrl,receiptPath:proofPath,receiptRequired:true,
+        adjustmentDirection:direction, affectsBillingSettlement:true, internalSettlementAdjustment:true,
+        method:direction === "driver_to_explora" ? "digital" : "cash",
+        paymentMethod:direction === "driver_to_explora" ? "digital" : "cash",
+        amount,monto:amount,service:direction === "driver_to_explora" ? "Pago a Explora" : "Cobro a Explora",
+        detail,notes:detail,sourceModule:"gestion",status:"completed",
+        driverUid:user.uid,choferUid:user.uid,uid:user.uid,ownerUid:user.uid,driverId:user.uid,operatorUid:user.uid,
+        operatorName:currentDriverName(),driverName:currentDriverName(),businessId:BUSINESS_ID,
+        dayKey:localDayKey(),weeklyPeriodId:currentWeeklyPeriodId(),
+        telegramSettlementBeforeBalance:before,telegramSettlementAfterBalance:after,
+        idempotencyKey:operation.operationId,clientOperationId:operation.operationId,submissionFingerprint:fingerprint,idempotencyVersion:1,
+        createdAtMs:operation.createdAtMs,createdAt:serverTimestamp()
+      });
+    });
+    clearPendingOperation("management",user.uid,fingerprint,operation.operationId);
+    $("managementStatus").textContent = "Movimiento registrado.";
+    closeModalAndGoTop("managementModal", 700);
+  } catch (error) {
+    const committed = reference && operation && await confirmCommittedOperation(reference,operation.operationId,fingerprint);
+    if (committed) {
+      clearPendingOperation("management",user.uid,fingerprint,operation.operationId);
+      closeModalAndGoTop("managementModal",700);
+    } else {
+      $("managementStatus").textContent = "No pudimos confirmar el movimiento. Reintentá: no se duplicará.";
+      $("managementStatus").className = "status error";
+      $("managementConfirm").disabled = false;
+    }
+  } finally {
+    releaseSubmissionLock("management");
+    $("managementBack").disabled = false;
+    setPhotoPickerDisabled("management", false);
+  }
+});
+
+function renderExpensePreview() {
+  const amount = parseMoneyInput($("expenseAmount").value) || 0;
+  const before = settlementModel().balance;
+  const intermediate = normalizedSettlementBalance(before + amount);
+  const after = normalizedSettlementBalance(before + amount * 0.5);
+  const row = (start,delta,end) => '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(start))+'</small></div><div><span>Impacto</span><strong class="'+(delta > 0 ? "negative" : "positive")+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(end))+'</small></div>';
+  $("expenseGrossPreview").innerHTML = row(before,amount,intermediate);
+  $("expenseRefundPreview").innerHTML = row(intermediate,-amount * 0.5,after);
+}
+$("expenseAmount").addEventListener("input", renderExpensePreview);
+
+function chargeSteps() {
+  return $("chargeMode").value === "digital" ? [0,1,2,3,4] : [0,1,3,4];
+}
+function showChargeStep(step) {
+  $("chargeForm").dataset.step = String(step);
+  document.querySelectorAll("[data-charge-step]").forEach(panel => panel.classList.toggle("hidden", Number(panel.dataset.chargeStep) !== step));
+  const names = ["Monto", "Servicio realizado", "Foto del comprobante", "Factura de Explora", "Movimientos en tu cuenta"];
+  const steps = chargeSteps();
+  const position = steps.indexOf(step);
+  $("chargeStepLabel").textContent = "Paso " + (position + 1) + " de " + steps.length + " · " + names[step];
+  document.querySelector(".charge-step-track").innerHTML = steps.map((value,index) => index <= position ? '<span class="complete"></span>' : '<span></span>').join("");
+  $("saveChargeBtn").textContent = step === 4 ? "Confirmar cobro" : "Continuar";
+  $("chargeStepBack").textContent = step === 0 ? "Cancelar" : "Atrás";
+  $("chargeStatus").textContent = "";
+  renderChargePreview();
+  $("chargeModal").scrollTop = 0;
+}
+function validateChargeStep(step) {
+  if (step === 3 && parseMoneyInput($("chargeAmount").value) >= 10000000 && !$("chargeNamedInvoice").checked) {
+    $("chargeNamedInvoice").checked = true;
+    syncChargeCustomerFields();
+    showChargeStep(3);
+    $("chargeStatus").textContent = "Por este importe, ARCA exige identificar al pasajero. Completá sus datos.";
+    return false;
+  }
+  if (step === 1 && !tourismRoute($("tourismOrigin").value,$("tourismDestination").value)) {
+    showChargeStep(1); $("chargeRouteStatus").textContent="Elegí dos lugares diferentes de la lista."; return false;
+  }
+  const panel = document.querySelector('[data-charge-step="' + step + '"]');
+  for (const field of panel.querySelectorAll("input,select")) {
+    if (!field.disabled && !field.checkValidity()) { showChargeStep(step); field.reportValidity(); return false; }
+  }
+  if (step === 0 && !(parseMoneyInput($("chargeAmount").value) > 0)) {
+    showChargeStep(0); $("chargeStatus").textContent = "Ingresá un importe válido."; return false;
+  }
+  if (step === 1 && (!$("chargeOrigin").value.trim() || !$("chargeDestination").value.trim())) {
+    showChargeStep(1); $("chargeStatus").textContent = "Elegí un recorrido de la lista."; return false;
+  }
+  if (step === 2 && $("chargeMode").value === "digital" && !selectedPhotoFile("digital")) {
+    showChargeStep(2); $("chargeStatus").textContent = "Adjuntá la foto del comprobante digital."; return false;
+  }
+  return true;
+}
+$("chargeStepBack").addEventListener("click", () => {
+  if ($("saveChargeBtn").disabled) return;
+  const step = Number($("chargeForm").dataset.step || 0);
+  if (step === 0) $("chargeModal").classList.add("hidden");
+  else { const steps = chargeSteps(); showChargeStep(steps[steps.indexOf(step) - 1]); }
+});
+
+const chargeRouteState = { version:0, points:{}, searches:{}, automatic:false };
+function resetChargeRoute() {
+  renderTourismSelectors();
+  chargeRouteState.version++;
+  chargeRouteState.points = {};
+  chargeRouteState.searches = {};
+  chargeRouteState.automatic = false;
+  for (const part of ["Origin","Destination"]) {
+    $("route"+part+"Results").replaceChildren();
+    document.querySelector('[data-route-search="'+part+'"]').disabled = false;
+  }
+  $("chargeRouteStatus").textContent = "";
+}
+function invalidateChargeRoute(part) {
+  chargeRouteState.version++;
+  delete chargeRouteState.points[part];
+  chargeRouteState.searches[part] = (chargeRouteState.searches[part] || 0) + 1;
+  $("route"+part+"Results").replaceChildren();
+  $("chargeDistance").value = "";
+  chargeRouteState.automatic = false;
+  $("chargeRouteStatus").textContent = "Recorrido modificado. Elegí los lugares o ingresá los kilómetros nuevamente.";
+}
+function routeFailureMessage(error) {
+  const code = String(error?.code || "");
+  if (code.endsWith("failed-precondition") || code.endsWith("not-found")) return "La búsqueda todavía no está disponible. Podés completar el recorrido y los kilómetros manualmente.";
+  if (code.endsWith("resource-exhausted")) return "Se alcanzó el límite de consultas. Podés completar el recorrido manualmente.";
+  return "No pudimos consultar las direcciones. Reintentá o completá el recorrido manualmente.";
+}
+async function calculateChargeRoute() {
+  const origin = chargeRouteState.points.Origin, destination = chargeRouteState.points.Destination;
+  if (!origin || !destination) {
+    $("chargeRouteStatus").textContent = "Elegí el otro punto para calcular los kilómetros.";
+    return;
+  }
+  const version = ++chargeRouteState.version;
+  $("chargeDistance").value = "";
+  $("chargeRouteStatus").textContent = "Calculando recorrido…";
+  try {
+    const response = await exploraRouteCallable({action:"route",origin:origin.coordinates,destination:destination.coordinates});
+    if (version !== chargeRouteState.version) return;
+    const distance = response.data?.distanceKm;
+    if (!Number.isFinite(distance) || distance <= 0) throw new Error("Invalid distance");
+    $("chargeDistance").value = String(distance);
+    chargeRouteState.automatic = true;
+    $("chargeTripScope").value = [origin.country,destination.country].some(country => ["BRA","BR","PRY","PY"].includes(country)) ? "international" : "national";
+    $("chargeRouteStatus").textContent = distance > 100 ? "El recorrido por carretera supera los 100 km, aunque los lugares estén dentro del radio de búsqueda. Revisá el servicio." : "Kilómetros calculados por carretera. Revisá que correspondan al servicio realizado; podés corregirlos.";
+  } catch (error) {
+    if (version === chargeRouteState.version) $("chargeRouteStatus").textContent = routeFailureMessage(error);
+  }
+}
+for (const part of ["Origin","Destination"]) {
+  $("charge"+part).addEventListener("input", () => invalidateChargeRoute(part));
+  const button = document.querySelector('[data-route-search="'+part+'"]');
+  button.addEventListener("click", async () => {
+    const query = $("charge"+part).value.trim();
+    if (query.length < 3) {
+      $("chargeRouteStatus").textContent = "Escribí al menos 3 caracteres para buscar.";
+      return;
+    }
+    const session = chargeRouteState.version;
+    const token = (chargeRouteState.searches[part] || 0) + 1;
+    chargeRouteState.searches[part] = token;
+    button.disabled = true;
+    $("route"+part+"Results").replaceChildren();
+    $("chargeRouteStatus").textContent = "Buscando direcciones…";
+    try {
+      const response = await exploraRouteCallable({action:"search",query});
+      if (session !== chargeRouteState.version || token !== chargeRouteState.searches[part]) return;
+      const places = response.data?.places || [];
+      $("chargeRouteStatus").textContent = places.length ? "Seleccioná la dirección que corresponde." : "No encontramos ese lugar dentro de los 100 km de Puerto Iguazú. Probá otro nombre o completá los datos manualmente.";
+      for (const place of places) {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.className = "route-result";
+        option.textContent = place.label;
+        option.addEventListener("click", () => {
+          $("charge"+part).value = place.label;
+          chargeRouteState.points[part] = place;
+          $("route"+part+"Results").replaceChildren();
+          calculateChargeRoute();
+        });
+        $("route"+part+"Results").append(option);
+      }
+    } catch (error) {
+      if (session === chargeRouteState.version && token === chargeRouteState.searches[part]) $("chargeRouteStatus").textContent = routeFailureMessage(error);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+$("chargeDistance").addEventListener("input", () => {
+  chargeRouteState.version++;
+  chargeRouteState.automatic = false;
+  $("chargeRouteStatus").textContent = "Kilómetros ingresados manualmente.";
+});
+
+function renderTourismSelectors() {
+  for (const part of ["Origin","Destination"]) {
+    $("tourism"+part).value="";$("tourism"+part+"Search").value="";
+    $("tourism"+part+"Matches").replaceChildren();
+  }
+}
+function selectTourismRoute() {
+  chargeRouteState.version++;
+  const originId=$("tourismOrigin").value, destinationId=$("tourismDestination").value;
+  const route=tourismRoute(originId,destinationId);
+  $("chargeOrigin").value="";$("chargeDestination").value="";$("chargeDistance").value="";
+  chargeRouteState.points={};
+  if (!route) {
+    $("chargeRouteStatus").textContent=originId && destinationId ? "Elegí dos lugares diferentes con un recorrido disponible." : "";return;
+  }
+  chargeRouteState.points={Origin:route.origin,Destination:route.destination};
+  $("chargeOrigin").value=route.origin.name+" · "+route.origin.city;
+  $("chargeDestination").value=route.destination.name+" · "+route.destination.city;
+  $("chargeDistance").value=String(route.distance);
+  $("chargeTripScope").value=[route.origin.country,route.destination.country].some(c=>["BRA","BR","PRY","PY"].includes(c))?"international":"national";
+  $("chargeRouteStatus").textContent=route.distance>100?"Este recorrido supera los 100 km por carretera.":"";
+}
+
+const tourismUsageKey = "explora-tourism-usage-v1";
+let tourismUsage = {};
+try { const saved = JSON.parse(localStorage.getItem(tourismUsageKey) || "{}"); if(saved && typeof saved === "object" && !Array.isArray(saved)) tourismUsage = saved; } catch {}
+for(const part of ["Origin","Destination"]) {
+  const input=$("tourism"+part+"Search"), matches=$("tourism"+part+"Matches");
+  const showMatches=()=>{
+    matches.replaceChildren();
+    const places=searchTourismPlaces(input.value,tourismUsage,true);
+    for(const place of places){
+      const button=document.createElement("button");
+      button.type="button";button.className="route-result";
+      button.textContent=place.name+" · "+place.city+" · "+tourismCountryNames[place.country];
+      button.addEventListener("click",()=>{
+        input.value=place.name+" · "+place.city;
+        $("tourism"+part).value=place.id;
+        tourismUsage[place.id]=Math.max(0,Number(tourismUsage[place.id])||0)+1;
+        try { localStorage.setItem(tourismUsageKey,JSON.stringify(tourismUsage)); } catch {}
+        matches.replaceChildren();
+        selectTourismRoute();
+      });
+      matches.append(button);
+    }
+    if(input.value.trim().length>=2&&!places.length)matches.textContent="No hay coincidencias en los lugares cargados.";
+  };
+  input.addEventListener("input",()=>{
+    $("tourism"+part).value=""; selectTourismRoute(); showMatches();
+  });
+  input.addEventListener("focus",()=>{ if(!$("tourism"+part).value)showMatches(); });
+  input.addEventListener("keydown",event=>{
+    if(event.key==="ArrowDown"&&matches.querySelector("button")){event.preventDefault();matches.querySelector("button").focus();}
+    if(event.key==="Escape")matches.replaceChildren();
+  });
+}
+
+
+let stopInvoiceSubscription = null;
+async function refreshArcaBillingStatus() {
+  try {
+    const {data}=await httpsCallable(functions,"arcaBillingStatus")({});
+    $("arcaModeLabel").textContent=data.enabled ? (data.environment === "production" ? "Automática" : "Pruebas") : "Sin activar";
+    $("arcaModeNote").textContent=data.enabled ? (data.environment === "production" ? "Al confirmar se solicitará la factura. Los viajes internacionales quedan para revisión." : "Homologación: las facturas de prueba no tienen validez fiscal.") : "El viaje se guarda. La emisión fiscal todavía no está activada.";
+  } catch {
+    $("arcaModeLabel").textContent="Por verificar";
+    $("arcaModeNote").textContent="Consultá el estado de la factura después de registrar el cobro.";
+  }
+}
+const invoiceStatusLabels={queued:"Pendiente de ARCA",reserved:"Preparando factura",sent:"Solicitando autorización",uncertain:"Pendiente de verificar en ARCA",authorized:"Factura autorizada",rejected:"Rechazada por ARCA · revisar",review:"Requiere revisión",disabled:"Pendiente de activación"};
+function showInvoices(allDrivers = false) {
+  const user=auth.currentUser;if(!user)return;
+  $("driverProfileModal").classList.add("hidden");$("invoicesModal").classList.remove("hidden");
+  $("invoicesStatus").textContent="Cargando…";$("invoicesList").replaceChildren();
+  stopInvoiceSubscription?.();
+  const invoiceQuery = allDrivers && isAdminProfile()
+    ? query(collection(db,"arca_invoices"),orderBy("createdAtMs","desc"),limit(30))
+    : query(collection(db,"arca_invoices"),where("driverUid","==",user.uid),orderBy("createdAtMs","desc"),limit(30));
+  stopInvoiceSubscription=onSnapshot(invoiceQuery,snapshot=>{
+    $("invoicesStatus").textContent=snapshot.empty ? "Todavía no hay solicitudes de factura." : "Últimos 30 viajes";
+    $("invoicesList").replaceChildren();
+    for(const row of snapshot.docs){
+      const invoice=row.data(),card=document.createElement("article");card.className="charge-panel";
+      const title=document.createElement("strong");title.textContent=invoiceStatusLabels[invoice.status]||"Pendiente";card.append(title);
+      const text=document.createElement("p");text.textContent=money(invoice.detail.ImpTotal)+" · "+invoice.description;card.append(text);
+      const reasons = {...{international_requires_review:"Viaje internacional: revisar el tipo de factura.",issuer_print_data_missing:"Faltan datos fiscales del emisor.",customer_identification_required:"Falta identificar al pasajero.",point_of_sale_unavailable:"Revisar el punto de venta.",number_conflict:"El número corresponde a otros datos. Requiere revisión.",awaiting_reconciliation:"Esperando confirmar si ARCA autorizó la factura."}};
+      const notices=[...(invoice.issues||[]),invoice.issue].filter(Boolean).map(code=>reasons[code]||"Revisar los datos de la solicitud.");
+      if(notices.length){const note=document.createElement("p");note.textContent=[...new Set(notices)].join(" ");card.append(note);}
+      if(invoice.environment==="homologation"){const note=document.createElement("p");note.textContent="PRUEBA · Sin validez fiscal";card.append(note);}
+      if(invoice.status==="authorized"){
+        const button=document.createElement("button");button.className="secondary";button.type="button";button.textContent="Descargar factura";
+        button.addEventListener("click",async()=>{
+          button.disabled=true;
+          try {
+            const {data}=await httpsCallable(functions,"arcaInvoicePdf")({id:row.id});
+            const bytes=Uint8Array.from(atob(data.base64),c=>c.charCodeAt(0)),url=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"}));
+            const link=document.createElement("a");link.href=url;link.download=data.filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+          }catch{$("invoicesStatus").textContent="No pudimos descargar la factura. Intentá nuevamente.";}finally{button.disabled=false;}
+        });card.append(button);
+      }
+      $("invoicesList").append(card);
+    }
+  },()=>{$("invoicesStatus").textContent="No pudimos consultar las facturas. Cerrá y volvé a intentar.";});
+}
+$("showInvoicesBtn").addEventListener("click",()=>showInvoices());
+$("adminInvoicesBtn").addEventListener("click",()=>showInvoices(true));
+// Do not retain another driver's fiscal data after sign-out or account switch.
+onAuthStateChanged(auth,()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;$("invoicesList").replaceChildren();$("invoicesModal").classList.add("hidden");});
+document.querySelector('[data-close="invoicesModal"]').addEventListener('click',()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;});

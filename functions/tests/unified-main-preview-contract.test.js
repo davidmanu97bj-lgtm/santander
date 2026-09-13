@@ -23,20 +23,24 @@ test("efectivo genera su comprobante y otro comprobante de caja chica 5%", () =>
   assert.match(appSource, /service: "Caja chica 5%"/);
 });
 
-test("cobro y gasto exigen el segundo aviso antes de cualquier escritura", () => {
+test("cobro guarda directamente con bloqueo y gasto conserva el segundo aviso", () => {
   const chargePreview = appSource.indexOf('openOperationPreview({ kind:mode, amount, formId:"chargeForm" })');
-  const chargeWrite = appSource.indexOf('acquireSubmissionLock("charge")', chargePreview);
+  const chargeWrite = appSource.indexOf('acquireSubmissionLock("charge")');
   const expensePreview = appSource.indexOf('openOperationPreview({ kind:"expense", amount, formId:"expenseForm" })');
   const expenseWrite = appSource.indexOf('acquireSubmissionLock("expense")', expensePreview);
-  assert.ok(chargePreview > -1 && chargeWrite > chargePreview);
+  assert.equal(chargePreview, -1);
+  assert.ok(chargeWrite > -1);
   assert.ok(expensePreview > -1 && expenseWrite > expensePreview);
   assert.match(appSource, /form\.dataset\.previewConfirmed = "true"/);
 });
 
 test("la vista previa usa las reglas de efectivo, digital y gasto", () => {
-  assert.match(appSource, /cash:[\s\S]*?delta: value \* 0\.55/);
-  assert.match(appSource, /digital:[\s\S]*?delta: value \* -0\.50/);
-  assert.match(appSource, /expense:[\s\S]*?delta: value \* -0\.50/);
-  assert.match(appSource, /cashAmount \* 0\.55/);
-  assert.match(appSource, /transferAmount \* -0\.50/);
+  const { previewDefinition, uberSettlementDelta, uberDriverSubmissionDelta } = require('../../tests/support/frontend-functions.cjs')();
+  assert.equal(previewDefinition('cash', 10000).delta, 10500);
+  assert.equal(previewDefinition('digital', 10000).delta, -9500);
+  assert.equal(previewDefinition('expense', 10000).delta, 5000);
+  assert.equal(previewDefinition('cash', -100).delta, 0);
+  assert.equal(uberSettlementDelta(10000, 20000), -4500);
+  assert.equal(uberSettlementDelta(-100, 10000), -5000);
+  assert.equal(uberDriverSubmissionDelta(10000), 5500);
 });
