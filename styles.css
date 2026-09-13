@@ -7327,6 +7327,10 @@ body:has(:is(#chargeModal, #managementModal, #expenseModal):not(.hidden)) { over
   :is(#chargeModal, #managementModal, #expenseModal) input, :is(#chargeModal, #managementModal, #expenseModal) select { font-size:16px; }
 }
 
+.invoice-file-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+.invoice-file-actions a { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:12px 18px; border-radius:12px; text-decoration:none; font-weight:700; }
+.invoice-file-actions a:focus-visible { outline:2px solid #087f8c; outline-offset:3px; }
+.invoice-reference { overflow-wrap:anywhere; font-size:13px; color:#536586; }
 .charge-invoice-toggle { display:flex; align-items:center; gap:10px; cursor:pointer; font-size:14px; margin:16px 0; }
 :is(#chargeModal, #managementModal, #expenseModal) .charge-invoice-toggle input { width:18px; height:18px; flex:0 0 18px; accent-color:var(--charge-accent); }
 

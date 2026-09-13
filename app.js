@@ -6527,6 +6527,60 @@ for(const part of ["Origin","Destination"]) {
 
 
 let stopInvoiceSubscription = null;
+let invoiceFileGeneration = 0;
+const invoiceFileUrls = new Set();
+function clearInvoiceFiles() {
+  invoiceFileGeneration++;
+  for (const url of invoiceFileUrls) URL.revokeObjectURL(url);
+  invoiceFileUrls.clear();
+}
+async function prepareInvoiceDownload(id, button, panel) {
+  const generation = invoiceFileGeneration, uid = auth.currentUser?.uid;
+  if (!uid || button.disabled) return;
+  button.disabled = true;
+  button.textContent = "Preparando PDF…";
+  const status = panel.querySelector(".invoice-file-status") || document.createElement("p");
+  status.className = "invoice-file-status";
+  status.textContent = "";
+  status.setAttribute("role", "status");
+  panel.append(status);
+  try {
+    const {data} = await httpsCallable(functions, "arcaInvoicePdf")({id});
+    // A closed profile or account change must discard the pending response.
+    if (generation !== invoiceFileGeneration || auth.currentUser?.uid !== uid) return;
+    const decoded = atob(data.base64);
+    if (!decoded.startsWith("%PDF-")) throw new Error("INVALID_PDF");
+    const file = new File([Uint8Array.from(decoded, c => c.charCodeAt(0))], data.filename, {type:"application/pdf"});
+    const url = URL.createObjectURL(file);
+    invoiceFileUrls.add(url);
+    const actions = document.createElement("div");
+    actions.className = "invoice-file-actions";
+    // Keep real links in the document: async synthetic clicks lose the user's
+    // gesture in mobile and embedded browsers and can fail without feedback.
+    const save = document.createElement("a");
+    save.href = url; save.download = data.filename; save.className = "primary"; save.textContent = "Guardar PDF";
+    const open = document.createElement("a");
+    open.href = url; open.target = "_blank"; open.rel = "noopener"; open.className = "secondary"; open.textContent = "Abrir PDF";
+    actions.append(save, open);
+    if (navigator.canShare?.({files:[file]})) {
+      const share = document.createElement("button");
+      share.type = "button"; share.className = "secondary"; share.textContent = "Compartir PDF";
+      share.addEventListener("click", async () => {
+        try { await navigator.share({files:[file], title:"Factura de Explora"}); }
+        catch (error) { if (error.name !== "AbortError") status.textContent = "Usá Guardar PDF o Abrir PDF para obtener la factura."; }
+      });
+      actions.append(share);
+    }
+    panel.append(actions);
+    status.textContent = "PDF listo. Tocá Guardar PDF; si el navegador no lo descarga, usá Abrir PDF.";
+    button.remove();
+  } catch {
+    if (generation !== invoiceFileGeneration || auth.currentUser?.uid !== uid) return;
+    status.textContent = "No pudimos preparar el PDF. Volvé a intentarlo.";
+    button.disabled = false;
+    button.textContent = "Ver y descargar factura";
+  }
+}
 async function refreshArcaBillingStatus() {
   try {
     const {data}=await httpsCallable(functions,"arcaBillingStatus")({});
@@ -6540,6 +6594,7 @@ async function refreshArcaBillingStatus() {
 const invoiceStatusLabels={queued:"Pendiente de ARCA",reserved:"Preparando factura",sent:"Solicitando autorización",uncertain:"Pendiente de verificar en ARCA",authorized:"Factura autorizada",rejected:"Rechazada por ARCA · revisar",review:"Requiere revisión",disabled:"Pendiente de activación"};
 function showInvoices(allDrivers = false) {
   const user=auth.currentUser;if(!user)return;
+  clearInvoiceFiles();
   $("driverProfileModal").classList.add("hidden");$("invoicesModal").classList.remove("hidden");
   $("invoicesStatus").textContent="Cargando…";$("invoicesList").replaceChildren();
   stopInvoiceSubscription?.();
@@ -6547,6 +6602,7 @@ function showInvoices(allDrivers = false) {
     ? query(collection(db,"arca_invoices"),orderBy("createdAtMs","desc"),limit(30))
     : query(collection(db,"arca_invoices"),where("driverUid","==",user.uid),orderBy("createdAtMs","desc"),limit(30));
   stopInvoiceSubscription=onSnapshot(invoiceQuery,snapshot=>{
+    clearInvoiceFiles();
     $("invoicesStatus").textContent=snapshot.empty ? "Todavía no hay solicitudes de factura." : "Últimos 30 viajes";
     $("invoicesList").replaceChildren();
     for(const row of snapshot.docs){
@@ -6558,15 +6614,11 @@ function showInvoices(allDrivers = false) {
       if(notices.length){const note=document.createElement("p");note.textContent=[...new Set(notices)].join(" ");card.append(note);}
       if(invoice.environment==="homologation"){const note=document.createElement("p");note.textContent="PRUEBA · Sin validez fiscal";card.append(note);}
       if(invoice.status==="authorized"){
-        const button=document.createElement("button");button.className="secondary";button.type="button";button.textContent="Descargar factura";
-        button.addEventListener("click",async()=>{
-          button.disabled=true;
-          try {
-            const {data}=await httpsCallable(functions,"arcaInvoicePdf")({id:row.id});
-            const bytes=Uint8Array.from(atob(data.base64),c=>c.charCodeAt(0)),url=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"}));
-            const link=document.createElement("a");link.href=url;link.download=data.filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
-          }catch{$("invoicesStatus").textContent="No pudimos descargar la factura. Intentá nuevamente.";}finally{button.disabled=false;}
-        });card.append(button);
+        const reference=document.createElement("p");reference.className="invoice-reference";
+        reference.textContent=`Factura C ${String(invoice.issuer.pointOfSale).padStart(5,"0")}-${String(invoice.number).padStart(8,"0")} · CAE ${invoice.cae}`;
+        card.append(reference);
+        const button=document.createElement("button");button.className="secondary";button.type="button";button.textContent="Ver y descargar factura";
+        button.addEventListener("click",()=>prepareInvoiceDownload(row.id,button,card));card.append(button);
       }
       $("invoicesList").append(card);
     }
@@ -6575,5 +6627,5 @@ function showInvoices(allDrivers = false) {
 $("showInvoicesBtn").addEventListener("click",()=>showInvoices());
 $("adminInvoicesBtn").addEventListener("click",()=>showInvoices(true));
 // Do not retain another driver's fiscal data after sign-out or account switch.
-onAuthStateChanged(auth,()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;$("invoicesList").replaceChildren();$("invoicesModal").classList.add("hidden");});
-document.querySelector('[data-close="invoicesModal"]').addEventListener('click',()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;});
+onAuthStateChanged(auth,()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;clearInvoiceFiles();$("invoicesList").replaceChildren();$("invoicesModal").classList.add("hidden");});
+document.querySelector('[data-close="invoicesModal"]').addEventListener('click',()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;clearInvoiceFiles();$("invoicesList").replaceChildren();});
