@@ -17,7 +17,7 @@ async function deliverTripNotification({db,ref,paymentId,caption,photo,chatId,ap
   if (!previous) return {skipped:true};
   let messageId = previous.telegramMessageId || null;
   const targetChat = previous.telegramChatId || chatId;
-  const stableCaption = previous.caption || caption;
+  const stableCaption = String(previous.caption || caption).replace(/^Total con caja:[^\r\n]*(?:\r?\n)?/gmi,'').trim();
   const stablePhoto = previous.photoUrl || photo || '';
   const save = values => db.runTransaction(async tx => {
     const current = (await tx.get(ref)).data();

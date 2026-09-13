@@ -20,8 +20,9 @@ test('resúmenes: bruto y caja, gestión sin caja, gasto y reintegro, saldo con 
   const data={settlementRuleVersion:'gross_cash_digital_cashbox_5_v1',invoiceRequest:{origin:'Iguazú',destination:'Cataratas'}};
   const cash=compact.billingSummary({data,driverName:'Ana',amount:100000,cash:true,balance:105000});
   const digital=compact.billingSummary({data,driverName:'Ana',amount:100000,cash:false,balance:10000});
-  assert.match(cash,/Iguazú → Cataratas/);assert.match(cash,/Total con caja:.*105\.000/);
-  assert.match(digital,/Total con caja: −.*95\.000/);assert.match(digital,/Chofer debe:.*10\.000/);
+  assert.match(cash,/Iguazú → Cataratas/);assert.match(cash,/Caja chica 5%:.*5\.000/);
+  assert.match(digital,/Caja chica 5%:.*5\.000/);assert.match(digital,/Chofer debe:.*10\.000/);
+  for (const message of [cash,digital,compact.uberSummary({data:{amount:100000},driverName:'Ana',balance:105000})]) assert.doesNotMatch(message,/Total con caja/);
   const expense=compact.expenseSummary({driverName:'Ana',amount:50000,recognized:25000,balance:-25000,detail:'Combustible'});
   assert.match(expense,/🔴 Gasto:.*50\.000/);assert.match(expense,/🟢 Reintegro:.*25\.000/);assert.match(expense,/Explora debe:.*25\.000/);
   for(const paying of [true,false]) {
@@ -42,13 +43,15 @@ test('el PDF está al final del mismo mensaje, con nombre corto; los nombres del
 test('el cobro avisa pendiente y al autorizar ARCA se adjunta el PDF editando el mismo mensaje una sola vez',async()=>{
   const ctx=setup();await ctx.run();
   assert.equal(ctx.calls[0].method,'sendRichMessage');assert.match(JSON.stringify(content(ctx.calls[0])),/Factura ARCA pendiente/);
+  // A pending invoice may still have a caption saved by the previous release.
+  ctx.db.data.get(ctx.ref.path).caption += '\nTotal con caja: $ 105.000';
   ctx.db.data.set('arca_invoices/a',invoice);
   await ctx.run({caption:'otro saldo'});await ctx.run();
   assert.equal(ctx.calls.length,2);assert.equal(ctx.pdfCalls,1);
   const call=ctx.calls[1];assert.equal(call.method,'editMessageText');assert.equal(call.payload.get('message_id'),'42');
   assert.equal(call.payload.get('invoice').name,'FC-2-123.pdf');
   assert.equal(content(call).blocks.at(-1).type,'document');
-  assert.match(JSON.stringify(content(call)),/105\.000/);assert.doesNotMatch(JSON.stringify(content(call)),/otro saldo|pendiente/);
+  assert.match(JSON.stringify(content(call)),/105\.000/);assert.doesNotMatch(JSON.stringify(content(call)),/otro saldo|pendiente|Total con caja/);
 });
 test('ARCA autorizada antes del aviso: un solo envío con PDF; no emite ni reemite facturas',async()=>{
   const ctx=setup();ctx.db.data.set('arca_invoices/a',invoice);

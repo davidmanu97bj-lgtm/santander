@@ -15,7 +15,7 @@ function billingSummary({data,driverName,amount,cash,balance}) {
   const cashbox = !excluded && (cash || current) ? amount * 0.05 : 0;
   return [cash ? '💵 Cobro en efectivo' : '💳 Cobro digital',`👤 ${clean(driverName)}`,
     ...(route ? [`📍 ${route}`] : []),'',`Cobro: ${money(amount)}`,
-    ...(cashbox ? [`Caja chica 5%: ${money(cashbox)}`,`Total con caja: ${cash ? '' : '−'}${money(cash ? amount+cashbox : amount-cashbox)}`] : []),
+    ...(cashbox ? [`Caja chica 5%: ${money(cashbox)}`] : []),
     '',balanceLine(balance)].join('\n');
 }
 function expenseSummary({driverName,amount,recognized,balance,detail}) {
@@ -29,11 +29,11 @@ function managementSummary({driverName,amount,paying,balance,note}) {
 function uberSummary({data,driverName,balance}) {
   const amount = Number(data.grossAmount || data.totalAmount || data.amount || 0), box = amount * 0.05;
   return ['🚘 Liquidación Uber',`👤 ${clean(driverName)}`,`📅 ${clean(data.weekLabel || data.weekStartDate)}`,'',
-    `Ganancia semanal: ${money(amount)}`,`Caja chica 5%: ${money(box)}`,`Total con caja: ${money(amount+box)}`,'',balanceLine(balance)].join('\n');
+    `Ganancia semanal: ${money(amount)}`,`Caja chica 5%: ${money(box)}`,'',balanceLine(balance)].join('\n');
 }
 function richMessage(text,{photo,document} = {}) {
   const blocks = String(text).split(/\n\n/).filter(Boolean).map(section => ({type:'paragraph',text:section.split('\n').flatMap((line,index) => [
-    ...(index ? ['\n'] : []), /^(?:💵|💳|⛽|📤|📥|🚘|Total con caja:|Chofer debe:|Explora debe:|Cuenta al día)/u.test(line) ? {type:'bold',text:line} : line
+    ...(index ? ['\n'] : []), /^(?:💵|💳|⛽|📤|📥|🚘|Chofer debe:|Explora debe:|Cuenta al día)/u.test(line) ? {type:'bold',text:line} : line
   ])}));
   if (photo) blocks.push({type:'photo',photo:{type:'photo',media:photo}});
   if (document) blocks.push({type:'document',document:{type:'document',media:document}});

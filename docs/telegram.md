@@ -2,10 +2,10 @@
 
 El resumen muestra tipo de operación, chofer, recorrido o semana cuando corresponde, importes y saldo final: «Chofer debe», «Explora debe» o «Cuenta al día». Se omiten fecha/hora redundantes, explicaciones del reparto y cálculos repetidos.
 
-- Cobros nuevos: bruto, caja chica del 5% y total con caja. Efectivo: +105%; digital: −95%.
+- Cobros nuevos: bruto y caja chica del 5%, seguidos del saldo final. Se omite la línea «Total con caja»; los cálculos conservan efectivo +105% y digital −95%.
 - Gastos: importe completo en rojo y reintegro del 50% en verde.
 - Pagar/cobrar a Explora: importe y saldo, sin caja chica ni emisión fiscal.
-- Uber directo: ganancia semanal, caja chica y total del 105% ya aplicado. Los avisos de revisión históricos mantienen su flujo anterior.
+- Uber directo: ganancia semanal, caja chica y saldo final. Los avisos de revisión históricos mantienen su flujo anterior.
 
 Las fotos de gastos, gestión y Uber se adjuntan debajo del resumen usando `show_caption_above_media`. Para cobros con solicitud fiscal, `sendRichMessage` organiza texto, foto (si existe) y PDF como último bloque del mismo mensaje. Si ARCA aún no autorizó, el aviso indica factura pendiente. `notifyArcaInvoiceTelegramV1` edita ese mismo mensaje al autorizarse y añade el PDF generado por `arca-pdf.js`. No emite ni reemite comprobantes y no adjunta documentos de homologación como facturas reales.
 
