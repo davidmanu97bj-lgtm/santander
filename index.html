@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
   <title>Explora — Control operativo</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
-  <link rel="modulepreload" href="./app.js?v=20260913-seleccion-direcciones" />
+  <link rel="modulepreload" href="./app.js?v=20260913-uber-semanal" />
   <style>
     :root{
       --bg:#f3f5f7;--panel:#ffffff;--ink:#0e1116;--muted:#737a85;--line:#e7eaee;
@@ -117,7 +117,7 @@
       .service-option{min-height:80px;padding:13px 11px}.service-option strong{font-size:12px}.service-option span{font-size:16px}
     }
   </style>
-  <link rel="stylesheet" href="./styles.css?v=20260913-seleccion-direcciones" />
+  <link rel="stylesheet" href="./styles.css?v=20260913-uber-semanal" />
 </head>
 <body>
 <section id="splashScreen" class="splash-screen" aria-live="polite" aria-label="Cargando Explora">
@@ -226,8 +226,8 @@
         <button id="addExpenseBtn" type="button" class="driver-action tone-expense"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21V3h11v18M2 21h14M3 10h11M14 8h2l3 3v6a2 2 0 0 0 4 0V8l-4-4M20 5v4h3"/></svg><span>Cargar<br>gasto</span></button>
         <button id="closeDayBtn" type="button" class="driver-action tone-close" aria-label="Gestión"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m7 12 3 3 7-7"/></svg><span>Gestión</span></button>
       </section>
+      <button id="addUberBtn" class="driver-uber-action hidden" type="button"><span class="uber-action-icon" aria-hidden="true">U</span><span>Liquidar UBER de la semana</span><b id="uberPendingBadge" class="hidden" aria-hidden="true">0</b><span class="uber-action-arrow" aria-hidden="true">›</span></button>
       <div class="driver-other-actions">
-        <button id="addUberBtn" type="button">Cargar Uber <b id="uberPendingBadge" class="operation-pending-badge hidden" aria-label="Semanas de Uber pendientes">0</b><span aria-hidden="true">↗</span></button>
         <span id="advanceBox"><button id="requestAdvanceBtn" type="button">Pedir adelanto <span aria-hidden="true">↗</span></button></span>
       </div>
       <section class="driver-history" id="driverHistory" aria-labelledby="driverHistoryTitle" tabindex="-1">
@@ -536,50 +536,42 @@
   </div>
 </div>
 
-<div id="uberModal" class="modal hidden" data-tone="uber">
-  <div class="modal-card">
-    <div class="modal-head"><h2>Cargar cierre de Uber</h2><button class="x" data-close="uberModal">×</button></div>
-    <form id="uberForm">
-      <div id="uberPendingNotice" class="uber-pending-notice" aria-live="polite"></div>
-      <div class="field">
-        <label for="uberWeekSelect">Semana de Uber (fecha automática)</label>
-        <select id="uberWeekSelect" required></select>
-        <div class="file-note">La aplicación selecciona automáticamente la semana cerrada pendiente. Si hay más de una, podés elegir cuál completar.</div>
-      </div>
-      <div id="uberWeekSummary" class="uber-week-summary">
-        <div><span>Inicio</span><strong id="uberWeekStartLabel">—</strong></div>
-        <div><span>Cierre</span><strong id="uberWeekEndLabel">—</strong></div>
-        <div><span>Estado</span><strong id="uberWeekStateLabel">Pendiente</strong></div>
-      </div>
-      <button id="openUberHelpBtn" class="uber-help-button" type="button">
-        <span class="uber-help-icon" aria-hidden="true">i</span>
-        <span><strong>¿Dónde encuentro este monto?</strong><small>Ver guía paso a paso</small></span>
-        <b aria-hidden="true">›</b>
-      </button>
-      <div class="field">
-        <label for="uberGrossAmount">Ganancias netas de la semana</label>
-        <div class="money-entry uber-money-entry"><span aria-hidden="true">$</span><input id="uberGrossAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div>
-        <div class="file-note">Ingresá el total semanal finalizado que muestra Uber. Todo ese dinero está en poder del chofer.</div>
-      </div>
-      <div class="field">
-        <label>Comprobante semanal de Uber</label>
-        <div class="photo-source-picker" data-photo-picker="uber">
-          <div class="photo-source-actions" aria-label="Elegir origen de la foto de Uber">
-            <button type="button" class="photo-source-action camera" data-photo-input="uberProofCamera">Sacar foto con la cámara</button>
-            <button type="button" class="photo-source-action gallery" data-photo-input="uberProof">Subir foto de galería</button>
+<div id="uberModal" class="modal hidden" data-tone="cash" role="dialog" aria-modal="true" aria-labelledby="uberTitle">
+  <div class="modal-card charge-screen-card">
+    <div class="charge-brand"><strong>Explora Iguazú</strong><span>App del conductor</span></div>
+    <button class="charge-back" type="button" data-close="uberModal">‹ Inicio</button>
+    <div class="charge-heading"><span class="charge-icon uber-heading-icon" aria-hidden="true">U</span><div><h2 id="uberTitle">Liquidar UBER</h2><p id="uberWeekCaption"></p></div></div>
+    <form id="uberForm" novalidate>
+      <div id="uberStepLabel" class="charge-step-label" role="status" aria-live="polite"></div>
+      <div id="uberStepTrack" class="charge-step-track" aria-hidden="true"></div>
+      <div class="hidden"><div id="uberPendingNotice"></div><select id="uberWeekSelect" aria-label="Semana de Uber"></select><div id="uberWeekSummary"><span id="uberWeekStartLabel"></span><span id="uberWeekEndLabel"></span><span id="uberWeekStateLabel"></span></div></div>
+      <section data-uber-step="0" class="charge-step">
+        <div class="charge-panel charge-amount-panel field"><label for="uberGrossAmount">Monto total de la semana</label><div class="money-entry"><span aria-hidden="true">$</span><input id="uberGrossAmount" class="money-input" type="text" inputmode="decimal" placeholder="0" autocomplete="off" required></div><p class="file-note">Ingresá las ganancias de la semana finalizada, después de la comisión de Uber.</p></div>
+        <button id="openUberHelpBtn" class="uber-help-button" type="button"><span class="uber-help-icon" aria-hidden="true">i</span><span><strong>¿Dónde encuentro este monto?</strong><small>Ver guía paso a paso</small></span><b aria-hidden="true">›</b></button>
+      </section>
+      <section data-uber-step="1" class="charge-step hidden">
+        <div class="charge-panel"><h3>Captura de las ganancias</h3><p id="uberProofWeek" class="file-note"></p>
+          <div class="photo-source-picker" data-photo-picker="uber">
+            <div class="photo-source-actions" aria-label="Elegir foto de las ganancias de Uber">
+              <button type="button" class="photo-source-action gallery" data-photo-input="uberProof"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1"/><path d="m3 17 6-6 4 4 3-3 5 5"/></svg><span>Subir captura<small>Desde tu galería</small></span></button>
+              <button type="button" class="photo-source-action camera" data-photo-input="uberProofCamera"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5 9 3h6l1 2h4a2 2 0 0 1 2 2v12H2V7a2 2 0 0 1 2-2Z"/><circle cx="12" cy="12" r="4"/></svg><span>Sacar foto<small>Usar la cámara</small></span></button>
+            </div>
+            <input id="uberProofCamera" class="photo-source-input" type="file" accept="image/*" capture="environment" data-photo-source="camera" tabindex="-1">
+            <input id="uberProof" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1">
+            <div class="photo-source-selection" data-photo-selection aria-live="polite">Ninguna foto seleccionada.</div>
           </div>
-          <input id="uberProofCamera" class="photo-source-input" type="file" accept="image/*" capture="environment" data-photo-source="camera" tabindex="-1">
-          <input id="uberProof" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1">
-          <div class="photo-source-selection" data-photo-selection aria-live="polite">Ninguna foto seleccionada.</div>
+          <img id="uberProofPreview" class="uber-proof-preview hidden" alt="Captura seleccionada de las ganancias semanales">
+          <p class="file-note">Deben verse las fechas de la semana y el total de ganancias.</p>
+          <p id="uberScanFeedback" class="uber-scan-feedback" role="status" aria-live="polite"></p>
+          <div id="uberScanExample" class="uber-scan-example hidden"><strong>Esta es la pantalla que necesitás</strong><p>Abrí Uber Driver → Ganancias y elegí esta semana.</p><div class="uber-example-screen"><div class="uber-example-head"><span>Ganancias</span><small>EJEMPLO</small></div><div class="uber-example-target"><small id="uberExampleWeek"></small><strong id="uberExampleAmount">$ 100.000</strong><em>Fechas y total visibles</em></div></div><button type="button" id="uberReplacePhoto" class="secondary">Elegir otra captura</button></div>
         </div>
-        <div class="file-note">La imagen debe mostrar la semana elegida y el total de ganancias.</div>
-      </div>
-      <div class="uber-driver-request-card">
-        <strong>David verificará el comprobante</strong>
-        <p>El envío solo avisa por Telegram y no modifica el saldo hasta que David confirme. Como este dinero queda a cargo del chofer, se contabilizará como efectivo: puede achicar un saldo a tu favor o aumentar una deuda con Explora.</p>
-      </div>
-      <div id="uberStatus" class="status"></div>
-      <div class="modal-actions"><button type="button" class="secondary" data-close="uberModal">Cancelar</button><button id="saveUberBtn" type="submit" class="save">Revisar cálculo</button></div>
+      </section>
+      <section data-uber-step="2" class="charge-step hidden">
+        <div class="charge-panel"><h3>Movimientos en tu cuenta</h3><h4>Liquidación UBER · 100%</h4><div id="uberPrincipalPreview" class="charge-account"></div><h4>Caja chica · 5%</h4><div id="uberCashboxPreview" class="charge-account"></div></div>
+        <p class="uber-review-note">David revisará la captura. Estos movimientos se aplicarán cuando apruebe la liquidación.</p>
+      </section>
+      <div id="uberStatus" class="status" aria-live="polite"></div>
+      <div class="modal-actions"><button id="uberStepBack" type="button" class="secondary">Cancelar</button><button id="saveUberBtn" type="submit" class="save">Continuar</button></div>
     </form>
   </div>
 </div>
@@ -821,6 +813,6 @@
   </script>
 
 
-<script type="module" src="./app.js?v=20260913-seleccion-direcciones"></script>
+<script type="module" src="./app.js?v=20260913-uber-semanal"></script>
 </body>
 </html>

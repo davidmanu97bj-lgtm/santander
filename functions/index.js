@@ -26,6 +26,7 @@ initializeApp({ storageBucket: STORAGE_BUCKET });
 const db = getFirestore();
 const auth = getAuth();
 const bucket = getStorage().bucket(STORAGE_BUCKET);
+exports.verifyUberScreenshot = require("./uber-proof").createUberProofFunction({db,bucket,assertViewer:assertTeamRealtimeViewer});
 
 const ADMIN_UIDS = new Set(["2LziyTTdFcZzSOhK3hLbAKs2U4s2"]);
 const ADMIN_ROLES = new Set(["admin", "administrador", "owner", "superadmin"]);
@@ -767,10 +768,11 @@ function uberTelegramText(data = {}) {
     ? telegramSignedSettlementLine(afterBalanceValue)
     : "Estado: Equilibrado";
   if (isV84) {
+    const grossRule = data.settlementRuleVersion === "uber_gross_cash_cashbox_5_v1";
     const exploraShare = amount * 0.50;
     const cashbox = amount * 0.05;
     const driverShare = amount - exploraShare - cashbox;
-    const totalForExplora = exploraShare + cashbox;
+    const totalForExplora = (grossRule ? amount : exploraShare) + cashbox;
     const beforeValue = Number(data.telegramSettlementBeforeBalance ?? data.settlementBeforeAdminDecision ?? data.settlementBeforeDriverSubmission);
     const beforeLine = Number.isFinite(beforeValue)
       ? telegramSignedSettlementLine(beforeValue).replace("Estado:", "Saldo anterior:")
@@ -790,9 +792,9 @@ function uberTelegramText(data = {}) {
       `Chofer: ${telegramDriverName(data)}`,
       `Semana: ${week}`,
       `Ganancias informadas: ${telegramMoney(amount)}`,
-      `Explora 50%: ${telegramMoney(exploraShare)}`,
+      `${grossRule ? "Importe completo" : "Explora 50%"}: ${telegramMoney(grossRule ? amount : exploraShare)}`,
       `Caja chica 5%: ${telegramMoney(cashbox)}`,
-      `Chofer conserva 45%: ${telegramMoney(driverShare)}`,
+      ...(!grossRule ? [`Chofer conserva 45%: ${telegramMoney(driverShare)}`] : []),
       `Total para Explora: ${telegramMoney(totalForExplora)}`,
       ...(data.correctedByAdmin === true ? [`Monto original del chofer: ${telegramMoney(data.driverSubmittedAmount || 0)}`] : []),
       ...(isSubmitted ? ["Comprobante: Adjunto", "Estado: Pendiente de revisión de David; el saldo todavía no cambió."] : []),
@@ -844,7 +846,7 @@ function uberTelegramText(data = {}) {
 function uberTelegramSettlementImpact(data = {}) {
   const workflow = telegramSafeText(data.settlementWorkflowVersion).toLowerCase();
   const grossAmount = Math.max(0, Number(data.totalAmount || data.grossAmount || data.amount || 0));
-  if (workflow === "v84_driver_submission_admin_review") return grossAmount * 0.55;
+  if (workflow === "v84_driver_submission_admin_review") return grossAmount * (data.settlementRuleVersion === "uber_gross_cash_cashbox_5_v1" ? 1.05 : 0.55);
   const hasSplit = Object.prototype.hasOwnProperty.call(data, "cashAmount")
     || Object.prototype.hasOwnProperty.call(data, "uberCashAmount")
     || Object.prototype.hasOwnProperty.call(data, "transferAmount")

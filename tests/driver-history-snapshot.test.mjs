@@ -8,7 +8,9 @@ const start = source.indexOf('function receiptBalanceSnapshot(');
 const end = source.indexOf('function receiptBalanceLabel(', start);
 const excludedStart = source.indexOf('function cashboxIsExcluded(');
 const excludedEnd = source.indexOf('\n}', excludedStart) + 2;
-const snapshot = vm.runInNewContext(`${source.slice(excludedStart, excludedEnd)}\n(${source.slice(start, end).trim()})`, {isSettlementAdjustment:item=>item.type==='settlement_adjustment',isReimbursementCompensation:item=>['reimbursement_compensation','debt_compensation'].includes(item.type)});
+const uberStart = source.indexOf('function uberUsesGrossCashRule(');
+const uberEnd = source.indexOf('\n}', uberStart) + 2;
+const snapshot = vm.runInNewContext(`${source.slice(uberStart, uberEnd)}\n${source.slice(excludedStart, excludedEnd)}\n(${source.slice(start, end).trim()})`, {isSettlementAdjustment:item=>item.type==='settlement_adjustment',isReimbursementCompensation:item=>['reimbursement_compensation','debt_compensation'].includes(item.type)});
 
 test('el historial expresa cambios del saldo con signo y admite saldo cero', () => {
   const cash = snapshot({telegramSettlementBeforeBalance:0, telegramSettlementAfterBalance:55000});

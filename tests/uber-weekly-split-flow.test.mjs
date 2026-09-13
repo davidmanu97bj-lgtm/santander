@@ -21,17 +21,17 @@ assert.doesNotMatch(html, /id="adminUberCashAmount"/);
 assert.doesNotMatch(html, /id="adminUberTransferAmount"/);
 
 // La vista previa deja sólo las dos cifras necesarias: total semanal y 50% + 5%.
-assert.match(app, /function uberDriverSubmissionDelta\(grossAmount = 0\)/);
-assert.match(app, /Number\(grossAmount \|\| 0\)\) \* 0\.55/);
-assert.match(app, /impactLabel: "Total para Explora 50% \+ 5% de caja chica"/);
+assert.match(app, /function uberDriverSubmissionDelta\(grossAmount = 0, item/);
+assert.match(app, /uberUsesGrossCashRule\(item\) \? 1\.05 : 0\.55/);
+assert.match(app, /impactLabel: "Importe completo \+ 5% de caja chica"/);
 assert.doesNotMatch(html, /operationPreviewUberGross|operationPreviewUberExplora|operationPreviewUberCashbox|operationPreviewUberDriver/);
 assert.match(app, /settlementWorkflowVersion: "v84_driver_submission_admin_review"/);
 assert.match(app, /reviewStatus: "pending_admin_review"/);
 assert.match(app, /adminConfirmed:false/);
 assert.match(app, /selectedPhotoFile\("uber"\)/);
-assert.match(app, /openOperationPreview\(\{ kind:"uber", amount, formId:"uberForm" \}\)/);
-assert.match(html, /El envío solo avisa por Telegram y no modifica el saldo hasta que David confirme/);
-assert.match(html, /se contabilizará como efectivo/);
+assert.match(app, /verifyUberPhoto\(file, week, amount\)/);
+assert.match(html, /Estos movimientos se aplicarán cuando apruebe la liquidación/);
+assert.match(html, /Liquidación UBER · 100%/);
 
 // El Admin ve el comprobante, puede corregir el total y es quien confirma el impacto.
 assert.match(app, /id="adminUberVerifiedAmount"/);

@@ -42,5 +42,6 @@ test("la vista previa usa las reglas de efectivo, digital y gasto", () => {
   assert.equal(previewDefinition('cash', -100).delta, 0);
   assert.equal(uberSettlementDelta(10000, 20000), -4500);
   assert.equal(uberSettlementDelta(-100, 10000), -5000);
-  assert.equal(uberDriverSubmissionDelta(10000), 5500);
+  assert.equal(uberDriverSubmissionDelta(10000), 10500);
+  assert.equal(uberDriverSubmissionDelta(10000, {}), 5500);
 });

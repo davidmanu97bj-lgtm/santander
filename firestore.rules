@@ -503,9 +503,17 @@ service cloud.firestore {
 
 
     match /uber_weekly_closures/{closureId} {
+      function verifiedUberProof(data) {
+        let proof = get(/databases/$(database)/documents/uber_proof_checks/$(data.verifiedProofId)).data;
+        return proof.valid == true && proof.uid == uid()
+          && proof.amount == data.grossAmount
+          && proof.weekStartDate == data.weekStartDate && proof.weekCloseDate == data.weekCloseDate
+          && proof.proofPath == data.proofPath && proof.proofUrl == data.proofUrl
+          && proof.expiresAt > request.time;
+      }
       function validUberClosureRequest(data) {
         // El chofer sólo envía semana + monto + comprobante. Ese alta NO modifica
-        // el saldo: David recalcula 50% + 5% al aprobar. Por eso Rules valida los
+        // el saldo: David recalcula el importe completo + 5% al aprobar. Por eso Rules valida los
         // datos autoritativos y evita bloquear el envío por campos derivados o
         // redondeos del cliente.
         return data.driverUid == uid()
@@ -521,6 +529,9 @@ service cloud.firestore {
           && data.weekKey == data.weekId
           && data.locked == true
           && data.settlementWorkflowVersion == 'v84_driver_submission_admin_review'
+          && data.settlementRuleVersion == 'uber_gross_cash_cashbox_5_v1'
+          && data.verifiedProofId is string
+          && verifiedUberProof(data)
           && data.driverSubmitted == true
           && data.adminConfirmed == false
           && data.grossAmount is number

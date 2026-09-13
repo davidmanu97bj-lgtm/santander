@@ -279,6 +279,9 @@ function uberTransferAmount(data = {}) {
     : 0;
 }
 
+function uberGrossPrincipalDelta(records = []) {
+  return records.filter(item => item.settlementRuleVersion === "uber_gross_cash_cashbox_5_v1").reduce((sum, item) => sum + uberCashAmount(item) * 0.50, 0);
+}
 function uberCashboxAmount(data = {}) {
   const explicit = moneyNumber(data.cashboxAmount ?? data.uberCashboxAmount ?? 0);
   if (explicit > 0) return explicit;
@@ -368,6 +371,7 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
     if (amount > 0) regularCashboxGenerated += amount * 0.05;
   }
 
+  let uberPrincipalExtra = 0;
   let uberCashboxGenerated = 0;
   let uberGrossTotal = 0;
   let uberCashTotal = 0;
@@ -377,6 +381,7 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
     if (!uberImpactsSettlement(week)) continue;
     const grossAmount = uberGrossAmount(week);
     if (!(grossAmount > 0)) continue;
+    uberPrincipalExtra += uberGrossPrincipalDelta([week]);
     uberGrossTotal += grossAmount;
     uberCashTotal += uberCashAmount(week);
     uberTransferTotal += uberTransferAmount(week);
@@ -407,7 +412,7 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
   const expenseShare = roundMoney(expenseTotal * 0.50);
   const gross = roundMoney(cash + digital + uberGrossTotal);
   const shareEach = roundMoney(gross * 0.5);
-  const netBeforeCashboxToDriver = roundMoney(shareEach - cash - uberCashTotal);
+  const netBeforeCashboxToDriver = roundMoney(shareEach - cash - uberCashTotal - uberPrincipalExtra);
 
   const cashboxGeneratedTotal = roundMoney(regularCashboxGenerated + uberCashboxGenerated);
   const cashboxOffsetPreviouslyApplied = Math.min(
@@ -525,7 +530,7 @@ function teamSettlementDeltaSince(cutoffMs, records = [], uberWeeks = [], expens
   const automaticExpenseImpact = teamAutomaticExpenseImpact(expenses, cutoffMs);
 
   return roundMoney(
-    (cash * 0.50) + (uberCash * 0.50) + cashbox -
+    (cash * 0.50) + (uberCash * 0.50 + uberGrossPrincipalDelta(scopedUber)) + cashbox -
     (digital * 0.50) - (uberTransfer * 0.50) -
     automaticExpenseImpact - driverPaid + exploraPaid + grossFlowPrincipalDelta(scopedRecords)
   );
@@ -571,7 +576,7 @@ function calculateTeamRealtimeSettlementBalance({ records = [], closures = [], u
 
   const rawBalance = anchor
     ? anchor.balance + teamSettlementDeltaSince(anchor.timestamp, records, uberWeeks, expenses) + adminDebtTotal
-    : (cash * 0.50) + (uberCash * 0.50) + cashbox + adminDebtTotal -
+    : (cash * 0.50) + (uberCash * 0.50 + uberGrossPrincipalDelta(scopedUber)) + cashbox + adminDebtTotal -
       (digital * 0.50) - (uberTransfer * 0.50) - automaticExpenseImpact - driverPaid + exploraPaid + grossFlowPrincipalDelta(openRecords);
   const balance = Math.abs(rawBalance) > 0.5 ? roundMoney(rawBalance) : 0;
 
