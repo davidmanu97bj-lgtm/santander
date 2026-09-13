@@ -7,6 +7,7 @@ const rules = fs.readFileSync(new URL("../firestore.rules", import.meta.url), "u
 const storageRules = fs.readFileSync(new URL("../storage.rules", import.meta.url), "utf8");
 const telegram = fs.readFileSync(new URL("../functions/index.js", import.meta.url), "utf8");
 const balance = fs.readFileSync(new URL("../functions/telegram-billing-balance.js", import.meta.url), "utf8");
+const submission = fs.readFileSync(new URL("../functions/uber-submission.js", import.meta.url), "utf8");
 
 // El chofer carga un único total semanal y la evidencia desde cámara o galería.
 assert.match(html, /id="uberGrossAmount"/);
@@ -25,15 +26,15 @@ assert.match(app, /function uberDriverSubmissionDelta\(grossAmount = 0, item/);
 assert.match(app, /uberUsesGrossCashRule\(item\) \? 1\.05 : 0\.55/);
 assert.match(app, /impactLabel: "Importe completo \+ 5% de caja chica"/);
 assert.doesNotMatch(html, /operationPreviewUberGross|operationPreviewUberExplora|operationPreviewUberCashbox|operationPreviewUberDriver/);
-assert.match(app, /settlementWorkflowVersion: "v84_driver_submission_admin_review"/);
-assert.match(app, /reviewStatus: "pending_admin_review"/);
-assert.match(app, /adminConfirmed:false/);
+assert.match(app, /httpsCallable\(functions,"registerUberLiquidation"/);
+assert.match(submission, /v85_verified_direct/);
+assert.match(submission, /reviewStatus:'completed'/);
 assert.match(app, /selectedPhotoFile\("uber"\)/);
 assert.match(app, /verifyUberPhoto\(file, week, amount\)/);
-assert.match(html, /Estos movimientos se aplicarán cuando apruebe la liquidación/);
+assert.match(html, /Al registrar, el total y el 5% de caja chica se aplican a tu saldo/);
 assert.match(html, /Liquidación UBER · 100%/);
 
-// El Admin ve el comprobante, puede corregir el total y es quien confirma el impacto.
+// Se conservan los controles para pedidos históricos que aún esperan revisión.
 assert.match(app, /id="adminUberVerifiedAmount"/);
 assert.match(app, /Comprobante y semana verificados/);
 assert.match(app, /async function approveUberClosureFromAdmin/);
@@ -51,7 +52,7 @@ assert.match(rules, /data\.proofUrl\.size\(\) > 0/);
 assert.match(rules, /resource\.data\.driverUid == uid\(\)/);
 assert.doesNotMatch(rules, /data\.exploraShare \* 2 == data\.grossAmount/);
 assert.match(app, /async function resolveUberSubmissionTarget/);
-assert.match(app, /Verificando semana/);
+assert.match(app, /Registrando liquidación/);
 assert.match(storageRules, /allow update: if \(isAuthorizedAdmin\(\) \|\| isOwner\(driverUid\)\)/);
 
 // Telegram cubre el envío con foto y la aprobación/rechazo de David.
@@ -63,7 +64,7 @@ assert.match(telegram, /Total para Explora:/);
 assert.match(telegram, /review === "pending_admin_review"/);
 assert.match(telegram, /El adjunto falló; se enviará el aviso como texto/);
 
-// Tanto el Home como Telegram excluyen el pedido hasta la aprobación administrativa.
+// Los pedidos históricos pendientes conservan su regla de aprobación.
 assert.match(app, /item\.adminConfirmed === true && \/approved\|confirmed\|completed\/\.test\(status\)/);
 assert.match(balance, /data\.adminConfirmed === true && \/approved\|confirmed\|completed\/\.test\(status\)/);
 

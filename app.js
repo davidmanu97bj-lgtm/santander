@@ -578,6 +578,7 @@ function uberDriverSubmissionDelta(grossAmount = 0, item = {settlementRuleVersio
 function uberImpactsSettlement(item = {}) {
   const workflow = String(item.settlementWorkflowVersion || item.workflowVersion || "").toLowerCase();
   const status = String(item.reviewStatus || item.status || "").toLowerCase();
+  if (workflow === "v85_verified_direct") return item.verifiedAutomatically === true && status === "completed";
   if (workflow === "v84_driver_submission_admin_review") {
     return item.adminConfirmed === true && /approved|confirmed|completed/.test(status);
   }
@@ -3226,6 +3227,14 @@ function adminFinancialMovementRows() {
       }));
   }
 
+  if (filter === "all" || filter === "uber") {
+    adminUberClosures.filter(item => adminRecordBelongsToDriver(item,driver))
+      .filter(item => !movementIsDeleted(item)).forEach(item => rows.push({
+        id:item.id,type:"uber",label:"Liquidación Uber",amount:uberGrossRevenueOf(item),
+        detail:uberWeekLabelForItem(item),createdAt:recordTimestampMs(item),method:"cash",proofUrl:recordProofUrl(item)
+      }));
+  }
+
   return rows.sort((a,b)=>b.createdAt-a.createdAt).slice(0, 80);
 }
 
@@ -3239,7 +3248,7 @@ function renderAdminFinancialMovements() {
   }
   const rows = adminFinancialMovementRows();
   if (!rows.length) {
-    box.innerHTML = `<div class="admin-empty">No hay cobros o gastos para ${escapeHtml(adminDriverLabel(driver))}.</div>`;
+    box.innerHTML = `<div class="admin-empty">No hay movimientos para ${escapeHtml(adminDriverLabel(driver))}.</div>`;
     return;
   }
   box.innerHTML = rows.map(item => {
@@ -3250,7 +3259,7 @@ function renderAdminFinancialMovements() {
       <div class="admin-history-foot">
         <div><small>${escapeHtml(when)}</small>${item.proofUrl ? `<a target="_blank" rel="noopener" href="${item.proofUrl}">Comprobante</a>` : ""}</div>
         <div class="admin-movement-actions">
-          <button type="button" data-edit-financial="${escapeHtml(item.id)}" data-financial-type="${item.type}" data-financial-amount="${item.amount}">Modificar</button>
+          ${item.type === "uber" ? "" : `<button type="button" data-edit-financial="${escapeHtml(item.id)}" data-financial-type="${item.type}" data-financial-amount="${item.amount}">Modificar</button>`}
           <button type="button" class="danger" data-delete-financial="${escapeHtml(item.id)}" data-financial-type="${item.type}">Eliminar</button>
         </div>
       </div>
@@ -3284,7 +3293,7 @@ function openAdminFinancialEdit(item = {}) {
 
 async function deleteAdminFinancialMovement(type, documentId) {
   const driver = adminDriverById($("movementDriver")?.value || "");
-  if (!driver || !documentId || !["cobro","gasto"].includes(type)) return;
+  if (!driver || !documentId || !["cobro","gasto","uber"].includes(type)) return;
   const reason = window.prompt(`Motivo para eliminar este ${type}:`);
   if (!String(reason || "").trim()) return;
   const confirmed = window.confirm(`¿Eliminar este ${type}? El saldo se recalculará automáticamente.`);
@@ -5470,7 +5479,7 @@ function renderUberStep(step = uberStep) {
   $("uberStepLabel").textContent = "Paso " + (step + 1) + " de 3 · " + ["Monto", "Captura", "Movimientos"][step];
   $("uberStepTrack").innerHTML = [0,1,2].map(index => '<span class="' + (index <= step ? 'complete' : '') + '"></span>').join("");
   $("uberStepBack").textContent = step ? "Atrás" : "Cancelar";
-  $("saveUberBtn").textContent = step === 2 ? "Enviar liquidación" : "Continuar";
+  $("saveUberBtn").textContent = step === 2 ? "Registrar liquidación" : "Continuar";
   const week = selectedPendingUberWeek();
   $("uberWeekCaption").textContent = week ? "Semana del " + week.label : "Sin semanas pendientes";
   $("uberProofWeek").textContent = week ? "Captura de la semana del " + week.label : "";
@@ -5616,7 +5625,7 @@ $("uberForm")?.addEventListener("submit", async e => {
   }
   if (!uberProofCheck || uberProofCheck.amount !== amount || uberProofCheck.weekStartDate !== week.weekStartDate || Date.now() - uberProofCheck.checkedAt > 3500000) {
     renderUberStep(1);
-    $("uberScanFeedback").textContent = "Volvé a verificar la captura antes de enviar.";
+    $("uberScanFeedback").textContent = "Volvé a verificar la captura antes de registrar.";
     return;
   }
   if (!acquireSubmissionLock("uber")) {
@@ -5632,150 +5641,48 @@ $("uberForm")?.addEventListener("submit", async e => {
 
   try {
     if (isUberWeekLoaded(week)) {
-      $("uberStatus").textContent = `El cierre de ${week.label} ya fue solicitado y está pendiente de revisión.`;
+      $("uberStatus").textContent = `La semana ${week.label} ya está registrada.`;
       $("uberStatus").className = "status error";
       renderUberWeekSelector();
       return;
     }
 
-    $("saveUberBtn").textContent = "Verificando semana…";
-    const submissionTarget = await resolveUberSubmissionTarget(user.uid, week);
-    if (submissionTarget.blocked) {
-      $("uberStatus").textContent = `El cierre de ${week.label} ya fue solicitado y está pendiente de revisión.`;
-      $("uberStatus").className = "status error";
-      renderUberWeekSelector();
-      return;
-    }
-    const uberDocumentId = submissionTarget.id;
-    const uberDocRef = submissionTarget.ref;
-
-    const {proofPath, proofUrl, id:verifiedProofId} = uberProofCheck;
-
-    const exploraShare = amount * 0.50;
-    const cashboxAmount = amount * 0.05;
-    const driverShare = amount - exploraShare - cashboxAmount;
-    const settlementBefore = settlementModel().balance;
-    const settlementImpact = uberDriverSubmissionDelta(amount);
-    const projectedAfter = normalizedSettlementBalance(settlementBefore + settlementImpact);
-
-    $("saveUberBtn").textContent = "Enviando a David…";
-
-    await setDoc(uberDocRef, {
-      closureId: uberDocumentId,
-      weekId: week.weekKey,
-      weekKey: week.weekKey,
-      weekLabel: week.label,
-      weekStartDate: week.weekStartDate,
-      weekCloseDate: week.weekCloseDate,
-      weekStartMs: parseLocalDateKey(week.weekStartDate)?.getTime() || Date.now(),
-      weekEndMs: parseLocalDateKey(week.weekCloseDate)?.getTime() || Date.now(),
-      grossAmount: amount,
-      totalAmount: amount,
-      amount,
-      cashAmount: amount,
-      uberCashAmount: amount,
-      transferAmount: 0,
-      uberTransferAmount: 0,
-      digitalAmount: 0,
-      driverShare:amount,
-      driverNetAmount:amount,
-      exploraShare:0,
-      settlementRuleVersion:"uber_gross_cash_cashbox_5_v1",
-      verifiedProofId,
-      debtAmount: settlementImpact,
-      cashboxRate: 0.05,
-      cashboxAmount,
-      uberCashboxAmount: cashboxAmount,
-      settlementImpact,
-      settlementBeforeDriverSubmission:settlementBefore,
-      projectedSettlementAfterBalance:projectedAfter,
-      proofUrl,
-      proofPath,
-      receiptUrl:proofUrl,
-      receiptPath:proofPath,
-      notificationPhotoUrl:proofUrl,
-      telegramPhotoUrl:proofUrl,
-      firebasePhotoUrl:proofUrl,
-      dayKey: localDayKey(),
-      driverUid: user.uid,
-      choferUid: user.uid,
-      uid: user.uid,
-      driverId: user.uid,
-      createdByUid: user.uid,
-      createdByRole: "driver",
-      driverName: currentDriverName(),
-      operatorUid: user.uid,
-      operatorName: currentDriverName(),
-      settlementWorkflowVersion: "v84_driver_submission_admin_review",
-      driverSubmitted:true,
-      adminConfirmed:false,
-      reviewStatus: "pending_admin_review",
-      status: "pending_admin_review",
-      locked: true,
-      businessId: BUSINESS_ID,
-      createdAtMs: Date.now(),
-      updatedAtMs: Date.now(),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+    $("saveUberBtn").textContent = "Registrando liquidación…";
+    const {data:result} = await httpsCallable(functions,"registerUberLiquidation",{timeout:90000})({
+      verifiedProofId:uberProofCheck.id, amount, weekStartDate:week.weekStartDate, weekCloseDate:week.weekCloseDate
     });
-
-    // Reflejo inmediato: permite continuar con la siguiente semana atrasada
-    // sin esperar la confirmación visual del listener de Firestore.
-    const savedAt = new Date();
-    uberClosures = [{
-      id: week.weekKey,
-      closureId:uberDocumentId,
-      amount,
-      grossAmount:amount,
-      cashAmount:amount,
-      transferAmount:0,
-      cashboxAmount,
-      proofUrl,
-      proofPath,
-      settlementImpact,
-      settlementRuleVersion:"uber_gross_cash_cashbox_5_v1",
-      settlementWorkflowVersion:"v84_driver_submission_admin_review",
-      driverSubmitted:true,
-      adminConfirmed:false,
-      reviewStatus:"pending_admin_review",
-      status:"pending_admin_review",
-      weekStartDate: week.weekStartDate,
-      weekCloseDate: week.weekCloseDate,
-      weekKey: week.weekKey,
-      weekLabel: week.label,
-      dayKey: localDayKey(),
-      operatorUid: user.uid,
-      operatorName: currentProfile?.displayName || currentProfile?.username || "",
-      businessId: BUSINESS_ID,
-      createdAt: { toMillis: () => savedAt.getTime(), toDate: () => savedAt }
-    }, ...uberClosures.filter(item => item.id !== week.weekKey)];
+    const saved = normalizeUberRecord(result.id,result.record);
+    uberClosures = [saved, ...uberClosures.filter(item => item.id !== result.id)];
     render();
 
     renderUberWeekSelector();
     const remaining = pendingUberWeeks().length;
     $("uberStatus").textContent = remaining
-      ? `Cierre enviado a David. Quedan ${remaining} ${remaining === 1 ? "semana pendiente" : "semanas pendientes"}.`
-      : `Comprobante enviado a David por Telegram. Tu saldo no cambiará hasta que lo confirme y recién ahí se contabilizará como efectivo.`;
+      ? `Liquidación registrada. Quedan ${remaining} ${remaining === 1 ? "semana pendiente" : "semanas pendientes"}.`
+      : `Liquidación registrada. El total y la caja chica ya se aplicaron a tu saldo.`;
     $("uberStatus").className = "status success";
-    $("saveUberBtn").textContent = "Enviado ✓";
+    $("saveUberBtn").textContent = "Registrado ✓";
     $("uberForm").reset();
     if (!remaining) closeModalAndGoTop("uberModal", 1300);
   } catch (err) {
     console.error(err);
     const code = firebaseErrorCode(err);
     if (code.includes("permission-denied") || code.includes("storage/unauthorized")) {
-      $("uberStatus").textContent = "Firebase bloqueó el envío por permisos. Esta versión incluye las reglas corregidas de Firestore y Storage; desplegalas junto con la app y volvé a intentar.";
+      $("uberStatus").textContent = "No pudimos registrar la liquidación. Verificá nuevamente la captura y volvé a intentar.";
     } else if (code.includes("already-exists")) {
-      $("uberStatus").textContent = `El cierre de ${week.label} ya fue solicitado y está pendiente de revisión.`;
+      $("uberStatus").textContent = `La semana ${week.label} ya está registrada.`;
+    } else if (code.includes("failed-precondition")) {
+      renderUberStep(1);
+      $("uberStatus").textContent = "La captura o la semana ya no están vigentes. Verificá nuevamente antes de registrar.";
     } else {
-      $("uberStatus").textContent = "No se pudo enviar el cierre de Uber. Podés reintentar sin duplicarlo.";
+      $("uberStatus").textContent = "No se pudo registrar la liquidación de Uber. Podés reintentar sin duplicarla.";
     }
     $("uberStatus").className = "status error";
   } finally {
     releaseSubmissionLock("uber");
     setPhotoPickerDisabled("uber", false);
     $("saveUberBtn").disabled = pendingUberWeeks().length === 0;
-    if (!$("saveUberBtn").disabled) $("saveUberBtn").textContent = "Enviar liquidación";
+    if (!$("saveUberBtn").disabled) $("saveUberBtn").textContent = uberStep === 2 ? "Registrar liquidación" : "Continuar";
   }
 });
 

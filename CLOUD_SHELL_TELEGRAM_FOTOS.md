@@ -1,5 +1,7 @@
 # EXPLORA — Telegram con foto para gastos y cobros digitales
 
+> Documento histórico. La configuración y el flujo vigentes están en [docs/telegram.md](docs/telegram.md) y el despliegue desde `main` está en [README.md](README.md). No usar el ZIP ni los comandos de este documento para publicar la versión actual.
+
 ## Qué se agregó
 
 - `notifyBillingRecordV2`: escucha nuevos documentos en `billing_records/{docId}`.

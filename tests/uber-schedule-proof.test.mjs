@@ -19,6 +19,7 @@ test('cierre lunes 14: oculto hasta el martes 15 en Argentina; se repite cada se
     assert.equal(weeks.length,1); assert.equal(weeks[0].weekStartDate,back.start); assert.equal(weeks[0].weekCloseDate,back.close);
     assert.equal(front(date.toISOString(),[{...weeks[0],reviewStatus:'pending_admin_review'}]).length,0);
     assert.equal(front(date.toISOString(),[{...weeks[0],reviewStatus:'approved'}]).length,0);
+    assert.equal(front(date.toISOString(),[{...weeks[0],reviewStatus:'completed',settlementWorkflowVersion:'v85_verified_direct'}]).length,0);
     assert.equal(front(date.toISOString(),[{...weeks[0],reviewStatus:'rejected'}]).length,1);
     const monday=new Date(date); monday.setUTCDate(monday.getUTCDate()+6);
     assert.deepEqual(eligibleUberWeek(monday),back);

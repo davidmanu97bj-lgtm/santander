@@ -18,6 +18,9 @@ const { isAdminDebtPayment } = require("./telegram-debt-payment");
 const { isAdminDriverDebt } = require("./telegram-driver-debt");
 const { prepareInvoiceDraft } = require("./arca-invoice-draft");
 const { validateRouteRequest, queryRouteService, RouteError } = require("./route-service");
+const telegramCompact = require("./telegram-compact");
+const { deliverTripNotification } = require("./telegram-trip-delivery");
+const { invoicePdf } = require("./arca-pdf");
 
 const PROJECT_ID = "explora-control-operativo";
 const STORAGE_BUCKET = `${PROJECT_ID}.firebasestorage.app`;
@@ -27,6 +30,10 @@ const db = getFirestore();
 const auth = getAuth();
 const bucket = getStorage().bucket(STORAGE_BUCKET);
 exports.verifyUberScreenshot = require("./uber-proof").createUberProofFunction({db,bucket,assertViewer:assertTeamRealtimeViewer});
+exports.registerUberLiquidation = require("./uber-submission").createUberSubmissionFunction({
+  db, businessId:PROJECT_ID, assertViewer:assertTeamRealtimeViewer,
+  getProfile:teamRealtimeProfileForIdentity, getBalance:teamRealtimeBalanceForDriver
+});
 
 const ADMIN_UIDS = new Set(["2LziyTTdFcZzSOhK3hLbAKs2U4s2"]);
 const ADMIN_ROLES = new Set(["admin", "administrador", "owner", "superadmin"]);
@@ -538,7 +545,8 @@ async function telegramApi(method, payload, { multipart = false } = {}) {
   const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
     method: "POST",
     headers: multipart ? undefined : { "content-type": "application/json" },
-    body: multipart ? payload : JSON.stringify(payload)
+    body: multipart ? payload : JSON.stringify(payload),
+    signal: AbortSignal.timeout(30000)
   });
   const bodyText = await response.text();
   let body = null;
@@ -559,6 +567,7 @@ async function telegramSendPhoto(photoUrl, caption) {
     return await telegramApi("sendPhoto", {
       chat_id: chatId,
       photo: photoUrl,
+      show_caption_above_media: true,
       caption: caption.slice(0, 1024)
     });
   } catch (urlError) {
@@ -571,6 +580,7 @@ async function telegramSendPhoto(photoUrl, caption) {
     const form = new FormData();
     form.append("chat_id", chatId);
     form.append("caption", caption.slice(0, 1024));
+    form.append("show_caption_above_media", "true");
     form.append("photo", new Blob([bytes], { type: contentType }), `comprobante.${extension}`);
     return telegramApi("sendPhoto", form, { multipart: true });
   }
@@ -740,6 +750,9 @@ function closureTelegramText(data = {}) {
 }
 
 function uberTelegramText(data = {}) {
+  if (data.settlementWorkflowVersion === "v85_verified_direct") {
+    return telegramCompact.uberSummary({data,driverName:telegramDriverName(data),balance:data.telegramSettlementAfterBalance});
+  }
   const review = telegramSafeText(data.reviewStatus || data.status).toLowerCase();
   const workflow = telegramSafeText(data.settlementWorkflowVersion).toLowerCase();
   const isV84 = workflow === "v84_driver_submission_admin_review";
@@ -846,6 +859,7 @@ function uberTelegramText(data = {}) {
 function uberTelegramSettlementImpact(data = {}) {
   const workflow = telegramSafeText(data.settlementWorkflowVersion).toLowerCase();
   const grossAmount = Math.max(0, Number(data.totalAmount || data.grossAmount || data.amount || 0));
+  if (workflow === "v85_verified_direct") return grossAmount * 1.05;
   if (workflow === "v84_driver_submission_admin_review") return grossAmount * (data.settlementRuleVersion === "uber_gross_cash_cashbox_5_v1" ? 1.05 : 0.55);
   const hasSplit = Object.prototype.hasOwnProperty.call(data, "cashAmount")
     || Object.prototype.hasOwnProperty.call(data, "uberCashAmount")
@@ -2244,7 +2258,11 @@ exports.adminDeleteFinancialMovement = onCall({ region:"southamerica-east1", tim
   const requestedDriverUid = text(request.data?.driverUid);
   const reason = text(request.data?.reason || "Borrado manual desde panel administrador").slice(0, 280);
   if (!documentId) throw new HttpsError("invalid-argument", "Falta el movimiento.");
-  if (!["cobro", "gasto", "caja_chica"].includes(type)) throw new HttpsError("invalid-argument", "Tipo de movimiento no permitido.");
+  if (!["cobro", "gasto", "caja_chica", "uber"].includes(type)) throw new HttpsError("invalid-argument", "Tipo de movimiento no permitido.");
+
+  if (type === "uber") {
+    return require("./uber-submission").deleteUberSubmission({db,documentId,adminUid,reason,getBalance:teamRealtimeBalanceForDriver});
+  }
 
   const collectionName = type === "gasto" ? "gastos" : "billing_records";
   const ref = db.collection(collectionName).doc(documentId);
@@ -2775,6 +2793,13 @@ function telegramInternalBillingMovement(data = {}) {
 
 function telegramInternalBillingText(data = {}) {
   const type = normalized(data.type || data.operationType || data.movementType);
+  if (type === "settlement_adjustment" || data.internalSettlementAdjustment === true) {
+    const direction = data.adjustmentDirection || data.settlementDirection || data.paymentDirection;
+    return telegramCompact.managementSummary({
+      driverName:telegramDriverName(data),amount:telegramAmount(data),paying:direction === "driver_to_explora",
+      balance:data.telegramSettlementAfterBalance ?? data.settlementAfter, note:data.notes
+    });
+  }
   const detail = telegramSafeText(data.detail || data.notes || data.reason) ||
     (type === "reimbursement_compensation" || type === "debt_compensation" ? "Compensación" : "Cierre / ajuste");
   const payloadBalance = Number(data.telegramSettlementAfterBalance ?? data.settlementAfter);
@@ -2878,6 +2903,38 @@ function telegramAdvanceDecisionText(data = {}) {
 // Envía a Telegram cada cobro nuevo:
 // - digital (tarjeta, QR o transferencia), con foto;
 // - efectivo, sin foto pero con los datos de la operación.
+async function telegramTripCaption(data, docId) {
+  const payload = Number(data.telegramSettlementAfterBalance);
+  const settlement = Number.isFinite(payload) ? null : await telegramOpenBillingBalance(data, docId);
+  const balance = Number.isFinite(payload) ? payload : Number(settlement.amountFromDriver || 0) - Number(settlement.amountToDriver || 0);
+  return telegramCompact.billingSummary({data,driverName:telegramDriverName(data),amount:telegramAmount(data),
+    cash:telegramPaymentMethod(data).key === "cash",balance});
+}
+
+async function telegramDeliverInvoicedTrip(data, docId, caption) {
+  const chatId = telegramSafeText(TELEGRAM_CHAT_ID.value());
+  if (!chatId) throw new Error("TELEGRAM_CHAT_ID no está configurado.");
+  const ref = db.collection(TELEGRAM_NOTIFICATIONS_COLLECTION).doc(
+    telegramNotificationDocId("billing",telegramOperationNotificationKey(data,docId)));
+  return deliverTripNotification({db,ref,paymentId:docId,chatId,api:telegramApi,invoicePdf,
+    caption:caption || await telegramTripCaption(data,docId),photo:telegramDirectPhotoUrl(data)});
+}
+
+exports.notifyArcaInvoiceTelegramV1 = onDocumentWritten({
+  document:"arca_invoices/{docId}",region:TELEGRAM_FUNCTION_REGION,memory:"256MiB",timeoutSeconds:120,retry:true,
+  secrets:[TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID]
+}, async event => {
+  const invoice = event.data?.after?.data();
+  if (!invoice || !["authorized","review","rejected","disabled"].includes(invoice.status)) return {skipped:true};
+  if (event.data?.before?.data()?.status === invoice.status) return {skipped:true};
+  const docId = telegramSafeText(event.params?.docId);
+  const payment = (await db.collection("billing_records").doc(docId).get()).data();
+  if (!payment || payment.invoiceRequest?.version !== "arca_c_v1" || telegramInternalBillingMovement(payment) ||
+      payment.suppressTelegram === true || payment.deleted === true || payment.isDeleted === true ||
+      payment.isSimulated === true || payment.createdBySimulation === true || payment.verificationMode === "simulation") return {skipped:true};
+  return telegramDeliverInvoicedTrip(payment,docId);
+});
+
 exports.notifyBillingRecordV2 = onDocumentCreated({
   document: "billing_records/{docId}",
   region: TELEGRAM_FUNCTION_REGION,
@@ -2894,12 +2951,14 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
   if (data.isSimulated === true || data.createdBySimulation === true || data.verificationMode === "simulation") {
     return { skipped: true, reason: "simulation-record" };
   }
-  if (internalMovement && !isDriverBillingSettlementPayment(data)) {
+  if (internalMovement) {
     const docId = telegramSafeText(event.params?.docId || event.data?.id);
+    const internalData = Number.isFinite(Number(data.telegramSettlementAfterBalance ?? data.settlementAfter)) ? data :
+      {...data,telegramSettlementAfterBalance:(await teamRealtimeBalanceForDriver(telegramDriverUid(data))).balance};
     return telegramProcessNotification({
       kind:"billing_internal", docId, sourceCollection:"billing_records", sourceDocumentId:docId,
       notificationKey:telegramOperationNotificationKey(data, docId), data, eventId:event.id,
-      caption:telegramInternalBillingText(data), requirePhoto:Boolean(telegramDirectPhotoUrl(data))
+      caption:telegramInternalBillingText(internalData), requirePhoto:Boolean(telegramDirectPhotoUrl(data))
     });
   }
   const method = telegramPaymentMethod(data);
@@ -2940,26 +2999,8 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
   }
 
   const docId = telegramSafeText(event.params?.docId || event.data?.id);
-  const notes = telegramSafeText(data.notes || data.detalle || data.descripcion || data.observaciones || data.serviceDescription);
-  const payloadAfterBalance = Number(data.telegramSettlementAfterBalance);
-  const balance = Number.isFinite(payloadAfterBalance) ? null : await telegramOpenBillingBalance(data, docId);
-  const balanceLine = Number.isFinite(payloadAfterBalance)
-    ? telegramSignedSettlementLine(payloadAfterBalance)
-    : telegramBillingBalanceLine(balance || {});
-  const caption = [
-    isCash ? "COBRO EN EFECTIVO REGISTRADO" : "COBRO DIGITAL REGISTRADO",
-    `Chofer: ${telegramDriverName(data)}`,
-    `Monto: ${telegramMoney(telegramAmount(data))}`,
-    ...(data.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1" ? [
-      `Impacto del cobro: ${isCash ? "+" : "−"}${telegramMoney(telegramAmount(data))}`,
-      `Caja chica 5% a favor de Explora: ${telegramMoney(telegramAmount(data) * 0.05)}`,
-      `Impacto total con caja chica: ${isCash ? "+" : "−"}${telegramMoney(telegramAmount(data) * (isCash ? 1.05 : 0.95))}`,
-      isCash ? "El chofer conserva el 100% del efectivo." : "Explora recibe el 100% del digital."
-    ] : []),
-    `Detalle: ${notes ? notes.slice(0, 300) : (isCash ? "Cobro en efectivo" : "Cobro digital")}`,
-    balanceLine,
-    ...telegramDateTimeLines(data)
-  ].join("\n");
+  const caption = await telegramTripCaption(data,docId);
+  if (data.invoiceRequest?.version === "arca_c_v1") return telegramDeliverInvoicedTrip(data,docId,caption);
 
   return telegramProcessNotification({
     kind: "billing",
@@ -2983,22 +3024,16 @@ exports.notifyExpenseV2 = onDocumentCreated({
 }, async event => {
   const data = event.data?.data() || {};
   const docId = telegramSafeText(event.params?.docId || event.data?.id);
+  if (data.suppressTelegram === true || data.isSimulated === true || data.createdBySimulation === true || data.verificationMode === "simulation") return {skipped:true};
   const notes = telegramSafeText(data.notes || data.detalle || data.descripcion || data.observaciones);
   const loadedAmount = Number(data.telegramExpenseLoadedAmount ?? telegramAmount(data) ?? 0);
   const settlementPayload = Number(data.telegramSettlementAfterBalance);
   const settlementBalance = Number.isFinite(settlementPayload)
     ? settlementPayload
     : Number((await teamRealtimeBalanceForDriver(telegramDriverUid(data))).balance || 0);
-  const detailParts = [telegramExpenseType(data)];
-  if (notes) detailParts.push(notes.slice(0, 300));
-  const captionLines = [
-    "GASTO REGISTRADO",
-    `Chofer: ${telegramDriverName(data)}`,
-    `Monto: ${telegramMoney(loadedAmount)}`,
-    `Detalle: ${detailParts.filter(Boolean).join(" · ") || "Gasto"}`,
-    telegramSignedSettlementLine(settlementBalance),
-    ...telegramDateTimeLines(data)
-  ];
+  const caption = telegramCompact.expenseSummary({driverName:telegramDriverName(data),amount:loadedAmount,
+    recognized:Number(data.telegramExpenseRecognizedAmount ?? loadedAmount * 0.5),balance:settlementBalance,
+    detail:data.detail || notes || telegramExpenseType(data)});
 
   return telegramProcessNotification({
     kind: "expense",
@@ -3006,7 +3041,7 @@ exports.notifyExpenseV2 = onDocumentCreated({
     notificationKey: telegramOperationNotificationKey(data, docId),
     data,
     eventId: event.id,
-    caption: captionLines.join("\n")
+    caption
   });
 });
 
@@ -3152,17 +3187,24 @@ exports.notifyUberClosureTelegramGroupV1 = onDocumentWritten({
     "pending_admin_breakdown", "awaiting_driver_confirmation", "approved", "rejected"
   ].includes(review);
   const isLegacyStage = ["pending", "pending_review", "no_data"].includes(review);
-  if (!isV84Stage && !isV82Stage && !isLegacyStage) return { skipped:true, reason:"not-an-uber-notification-stage" };
+  const isDirect = workflow === "v85_verified_direct" && review === "completed" && after.verifiedAutomatically === true;
+  if (!isV84Stage && !isV82Stage && !isLegacyStage && !isDirect) return { skipped:true, reason:"not-an-uber-notification-stage" };
   if (!firstWrite && beforeReview === review) return { skipped:true, reason:"stage-not-changed" };
 
   const docId = telegramSafeText(event.params?.docId || event.data?.after?.id);
   const revisionKey = `${docId}_${review}_${Number(after.updatedAtMs || after.createdAtMs || Date.now())}`;
   // En v84 la foto es necesaria para el PEDIDO inicial. La decisión de David
   // se manda como texto para que una falla del adjunto nunca impida la confirmación.
-  const requirePhoto = isV84Stage
+  const requirePhoto = isDirect || (isV84Stage
     ? review === "pending_admin_review"
-    : review === "awaiting_driver_confirmation" || isLegacyStage && review !== "no_data";
+    : review === "awaiting_driver_confirmation" || isLegacyStage && review !== "no_data");
   let notificationData = after;
+  if (isDirect) {
+    const current = (await db.collection("uber_weekly_closures").doc(docId).get()).data();
+    if (!current || current.verifiedProofId !== after.verifiedProofId) return {skipped:true,reason:"deleted-or-replaced"};
+    const settlement = await teamRealtimeBalanceForDriver(telegramDriverUid(after));
+    notificationData = {...after,telegramSettlementAfterBalance:normalizedTelegramSettlement(settlement.balance)};
+  }
   if (workflow === "v84_driver_submission_admin_review" && review === "approved") {
     try {
       const settlement = await teamRealtimeBalanceForDriver(telegramDriverUid(after));

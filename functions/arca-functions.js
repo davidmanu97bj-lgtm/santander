@@ -43,7 +43,7 @@ module.exports=function registerArca({db,assertAdmin}) {
       const invoice=row.data();if(invoice.driverUid!==request.auth.uid)await assertAdmin(request);
       if(invoice.status!=='authorized')throw new HttpsError('failed-precondition','La factura todavía no está autorizada.');
       const {invoicePdf}=require('./arca-pdf');
-      const pdf=await invoicePdf(invoice);return {base64:pdf.toString('base64'),filename:`${invoice.environment==='production'?'Factura':'PRUEBA'}-C-${String(invoice.issuer.pointOfSale).padStart(5,'0')}-${String(invoice.number).padStart(8,'0')}.pdf`};
+      const pdf=await invoicePdf(invoice);return {base64:pdf.toString('base64'),filename:require('./telegram-compact').invoiceFilename(invoice)};
     })
   };
 };

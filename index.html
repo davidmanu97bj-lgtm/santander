@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png?v=20260913-identidad-explora" />
   <title>Explora — Control operativo</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
-  <link rel="modulepreload" href="./app.js?v=20260913-saldos-claros" />
+  <link rel="modulepreload" href="./app.js?v=20260913-telegram-uber-directo" />
   <style>
     :root{
       --bg:#f3f5f7;--panel:#ffffff;--ink:#0e1116;--muted:#737a85;--line:#e7eaee;
@@ -441,7 +441,7 @@
     <div class="modal-head"><h2>Modificar / eliminar movimientos</h2><button class="x" data-close="adminMovementsModal">×</button></div>
     <div class="row">
       <div class="field"><label for="movementDriver">Chofer</label><select id="movementDriver"></select></div>
-      <div class="field"><label for="movementTypeFilter">Mostrar</label><select id="movementTypeFilter"><option value="all">Cobros y gastos</option><option value="cobro">Solo cobros</option><option value="gasto">Solo gastos</option></select></div>
+      <div class="field"><label for="movementTypeFilter">Mostrar</label><select id="movementTypeFilter"><option value="all">Todos los movimientos</option><option value="cobro">Solo cobros</option><option value="gasto">Solo gastos</option><option value="uber">Uber</option></select></div>
     </div>
     <div class="admin-financial-note">Toda modificación o eliminación recalcula automáticamente la facturación, caja chica y los cierres relacionados cuando corresponda.</div>
     <div id="adminMovementList" class="admin-history-list"><div class="admin-empty">Seleccioná un chofer.</div></div>
@@ -567,7 +567,7 @@
       </section>
       <section data-uber-step="2" class="charge-step hidden">
         <div class="charge-panel"><h3>Movimientos en tu cuenta</h3><h4>Liquidación UBER · 100%</h4><div id="uberPrincipalPreview" class="charge-account"></div><h4>Caja chica · 5%</h4><div id="uberCashboxPreview" class="charge-account"></div></div>
-        <p class="uber-review-note">David revisará la captura. Estos movimientos se aplicarán cuando apruebe la liquidación.</p>
+        <p class="uber-review-note">Al registrar, el total y el 5% de caja chica se aplican a tu saldo.</p>
       </section>
       <div id="uberStatus" class="status" aria-live="polite"></div>
       <div class="modal-actions"><button id="uberStepBack" type="button" class="secondary">Cancelar</button><button id="saveUberBtn" type="submit" class="save">Continuar</button></div>
@@ -797,6 +797,6 @@
   </script>
 
 
-<script type="module" src="./app.js?v=20260913-saldos-claros"></script>
+<script type="module" src="./app.js?v=20260913-telegram-uber-directo"></script>
 </body>
 </html>

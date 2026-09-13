@@ -36,6 +36,12 @@ function assertBalance(input, expected, {legacyAnchor = false} = {}) {
 test('Uber nuevo suma el total más caja chica; anteriores y pendientes conservan su tratamiento', () => {
   const record = {id:'uber-test',driverUid:'test-driver',grossAmount:100000,amount:100000,cashAmount:100000,transferAmount:0,createdAtMs:3000,settlementWorkflowVersion:'v84_driver_submission_admin_review',settlementRuleVersion:'uber_gross_cash_cashbox_5_v1',adminConfirmed:true,reviewStatus:'approved',telegramSettlementBeforeBalance:0,telegramSettlementAfterBalance:105000};
   const front = assertBalance({uberWeeks:[record]},105000);
+  const direct = {...record,id:'uber-direct',settlementWorkflowVersion:'v85_verified_direct',verifiedAutomatically:true,adminConfirmed:false,reviewStatus:'completed'};
+  const directFront = assertBalance({uberWeeks:[direct]},105000);
+  assert.equal(directFront.receipts.length,2);
+  assert.equal(directFront.receipts[0].type,'cashbox_receipt');
+  assertBalance({uberWeeks:[{...direct,verifiedAutomatically:false}]},0);
+  assertBalance({uberWeeks:[{...direct,deleted:true}]},0);
   assert.equal(front.cashbox,5000);
   assert.equal(front.receipts.length,2);
   assert.equal(front.receipts[0].type,'cashbox_receipt');
