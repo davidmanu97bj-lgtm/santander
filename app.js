@@ -6485,6 +6485,8 @@ function renderTourismSelectors() {
   for (const part of ["Origin","Destination"]) {
     $("tourism"+part).value="";$("tourism"+part+"Search").value="";
     $("tourism"+part+"Matches").replaceChildren();
+    $("tourism"+part+"Search").setAttribute("aria-expanded","false");
+    $("tourism"+part+"Clear").hidden=true;
   }
 }
 function selectTourismRoute() {
@@ -6492,6 +6494,8 @@ function selectTourismRoute() {
   const originId=$("tourismOrigin").value, destinationId=$("tourismDestination").value;
   const route=tourismRoute(originId,destinationId);
   $("chargeOrigin").value="";$("chargeDestination").value="";$("chargeDistance").value="";
+  $("chargeTripScope").value="national";
+  chargeRouteState.automatic=false;
   chargeRouteState.points={};
   if (!route) {
     $("chargeRouteStatus").textContent=originId && destinationId ? "Elegí dos lugares diferentes con un recorrido disponible." : "";return;
@@ -6507,36 +6511,85 @@ function selectTourismRoute() {
 const tourismUsageKey = "explora-tourism-usage-v1";
 let tourismUsage = {};
 try { const saved = JSON.parse(localStorage.getItem(tourismUsageKey) || "{}"); if(saved && typeof saved === "object" && !Array.isArray(saved)) tourismUsage = saved; } catch {}
-for(const part of ["Origin","Destination"]) {
+function initializeTourismSelector(part) {
   const input=$("tourism"+part+"Search"), matches=$("tourism"+part+"Matches");
-  const showMatches=()=>{
+  const selected=$("tourism"+part), clear=$("tourism"+part+"Clear");
+  const closeMatches=()=>{
     matches.replaceChildren();
-    const places=searchTourismPlaces(input.value,tourismUsage,true);
+    input.setAttribute("aria-expanded","false");
+  };
+  const showMatches=()=>{
+    // Un lugar ya elegido no debe actuar como filtro al buscar su reemplazo.
+    const other=part==="Origin"?"Destination":"Origin";
+    $("tourism"+other+"Matches").replaceChildren();
+    $("tourism"+other+"Search").setAttribute("aria-expanded","false");
+    matches.replaceChildren();
+    const search=selected.value?"":input.value;
+    const places=searchTourismPlaces(search,tourismUsage,true).filter(place=>place.id!==selected.value);
     for(const place of places){
       const button=document.createElement("button");
       button.type="button";button.className="route-result";
+      button.setAttribute("role","option");
+      button.setAttribute("aria-selected","false");
       button.textContent=place.name+" · "+place.city+" · "+tourismCountryNames[place.country];
       button.addEventListener("click",()=>{
         input.value=place.name+" · "+place.city;
-        $("tourism"+part).value=place.id;
+        selected.value=place.id;
+        clear.hidden=false;
         tourismUsage[place.id]=Math.max(0,Number(tourismUsage[place.id])||0)+1;
         try { localStorage.setItem(tourismUsageKey,JSON.stringify(tourismUsage)); } catch {}
-        matches.replaceChildren();
+        closeMatches();
         selectTourismRoute();
       });
       matches.append(button);
     }
-    if(input.value.trim().length>=2&&!places.length)matches.textContent="No hay coincidencias en los lugares cargados.";
+    if(search.trim().length>=2&&!places.length)matches.textContent="No hay coincidencias en los lugares cargados.";
+    input.setAttribute("aria-expanded",String(places.length>0));
   };
-  input.addEventListener("input",()=>{
-    $("tourism"+part).value=""; selectTourismRoute(); showMatches();
+  const clearSelection=()=>{
+    input.value="";
+    selected.value="";
+    clear.hidden=true;
+    selectTourismRoute();
+  };
+  clear.addEventListener("click",()=>{
+    clearSelection();
+    input.focus();
+    showMatches();
   });
-  input.addEventListener("focus",()=>{ if(!$("tourism"+part).value)showMatches(); });
+  input.addEventListener("beforeinput",()=>{
+    // Conserva la nueva tecla, pegado o composición: solo borra la selección previa.
+    if(selected.value)clearSelection();
+  });
+  input.addEventListener("input",()=>{
+    selected.value="";
+    clear.hidden=!input.value;
+    selectTourismRoute();
+    showMatches();
+  });
+  input.addEventListener("focus",showMatches);
+  input.addEventListener("click",showMatches);
+  input.closest(".tourism-location-field").addEventListener("focusout",event=>{
+    if(!input.closest(".tourism-location-field").contains(event.relatedTarget))closeMatches();
+  });
   input.addEventListener("keydown",event=>{
     if(event.key==="ArrowDown"&&matches.querySelector("button")){event.preventDefault();matches.querySelector("button").focus();}
-    if(event.key==="Escape")matches.replaceChildren();
+    if(event.key==="Escape")closeMatches();
+  });
+  matches.addEventListener("keydown",event=>{
+    const options=[...matches.querySelectorAll("button")];
+    const index=options.indexOf(event.target);
+    if(index<0)return;
+    if(event.key==="ArrowDown"||event.key==="ArrowUp"){
+      event.preventDefault();
+      options[(index+(event.key==="ArrowDown"?1:options.length-1))%options.length].focus();
+    }
+    if(event.key==="Escape"){
+      event.preventDefault();input.focus();closeMatches();
+    }
   });
 }
+for(const part of ["Origin","Destination"])initializeTourismSelector(part);
 
 
 let stopInvoiceSubscription = null;

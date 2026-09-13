@@ -7477,3 +7477,15 @@ body .money-entry input:focus { outline:none !important; border-color:transparen
 .route-result:hover,.route-result:focus-visible{background:#e8f5f0;outline:2px solid #569583;outline-offset:1px}
 .route-attribution{font-size:11px;color:#697998}
 .route-attribution a{color:inherit}
+
+.charge-route-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+.charge-route-fields .field{min-width:0;margin:0}
+.tourism-search-control{position:relative;display:flex;align-items:center}
+#chargeModal .tourism-search-control input{padding-right:52px;min-width:0;width:100%;text-overflow:ellipsis}
+.tourism-clear{position:absolute;right:7px;display:grid;place-items:center;width:38px;height:38px;padding:0;border:0;border-radius:12px;background:#edf1f5;color:#60718b;font-size:26px;line-height:1}
+.tourism-clear[hidden]{display:none}
+.tourism-clear:hover{background:#e2e8ef;color:#111943}
+.tourism-clear:focus-visible{outline:2px solid #778798;outline-offset:2px}
+.tourism-matches{max-height:260px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.tourism-matches:empty{display:none}
+.tourism-matches .route-result{min-height:48px;line-height:1.4}
