@@ -110,9 +110,6 @@ function initializePhotoSourcePickers() {
 }
 
 initializePhotoSourcePickers();
-let splashProgress = 4;
-let splashTimer = null;
-let splashTransition = 0;
 let unsubscribePayments = null;
 let unsubscribeExpenses = null;
 let unsubscribeUber = null;
@@ -763,13 +760,6 @@ window.addEventListener("pageshow", resumeDashboard);
 window.addEventListener("online", resumeDashboard);
 window.addEventListener("offline", resumeDashboard);
 
-async function waitForDashboard(load) {
-  let timer;
-  try {
-    await Promise.race([load.settled, new Promise(resolve => { timer = window.setTimeout(resolve, 6000); })]);
-  } finally { window.clearTimeout(timer); }
-}
-
 function renderDriverLoadState() {
   const ready = dashboardLoad?.complete() === true;
   const failed = Boolean(dashboardLoad?.errors.size);
@@ -828,58 +818,20 @@ function subscribeOwnedRecords(user, { collectionName, normalizer, assign, after
   return () => { active = false; stop(); };
 }
 
-function setSplashProgress(value) {
-  const progress = Math.max(0, Math.min(100, Number(value) || 0));
-  splashProgress = progress;
-
-  const arc = $("splashProgressArc");
-  const dot = $("splashProgressDot");
-  const progressBox = document.querySelector(".splash-progress");
-  if (arc) arc.style.strokeDashoffset = String(100 - progress);
-  if (progressBox) progressBox.setAttribute("aria-valuenow", String(Math.round(progress)));
-
-  if (dot) {
-    const angle = (-90 + (360 * progress / 100)) * Math.PI / 180;
-    dot.setAttribute("cx", String(60 + 48 * Math.cos(angle)));
-    dot.setAttribute("cy", String(60 + 48 * Math.sin(angle)));
-  }
-}
-
-function startSplash() {
-  splashTransition += 1;
-  splashProgress = 4;
-  $("splashScreen")?.classList.remove("hidden", "is-leaving");
+function startSplash(message = "Ingresando…") {
+  $("splashMessage").textContent = message;
+  $("splashScreen")?.classList.remove("hidden");
   $("loginScreen")?.classList.add("hidden");
   $("app")?.classList.add("hidden");
-  setSplashProgress(splashProgress);
-
-  if (splashTimer) window.clearInterval(splashTimer);
-  splashTimer = window.setInterval(() => {
-    const remaining = 91 - splashProgress;
-    setSplashProgress(Math.min(91, splashProgress + Math.max(1.1, remaining * .075)));
-  }, 90);
 }
 
-async function finishSplash(targetId) {
-  const transitionId = ++splashTransition;
-  if (splashTimer) {
-    window.clearInterval(splashTimer);
-    splashTimer = null;
-  }
-
-  setSplashProgress(100);
-  const splash = $("splashScreen");
-  splash?.classList.add("is-leaving");
-  await new Promise(resolve => window.setTimeout(resolve, 120));
-  if (transitionId !== splashTransition) return;
-
-  splash?.classList.add("hidden");
-  splash?.classList.remove("is-leaving");
+function finishSplash(targetId) {
   $("loginScreen")?.classList.toggle("hidden", targetId !== "loginScreen");
   $("app")?.classList.toggle("hidden", targetId !== "app");
+  $("splashScreen")?.classList.add("hidden");
 }
 
-startSplash();
+startSplash("Abriendo Explora…");
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -950,16 +902,20 @@ function safeUsername(value) {
   return value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g,"").replace(/[^a-z0-9._-]/g,"");
 }
 
-async function loginEmailCandidates(usernameOrEmail) {
+function directLoginEmails(usernameOrEmail) {
   const value = usernameOrEmail.trim().toLowerCase();
   if (value.includes("@")) return [value];
-
   const username = safeUsername(value);
-  const candidates = [
+  return [...new Set([
     LOGIN_ALIASES[value],
     username ? `${username}@${USER_EMAIL_DOMAIN}` : ""
-  ].filter(Boolean);
+  ].filter(Boolean))];
+}
 
+async function loginEmailCandidates(usernameOrEmail) {
+  const candidates = directLoginEmails(usernameOrEmail);
+  if (usernameOrEmail.includes("@")) return candidates;
+  const username = safeUsername(usernameOrEmail.trim().toLowerCase());
   if (username) {
     try {
       const aliasSnap = await getDoc(doc(db, "login_aliases", username));
@@ -982,22 +938,32 @@ function isCredentialError(err) {
 }
 
 async function waitForAuthReady() {
-  await Promise.race([
-    authReady,
-    new Promise(resolve => setTimeout(resolve, AUTH_READY_TIMEOUT_MS))
-  ]);
+  let timer;
+  try {
+    await Promise.race([authReady, new Promise(resolve => { timer = setTimeout(resolve, AUTH_READY_TIMEOUT_MS); })]);
+  } finally { clearTimeout(timer); }
 }
 
 async function signInFromLogin(usernameOrEmail, password) {
-  const candidates = await loginEmailCandidates(usernameOrEmail);
+  const candidates = directLoginEmails(usernameOrEmail);
+  const attempted = new Set();
   let lastError = Object.assign(new Error("Faltan credenciales"), { code: "auth/invalid-credential" });
-
-  for (const email of candidates) {
-    try {
-      return await signInWithEmailAndPassword(auth, email, password);
-    } catch (err) {
-      lastError = err;
-      if (!isCredentialError(err)) throw err;
+  // El usuario habitual entra directamente. Los aliases históricos se consultan
+  // solo si fallan las credenciales directas, sin repetir un intento ya hecho.
+  for (let pass = 0; pass < 2; pass += 1) {
+    if (pass === 1) {
+      if (usernameOrEmail.includes("@")) break;
+      candidates.push(...await loginEmailCandidates(usernameOrEmail));
+    }
+    for (const email of candidates) {
+      if (attempted.has(email)) continue;
+      attempted.add(email);
+      try {
+        return await signInWithEmailAndPassword(auth, email, password);
+      } catch (err) {
+        lastError = err;
+        if (!isCredentialError(err)) throw err;
+      }
     }
   }
 
@@ -2574,12 +2540,13 @@ $("driverProfileModal")?.addEventListener("keydown", event => {
 
 async function loadProfile(user) {
   const directRefs = [doc(db, "usuarios", user.uid), doc(db, "choferes", user.uid)];
-  const directSnapshots = await Promise.allSettled(directRefs.map(profileRef => getDoc(profileRef)));
-  for (const result of directSnapshots) {
+  // Conserva la prioridad histórica, pero un perfil encontrado no tiene que
+  // esperar a que termine una consulta secundaria que ya no hace falta.
+  const directSnapshots = directRefs.map(profileRef => getDoc(profileRef).catch(() => null));
+  for (const pendingSnapshot of directSnapshots) {
     try {
-      if (result.status !== "fulfilled") continue;
-      const snap = result.value;
-      if (snap.exists()) {
+      const snap = await pendingSnapshot;
+      if (snap?.exists()) {
         const data = snap.data() || {};
         return {
           ...data,
@@ -4014,7 +3981,7 @@ $("loginForm")?.addEventListener("submit", async e => {
 });
 
 $("logoutBtn")?.addEventListener("click", async () => {
-  startSplash();
+  startSplash("Cerrando sesión…");
   try {
     await signOut(auth);
   } catch (err) {
@@ -4025,7 +3992,7 @@ $("logoutBtn")?.addEventListener("click", async () => {
 
 
 $("adminLogoutBtn")?.addEventListener("click", async () => {
-  startSplash();
+  startSplash("Cerrando sesión…");
   try {
     await signOut(auth);
   } catch (err) {
@@ -4248,6 +4215,7 @@ onAuthStateChanged(auth, async user => {
   }
 
   visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
+  $("splashMessage").textContent = "Cargando tu cuenta…";
   currentProfile = fallbackProfile(user);
   const initialAdmin = isAdminProfile();
   const profileTask = loadProfile(user);
@@ -4261,7 +4229,6 @@ onAuthStateChanged(auth, async user => {
   applyRoleUI();
   subscribeOwnProfileDashboard(user);
   subscribeDashboard();
-  subscribeTeamRealtimeDashboard();
   try {
     const profile = await profileTask;
     if (!isCurrent()) return;
@@ -4285,12 +4252,16 @@ onAuthStateChanged(auth, async user => {
     if (!isCurrent()) return;
     console.warn("Se inició sesión usando el perfil básico:", err);
   }
-  await waitForDashboard(dashboardLoad);
   if (!isCurrent()) return;
+  // El acceso depende del perfil, no de descargar todo el historial. Los
+  // importes y operaciones mantienen su bloqueo hasta sincronizar cada colección.
   if (isAdminProfile()) renderAdminDashboardUpdates();
   else render();
   await finishSplash("app");
-  if (isCurrent()) refreshArcaBillingStatus();
+  if (isCurrent()) {
+    subscribeTeamRealtimeDashboard();
+    refreshArcaBillingStatus();
+  }
 });
 
 document.querySelectorAll("[data-mode]").forEach(btn => {

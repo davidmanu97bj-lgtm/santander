@@ -84,7 +84,7 @@ function authHarness(profile) {
     $:()=>({classList:{add:noop},textContent:'',className:''}),RECENT_RECEIPTS_LIMIT:10,visibleReceiptCount:10,
     ROOT_COLLECTIONS:{payments:'payments'},ADMIN_REQUIRED_SNAPSHOT_KEYS:new Set(['drivers']),
     fallbackProfile:()=>({displayName:'A',role:'chofer'}),loadProfile:()=>profile,
-    createDashboardLoad:createLoad,waitForDashboard:async()=>{},
+    createDashboardLoad:createLoad,
     subscribeToday:()=>counts.driver++,subscribeClosures:()=>counts.closures++,subscribeAdminDashboard:()=>counts.admin++,
     signOut:async()=>counts.signOut++,finishSplash:async target=>counts.shown.push(target),
     adminSnapshotReady:new Set(),adminDismissedPendingActionIds:new Set(),console,
@@ -103,6 +103,15 @@ test('cargar el perfil no reinicia las suscripciones del mismo rol', async () =>
   await ctx.callback(ctx.auth.currentUser);
   assert.equal(counts.driver,1);assert.equal(counts.closures,1);assert.equal(counts.admin,0);
   assert.deepEqual(counts.shown,['app']);
+});
+
+test('un historial lento no bloquea el ingreso; conserva el saldo sin confirmar y difiere la carga del equipo', async () => {
+  const {ctx,counts}=authHarness(Promise.resolve({role:'chofer',displayName:'A'}));
+  let team=0;
+  ctx.subscribeTeamRealtimeDashboard=()=>{assert.deepEqual(counts.shown,['app']);team++;};
+  await ctx.callback(ctx.auth.currentUser);
+  assert.deepEqual(counts.shown,['app']);assert.equal(team,1);
+  assert.equal(ctx.dashboardLoad.complete(),false,'no convierte una colección que falta en saldo cero');
 });
 test('un perfil tardío no reabre la app ni cambia al usuario que cerró sesión', async () => {
   const profile=deferred();const {ctx,counts}=authHarness(profile.promise);

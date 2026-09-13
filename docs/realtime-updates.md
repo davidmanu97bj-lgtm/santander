@@ -17,3 +17,13 @@ Al volver a la app o recuperar conexión, se dibuja el estado disponible. Se reu
 - Prueba visual en dos pestañas y viewport de 412 × 915: gasto temporal de $1000, reintegro de $500 y saldo final idéntico al «Después» en ambas vistas. Se eliminó el registro de prueba y su imagen; no se enviaron facturas ni mensajes externos.
 
 El 13/09/2026 pasaron las 186 pruebas del proyecto. Las pruebas locales no representan una medición de la red móvil de un teléfono Android real.
+
+## Acceso sin pausa al finalizar la carga
+
+El login intenta primero el email o usuario habitual. Solo consulta `login_aliases` si fallan esas credenciales, conservando los accesos antiguos y evitando repetir el mismo intento. Las lecturas directas de perfil siguen en paralelo y mantienen su prioridad histórica; un perfil principal encontrado ya no espera una lectura secundaria innecesaria.
+
+Después de verificar el perfil, se abre el inicio sin esperar a descargar todo el historial ni agotar el antiguo límite de seis segundos. Los importes y botones financieros siguen bloqueados hasta tener todas las colecciones sincronizadas, por lo que ningún saldo parcial aparece como definitivo. Los perfiles desactivados siguen cerrando sesión y las respuestas de sesiones anteriores se descartan. La consulta del equipo comienza después de abrir el inicio.
+
+El indicador de acceso gira continuamente, sin el antiguo progreso simulado que quedaba en 91%. Al completar el acceso se muestra la pantalla inmediatamente, sin otro temporizador de transición. Respeta la preferencia de movimiento reducido.
+
+Validación: 194 pruebas aprobadas, incluyendo `tests/login-performance.test.mjs` y el ingreso con historial pendiente de `tests/loading-performance.test.mjs`. La prueba de navegador local con un usuario habitual abrió el inicio con saldo sincronizado en aproximadamente 824 ms; también se verificaron contraseña incorrecta, cierre y restauración de sesión. Es una medición del entorno local, no de un teléfono o conexión móvil real.

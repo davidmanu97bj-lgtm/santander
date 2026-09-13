@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png?v=20260913-identidad-explora" />
   <title>Explora — Control operativo</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
-  <link rel="modulepreload" href="./app.js?v=20260913-saldo-inmediato" />
+  <link rel="modulepreload" href="./app.js?v=20260913-login-fluido" />
   <style>
     :root{
       --bg:#f3f5f7;--panel:#ffffff;--ink:#0e1116;--muted:#737a85;--line:#e7eaee;
@@ -117,20 +117,19 @@
       .service-option{min-height:80px;padding:13px 11px}.service-option strong{font-size:12px}.service-option span{font-size:16px}
     }
   </style>
-  <link rel="stylesheet" href="./styles.css?v=20260913-saldo-inmediato" />
+  <link rel="stylesheet" href="./styles.css?v=20260913-login-fluido" />
 </head>
 <body>
 <section id="splashScreen" class="splash-screen" aria-live="polite" aria-label="Cargando Explora">
   <div class="splash-content">
     <span class="explora-wordmark splash-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span>
-    <div class="splash-progress" role="progressbar" aria-label="Cargando" aria-valuemin="0" aria-valuemax="100" aria-valuenow="4">
+    <div class="splash-progress" role="progressbar" aria-label="Cargando">
       <svg viewBox="0 0 120 120" aria-hidden="true">
         <circle class="splash-progress-track" cx="60" cy="60" r="48" pathLength="100" />
         <circle id="splashProgressArc" class="splash-progress-arc" cx="60" cy="60" r="48" pathLength="100" />
-        <circle id="splashProgressDot" class="splash-progress-dot" cx="60" cy="12" r="5" />
       </svg>
     </div>
-    <p>Cargando</p>
+    <p id="splashMessage">Abriendo Explora…</p>
   </div>
 </section>
 
@@ -780,6 +779,6 @@
 
 
 <script src="./functions/expense-policy.js?v=20260913-gastos-por-tipo"></script>
-<script type="module" src="./app.js?v=20260913-saldo-inmediato"></script>
+<script type="module" src="./app.js?v=20260913-login-fluido"></script>
 </body>
 </html>
