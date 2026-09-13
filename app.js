@@ -4901,6 +4901,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
 
 $("addExpenseBtn")?.addEventListener("click", () => {
   $("expenseForm").reset();
+  $("expenseType").value = "";
   $("saveExpenseBtn").disabled = false;
   $("expenseStepBack").disabled = false;
   setPhotoPickerDisabled("expense", false);
