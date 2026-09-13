@@ -4,6 +4,7 @@ const {onDocumentCreated}=require('firebase-functions/v2/firestore');
 const {onSchedule}=require('firebase-functions/v2/scheduler');
 const {defineSecret}=require('firebase-functions/params');
 const {enqueueInvoice,processInvoice,enabled}=require('./arca-worker');
+const {internationalCEnabled}=require('./arca-invoice');
 const certificate=defineSecret('ARCA_CERTIFICATE'),privateKey=defineSecret('ARCA_PRIVATE_KEY');
 const region='southamerica-east1';
 module.exports=function registerArca({db,assertAdmin}) {
@@ -32,7 +33,7 @@ module.exports=function registerArca({db,assertAdmin}) {
     }),
     arcaBillingStatus:onCall({region},async request=>{
       if(!request.auth)throw new HttpsError('unauthenticated','Iniciá sesión.');
-      const c=await config();return {enabled:enabled(c),environment:c.environment||'disabled',regime:c.regime||'monotributo'};
+      const c=await config();return {enabled:enabled(c),environment:c.environment||'disabled',regime:c.regime||'monotributo',internationalEnabled:enabled(c)&&internationalCEnabled(c)};
     }),
     arcaInvoicePdf:onCall({region,timeoutSeconds:45,memory:'256MiB'},async request=>{
       if(!request.auth)throw new HttpsError('unauthenticated','Iniciá sesión.');

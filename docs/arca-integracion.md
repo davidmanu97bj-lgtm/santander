@@ -1,11 +1,10 @@
 # Factura C automática: implementación y activación
 
-Estado al 12/09/2026: integración implementada localmente, con pruebas automatizadas
-y dos Facturas C autorizadas en el ambiente real de homologación de ARCA.
-La conexión de producción se comprobó mediante consultas de punto de venta y último
-comprobante. No se emitió ninguna factura real, no se desplegaron estos cambios y
-la emisión sigue desactivada. WSASS, certificado separado y autorización WSFE de
-homologación ya están configurados.
+Estado al 13/09/2026: integración desplegada y activada para cobros nacionales,
+con comprobantes autorizados en producción. Antes de activar se probaron dos
+Facturas C en homologación, con certificado separado y autorización WSFE.
+La extensión a internacionales se controla con una fecha de activación propia;
+ver [la definición y configuración internacional](viajes-internacionales.md).
 
 ## Alcance
 
@@ -14,10 +13,12 @@ el **importe completo del servicio**, sin discriminar IVA. La caja chica del 5%
 es interna y no modifica la factura. Gastos y operaciones de Gestión no emiten
 comprobantes de venta. Los cobros históricos no se facturan retroactivamente.
 
-Solo están implementados servicios nacionales en pesos y emisor monotributista.
-Los internacionales se guardan para revisión: no se clasifican automáticamente
-como exportaciones. Pasar a régimen general requiere implementar y verificar
-el tratamiento fiscal correspondiente; cambiar una etiqueta no basta.
+Están implementados servicios nacionales e internacionales en pesos y emisor
+monotributista. Los internacionales requieren `internationalInvoiceType: 11` y
+`internationalActiveFrom`, según la definición C indicada por el titular.
+Sin esa configuración se guardan para revisión. No se convierten en nacionales.
+Pasar a régimen general requiere implementar y verificar el tratamiento fiscal
+correspondiente; cambiar una etiqueta no basta.
 
 El servicio WSFE autoriza importes y datos fiscales, pero no recibe el texto del
 recorrido como renglón de la factura. El detalle del viaje se conserva en el
@@ -96,7 +97,7 @@ un proyecto Firebase de pruebas aislado con datos sintéticos. No probar cargos
 ficticios contra producción. El PDF de homologación dice SIN VALIDEZ FISCAL y no
 incluye un QR de consulta de producción.
 
-## Pasos pendientes de activación
+## Procedimiento de activación y recuperación
 
 1. Confirmar uso exclusivo del punto de venta 2 para esta integración. Los datos
    del emisor se obtuvieron de RUT y de Datos Adicionales del Comprobante en ARCA;

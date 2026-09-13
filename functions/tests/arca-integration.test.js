@@ -35,6 +35,39 @@ test('eventos duplicados, concurrencia y series: cada cobro se envía una sola v
  await Promise.all([run('a'),run('a'),run('b')]);await run('b');await run('a');
  assert.equal(client.calls,2);assert.equal(db.data.get('arca_invoices/a').status,'authorized');assert.equal(db.data.get('arca_invoices/b').number,2);
 });
+test('internacionales C nuevos: efectivo y digital autorizan bruto, conservan recorrido y generan PDF una sola vez',async()=>{
+ const c={...config,internationalInvoiceType:11,internationalActiveFrom:new Date(NOW).toISOString()},db=memoryDb(),client=api();
+ for(const method of ['cash','digital']) {
+   const p=payment(method);p.invoiceRequest={...p.invoiceRequest,scope:'international',origin:'Puerto Iguazú · Argentina',destination:method==='cash'?'Foz do Iguaçu · Brasil':'Ciudad del Este · Paraguay',distanceKm:45};
+   db.data.set('billing_records/'+method,p);
+   await Promise.all([enqueueInvoice(db,method,c,NOW),enqueueInvoice(db,method,c,NOW)]);
+   const run=()=>processInvoice({db,id:method,config:c,client,now:()=>NOW});
+   await run();await run();
+   const job=db.data.get('arca_invoices/'+method);
+   assert.equal(job.status,'authorized');assert.equal(job.scope,'international');assert.deepEqual(job.issues,[]);
+   assert.equal(job.detail.ImpTotal,100000);assert.equal(job.detail.ImpIVA,0);assert.ok(job.description.includes(p.invoiceRequest.destination));
+   const pdf=await invoicePdf(job);assert.equal(pdf.subarray(0,4).toString(),'%PDF');
+   const qr=JSON.parse(Buffer.from(new URL(qrUrl(job)).searchParams.get('p'),'base64'));assert.equal(qr.tipoCmp,11);assert.equal(qr.importe,100000);
+ }
+ assert.equal(client.calls,2);
+});
+test('activación internacional no factura cobros viejos, sin fecha, sin definición o de otro régimen',async()=>{
+ const c={...config,internationalInvoiceType:11,internationalActiveFrom:new Date(NOW).toISOString()},db=memoryDb(),client=api();
+ for(const [id,createdAt] of [['old',{toMillis:()=>NOW-1}],['missing',undefined]]) {
+   const p=payment();p.invoiceRequest.scope='international';p.createdAt=createdAt;
+   db.data.set('billing_records/'+id,p);await enqueueInvoice(db,id,c,NOW);
+   assert.ok(db.data.get('arca_invoices/'+id).issues.includes('international_before_activation'));
+   await processInvoice({db,id,config:c,client,now:()=>NOW});
+ }
+ const p=payment();p.invoiceRequest.scope='international';
+ for(const override of [{internationalInvoiceType:undefined},{internationalInvoiceType:19},{internationalActiveFrom:'invalid'},{internationalActiveFrom:new Date(NOW+1).toISOString()},{regime:'general'}]) {
+   assert.ok(buildInvoice(p,{...c,...override},new Date(NOW)).issues.includes('international_requires_review'));
+ }
+ db.data.set('billing_records/review',p);await enqueueInvoice(db,'review',config,NOW);
+ await enqueueInvoice(db,'review',c,NOW);await processInvoice({db,id:'review',config:c,client,now:()=>NOW});
+ assert.equal(db.data.get('arca_invoices/review').status,'review');assert.equal(client.calls,0);
+ for(const scope of ['',undefined,'export'])assert.ok(buildInvoice({...p,invoiceRequest:{...p.invoiceRequest,scope}},c,new Date(NOW)).issues.includes('invalid_service_scope'));
+});
 test('timeout después de autorizar recupera CAE consultando; no repite emisión',async()=>{
  const db=memoryDb(),client=api(),original=client.authorize;db.data.set('billing_records/a',payment());await enqueueInvoice(db,'a',config,NOW);
  client.authorize=async(...args)=>{await original(...args);throw Error('timeout');};

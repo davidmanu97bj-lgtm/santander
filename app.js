@@ -6655,7 +6655,7 @@ async function refreshArcaBillingStatus() {
     const data = await cachedArcaStatus(uid);
     if (generation !== authGeneration || uid !== auth.currentUser?.uid) return;
     $("arcaModeLabel").textContent=data.enabled ? (data.environment === "production" ? "Automática" : "Pruebas") : "Sin activar";
-    $("arcaModeNote").textContent=data.enabled ? (data.environment === "production" ? "Al confirmar se solicitará la factura. Los viajes internacionales quedan para revisión." : "Homologación: las facturas de prueba no tienen validez fiscal.") : "El viaje se guarda. La emisión fiscal todavía no está activada.";
+    $("arcaModeNote").textContent=data.enabled ? (data.environment === "production" ? (data.internationalEnabled ? "Al confirmar se solicitará la Factura C del viaje." : "Al confirmar se solicitará la factura. Los viajes internacionales quedan para revisión.") : "Homologación: las facturas de prueba no tienen validez fiscal.") : "El viaje se guarda. La emisión fiscal todavía no está activada.";
   } catch {
     if (generation !== authGeneration || uid !== auth.currentUser?.uid) return;
     $("arcaModeLabel").textContent="Por verificar";
@@ -6719,7 +6719,7 @@ function createInvoiceCard(invoice) {
   const method = invoice.paymentMethod === "cash" ? "Cobro en efectivo" : invoice.paymentMethod === "digital" ? "Cobro digital" : "Cobro registrado";
   trip.append(invoiceElement("span", "invoice-payment", method));
   card.append(top, main, trip);
-  const reasons = {international_requires_review:"Viaje internacional: revisar el tipo de factura.",issuer_print_data_missing:"Faltan datos fiscales del emisor.",customer_identification_required:"Falta identificar al pasajero.",point_of_sale_unavailable:"Revisar el punto de venta.",number_conflict:"El número corresponde a otros datos. Requiere revisión.",awaiting_reconciliation:"Esperando confirmar la autorización en ARCA."};
+  const reasons = {international_requires_review:"Viaje internacional: revisar el tipo de factura.",international_before_activation:"Cobro anterior a la activación internacional: requiere revisión.",invalid_service_scope:"Revisar el trayecto del servicio.",issuer_print_data_missing:"Faltan datos fiscales del emisor.",customer_identification_required:"Falta identificar al pasajero.",point_of_sale_unavailable:"Revisar el punto de venta.",number_conflict:"El número corresponde a otros datos. Requiere revisión.",awaiting_reconciliation:"Esperando confirmar la autorización en ARCA."};
   const notices = [...new Set([...(invoice.issues || []),invoice.issue].filter(Boolean).map(code => reasons[code] || "Revisar los datos de la solicitud."))];
   if (notices.length) card.append(invoiceElement("p", "invoice-notice", notices.join(" ")));
   if (invoice.environment === "homologation") card.append(invoiceElement("p", "invoice-notice", "PRUEBA · Sin validez fiscal"));
