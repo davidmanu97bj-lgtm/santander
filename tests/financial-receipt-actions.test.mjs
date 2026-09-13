@@ -43,13 +43,12 @@ assert.equal(reducedBelowOffset.expenseDebtOffsetApplied, 20);
 assert.equal(reducedBelowOffset.amountToDriver, 0);
 
 const root = new URL("../", import.meta.url);
-const [receiptsUi, receiptEngine, payHome, functions, index, serviceWorker] = await Promise.all([
+// Contratos del código segmentado conservado. frontend-runtime.test.mjs verifica la entrada vigente.
+const [receiptsUi, receiptEngine, payHome, functions] = await Promise.all([
   readFile(new URL("js/segments/09-script.js", root), "utf8"),
   readFile(new URL("js/segments/13-script.mjs", root), "utf8"),
   readFile(new URL("js/segments/52-script.mjs", root), "utf8"),
-  readFile(new URL("functions/index.js", root), "utf8"),
-  readFile(new URL("index.html", root), "utf8"),
-  readFile(new URL("service-worker.js", root), "utf8")
+  readFile(new URL("functions/index.js", root), "utf8")
 ]);
 
 assert.match(receiptsUi, /data-receipt-edit-index/);
@@ -61,7 +60,5 @@ assert.match(receiptEngine, /includedBillingSettlementPaymentIds/);
 assert.match(payHome, /deletedReceiptIndexes/);
 assert.match(payHome, /admin_audit/);
 assert.match(functions, /financialReceiptIndexDocuments/);
-assert.match(index, /js\/segments\/09-script\.js\?v=4145-activity-receipt-actions/);
-assert.match(serviceWorker, /v4145-activity-receipt-actions/);
 
 console.log("financial receipt actions: ok");

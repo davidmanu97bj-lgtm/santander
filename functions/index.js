@@ -16,6 +16,8 @@ const {
 } = require("./telegram-billing-balance");
 const { isAdminDebtPayment } = require("./telegram-debt-payment");
 const { isAdminDriverDebt } = require("./telegram-driver-debt");
+const { prepareInvoiceDraft } = require("./arca-invoice-draft");
+const { validateRouteRequest, queryRouteService, RouteError } = require("./route-service");
 
 const PROJECT_ID = "explora-control-operativo";
 const STORAGE_BUCKET = `${PROJECT_ID}.firebasestorage.app`;
@@ -32,6 +34,65 @@ const DELETION_JOBS_COLLECTION = "admin_driver_deletion_jobs";
 const ADMIN_AUDIT_COLLECTION = "admin_audit";
 const TEAM_REALTIME_BALANCES_COLLECTION = "team_realtime_balances";
 const PAGE_SIZE = 180;
+
+const OPENROUTESERVICE_API_KEY = defineSecret("OPENROUTESERVICE_API_KEY");
+exports.exploraRoute = onCall({region:"southamerica-east1", secrets:[OPENROUTESERVICE_API_KEY], timeoutSeconds:30, maxInstances:3}, async request => {
+  const uid = await assertTeamRealtimeViewer(request);
+  try {
+    const data = validateRouteRequest(request.data);
+    const key = OPENROUTESERVICE_API_KEY.value();
+    if (!key) return await queryRouteService(data,key);
+    // Server-only counters; fixed documents avoid accumulating per-query data.
+    const globalRef = db.collection("route_usage").doc("global");
+    const userRef = db.collection("route_usage").doc(uid);
+    const day = new Date().toISOString().slice(0,10);
+    const minute = Math.floor(Date.now() / 60000);
+    await db.runTransaction(async tx => {
+      const [globalSnap,userSnap] = await Promise.all([tx.get(globalRef),tx.get(userRef)]);
+      const global = globalSnap.data() || {}, user = userSnap.data() || {};
+      const search = global.day === day ? Number(global.search || 0) : 0;
+      const route = global.day === day ? Number(global.route || 0) : 0;
+      const recent = user.minute === minute ? Number(user.recent || 0) : 0;
+      const globalRecent = global.minute === minute ? Number(global.recent || 0) : 0;
+      const daily = user.day === day ? Number(user.daily || 0) : 0;
+      if (recent >= 15 || globalRecent >= 35 || daily >= 200 || (data.action === "search" ? search >= 800 : route >= 1500)) {
+        throw new HttpsError("resource-exhausted","Se alcanzó el límite de consultas. Podés completar el recorrido manualmente.");
+      }
+      tx.set(globalRef,{day,minute,recent:globalRecent+1,search:search+(data.action === "search" ? 1 : 0),route:route+(data.action === "route" ? 1 : 0)});
+      tx.set(userRef,{day,minute,recent:recent+1,daily:daily+1});
+    });
+    return await queryRouteService(data,key);
+  } catch (error) {
+    if (error instanceof RouteError) throw new HttpsError(error.code,error.message);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("unavailable","No pudimos consultar las direcciones. Podés completar el recorrido manualmente.");
+  }
+});
+
+// Internal draft only; never contacts ARCA or emits a fiscal document.
+exports.prepareArcaInvoiceDraft = onDocumentWritten({document:"billing_records/{paymentId}",region:"southamerica-east1",retry:true}, async event => {
+  if (!event.data) return;
+  const paymentRef = db.collection("billing_records").doc(event.params.paymentId);
+  const draftRef = db.collection("arca_invoice_drafts").doc(event.params.paymentId);
+  await db.runTransaction(async transaction => {
+    // Read current source, rather than an older out-of-order event snapshot.
+    const [paymentSnapshot,existing] = await Promise.all([transaction.get(paymentRef),transaction.get(draftRef)]);
+    if (existing.exists && !["preparation","cancelled"].includes(existing.data().status)) return;
+    const payment = paymentSnapshot.exists ? paymentSnapshot.data() : null;
+    if (!payment || payment.deleted === true || payment.isDeleted === true || payment.eliminado === true || payment.status === "deleted") {
+      if (existing.exists) transaction.update(draftRef,{status:"cancelled",updatedAt:FieldValue.serverTimestamp()});
+      return;
+    }
+    const draft = prepareInvoiceDraft(payment,event.params.paymentId,{
+      regime:existing.exists ? existing.data().targetRegime : (process.env.ARCA_ISSUER_REGIME || "monotributo"),
+      cuit:process.env.ARCA_ISSUER_CUIT,
+      legalName:process.env.ARCA_ISSUER_LEGAL_NAME,
+      pointOfSale:process.env.ARCA_POINT_OF_SALE
+    });
+    if (!draft) return;
+    transaction.set(draftRef,{...draft,createdAt:existing.exists ? existing.data().createdAt : FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
+  });
+});
 const MAX_SCANNED_DOCUMENTS = 25000;
 
 
@@ -803,7 +864,7 @@ const PROTECTED_ROOT_COLLECTIONS = new Set([
   "system", "configuracion", "explora_config", "tarifas", "settings",
   "app_reset_audit", "app_operational_state", "app_reset_storage_manifests",
   "app_reset_storage_manifest_items", DELETION_JOBS_COLLECTION, ADMIN_AUDIT_COLLECTION,
-  "administradores", "admins"
+  "administradores", "admins", "arca_invoices", "arca_invoice_drafts", "arca_settings", "arca_series", "arca_tickets"
 ]);
 const SPECIAL_ROOT_COLLECTIONS = new Set(["choferes", "login_aliases", "vehiculos"]);
 
@@ -1102,6 +1163,7 @@ async function processCollection(collectionRef, aliases, adminUid, counters) {
         throw new HttpsError("resource-exhausted", "La eliminación superó el límite seguro de documentos. La cuenta quedó deshabilitada para reintentar.");
       }
       const data = docSnap.data() || {};
+      if (collectionRef.id === "billing_records" && data.invoiceRequest?.version === "arca_c_v1") continue;
       const classification = classifyDocument(data, aliases);
       if (classification.action === "delete") {
         await deleteStorageForDocument(data, counters);
@@ -1165,6 +1227,7 @@ async function processCollectionForDriverReset(collectionRef, aliases, counters)
         throw new HttpsError("resource-exhausted", "El reseteo superó el límite seguro de documentos. No se modificó la cuenta ni el acceso del chofer.");
       }
       const data = docSnap.data() || {};
+      if (collectionRef.id === "billing_records" && data.invoiceRequest?.version === "arca_c_v1") continue;
       if (classifyDriverResetDocument(data, aliases, collectionRef.id) === "delete") {
         await deleteDriverResetStorageForDocument(data, counters);
         await db.recursiveDelete(docSnap.ref);
@@ -1870,7 +1933,7 @@ function financialBillingClosurePatch(closure = {}, movement = {}, { cashboxOnly
   const cash = Math.max(0, oldCash - (!cashboxOnly && method === "cash" ? amount : 0));
   const digital = Math.max(0, oldDigital - (!cashboxOnly && method !== "cash" ? amount : 0));
   const cashboxExcluded = movement.excludeFromCashbox === true || movement.cashboxExcluded === true || movement.cajaChicaEliminada === true || movement.ignoreCashbox === true || movement.noCashbox === true;
-  const cashboxGenerates = method === "cash" && !cashboxExcluded;
+  const cashboxGenerates = (method === "cash" || movement.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1") && !cashboxExcluded;
   const oldCashboxGross = financialNumber(closure.billingCashboxGross ?? closure.cashboxGross ?? oldCash);
   const oldEligibleGross = financialNumber(closure.billingCashboxEligibleGross ?? closure.cashboxEligibleGross ?? oldCashboxGross);
   const cashboxGross = Math.max(0, oldCashboxGross - (cashboxGenerates ? amount : 0));
@@ -2022,7 +2085,7 @@ function financialBillingAmountCorrectionPatch(closure = {}, movement = {}, newA
   const cash = Math.max(0, oldCash + (!cashboxOnly && method === "cash" ? delta : 0));
   const digital = Math.max(0, oldDigital + (!cashboxOnly && method !== "cash" ? delta : 0));
   const cashboxExcluded = movement.excludeFromCashbox === true || movement.cashboxExcluded === true || movement.cajaChicaEliminada === true || movement.ignoreCashbox === true || movement.noCashbox === true;
-  const cashboxGenerates = method === "cash" && !cashboxExcluded;
+  const cashboxGenerates = (method === "cash" || movement.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1") && !cashboxExcluded;
   const oldCashboxGross = financialNumber(closure.billingCashboxGross ?? closure.cashboxGross ?? oldCash);
   const oldEligibleGross = financialNumber(closure.billingCashboxEligibleGross ?? closure.cashboxEligibleGross ?? oldCashboxGross);
   const cashboxGross = Math.max(0, oldCashboxGross + (cashboxGenerates ? delta : 0));
@@ -2097,7 +2160,7 @@ async function financialAdjustClosures({ type, driverUid, documentId, movement, 
     if (type === "gasto" && kind === "gastos") patch = financialExpenseClosurePatch(closure, movement);
     if (settlementPayment && financialIsBillingClosure(kind)) patch = financialBillingSettlementClosurePatch(closure, movement);
     else if (type === "cobro" && financialIsBillingClosure(kind)) patch = financialBillingClosurePatch(closure, movement, { cashboxOnly:!inBillingIds && inCashboxIds });
-    if (type === "caja_chica" && financialIsBillingClosure(kind) && financialMethodOf(movement) === "cash") patch = financialBillingClosurePatch(closure, movement, { cashboxOnly:true });
+    if (type === "caja_chica" && financialIsBillingClosure(kind) && (financialMethodOf(movement) === "cash" || movement.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1")) patch = financialBillingClosurePatch(closure, movement, { cashboxOnly:true });
     if ((type === "cobro" || type === "caja_chica") && kind === "caja_chica" && financialMethodOf(movement) === "cash") patch = financialCashboxClosurePatch(closure, movement);
     if (!patch) continue;
     const primaryIds = Array.isArray(closure[includeField]) ? closure[includeField].map(text) : [];
@@ -2187,6 +2250,7 @@ exports.adminDeleteFinancialMovement = onCall({ region:"southamerica-east1", tim
   const receiptIndexes = type === "caja_chica" ? [] : await financialReceiptIndexDocuments(documentId, type);
   if (!snap.exists && !receiptIndexes.length) throw new HttpsError("not-found", "El movimiento ya no existe en Firestore.");
   const data = snap.exists ? (snap.data() || {}) : ({ id:documentId, ...(receiptIndexes[0]?.data() || {}) });
+  if(type !== "gasto" && data.invoiceRequest?.version === "arca_c_v1") throw new HttpsError("failed-precondition", "Este cobro tiene un trámite fiscal. Su corrección requiere revisión y, si fue autorizado, una nota de crédito.");
   const requestedMatches = requestedDriverUid ? await financialBelongsToDriver(data, requestedDriverUid) : false;
   const driverUid = requestedMatches ? requestedDriverUid : (financialDriverValues(data)[0] || requestedDriverUid);
   if (!driverUid) throw new HttpsError("failed-precondition", "El movimiento no tiene un chofer identificable.");
@@ -2336,6 +2400,7 @@ exports.adminModifyBillingAmount = onCall({ region:"southamerica-east1", timeout
   const initialSnapshot = await paymentRef.get();
   if (!initialSnapshot.exists) throw new HttpsError("not-found", "El cobro original ya no existe en Firestore.");
   const initialData = initialSnapshot.data() || {};
+  if(initialData.invoiceRequest?.version === "arca_c_v1") throw new HttpsError("failed-precondition", "El importe está vinculado a una solicitud fiscal y no se puede modificar.");
   if (financialIsBillingSettlementPayment(initialData) || normalized(initialData.type) === "settlement_adjustment" || normalized(initialData.type).includes("compensation")) {
     throw new HttpsError("failed-precondition", "Este movimiento es un ajuste interno y no se puede editar desde Cobros/Gastos.");
   }
@@ -2375,6 +2440,11 @@ exports.adminModifyBillingAmount = onCall({ region:"southamerica-east1", timeout
       amountCorrectedAt:FieldValue.serverTimestamp(), updatedAt:FieldValue.serverTimestamp(), updatedAtMs:Date.now(),
       version:"v67-admin-financial-actions"
     };
+    if (paymentData.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1") {
+      paymentUpdate.grossAmount = newAmount;
+      paymentUpdate.principalMovementAmount = financialMethodOf(paymentData) === "cash" ? newAmount : -newAmount;
+      paymentUpdate.cashboxAmount = newAmount * 0.05;
+    }
     for (const key of ["valor", "billingAmount", "finalPrice", "finalAmount", "totalAmount", "importe", "price", "total"]) {
       if (Object.prototype.hasOwnProperty.call(paymentData, key)) paymentUpdate[key] = newAmount;
     }
@@ -2878,6 +2948,12 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
     isCash ? "COBRO EN EFECTIVO REGISTRADO" : "COBRO DIGITAL REGISTRADO",
     `Chofer: ${telegramDriverName(data)}`,
     `Monto: ${telegramMoney(telegramAmount(data))}`,
+    ...(data.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1" ? [
+      `Impacto del cobro: ${isCash ? "+" : "−"}${telegramMoney(telegramAmount(data))}`,
+      `Caja chica 5% a favor de Explora: ${telegramMoney(telegramAmount(data) * 0.05)}`,
+      `Impacto total con caja chica: ${isCash ? "+" : "−"}${telegramMoney(telegramAmount(data) * (isCash ? 1.05 : 0.95))}`,
+      isCash ? "El chofer conserva el 100% del efectivo." : "Explora recibe el 100% del digital."
+    ] : []),
     `Detalle: ${notes ? notes.slice(0, 300) : (isCash ? "Cobro en efectivo" : "Cobro digital")}`,
     balanceLine,
     ...telegramDateTimeLines(data)
@@ -3202,3 +3278,6 @@ exports.notifyUberClosureWhatsappGroupV1 = onDocumentWritten({
   document: "uber_weekly_closures/{docId}",
   region: TELEGRAM_FUNCTION_REGION
 }, async () => ({ skipped: true, reason: "whatsapp-disabled-use-telegram-group" }));
+
+// ARCA services share the initialized admin app and authorization checks.
+Object.assign(exports, require("./arca-functions")({db,assertAdmin}));

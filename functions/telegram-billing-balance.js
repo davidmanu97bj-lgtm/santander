@@ -98,6 +98,24 @@ function cashboxIsExcluded(data = {}) {
     data.cajaChicaEliminada === true || data.ignoreCashbox === true || data.noCashbox === true;
 }
 
+// Versioned per receipt: never reinterpret pre-existing digital payments.
+function digitalCashboxAmount(records = []) {
+  return records
+    .filter(item => item && !movementIsDeleted(item) && !isSimulated(item))
+    .filter(item => !billingSettlementDirection(item) && !teamIsReimbursementCompensation(item))
+    .filter(item => ["card", "qr", "transfer", "digital"].includes(paymentMethodOf(item)) && !cashboxIsExcluded(item))
+    .filter(item => item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1")
+    .reduce((sum, item) => sum + amountOf(item) * 0.05, 0);
+}
+function grossFlowPrincipalDelta(records = []) {
+  return records
+    .filter(item => item && !movementIsDeleted(item) && !isSimulated(item))
+    .filter(item => !billingSettlementDirection(item) && !teamIsReimbursementCompensation(item))
+    .filter(item => item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1")
+    .filter(item => ["cash", "card", "qr", "transfer", "digital"].includes(paymentMethodOf(item)))
+    .reduce((sum, item) => sum + amountOf(item) * (paymentMethodOf(item) === "cash" ? 0.50 : -0.50), 0);
+}
+
 function isDriverBillingSettlementPayment(data = {}) {
   const type = safeText(data.type || data.operationType || data.movementType).toLowerCase();
   const source = safeText(data.sourceModule || data.category || data.module).toLowerCase();
@@ -342,7 +360,10 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
     if (!record || movementIsDeleted(record) || isSimulated(record) || rowMs(record) <= cashboxResetMs) continue;
     if (billingSettlementDirection(record)) continue;
     if (record.excludeFromBillingSettlement === true || record.internalSettlementAdjustment === true) continue;
-    if (cashboxIsExcluded(record) || paymentMethodOf(record) !== "cash") continue;
+    if (cashboxIsExcluded(record)) continue;
+    const generates = paymentMethodOf(record) === "cash" ||
+      (record.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1" && ["card", "qr", "transfer", "digital"].includes(paymentMethodOf(record)));
+    if (!generates) continue;
     const amount = amountOf(record);
     if (amount > 0) regularCashboxGenerated += amount * 0.05;
   }
@@ -363,10 +384,11 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
   }
 
   let expenseTotal = 0;
+  let newExpenseTotal = 0;
   for (const expense of expenses || []) {
     if (!expense || movementIsDeleted(expense) || isSimulated(expense)) continue;
     const amount = amountOf(expense);
-    if (amount > 0) expenseTotal += amount;
+    if (amount > 0) { expenseTotal += amount; if (expense.receiptFlowVersion === "gross_expense_driver_debit_50_v2") newExpenseTotal += amount; }
   }
 
   let adminDebtTotal = 0;
@@ -395,7 +417,8 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
   const cashboxTotal = roundMoney(Math.max(0, cashboxGeneratedTotal - cashboxOffsetPreviouslyApplied));
   // El chofer paga el gasto y Explora reconoce el 50%, por eso ese 50%
   // se suma al saldo a favor del chofer antes de aplicar pagos de cierre.
-  const netBeforePayments = roundMoney(netBeforeCashboxToDriver - cashboxTotal + expenseShare - adminDebtTotal);
+  const newPrincipalDelta = grossFlowPrincipalDelta(records.filter(item => item?.excludeFromBillingSettlement !== true && item?.internalSettlementAdjustment !== true));
+  const netBeforePayments = roundMoney(netBeforeCashboxToDriver - cashboxTotal + expenseShare - newExpenseTotal - adminDebtTotal - newPrincipalDelta);
 
   driverSettlementTotal = roundMoney(driverSettlementTotal);
   exploraSettlementTotal = roundMoney(exploraSettlementTotal);
@@ -451,7 +474,7 @@ function teamAutomaticExpenseImpact(expenses = [], cutoffMs = 0) {
     .filter(item => item && !movementIsDeleted(item) && !isSimulated(item))
     .filter(item => rowMs(item) > cutoffMs)
     .filter(teamExpenseUsesAutomaticBilling50)
-    .reduce((sum, item) => sum + (amountOf(item) * 0.50), 0));
+    .reduce((sum, item) => sum + (amountOf(item) * (item.receiptFlowVersion === "gross_expense_driver_debit_50_v2" ? -0.50 : 0.50)), 0));
 }
 
 function latestTeamReimbursementAnchor(records = [], baseline = 0) {
@@ -498,13 +521,13 @@ function teamSettlementDeltaSince(cutoffMs, records = [], uberWeeks = [], expens
     .filter(uberImpactsSettlement);
   const uberCash = scopedUber.reduce((sum, item) => sum + uberCashAmount(item), 0);
   const uberTransfer = scopedUber.reduce((sum, item) => sum + uberTransferAmount(item), 0);
-  const cashbox = (cashboxEligibleCash + uberCash) * 0.05;
+  const cashbox = (cashboxEligibleCash + uberCash) * 0.05 + digitalCashboxAmount(scopedRecords);
   const automaticExpenseImpact = teamAutomaticExpenseImpact(expenses, cutoffMs);
 
   return roundMoney(
     (cash * 0.50) + (uberCash * 0.50) + cashbox -
     (digital * 0.50) - (uberTransfer * 0.50) -
-    automaticExpenseImpact - driverPaid + exploraPaid
+    automaticExpenseImpact - driverPaid + exploraPaid + grossFlowPrincipalDelta(scopedRecords)
   );
 }
 
@@ -539,7 +562,7 @@ function calculateTeamRealtimeSettlementBalance({ records = [], closures = [], u
     .filter(uberImpactsSettlement);
   const uberCash = scopedUber.reduce((sum, item) => sum + uberCashAmount(item), 0);
   const uberTransfer = scopedUber.reduce((sum, item) => sum + uberTransferAmount(item), 0);
-  const cashbox = (cashboxEligibleCash + uberCash) * 0.05;
+  const cashbox = (cashboxEligibleCash + uberCash) * 0.05 + digitalCashboxAmount(openRecords);
   const automaticExpenseImpact = teamAutomaticExpenseImpact(expenses, baseline);
   const adminDebtTotal = debts
     .filter(item => item && !movementIsDeleted(item) && !isSimulated(item) && debtImpactsSettlement(item))
@@ -549,7 +572,7 @@ function calculateTeamRealtimeSettlementBalance({ records = [], closures = [], u
   const rawBalance = anchor
     ? anchor.balance + teamSettlementDeltaSince(anchor.timestamp, records, uberWeeks, expenses) + adminDebtTotal
     : (cash * 0.50) + (uberCash * 0.50) + cashbox + adminDebtTotal -
-      (digital * 0.50) - (uberTransfer * 0.50) - automaticExpenseImpact - driverPaid + exploraPaid;
+      (digital * 0.50) - (uberTransfer * 0.50) - automaticExpenseImpact - driverPaid + exploraPaid + grossFlowPrincipalDelta(openRecords);
   const balance = Math.abs(rawBalance) > 0.5 ? roundMoney(rawBalance) : 0;
 
   return {

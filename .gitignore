@@ -8,9 +8,21 @@ firebase-debug.log
 # Archivos locales o sensibles
 .env
 .env.*
+.secret.local
 service-account*.json
 serviceAccount*.json
 credentials*.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.csr
+arca-config.local.json
 
 # Paquetes de entrega
 *.zip
+
+# Paquetes de Hosting y registros de despliegue
+dist/
+.deploy/

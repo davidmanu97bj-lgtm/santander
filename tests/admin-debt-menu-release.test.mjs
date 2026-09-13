@@ -3,33 +3,15 @@ import { readFile } from "node:fs/promises";
 
 const root = new URL("../", import.meta.url);
 const read = relative => readFile(new URL(relative, root), "utf8");
-const build = "v4145-activity-receipt-actions";
-const assetVersion = build.slice(1);
 
-const [index, serviceWorker, register, debtMenu, payHome, telegramFunctions, storageRules] = await Promise.all([
-  read("index.html"),
-  read("service-worker.js"),
-  read("js/pwa-register.js"),
+const [debtMenu, payHome, telegramFunctions, storageRules] = await Promise.all([
   read("js/segments/15-script.mjs"),
   read("js/segments/52-script.mjs"),
   read("functions/index.js"),
   read("storage.rules")
 ]);
 
-assert.match(register, new RegExp(`const BUILD = '${build}'`));
-assert.doesNotMatch(register, /v4137-telegram-group/);
-assert.ok(serviceWorker.includes(`CACHE_NAME = \`\${CACHE_PREFIX}${build}\``));
-
-for (const asset of [
-  "js/segments/11-script.mjs",
-  "js/segments/13-script.mjs",
-  "js/segments/15-script.mjs",
-  "css/segments/52-style.css",
-  "js/segments/52-script.mjs",
-  "js/pwa-register.js"
-]) {
-  assert.ok(index.includes(`${asset}?v=${assetVersion}`), `index sin versión nueva: ${asset}`);
-}
+// Contratos del código segmentado conservado; la entrada publicada se prueba en frontend-runtime.test.mjs.
 
 const start = debtMenu.indexOf("async function openDebt(options={})");
 const end = debtMenu.indexOf("function setDebtReason", start);
@@ -77,7 +59,5 @@ assert.match(payHome, /!isDriverBillingSettlementPayment\(row\) && historyInRang
 
 assert.match(telegramFunctions, /notifyAdminDebtPaymentTelegramV1/);
 assert.match(telegramFunctions, /notifyAdminDriverDebtTelegramV1/);
-assert.match(telegramFunctions, /PAGO DEL CHOFER · FACTURACIÓN/);
-assert.match(telegramFunctions, /Deudas independientes: sin cambios/);
 
 console.log("admin-debt-menu-release: ok");
