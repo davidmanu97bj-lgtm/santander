@@ -7396,3 +7396,31 @@ body .money-entry input:focus { outline:none !important; border-color:transparen
 #expenseRefundBlock { border-top:1px solid #e3eaf4; padding-top:8px; margin-top:22px; }
 .expense-final-balance { margin-top:22px; padding:16px; border-radius:12px; background:#f3f6fa; font-size:19px; font-weight:700; text-align:center; color:#10164c; }
 @media(max-width:480px) { .expense-type-options { gap:8px; } .expense-type-option { min-height:100px; padding:12px 6px; font-size:13px; } .expense-selection span { line-height:1.5; } }
+
+/* Keep content below device cutouts in Safari/PWA and edge-to-edge Android. */
+:root {
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --app-safe-left: env(safe-area-inset-left, 0px);
+  --app-safe-right: env(safe-area-inset-right, 0px);
+}
+#app.driver-view .topbar { padding-top:calc(28px + var(--app-safe-top)); }
+#app:not(.driver-view) .topbar { padding-top:calc(20px + var(--app-safe-top)); }
+.login-screen {
+  padding-top:calc(24px + var(--app-safe-top));
+  padding-bottom:calc(24px + var(--app-safe-bottom));
+  align-items:safe center;
+}
+.modal { padding-top:calc(16px + var(--app-safe-top)); }
+.modal > .modal-card { max-height:calc(100dvh - var(--app-safe-top) - var(--app-safe-bottom) - 48px); }
+:is(#chargeModal, #managementModal, #expenseModal, #uberModal) {
+  padding-top:calc(24px + var(--app-safe-top));
+  padding-bottom:calc(24px + var(--app-safe-bottom));
+  padding-left:max(16px,var(--app-safe-left));
+  padding-right:max(16px,var(--app-safe-right));
+}
+@media(max-width:600px) {
+  #app.driver-view .topbar { padding-top:calc(27px + var(--app-safe-top)); }
+  #invoicesModal { padding-top:0; }
+  #invoicesModal .invoices-header { padding-top:calc(26px + var(--app-safe-top)); }
+}
