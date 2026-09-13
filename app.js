@@ -11,7 +11,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
   initializeFirestore, collection, addDoc, doc, getDoc, getDocFromServer, getDocs, setDoc,
-  onSnapshot, serverTimestamp, query, where, orderBy, limit, writeBatch, runTransaction
+  onSnapshot, serverTimestamp, query, where, or, orderBy, limit, writeBatch, runTransaction
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import {
   getStorage, ref, uploadBytes, getDownloadURL
@@ -108,8 +108,6 @@ function initializePhotoSourcePickers() {
 }
 
 initializePhotoSourcePickers();
-const SPLASH_MIN_VISIBLE_MS = 900;
-let splashStartedAt = Date.now();
 let splashProgress = 4;
 let splashTimer = null;
 let splashTransition = 0;
@@ -148,15 +146,16 @@ let adminUnsubscribers = [];
 let adminSnapshotReady = new Set();
 let adminPendingAction = null;
 const adminDismissedPendingActionIds = new Set();
-// Históricos de Santander pueden usar aliases anteriores a driverUid.
-// Se cargan una vez y se fusionan con el listener canónico en tiempo real.
-const legacyOwnedCache = new Map();
-const canonicalOwnedCache = new Map();
+// Conserva los aliases históricos consultables con las reglas actuales.
+// Una consulta OR entrega cada documento una sola vez y también sus cambios/bajas.
 const OWNERSHIP_FIELDS = [
   "driverUid", "choferUid", "uid", "ownerUid", "driverId", "choferId",
-  "driver_id", "chofer_id", "userUid", "userId", "createdByUid", "ownerId",
-  "conductorUid", "conductorId", "assignedDriverUid", "enteredOnBehalfOf", "simulationDriverUid"
+  "userUid", "createdByUid"
 ];
+let authGeneration = 0;
+let dashboardLoad = null;
+const dashboardRenderJobs = new Set();
+let dashboardRenderFrame = null;
 let selectedCloseDirection = "";
 let selectedDriverClosePaymentMethod = "cash";
 let selectedAdminClosureId = "";
@@ -678,47 +677,95 @@ function formatCuitInput(value) {
 }
 
 function ownedQuery(collectionName, uid = currentDriverUid()) {
-  return query(collection(db, collectionName), where("driverUid", "==", uid));
+  const fields = collectionName === ROOT_COLLECTIONS.uber ? ["driverUid"] : OWNERSHIP_FIELDS;
+  return query(collection(db, collectionName), or(...fields.map(field => where(field, "==", uid))));
 }
 
-function cacheKey(collectionName, uid) {
-  return `${collectionName}::${uid}`;
-}
-
-function mergeOwnedRows(collectionName, uid, canonicalRows = []) {
-  const key = cacheKey(collectionName, uid);
-  const map = new Map();
-  for (const row of legacyOwnedCache.get(key) || []) map.set(row.id, row);
-  for (const row of canonicalRows || []) map.set(row.id, row);
-  return Array.from(map.values());
-}
-
-async function loadOwnedHistory(collectionName, uid) {
-  const targetUid = String(uid || "").trim();
-  if (!targetUid) return [];
-  const key = cacheKey(collectionName, targetUid);
-  const map = new Map();
-  const tasks = OWNERSHIP_FIELDS.map(async field => {
-    try {
-      const snap = await getDocs(query(collection(db, collectionName), where(field, "==", targetUid), limit(900)));
-      snap.forEach(d => map.set(d.id, { id:d.id, ...d.data() }));
-    } catch (err) {
-      // Algunos aliases pueden no estar permitidos por reglas/índices; seguimos con los demás.
-      console.warn("EXPLORA_HISTORY_QUERY", collectionName, field, err?.code || err?.message || err);
+function createDashboardLoad(keys) {
+  const ready = new Set(), cached = new Set(), errors = new Set();
+  let resolve;
+  const settled = new Promise(done => { resolve = done; });
+  return {
+    ready, cached, errors, settled,
+    complete: () => keys.every(key => ready.has(key)) && !errors.size,
+    update(key, fromCache, error = false) {
+      if (error) { errors.add(key); resolve(); return; }
+      errors.delete(key);
+      if (fromCache) cached.add(key);
+      else { cached.delete(key); ready.add(key); }
+      if (keys.every(item => ready.has(item))) resolve();
     }
+  };
+}
+
+function scheduleDashboardRender(job = render) {
+  dashboardRenderJobs.add(job);
+  if (dashboardRenderFrame !== null) return;
+  dashboardRenderFrame = window.requestAnimationFrame(() => {
+    dashboardRenderFrame = null;
+    const jobs = [...dashboardRenderJobs];
+    dashboardRenderJobs.clear();
+    for (const update of jobs) update();
   });
-  await Promise.allSettled(tasks);
-  const rows = Array.from(map.values());
-  legacyOwnedCache.set(key, rows);
-  return rows;
 }
 
-function setCanonicalRows(collectionName, uid, rows) {
-  canonicalOwnedCache.set(cacheKey(collectionName, uid), rows || []);
+function cancelDashboardRender() {
+  if (dashboardRenderFrame !== null) window.cancelAnimationFrame(dashboardRenderFrame);
+  dashboardRenderFrame = null;
+  dashboardRenderJobs.clear();
 }
 
-function canonicalRows(collectionName, uid) {
-  return canonicalOwnedCache.get(cacheKey(collectionName, uid)) || [];
+async function waitForDashboard(load) {
+  let timer;
+  try {
+    await Promise.race([load.settled, new Promise(resolve => { timer = window.setTimeout(resolve, 6000); })]);
+  } finally { window.clearTimeout(timer); }
+}
+
+function renderDriverLoadState() {
+  const ready = dashboardLoad?.complete() === true;
+  const failed = Boolean(dashboardLoad?.errors.size);
+  const syncing = !ready || Boolean(dashboardLoad?.cached.size);
+  $("syncStatus").textContent = failed ? "No se pudo sincronizar · recargá" : syncing ? (navigator.onLine === false ? "Sin conexión" : "Sincronizando…") : "En tiempo real";
+  $("syncStatus").className = failed ? "sync bad" : syncing ? "sync" : "sync ok";
+  $("driverBalanceCard").setAttribute("aria-busy", String(!ready));
+  document.querySelectorAll("#driverQuickActions button").forEach(button => { button.disabled = !ready; });
+  if (!ready) {
+    $("settlementDirection").textContent = failed ? "Revisá la conexión" : "Consultando tu saldo";
+    $("settlementTotal").textContent = "—";
+    $("settlementTotal").removeAttribute("aria-label");
+    delete $("settlementTotal").dataset.moneyCurrent;
+    $("driverBalanceBadge").textContent = failed ? "Reintentar" : "Actualizando";
+    $("receiptCount").textContent = "";
+    $("receiptList").innerHTML = `<div class="empty">${failed ? "No pudimos cargar los movimientos. Recargá para volver a intentar." : "Consultando tus movimientos…"}</div>`;
+    $("receiptsToggle").classList.add("hidden");
+  }
+  return ready;
+}
+
+function subscribeOwnedRecords(user, { collectionName, normalizer, assign, afterRender }) {
+  const load = dashboardLoad;
+  let active = true, received = false;
+  const valid = () => active && dashboardLoad === load && auth.currentUser?.uid === user.uid;
+  const stop = onSnapshot(ownedQuery(collectionName, user.uid), { includeMetadataChanges:true }, snap => {
+    if (!valid()) return;
+    const changed = !received || snap.docChanges().length > 0;
+    const wasReady = load.complete();
+    received = true;
+    if (changed) {
+      assign(snap.docs.map(row => normalizer(row.id, row.data())).sort((a,b) => recordTimestampMs(b)-recordTimestampMs(a)));
+    }
+    load.update(collectionName, snap.metadata.fromCache);
+    if (changed || wasReady !== load.complete()) scheduleDashboardRender();
+    else scheduleDashboardRender(renderDriverLoadState);
+    if (changed && afterRender) scheduleDashboardRender(afterRender);
+  }, err => {
+    if (!valid()) return;
+    console.error(`Firestore ${collectionName} snapshot error:`, err);
+    load.update(collectionName, false, true);
+    scheduleDashboardRender();
+  });
+  return () => { active = false; stop(); };
 }
 
 function setSplashProgress(value) {
@@ -740,7 +787,6 @@ function setSplashProgress(value) {
 
 function startSplash() {
   splashTransition += 1;
-  splashStartedAt = Date.now();
   splashProgress = 4;
   $("splashScreen")?.classList.remove("hidden", "is-leaving");
   $("loginScreen")?.classList.add("hidden");
@@ -761,19 +807,10 @@ async function finishSplash(targetId) {
     splashTimer = null;
   }
 
-  const elapsed = Date.now() - splashStartedAt;
-  if (elapsed < SPLASH_MIN_VISIBLE_MS) {
-    await new Promise(resolve => window.setTimeout(resolve, SPLASH_MIN_VISIBLE_MS - elapsed));
-  }
-  if (transitionId !== splashTransition) return;
-
   setSplashProgress(100);
-  await new Promise(resolve => window.setTimeout(resolve, 190));
-  if (transitionId !== splashTransition) return;
-
   const splash = $("splashScreen");
   splash?.classList.add("is-leaving");
-  await new Promise(resolve => window.setTimeout(resolve, 220));
+  await new Promise(resolve => window.setTimeout(resolve, 120));
   if (transitionId !== splashTransition) return;
 
   splash?.classList.add("hidden");
@@ -1984,6 +2021,7 @@ function visibleReceiptRows(receipts, limit) {
 }
 
 function render() {
+  if (!auth.currentUser || isAdminProfile() || !renderDriverLoadState()) return;
   syncDriverDebtConfirmationModal();
   syncUberDriverConfirmationModal();
   const model = settlementModel();
@@ -2530,9 +2568,11 @@ $("driverProfileModal")?.addEventListener("keydown", event => {
 
 async function loadProfile(user) {
   const directRefs = [doc(db, "usuarios", user.uid), doc(db, "choferes", user.uid)];
-  for (const profileRef of directRefs) {
+  const directSnapshots = await Promise.allSettled(directRefs.map(profileRef => getDoc(profileRef)));
+  for (const result of directSnapshots) {
     try {
-      const snap = await getDoc(profileRef);
+      if (result.status !== "fulfilled") continue;
+      const snap = result.value;
       if (snap.exists()) {
         const data = snap.data() || {};
         return {
@@ -2588,65 +2628,33 @@ function subscribeToday(user) {
   if (unsubscribeAdvances) unsubscribeAdvances();
   advancesLoaded = false;
 
-  const uid = user.uid;
-  const setup = ({ collectionName, normalizer, assign, onError, afterRender }) => {
-    // Primero recupera todos los aliases históricos de Santander.
-    loadOwnedHistory(collectionName, uid).then(rows => {
-      const merged = mergeOwnedRows(collectionName, uid, canonicalRows(collectionName, uid));
-      assign(merged.map(row => normalizer(row.id, row)).sort((a,b)=>recordTimestampMs(b)-recordTimestampMs(a)));
-      render();
-      afterRender?.();
-    }).catch(err => console.warn("EXPLORA_HISTORY_LOAD", collectionName, err));
-
-    // Luego mantiene en vivo el camino canónico driverUid para todos los movimientos nuevos.
-    return onSnapshot(ownedQuery(collectionName, uid), { includeMetadataChanges:true }, snap => {
-      const canon = snap.docs.map(d => ({ id:d.id, ...d.data() }));
-      setCanonicalRows(collectionName, uid, canon);
-      const merged = mergeOwnedRows(collectionName, uid, canon);
-      assign(merged.map(row => normalizer(row.id, row)).sort((a,b)=>recordTimestampMs(b)-recordTimestampMs(a)));
-      render();
-      afterRender?.();
-      $("syncStatus").textContent = snap.metadata.fromCache ? "Sincronizando…" : "En tiempo real";
-      $("syncStatus").className = snap.metadata.fromCache ? "sync" : "sync ok";
-    }, err => {
-      console.error(`Firestore ${collectionName} snapshot error:`, err);
-      onError?.(err);
-    });
-  };
-
-  $("syncStatus").textContent = "Sincronizando período…";
-  $("syncStatus").className = "sync";
+  const setup = options => subscribeOwnedRecords(user, options);
 
   unsubscribePayments = setup({
     collectionName:ROOT_COLLECTIONS.payments,
     normalizer:normalizePaymentRecord,
-    assign:rows => { payments = rows; },
-    onError:() => { $("syncStatus").textContent = "Error de datos"; $("syncStatus").className = "sync bad"; }
+    assign:rows => { payments = rows; }
   });
   unsubscribeExpenses = setup({
     collectionName:ROOT_COLLECTIONS.expenses,
     normalizer:normalizeExpenseRecord,
-    assign:rows => { expenses = rows; },
-    onError:() => { $("syncStatus").textContent = "Error de gastos"; $("syncStatus").className = "sync bad"; }
+    assign:rows => { expenses = rows; }
   });
   unsubscribeUber = setup({
     collectionName:ROOT_COLLECTIONS.uber,
     normalizer:normalizeUberRecord,
     assign:rows => { uberClosures = rows.filter(item => item.noData !== true); },
-    afterRender:() => { if (!$("uberModal")?.classList.contains("hidden")) renderUberWeekSelector(); },
-    onError:() => { $("syncStatus").textContent = "Error de Uber"; $("syncStatus").className = "sync bad"; }
+    afterRender:() => { if (!$("uberModal")?.classList.contains("hidden")) renderUberWeekSelector(); }
   });
   unsubscribeDebts = setup({
     collectionName:ROOT_COLLECTIONS.debts,
     normalizer:normalizeDebtRecord,
-    assign:rows => { debts = rows.filter(item => item.amount > 0); },
-    onError:() => { $("syncStatus").textContent = "Error de deudas"; $("syncStatus").className = "sync bad"; }
+    assign:rows => { debts = rows.filter(item => item.amount > 0); }
   });
   unsubscribeDebtPayments = setup({
     collectionName:ROOT_COLLECTIONS.debtPayments,
     normalizer:normalizeDebtPaymentRecord,
-    assign:rows => { debtPayments = rows; },
-    onError:() => { console.warn("No se pudieron sincronizar los pagos de deuda históricos."); }
+    assign:rows => { debtPayments = rows; }
   });
   unsubscribeAdvances = setup({
     collectionName:ROOT_COLLECTIONS.advances,
@@ -2654,8 +2662,7 @@ function subscribeToday(user) {
     assign:rows => {
       advances = rows.filter(item => item.type === "cash_advance" || item.loanType === "cash_advance");
       advancesLoaded = true;
-    },
-    onError:() => { advances = []; advancesLoaded = true; render(); $("syncStatus").textContent = "Error de adelantos"; $("syncStatus").className = "sync bad"; }
+    }
   });
 }
 
@@ -2677,6 +2684,7 @@ function applyRoleUI() {
   // sido retirado para no interrumpir el arranque ni dejar el splash en Cargando.
   const closeDayButton = $("closeDayBtn");
   if (closeDayButton) closeDayButton.setAttribute("aria-label", admin ? "Gestionar cierres" : "Gestión");
+  if (admin && closeDayButton) closeDayButton.disabled = false;
   $("addDebtBtn")?.classList.toggle("hidden", !admin);
   $("advanceBox")?.classList.toggle("hidden", admin);
 }
@@ -2780,18 +2788,21 @@ function unsubscribeTeamRealtimeDashboard() {
 
 function subscribeTeamRealtimeDashboard() {
   unsubscribeTeamRealtimeDashboard();
+  const generation = authGeneration;
   teamRealtimeLoadError = "";
   renderTeamRealtimeList();
 
   unsubscribeTeamRealtimeBalances = onSnapshot(
     collection(db, TEAM_REALTIME_BALANCES_COLLECTION),
     snapshot => {
+      if (generation !== authGeneration) return;
       teamRealtimeBalances = snapshot.docs.map(document => ({ id:document.id, ...document.data() }));
       teamRealtimeLoadError = "";
-      renderTeamRealtimeList();
-      renderAdminDriverList();
+      scheduleDashboardRender(renderTeamRealtimeList);
+      scheduleDashboardRender(renderAdminDashboardUpdates);
     },
     error => {
+      if (generation !== authGeneration) return;
       console.error("No se pudieron sincronizar los saldos del equipo:", error);
       teamRealtimeLoadError = "No se pudieron cargar los saldos en tiempo real.";
       renderTeamRealtimeList();
@@ -2800,6 +2811,7 @@ function subscribeTeamRealtimeDashboard() {
 
   ensureTeamRealtimeBalancesCallable({})
     .catch(error => {
+      if (generation !== authGeneration) return;
       console.warn("No se pudo inicializar Tiempo real:", error);
       if (!teamRealtimeBalances.length) {
         teamRealtimeLoadError = "No se pudieron preparar los saldos en tiempo real.";
@@ -2818,8 +2830,10 @@ function unsubscribeOwnProfileDashboard() {
 
 function subscribeOwnProfileDashboard(user) {
   unsubscribeOwnProfileDashboard();
+  const generation = authGeneration;
   if (!user?.uid || EXPLORA_ADMIN_UIDS.has(user.uid)) return;
   unsubscribeOwnProfileStatus = onSnapshot(doc(db, "choferes", user.uid), async snapshot => {
+    if (generation !== authGeneration || auth.currentUser?.uid !== user.uid) return;
     if (!snapshot.exists() || adminDriverIsActive(snapshot.data() || {}) || disabledProfileSignoutInProgress) return;
     disabledProfileSignoutInProgress = true;
     try {
@@ -3155,21 +3169,42 @@ function unsubscribeAdminDashboard() {
   adminSnapshotReady.clear();
 }
 
+function renderAdminDashboardUpdates() {
+  if (!auth.currentUser || !isAdminProfile()) return;
+  if (!dashboardLoad?.complete()) {
+    $("adminDriverList").innerHTML = `<div class="admin-driver-empty">${dashboardLoad?.errors.size ? "No se pudieron cargar los saldos. Recargá para volver a intentar." : "Consultando los saldos del equipo…"}</div>`;
+    return;
+  }
+  renderAdminDriverList();
+  renderAdminClosures();
+  refreshOpenAdminUberCalculation();
+  maybeShowAdminPendingAction();
+  if (!$("adminHistoryModal")?.classList.contains("hidden")) renderAdminHistory();
+  if (!$("adminMovementsModal")?.classList.contains("hidden")) renderAdminFinancialMovements();
+}
+
 function subscribeAdminDashboard() {
   if (!isAdminProfile()) return;
   unsubscribeAdminDashboard();
 
+  const load = dashboardLoad;
+  const generation = authGeneration;
   const listen = (collectionName, normalize, assign) => {
-    const stop = onSnapshot(collection(db, collectionName), snap => {
+    let received = false;
+    const stop = onSnapshot(collection(db, collectionName), { includeMetadataChanges:true }, snap => {
+      if (generation !== authGeneration || load !== dashboardLoad) return;
+      const changed = !received || snap.docChanges().length > 0;
+      received = true;
+      const wasReady = load.complete();
+      load.update(collectionName, snap.metadata.fromCache);
+      if (!snap.metadata.fromCache) adminSnapshotReady.add(collectionName);
+      if (!changed && wasReady === load.complete()) return;
       const rows = snap.docs.map(d => normalize ? normalize(d.id, d.data()) : ({ id: d.id, ...d.data() }));
       assign(rows);
-      adminSnapshotReady.add(collectionName);
-      renderAdminDriverList();
-      refreshOpenAdminUberCalculation();
-      maybeShowAdminPendingAction();
-      if (!$("adminHistoryModal")?.classList.contains("hidden")) renderAdminHistory();
-      if (!$("adminMovementsModal")?.classList.contains("hidden")) renderAdminFinancialMovements();
+      scheduleDashboardRender(renderAdminDashboardUpdates);
     }, err => {
+      if (generation !== authGeneration || load !== dashboardLoad) return;
+      load.update(collectionName, false, true);
       console.error(`Admin snapshot ${collectionName}:`, err);
       const box = $("adminDriverList");
       if (box) box.innerHTML = `<div class="admin-driver-empty error">No se pudieron cargar los datos del administrador.</div>`;
@@ -3184,7 +3219,6 @@ function subscribeAdminDashboard() {
   listen(ROOT_COLLECTIONS.closures, normalizeClosureRecord, rows => {
     adminAllClosures = rows.sort((a, b) => recordTimestampMs(b) - recordTimestampMs(a));
     closures = [...adminAllClosures];
-    renderAdminClosures();
   });
   listen(ROOT_COLLECTIONS.debts, normalizeDebtRecord, rows => { adminDebts = rows; });
   listen(ROOT_COLLECTIONS.debtPayments, normalizeDebtPaymentRecord, rows => { adminDebtPayments = rows; });
@@ -3924,34 +3958,11 @@ $("adminPendingRejectBtn")?.addEventListener("click", async () => {
 
 function subscribeClosures(user) {
   if (unsubscribeClosures) unsubscribeClosures();
-  const baseRef = collection(db, ROOT_COLLECTIONS.closures);
-
-  if (isAdminProfile()) {
-    unsubscribeClosures = onSnapshot(baseRef, snap => {
-      closures = snap.docs.map(d => normalizeClosureRecord(d.id, d.data())).sort((a,b)=>recordTimestampMs(b)-recordTimestampMs(a));
-      render();
-      renderAdminClosures();
-    }, err => {
-      console.error("Firestore cierres_semanales snapshot error:", err);
-      $("adminClosureList").innerHTML = `<div class="admin-empty error">No se pudieron cargar los cierres.</div>`;
-    });
-    return;
-  }
-
-  const uid = user.uid;
-  loadOwnedHistory(ROOT_COLLECTIONS.closures, uid).then(rows => {
-    const merged = mergeOwnedRows(ROOT_COLLECTIONS.closures, uid, canonicalRows(ROOT_COLLECTIONS.closures, uid));
-    closures = merged.map(row => normalizeClosureRecord(row.id, row)).sort((a,b)=>recordTimestampMs(b)-recordTimestampMs(a));
-    render();
-  }).catch(err => console.warn("EXPLORA_HISTORY_LOAD cierres", err));
-
-  unsubscribeClosures = onSnapshot(ownedQuery(ROOT_COLLECTIONS.closures, uid), snap => {
-    const canon = snap.docs.map(d => ({ id:d.id, ...d.data() }));
-    setCanonicalRows(ROOT_COLLECTIONS.closures, uid, canon);
-    const merged = mergeOwnedRows(ROOT_COLLECTIONS.closures, uid, canon);
-    closures = merged.map(row => normalizeClosureRecord(row.id, row)).sort((a,b)=>recordTimestampMs(b)-recordTimestampMs(a));
-    render();
-  }, err => console.error("Firestore cierres_semanales snapshot error:", err));
+  unsubscribeClosures = subscribeOwnedRecords(user, {
+    collectionName: ROOT_COLLECTIONS.closures,
+    normalizer: normalizeClosureRecord,
+    assign: rows => { closures = rows; }
+  });
 }
 
 $("loginPasswordToggle")?.addEventListener("click", () => {
@@ -4178,6 +4189,10 @@ $("adminManageClosuresBtn")?.addEventListener("click", () => {
 });
 
 onAuthStateChanged(auth, async user => {
+  const generation = ++authGeneration;
+  const isCurrent = () => generation === authGeneration && auth.currentUser?.uid === user?.uid;
+  cancelDashboardRender();
+  dashboardLoad = null;
   if (!user) {
     $("driverProfileModal")?.classList.add("hidden");
     driverProfileOpener = null;
@@ -4218,51 +4233,50 @@ onAuthStateChanged(auth, async user => {
     return;
   }
 
-  // La pantalla se decide por rol: Admin nunca reutiliza la vista financiera del chofer.
   visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
   currentProfile = fallbackProfile(user);
+  const initialAdmin = isAdminProfile();
+  const profileTask = loadProfile(user);
+  const subscribeDashboard = () => {
+    dashboardLoad = createDashboardLoad(isAdminProfile()
+      ? [...ADMIN_REQUIRED_SNAPSHOT_KEYS] : Object.values(ROOT_COLLECTIONS));
+    if (isAdminProfile()) subscribeAdminDashboard();
+    else { renderDriverLoadState(); subscribeToday(user); subscribeClosures(user); }
+  };
   $("operatorName").textContent = `Hola ${currentProfile.displayName || currentProfile.username || user.email?.split("@")[0] || "Chofer"}`;
   applyRoleUI();
-  subscribeTeamRealtimeDashboard();
   subscribeOwnProfileDashboard(user);
-  if (isAdminProfile()) {
-    subscribeAdminDashboard();
-  } else {
-    subscribeToday(user);
-    subscribeClosures(user);
-  }
-  await finishSplash("app");
-
+  subscribeDashboard();
+  subscribeTeamRealtimeDashboard();
   try {
-    currentProfile = await loadProfile(user);
+    const profile = await profileTask;
+    if (!isCurrent()) return;
+    currentProfile = profile;
     if (currentProfile.active === false) {
       await signOut(auth);
       $("loginStatus").textContent = "Este usuario está desactivado.";
       $("loginStatus").className = "status error";
       return;
     }
-    $("operatorName").textContent = `Hola ${currentProfile.displayName || currentProfile.username || user.email.split("@")[0]}`;
+    $("operatorName").textContent = `Hola ${currentProfile.displayName || currentProfile.username || user.email?.split("@")[0] || "Chofer"}`;
     applyRoleUI();
-
-    if (isAdminProfile()) {
-      if (unsubscribePayments) unsubscribePayments();
-      if (unsubscribeExpenses) unsubscribeExpenses();
-      if (unsubscribeUber) unsubscribeUber();
-      if (unsubscribeDebts) unsubscribeDebts();
-      if (unsubscribeDebtPayments) unsubscribeDebtPayments();
-      if (unsubscribeAdvances) unsubscribeAdvances();
-      if (unsubscribeClosures) unsubscribeClosures();
-      subscribeAdminDashboard();
-    } else {
+    if (isAdminProfile() !== initialAdmin) {
+      cancelDashboardRender();
+      [unsubscribePayments, unsubscribeExpenses, unsubscribeUber, unsubscribeDebts,
+        unsubscribeDebtPayments, unsubscribeAdvances, unsubscribeClosures].forEach(stop => stop?.());
       unsubscribeAdminDashboard();
-      subscribeToday(user);
-      subscribeClosures(user);
+      subscribeDashboard();
     }
   } catch (err) {
+    if (!isCurrent()) return;
     console.warn("Se inició sesión usando el perfil básico:", err);
-    $("syncStatus").textContent = "Sesión activa · revisando datos";
-    $("syncStatus").className = "sync warn";
   }
+  await waitForDashboard(dashboardLoad);
+  if (!isCurrent()) return;
+  if (isAdminProfile()) renderAdminDashboardUpdates();
+  else render();
+  await finishSplash("app");
+  if (isCurrent()) refreshArcaBillingStatus();
 });
 
 document.querySelectorAll("[data-mode]").forEach(btn => {
@@ -6581,17 +6595,41 @@ async function prepareInvoiceDownload(id, button, panel) {
   }
 }
 async function refreshArcaBillingStatus() {
+  const uid = auth.currentUser?.uid;
+  const generation = authGeneration;
+  if (!uid) return;
   try {
-    const {data}=await httpsCallable(functions,"arcaBillingStatus")({});
+    const data = await cachedArcaStatus(uid);
+    if (generation !== authGeneration || uid !== auth.currentUser?.uid) return;
     $("arcaModeLabel").textContent=data.enabled ? (data.environment === "production" ? "Automática" : "Pruebas") : "Sin activar";
     $("arcaModeNote").textContent=data.enabled ? (data.environment === "production" ? "Al confirmar se solicitará la factura. Los viajes internacionales quedan para revisión." : "Homologación: las facturas de prueba no tienen validez fiscal.") : "El viaje se guarda. La emisión fiscal todavía no está activada.";
   } catch {
+    if (generation !== authGeneration || uid !== auth.currentUser?.uid) return;
     $("arcaModeLabel").textContent="Por verificar";
     $("arcaModeNote").textContent="Consultá el estado de la factura después de registrar el cobro.";
   }
 }
+let arcaStatusCache = null;
+function cachedArcaStatus(uid) {
+  const now = Date.now();
+  if (arcaStatusCache?.uid === uid && arcaStatusCache.generation === authGeneration &&
+      (arcaStatusCache.pending || arcaStatusCache.expires > now)) return arcaStatusCache.promise;
+  const entry = { uid, generation:authGeneration, pending:true, expires:0 };
+  entry.promise = httpsCallable(functions,"arcaBillingStatus")({}).then(({data}) => {
+    entry.pending = false;
+    entry.expires = Date.now() + 60000;
+    return data;
+  }, error => {
+    if (arcaStatusCache === entry) arcaStatusCache = null;
+    throw error;
+  });
+  arcaStatusCache = entry;
+  return entry.promise;
+}
 const invoiceStatusLabels={queued:"En proceso",reserved:"En proceso",sent:"En proceso",uncertain:"Verificando",authorized:"Autorizada",rejected:"Rechazada",review:"Revisar",disabled:"Sin emitir"};
 let invoiceRows = [], invoiceFilter = "all";
+const invoiceViewCache = new Map();
+let invoiceViewGeneration = 0;
 function invoiceElement(tag, className, text) {
   const element = document.createElement(tag);
   if (className) element.className = className;
@@ -6684,26 +6722,43 @@ function renderInvoices() {
 }
 function showInvoices(allDrivers = false) {
   const user=auth.currentUser;if(!user)return;
+  const generation = ++invoiceViewGeneration;
+  const scope = allDrivers && isAdminProfile() ? "all" : user.uid;
+  const cached = invoiceViewCache.get(scope);
+  let receivedSnapshot = false;
   clearInvoiceFiles();
   invoiceRows=[]; invoiceFilter="all"; $("invoicesFilters").hidden=true;
   $("driverProfileModal").classList.add("hidden");$("invoicesModal").classList.remove("hidden");
   $("invoicesStatus").textContent="Buscando tus facturas…";$("invoicesList").replaceChildren();
+  if (cached) {
+    invoiceRows = cached;
+    renderInvoices();
+    $("invoicesStatus").textContent += " · Actualizando…";
+  }
   document.querySelector('[data-close="invoicesModal"]').focus();
   stopInvoiceSubscription?.();
   const invoiceQuery = allDrivers && isAdminProfile()
     ? query(collection(db,"arca_invoices"),orderBy("createdAtMs","desc"),limit(30))
     : query(collection(db,"arca_invoices"),where("driverUid","==",user.uid),orderBy("createdAtMs","desc"),limit(30));
-  stopInvoiceSubscription=onSnapshot(invoiceQuery,snapshot=>{
+  stopInvoiceSubscription=onSnapshot(invoiceQuery,{includeMetadataChanges:true},snapshot=>{
+    if (generation !== invoiceViewGeneration || auth.currentUser?.uid !== user.uid) return;
+    if (cached && snapshot.empty && snapshot.metadata.fromCache) return;
+    if (receivedSnapshot && snapshot.docChanges().length === 0) {
+      if (!snapshot.metadata.fromCache) $("invoicesStatus").textContent = $("invoicesStatus").textContent.replace(" · Actualizando…", "");
+      return;
+    }
+    receivedSnapshot = true;
     invoiceRows=snapshot.docs.map(row=>({...row.data(),id:row.id}));
+    invoiceViewCache.set(scope, invoiceRows);
     renderInvoices();
-  },()=>{$("invoicesStatus").textContent="No pudimos consultar las facturas. Cerrá y volvé a intentar.";});
+  },()=>{if (generation === invoiceViewGeneration) $("invoicesStatus").textContent="No pudimos actualizar las facturas. Cerrá y volvé a intentar.";});
 }
 document.querySelectorAll("[data-invoice-filter]").forEach(button=>button.addEventListener("click",()=>{invoiceFilter=button.dataset.invoiceFilter;renderInvoices();$("invoicesList").scrollTop=0;}));
 $("showInvoicesBtn").addEventListener("click",()=>showInvoices());
 $("adminInvoicesBtn").addEventListener("click",()=>showInvoices(true));
 // Do not retain another driver's fiscal data after sign-out or account switch.
-onAuthStateChanged(auth,()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;clearInvoiceFiles();invoiceRows=[];$("invoicesList").replaceChildren();$("invoicesModal").classList.add("hidden");});
-document.querySelector('[data-close="invoicesModal"]').addEventListener('click',()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;clearInvoiceFiles();invoiceRows=[];$("invoicesList").replaceChildren();});
+onAuthStateChanged(auth,()=>{invoiceViewGeneration++;invoiceViewCache.clear();arcaStatusCache=null;stopInvoiceSubscription?.();stopInvoiceSubscription=null;clearInvoiceFiles();invoiceRows=[];$("invoicesList").replaceChildren();$("invoicesModal").classList.add("hidden");});
+document.querySelector('[data-close="invoicesModal"]').addEventListener('click',()=>{invoiceViewGeneration++;stopInvoiceSubscription?.();stopInvoiceSubscription=null;clearInvoiceFiles();invoiceRows=[];$("invoicesList").replaceChildren();});
 $("invoicesModal").addEventListener("keydown",event=>{
   if(event.key==="Escape"){event.preventDefault();document.querySelector('[data-close="invoicesModal"]').click();return;}
   if(event.key!=="Tab")return;
