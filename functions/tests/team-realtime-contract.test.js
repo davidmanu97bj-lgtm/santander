@@ -17,8 +17,8 @@ test("el resumen anterior fue reemplazado por Tiempo real", () => {
   assert.doesNotMatch(html, /id="summaryBilledAmount"/);
   assert.doesNotMatch(html, /id="summaryExpenseTotal"/);
   assert.match(app, /TEAM_REALTIME_BALANCES_COLLECTION = "team_realtime_balances"/);
-  assert.match(app, /Chofer debe liquidar a Explora/);
-  assert.match(app, /Explora debe liquidar al chofer/);
+  assert.match(app, /Chofer debe/);
+  assert.match(app, /Explora debe/);
 });
 
 test("el listado de choferes está visible en Admin y la gestión permite borrar", () => {

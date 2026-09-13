@@ -1765,7 +1765,7 @@ function renderWalletStatus(elementId, settlementBalance) {
   }
 
   if (settlementBalance > 0.5) {
-    element.textContent = "Chofer debe liquidar a Explora";
+    element.textContent = "Chofer debe";
     element.classList.add("is-driver-owes");
     if (differenceHint) {
       differenceHint.textContent = `Tenés ${money(amount)} más de tu lado que Explora. Esa diferencia corresponde a Explora.`;
@@ -1774,7 +1774,7 @@ function renderWalletStatus(elementId, settlementBalance) {
     return;
   }
 
-  element.textContent = "Explora debe liquidar al chofer";
+  element.textContent = "Explora debe";
   element.classList.add("is-explora-owes");
   if (differenceHint) {
     differenceHint.textContent = `Explora tiene ${money(amount)} más de su lado que vos. Esa diferencia te corresponde a vos.`;
@@ -2017,8 +2017,8 @@ function debtProofIsImage(item = {}) {
 
 function settlementPreviewCopy(balance) {
   const value = Math.abs(Number(balance || 0)) <= 0.5 ? 0 : Number(balance || 0);
-  if (value > 0) return { label:"Saldo a pagar", amount:value, tone:"driver" };
-  if (value < 0) return { label:"Saldo a cobrar", amount:Math.abs(value), tone:"explora" };
+  if (value > 0) return { label:"Chofer debe", amount:value, tone:"driver" };
+  if (value < 0) return { label:"Explora debe", amount:Math.abs(value), tone:"explora" };
   return { label:"Cuenta al día", amount:0, tone:"balanced" };
 }
 
@@ -2724,9 +2724,9 @@ function renderTeamRealtimeList() {
     const amount = Math.abs(balance);
     const stateClass = balance > 0.5 ? "driver-owes" : balance < -0.5 ? "explora-owes" : "balanced";
     const label = balance > 0.5
-      ? "Chofer debe liquidar a Explora"
+      ? "Chofer debe"
       : balance < -0.5
-        ? "Explora debe liquidar al chofer"
+        ? "Explora debe"
         : "Cuentas equilibradas";
     const currentClass = teamRealtimeIsCurrentDriver(row) ? "is-current-driver" : "";
     return `<article class="team-driver-row ${stateClass} ${currentClass}">
@@ -3000,9 +3000,9 @@ function renderAdminDriverList() {
     const amount = Math.abs(balance);
     const stateClass = balance > 0.5 ? "driver-owes" : balance < -0.5 ? "explora-owes" : "balanced";
     const label = balance > 0.5
-      ? "Chofer debe liquidar a Explora"
+      ? "Chofer debe"
       : balance < -0.5
-        ? "Explora debe liquidar al chofer"
+        ? "Explora debe"
         : "Cuentas equilibradas";
     return `<article class="admin-driver-row ${stateClass}">
       <strong class="admin-driver-name">${escapeHtml(adminDriverLabel(driver))}</strong>
@@ -4351,14 +4351,14 @@ function settlementState(balance, tense = "now") {
   const value = Math.abs(Number(balance || 0)) <= 0.5 ? 0 : Number(balance || 0);
   if (value > 0) {
     return {
-      label: tense === "before" ? "Chofer debe actualmente a Explora" : "Chofer debe a Explora",
+      label: "Chofer debe",
       amount: value,
       payer: "driver"
     };
   }
   if (value < 0) {
     return {
-      label: tense === "before" ? "Explora debe actualmente al chofer" : "Explora debe al chofer",
+      label: "Explora debe",
       amount: Math.abs(value),
       payer: "explora"
     };
