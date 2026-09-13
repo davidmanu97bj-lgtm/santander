@@ -42,7 +42,9 @@ function validateUberText(text, confidence, week, amount) {
   if (/ejemplo|este es el numero|demostracion/.test(normalized)) return fail("La imagen es un ejemplo. Subí la captura real de tu semana en Uber Driver.");
   if (!/\bganancias\b/.test(normalized) || /ganancias del viaje|detalle del viaje|recibo del viaje/.test(normalized)) return fail("Esa no es la pantalla de ganancias semanales. Abrí Ganancias y elegí la semana indicada.");
   // Require a complete seven-day range in the header, not a date elsewhere in a trip list.
-  const header = normalized.slice(0, Math.min(normalized.search(/(?:ars\s*)?\$\s*\d/) < 0 ? 350 : normalized.search(/(?:ars\s*)?\$\s*\d/), 350));
+  const currency = /(?:ars\s*\$?|\$)\s*\d/;
+  const firstCurrency = normalized.search(currency);
+  const header = normalized.slice(0, Math.min(firstCurrency < 0 ? 350 : firstCurrency, 350));
   const sameMonth = week.start.slice(0,7) === week.close.slice(0,7);
   const separator = "\\s*(?:del?\\s+)?(?:-|al?|hasta)\\s*";
   const range = new RegExp(`(?:^|\\D)${datePattern(week.start,sameMonth)}(?:[ /,]+20\\d{2})?${separator}${datePattern(week.close)}(?!\\d)`);
@@ -51,7 +53,7 @@ function validateUberText(text, confidence, week, amount) {
   if (years.some(year => ![week.start.slice(0,4),week.close.slice(0,4)].includes(year))) return fail("El año de la captura no corresponde a esta semana.");
   // Read the main amount below the heading. Do not accept a coinciding fee or withdrawal.
   const earnings = normalized.slice(normalized.indexOf("ganancias"));
-  const first = earnings.match(/(?:ars\s*)?\$\s*([\d][\d., ]*)/);
+  const first = earnings.match(/(?:ars\s*\$?|\$)\s*([\d][\d., ]*)/);
   if (!first || Math.abs(readAmount(first[1]) - amount) > 0.01) return fail("El total de la captura no coincide con el monto ingresado. Revisá el importe o elegí otra captura.");
   return {valid:true, amount, weekStartDate:week.start, weekCloseDate:week.close};
 }

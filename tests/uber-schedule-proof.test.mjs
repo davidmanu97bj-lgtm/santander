@@ -30,6 +30,8 @@ test('lector requiere ganancias, semana exacta, total y legibilidad',()=>{
     assert.equal(validateUberText(`Ganancias\n${date}\n$ 100.000,00\nEn línea 25 h\nViajes 30`,92,week,100000).valid,true,date);
   }
   const sample='Ganancias\n7 sept - 14 sept\n$100.000,00\nViajes 30';
+  assert.equal(validateUberText(sample.replace('$100.000,00','ARS 100.000,00'),92,week,100000).valid,true);
+  assert.equal(validateUberText(sample.replace('$100.000,00','ARS $ 100,000.00'),92,week,100000).valid,true);
   for(const [text,confidence,amount] of [[sample.replace('7 sept - 14 sept','31 ago - 7 sept'),92,100000],[sample,40,100000],[sample,92,105000],[sample+'\nEJEMPLO',92,100000],['Saldo $100.000\n7 sept - 14 sept',90,100000],[sample.replace('Ganancias','Ganancias del viaje'),90,100000],[sample.replace('14 sept','14 sept 2025'),90,100000]]) {
     assert.equal(validateUberText(text,confidence,week,amount).valid,false);
   }
