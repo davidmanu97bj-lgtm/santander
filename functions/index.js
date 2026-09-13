@@ -19,6 +19,7 @@ const { isAdminDriverDebt } = require("./telegram-driver-debt");
 const { prepareInvoiceDraft } = require("./arca-invoice-draft");
 const { validateRouteRequest, queryRouteService, RouteError } = require("./route-service");
 const telegramCompact = require("./telegram-compact");
+const expensePolicy = require("./expense-policy");
 const { deliverTripNotification } = require("./telegram-trip-delivery");
 const { invoicePdf } = require("./arca-pdf");
 
@@ -1913,6 +1914,10 @@ function financialRemoveArrayItem(value, item) {
 }
 function financialExpenseParts(data = {}) {
   const amount = financialAmountOf(data);
+  if (data.receiptFlowVersion === expensePolicy.version) {
+    const exploraPart = amount * expensePolicy.refundRate(data);
+    return {amount, driverPart:amount - exploraPart, exploraPart};
+  }
   const rawRate = Number(data.sharedRate ?? data.porcentajeCompartido ?? data.driverShareRate ?? data.porcentajeChofer);
   const rate = Number.isFinite(rawRate) ? (rawRate > 1 ? rawRate / 100 : rawRate) : .5;
   const driverPart = amount * Math.min(1, Math.max(0, rate || .5));
@@ -2351,6 +2356,20 @@ exports.adminModifyExpenseAmount = onCall({ region:"southamerica-east1", timeout
     };
     for (const key of ["valor", "totalAmount", "importe", "price", "total"]) {
       if (Object.prototype.hasOwnProperty.call(expenseData, key)) expenseUpdate[key] = newAmount;
+    }
+    if (expenseData.receiptFlowVersion === expensePolicy.version) {
+      const recognized = newAmount * expensePolicy.refundRate(expenseData);
+      Object.assign(expenseUpdate, {
+        billingImpactAmount:newAmount - recognized,
+        telegramExpenseLoadedAmount:newAmount,
+        telegramExpenseRecognizedAmount:recognized
+      });
+      const before = Number(expenseData.telegramSettlementBeforeBalance);
+      if (Number.isFinite(before)) {
+        const after = before + newAmount - recognized;
+        expenseUpdate.telegramSettlementAfterBalance = Math.abs(after) > .5 ? after : 0;
+        expenseUpdate.telegramSettlementPayer = after > .5 ? "driver" : after < -.5 ? "explora" : "balanced";
+      }
     }
     transaction.update(expenseRef, expenseUpdate);
 
@@ -3031,9 +3050,12 @@ exports.notifyExpenseV2 = onDocumentCreated({
   const settlementBalance = Number.isFinite(settlementPayload)
     ? settlementPayload
     : Number((await teamRealtimeBalanceForDriver(telegramDriverUid(data))).balance || 0);
+  const policyType = data.receiptFlowVersion === expensePolicy.version ? expensePolicy.find(data.expenseType) : null;
+  const expenseDetail = data.detail || notes || telegramExpenseType(data);
   const caption = telegramCompact.expenseSummary({driverName:telegramDriverName(data),amount:loadedAmount,
-    recognized:Number(data.telegramExpenseRecognizedAmount ?? loadedAmount * 0.5),balance:settlementBalance,
-    detail:data.detail || notes || telegramExpenseType(data)});
+    recognized:policyType ? loadedAmount * policyType.refundRate : Number(data.telegramExpenseRecognizedAmount ?? loadedAmount * 0.5),
+    refundRate:policyType?.refundRate, balance:settlementBalance,
+    detail:policyType && expenseDetail !== policyType.label ? policyType.label + " · " + expenseDetail : expenseDetail});
 
   return telegramProcessNotification({
     kind: "expense",

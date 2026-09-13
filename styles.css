@@ -7300,11 +7300,6 @@ body .money-entry:focus-within { border-color:#929aa7; background:#fff; box-shad
 body .money-entry input:focus { outline:none !important; border-color:transparent !important; box-shadow:none !important; background:transparent; }
 
 #expenseModal { --charge-accent:#f66b16; --charge-tint:#fff0e6; }
-#expenseModal .expense-quick-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:24px; }
-#expenseModal .expense-quick-option { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:108px; padding:14px 8px; border:1px solid #e3eaf4; border-radius:16px; background:#f9fbff; color:#10164c; font-size:16px; font-weight:650; }
-#expenseModal .expense-quick-option svg { width:32px; height:32px; fill:none; stroke:#f66b16; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
-#expenseModal .expense-quick-option.selected, #expenseModal .expense-quick-option[aria-pressed="true"] { border-color:#f66b16; background:#fff0e6; box-shadow:inset 0 0 0 1px #f66b16; }
-@media(max-width:480px) { #expenseModal .expense-quick-options { gap:8px; } #expenseModal .expense-quick-option { font-size:13px; } }
 
 .charge-step { display:grid; gap:14px; }
 #chargeModal .charge-step.hidden { display:none; }
@@ -7377,3 +7372,27 @@ body .money-entry input:focus { outline:none !important; border-color:transparen
 #app:not(.driver-view) .topbar { background:#fff; border-bottom:1px solid #e5e8ed; box-shadow:0 4px 16px #17202e05; }
 #app:not(.driver-view) .operator-greeting { color:#343a46; font-weight:600; }
 @media(max-width:480px) { .driver-brand-logo { width:min(220px,62vw); } .charge-brand-logo { width:195px; } }
+
+/* Expense wizard: responsibility groups share the app's outline icon language. */
+#expenseTypeGroups { display:grid; gap:18px; }
+#expenseModal .expense-type-group { --expense-color:#e65f15; --expense-tint:#fff3e9; }
+#expenseModal .expense-type-group[data-responsibility="driver"] { --expense-color:#7956b8; --expense-tint:#f6f1ff; }
+#expenseModal .expense-type-group[data-responsibility="explora"] { --expense-color:#00836e; --expense-tint:#eaf8f4; }
+#expenseModal .expense-type-group h3 { margin-bottom:5px; }
+#expenseModal .expense-type-group > p { margin:0 0 16px; font-size:14px; color:var(--charge-muted); }
+.expense-type-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.expense-type-option { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; min-height:104px; padding:14px 8px; border:1px solid #e3eaf4; border-radius:15px; background:#fafcff; color:#10164c; font:inherit; font-size:14px; font-weight:650; line-height:1.25; }
+.expense-type-option svg, .expense-selection svg { width:30px; height:30px; fill:none; stroke:var(--expense-color,#f66b16); stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+.expense-type-option:hover { background:var(--expense-tint); }
+.expense-type-option[aria-pressed="true"] { border-color:var(--expense-color); background:var(--expense-tint); box-shadow:inset 0 0 0 1px var(--expense-color); }
+.expense-type-option[aria-pressed="true"]::after { content:'✓'; position:absolute; right:8px; top:5px; color:var(--expense-color); font-size:14px; }
+.expense-type-option:focus-visible { outline:2px solid #707987; outline-offset:3px; }
+.expense-selection { display:flex; align-items:center; gap:12px; margin:0 0 18px; padding:14px; border:1px solid #e3eaf4; border-radius:14px; background:#fff; }
+.expense-selection strong, .expense-selection span { display:block; }
+.expense-selection strong { font-size:17px; margin-bottom:4px; }
+.expense-selection span, .expense-optional, .expense-photo-note { font-size:13px; font-weight:400; color:#64779f; }
+.expense-photo-note { margin:-5px 0 15px; }
+.expense-movement-title { margin:12px 0; font-size:16px; }
+#expenseRefundBlock { border-top:1px solid #e3eaf4; padding-top:8px; margin-top:22px; }
+.expense-final-balance { margin-top:22px; padding:16px; border-radius:12px; background:#f3f6fa; font-size:19px; font-weight:700; text-align:center; color:#10164c; }
+@media(max-width:480px) { .expense-type-options { gap:8px; } .expense-type-option { min-height:100px; padding:12px 6px; font-size:13px; } .expense-selection span { line-height:1.5; } }

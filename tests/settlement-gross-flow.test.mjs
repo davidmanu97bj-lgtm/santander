@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { calculateTeamRealtimeSettlementBalance, calculateOpenBillingBalance } = require('../functions/telegram-billing-balance.js');
+const ExploraExpensePolicy = require('../functions/expense-policy.js');
 const appSource = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 // Run the shipped, top-level functions; omit Firebase initialization and UI listeners.
 // In app.js top-level function closing braces occupy their own unindented line.
@@ -20,7 +21,7 @@ const payment = (method, amount, modern = true, extra = {}) => ({
 });
 function frontend(input) {
   return vm.runInNewContext(`${declarations}\n({balance:settlementModel().balance, admin:adminBillingBalanceForDriver({uid:'test-driver'}), cashbox:openCashboxAmount(), preview:previewDefinition('digital',10000).delta, receipts:buildUnifiedReceipts()})`, {
-    payments:input.records || [], closures:input.closures || [], expenses:input.expenses || [], debts:[], advances:[], debtPayments:[], uberClosures:input.uberWeeks || [],
+    ExploraExpensePolicy, payments:input.records || [], closures:input.closures || [], expenses:input.expenses || [], debts:[], advances:[], debtPayments:[], uberClosures:input.uberWeeks || [],
     adminPayments:input.records || [], adminAllClosures:input.closures || [], adminExpenses:input.expenses || [], adminDebts:[], adminUberClosures:input.uberWeeks || [], money:value => `$${value}`
   }, {timeout:1000});
 }
@@ -159,4 +160,40 @@ test('gasto nuevo suma 100% y reintegro resta 50%, conservando gastos anteriores
   assertBalance({expenses:[expense,{id:'old',amount:20000,driverUid:'test-driver',createdAtMs:1000,autoApplyToBilling:true,receiptFlowVersion:'gross_expense_reimbursement_50_v1'}]},15000);
   assertBalance({expenses:[{...expense,amount:60000}]},30000);
   assertBalance({expenses:[{...expense,deleted:true}]},0);
+});
+
+for (const type of ExploraExpensePolicy.types) {
+  test(`gasto ${type.label}: bruto completo y reintegro ${type.refundRate * 100}% en todos los saldos`, () => {
+    const expected = 50000 * (1 - type.refundRate);
+    const expense = {id:'policy-expense',expenseType:type.id,amount:50000,driverUid:'test-driver',createdAtMs:3000,
+      receiptFlowVersion:ExploraExpensePolicy.version,telegramSettlementBeforeBalance:0,telegramSettlementAfterBalance:expected};
+    const front=assertBalance({expenses:[expense]},expected);
+    assert.equal(front.receipts.length,type.refundRate ? 2 : 1);
+    const timeline=vm.runInNewContext(`${declarations}\nreceipts.map(receiptBalanceSnapshot)`,{receipts:front.receipts,ExploraExpensePolicy});
+    assert.deepEqual(JSON.parse(JSON.stringify(timeline)),[
+      ...(type.refundRate ? [{before:50000,after:expected,movementImpact:-50000*type.refundRate}] : []),
+      {before:0,after:50000,movementImpact:50000}
+    ]);
+    assert.equal(timeline[0].after,front.balance);
+    assertBalance({expenses:[{...expense,amount:60000}]},60000*(1-type.refundRate));
+    assertBalance({expenses:[{...expense,deleted:true}]},0);
+    // A stored rate cannot override the category's approved share.
+    assertBalance({expenses:[{...expense,reimbursementRate:0.75,sharedRate:0.25}]},expected);
+    assertBalance({expenses:[expense],records:[payment('digital',40000)]},expected-38000);
+    const compensation=vm.runInNewContext(`${declarations}\nsettlementModel().expenseReimbursement`,{
+      ExploraExpensePolicy,payments:[],closures:[],expenses:[expense],debts:[],advances:[],debtPayments:[],uberClosures:[]
+    });
+    assert.equal(compensation,0,'el reintegro ya aplicado no se puede cobrar otra vez');
+  });
+}
+
+test('mezclar políticas de gasto conserva los históricos y los cierres saldados', () => {
+  const expense=(id,amount,version,expenseType,createdAtMs)=>({id,amount,receiptFlowVersion:version,expenseType,createdAtMs,driverUid:'test-driver',autoApplyToBilling:true});
+  const old=expense('old',20000,'gross_expense_reimbursement_50_v1','multa',1000);
+  const v2=expense('v2',20000,'gross_expense_driver_debit_50_v2','cubiertas',2000);
+  const driver=expense('driver',50000,ExploraExpensePolicy.version,'multa',4000);
+  const explora=expense('explora',50000,ExploraExpensePolicy.version,'cubiertas',5000);
+  const shared=expense('shared',50000,ExploraExpensePolicy.version,'patente',6000);
+  assertBalance({expenses:[old,v2,driver,explora,shared]},75000);
+  assertBalance({expenses:[old,v2,driver,explora,shared],records:[payment('cash',100,false,{id:'anchor',type:'reimbursement_compensation',settlementAfter:10000,createdAtMs:3000})]},85000,{legacyAnchor:true});
 });

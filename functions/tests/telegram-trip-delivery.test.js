@@ -6,6 +6,15 @@ const {deliverTripNotification}=require('../telegram-trip-delivery');
 const compact=require('../telegram-compact');
 const fs=require('node:fs'),vm=require('node:vm');
 const invoice={status:'authorized',environment:'production',number:123,issuer:{pointOfSale:2}};
+test('Telegram informa el porcentaje de reintegro y omite el reintegro para gastos del chofer',()=>{
+  for (const refundRate of [0,0.5,1]) {
+    const message=compact.expenseSummary({driverName:'Ana',amount:50000,recognized:50000*refundRate,refundRate,balance:50000*(1-refundRate),detail:'Gasto de prueba'});
+    assert.match(message,/🔴 Gasto:.*50\.000/);
+    if (refundRate) assert.match(message,new RegExp('🟢 Reintegro '+refundRate*100+'%:'));
+    else { assert.doesNotMatch(message,/🟢/); assert.match(message,/100% chofer · Sin reintegro/); }
+    assert.doesNotMatch(message,/Total con caja/);
+  }
+});
 function setup() {
   const db=memoryDb(),calls=[],ref=db.collection('notifications').doc('billing_a');
   const api=async(method,payload,options)=>{calls.push({method,payload,options});return {message_id:42};};

@@ -1125,6 +1125,7 @@ function billingExpensesTotal() {
 // esta corrección guardamos marcadores explícitos. Así distinguimos con seguridad los
 // gastos nuevos de los históricos sin depender de una hora fija de despliegue.
 function expenseUsesAutomaticBilling50(item = {}) {
+  if (item.receiptFlowVersion === "gross_expense_policy_v3") return true;
   if (item.autoApplyToBilling === true || item.gastoAuto50 === true) return true;
   if (String(item.billingImpactMode || "").toLowerCase() === "auto_50") return true;
   const hasAuto50Snapshot = Object.prototype.hasOwnProperty.call(item, "telegramSettlementBeforeBalance") ||
@@ -1133,12 +1134,20 @@ function expenseUsesAutomaticBilling50(item = {}) {
   return hasAuto50Snapshot;
 }
 
+function expenseRefundRate(item = {}) {
+  return item.receiptFlowVersion === "gross_expense_policy_v3" ? ExploraExpensePolicy.refundRate(item) : 0.5;
+}
+function expenseNetDriverRate(item = {}) {
+  if (item.receiptFlowVersion === "gross_expense_policy_v3") return 1 - expenseRefundRate(item);
+  return item.receiptFlowVersion === "gross_expense_driver_debit_50_v2" ? 0.5 : -0.5;
+}
+
 function automaticExpenseBillingImpactTotal(sourceExpenses = expenses, baseline = billingMigrationBaselineMs()) {
   return sourceExpenses
     .filter(item => !movementIsDeleted(item))
     .filter(item => recordTimestampMs(item) > baseline)
     .filter(expenseUsesAutomaticBilling50)
-    .reduce((sum, item) => sum + (Number(item.amount || 0) * (item.receiptFlowVersion === "gross_expense_driver_debit_50_v2" ? -0.50 : 0.50)), 0);
+    .reduce((sum, item) => sum - Number(item.amount || 0) * expenseNetDriverRate(item), 0);
 }
 function isAdminSettlementDebt(item = {}) {
   const type = String(item.type || item.debtType || "").toLowerCase();
@@ -1615,12 +1624,11 @@ function openExpenses() {
 // - Explora recibe el 50% del total y el 5% adicional de caja chica; el chofer conserva 45%.
 // - Los cierres históricos que separaban efectivo/transferencia se siguen interpretando
 //   con sus campos originales para no alterar saldos ya confirmados.
-// - Cada gasto lo paga el chofer y Explora reconoce automáticamente el 50%: ese 50%
-//   se descuenta de lo que el chofer debe a Explora o se suma a lo que Explora debe al chofer.
+// - Los gastos históricos mantienen el porcentaje y el sentido de su versión.
 // - Deudas y adelantos continúan como módulos separados.
 
 // - Cobros nuevos: efectivo +100% +5%; digital -100% +5% de caja chica.
-//   Los registros anteriores conservan su regla. Gastos reintegran siempre 50%.
+//   Los gastos v3 suman el bruto y reintegran 0%, 50% o 100% según la categoría.
 // - El saldo positivo identifica quién debe compensar; el negativo, quién recibe.
 // - Ambas billeteras muestran siempre el mismo saldo con signos opuestos.
 function settlementModel() {
@@ -1644,7 +1652,9 @@ function settlementModel() {
   const uberShare = uberRevenue * 0.50 + uberPrincipalExtra;
   const digitalShare = digitalRevenue * 0.50 - grossFlowPrincipalDelta(openBillingPayments().filter(item => item.method === "digital"));
   const cashBox = openCashboxAmount();
-  const expenseHalf = expense * 0.50;
+  const legacyExpenses = expenses.filter(item => item.receiptFlowVersion !== "gross_expense_policy_v3");
+  const expenseHalf = legacyExpenses.filter(item => !movementIsDeleted(item) && recordTimestampMs(item) > billingBaseline)
+    .reduce((sum,item) => sum + Number(item.amount || 0) * 0.5,0);
   // Toda deuda creada por Explora se incorpora al saldo central al 100 %.
   // Las antiguas deudas automáticas de Uber quedan fuera para evitar duplicar
   // el 50 % de Uber que ya participa en Facturación.
@@ -1666,7 +1676,8 @@ function settlementModel() {
     : automaticExpenseBillingImpactTotal(expenses, billingBaseline);
   const reimbursementApplied = legacyAnchor ? legacyAnchor.amount : 0;
   const expenseBillingImpact = automaticExpenseImpact;
-  const expenseReimbursement = Math.max(0, expenseHalf - reimbursementApplied - automaticExpenseImpact);
+  const legacyAutomaticExpenseImpact = automaticExpenseBillingImpactTotal(legacyExpenses,legacyAnchor?.timestamp || billingBaseline);
+  const expenseReimbursement = Math.max(0, expenseHalf - reimbursementApplied - legacyAutomaticExpenseImpact);
 
   let baseBalance;
   let balance;
@@ -1924,23 +1935,24 @@ function buildUnifiedReceipts(order = "newest") {
   const expenseReceipts = expenses
     .filter(item => !movementIsDeleted(item))
     .flatMap(item => {
+      const refundRate = expenseRefundRate(item);
       const expense = {
       ...item,
       _receiptGroupKey:`expense:${item.id}`,
       method: "expense",
       type: "expense_receipt",
-      service: `Gasto · ${String(item.detail || item.expenseType || "Varios").slice(0, 60)}`,
-      detail: `${item.detail || "Gasto"} · Explora reconoce 50%: ${money(Number(item.amount || 0) * 0.5)}`,
+      service: `Gasto · ${String(item.expenseLabel || item.detail || item.expenseType || "Varios").slice(0, 60)}`,
+      detail: `${item.detail || "Gasto"} · ${refundRate ? `Reintegro ${refundRate * 100}%: ${money(Number(item.amount || 0) * refundRate)}` : "100% chofer · Sin reintegro"}`,
       _sortPriority: 2
       };
-      if (!["gross_expense_reimbursement_50_v1","gross_expense_driver_debit_50_v2"].includes(item.receiptFlowVersion)) return [expense];
+      if (!refundRate || !["gross_expense_reimbursement_50_v1","gross_expense_driver_debit_50_v2","gross_expense_policy_v3"].includes(item.receiptFlowVersion)) return [expense];
       return [expense, {
         ...expense,
-        id:`${item.id}_reimbursement_50`,
+        id:`${item.id}_reimbursement_${refundRate * 100}`,
         type:"expense_reimbursement_receipt",
-        service:"Reintegro de gasto",
-        detail:`Explora devuelve el 50% de ${money(item.amount)} · ${item.detail || "Gasto"}`,
-        amount:Number(item.amount || 0) * 0.50,
+        service:item.receiptFlowVersion === "gross_expense_policy_v3" ? `Reintegro de gasto · ${refundRate * 100}%` : "Reintegro de gasto",
+        detail:`Explora devuelve el ${refundRate * 100}% de ${money(item.amount)} · ${item.detail || "Gasto"}`,
+        amount:Number(item.amount || 0) * refundRate,
         _expenseGrossAmount:Number(item.amount || 0),
         proofUrl:"", proofPath:"",
         _sortPriority:1
@@ -2373,10 +2385,10 @@ function receiptBalanceSnapshot(item = {}) {
     const intermediate = start + principal * (item.method === "cash" ? 1 : -1);
     if (item.type === "cashbox_receipt") start = intermediate;
     else finish = intermediate;
-  } else if (["gross_expense_reimbursement_50_v1","gross_expense_driver_debit_50_v2"].includes(item.receiptFlowVersion) && ["expense_receipt", "expense_reimbursement_receipt"].includes(item.type)) {
+  } else if (["gross_expense_reimbursement_50_v1","gross_expense_driver_debit_50_v2","gross_expense_policy_v3"].includes(item.receiptFlowVersion) && ["expense_receipt", "expense_reimbursement_receipt"].includes(item.type)) {
     const grossExpense = Number(item.type === "expense_reimbursement_receipt" ? item._expenseGrossAmount : item.amount);
     if (!Number.isFinite(grossExpense)) return null;
-    const intermediate = start + grossExpense * (item.receiptFlowVersion === "gross_expense_driver_debit_50_v2" ? 1 : -1);
+    const intermediate = start + grossExpense * (item.receiptFlowVersion === "gross_expense_reimbursement_50_v1" ? -1 : 1);
     if (item.type === "expense_reimbursement_receipt") start = intermediate;
     else finish = intermediate;
   } else if (item.type === "cashbox_receipt") return null;
@@ -4889,14 +4901,13 @@ $("chargeForm")?.addEventListener("submit", async e => {
 
 $("addExpenseBtn")?.addEventListener("click", () => {
   $("expenseForm").reset();
-  delete $("expenseForm").dataset.previewConfirmed;
-  $("expenseStatus").textContent = "";
-  $("expenseStatus").className = "status";
   $("saveExpenseBtn").disabled = false;
-  $("saveExpenseBtn").textContent = "Confirmar gasto";
+  $("expenseStepBack").disabled = false;
+  setPhotoPickerDisabled("expense", false);
+  $("expenseModal").querySelectorAll("[data-close]").forEach(button => button.disabled = false);
+  renderExpenseTypes();
   $("expenseModal").classList.remove("hidden");
-  $("expenseModal").scrollTop = 0;
-  renderExpensePreview();
+  showExpenseStep(0);
 });
 
 $("addDebtBtn")?.addEventListener("click", () => {
@@ -5300,30 +5311,16 @@ $("expenseForm")?.addEventListener("submit", async e => {
   const user = auth.currentUser;
   if (!user) return;
 
+  if ($("saveExpenseBtn").disabled) return;
+  const step = Number($("expenseForm").dataset.step || 0);
+  if (!validateExpenseStep(step)) return;
+  if (step < 3) { showExpenseStep(step + 1); return; }
+  for (const requiredStep of [0,1,2]) if (!validateExpenseStep(requiredStep)) return;
+  const type = ExploraExpensePolicy.find($("expenseType").value);
   const amount = parseMoneyInput($("expenseAmount").value);
-  const detail = $("expenseDetail").value.trim();
+  const detail = $("expenseDetail").value.trim() || type.label;
   const file = selectedPhotoFile("expense");
-
-  if (!amount || amount <= 0) {
-    $("expenseStatus").textContent = "Ingresá un importe válido.";
-    $("expenseStatus").className = "status error";
-    return;
-  }
-  if (!detail) {
-    $("expenseStatus").textContent = "Indicá el motivo del gasto.";
-    $("expenseStatus").className = "status error";
-    return;
-  }
-  if (!file) {
-    $("expenseStatus").textContent = "Adjuntá el comprobante del gasto.";
-    $("expenseStatus").className = "status error";
-    return;
-  }
-  if ($("expenseForm").dataset.previewConfirmed !== "true") {
-    openOperationPreview({ kind:"expense", amount, formId:"expenseForm" });
-    return;
-  }
-  delete $("expenseForm").dataset.previewConfirmed;
+  const refundRate = type.refundRate;
   if (!acquireSubmissionLock("expense")) {
     $("expenseStatus").textContent = "Este gasto ya se está procesando.";
     $("expenseStatus").className = "status";
@@ -5331,6 +5328,9 @@ $("expenseForm")?.addEventListener("submit", async e => {
   }
 
   $("saveExpenseBtn").disabled = true;
+  $("expenseStepBack").disabled = true;
+  setPhotoPickerDisabled("expense", true);
+  $("expenseModal").querySelectorAll("[data-close]").forEach(button => button.disabled = true);
   $("saveExpenseBtn").textContent = "Verificando…";
   $("expenseStatus").textContent = "";
 
@@ -5344,10 +5344,29 @@ $("expenseForm")?.addEventListener("submit", async e => {
     fingerprint = await buildSubmissionFingerprint("expense", {
       amount,
       detail,
-      expenseType:"otros"
+      expenseType:type.id,
+      receiptFlowVersion:ExploraExpensePolicy.version
     });
     operation = reservePendingOperation("expense", user.uid, fingerprint);
     expenseRef = doc(db, ROOT_COLLECTIONS.expenses, operation.operationId);
+    // A retry must keep the original committed balance snapshot.
+    let alreadyCommitted = false;
+    try {
+      const existing = await getDocFromServer(expenseRef);
+      alreadyCommitted = assertSameCommittedOperation(existing, operation.operationId, fingerprint);
+    } catch (error) {
+      if (error.code === "operation-id-conflict") throw error;
+      // A missing expense cannot yet be read under the ownership rules.
+    }
+    if (alreadyCommitted) {
+      clearPendingOperation("expense", user.uid, fingerprint, operation.operationId);
+      $("expenseStatus").textContent = "Éxito. El gasto ya estaba registrado.";
+      $("expenseStatus").className = "status success";
+      completedSuccessfully = true;
+      $("saveExpenseBtn").textContent = "Éxito ✓";
+      closeModalAndGoTop("expenseModal", 1200);
+      return;
+    }
     $("saveExpenseBtn").textContent = "Guardando…";
 
     const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
@@ -5356,29 +5375,28 @@ $("expenseForm")?.addEventListener("submit", async e => {
     await retryFirebaseOperation(() => uploadBytes(storageRef, file), 4);
     const proofUrl = await retryFirebaseOperation(() => getDownloadURL(storageRef), 4);
 
-    // El 50% del gasto impacta AUTOMÁTICAMENTE en "Quién paga a quién".
+    // El gasto completo suma deuda y su reintegro se descuenta en el mismo registro.
     // Se congela el saldo justo antes del alta para mostrar el cambio exacto en el modal
     // y para que Telegram informe el mismo resultado que ve el chofer.
     const settlementBeforeExpense = settlementModel();
-    const recognizedExpense = amount * 0.50;
+    const recognizedExpense = amount * refundRate;
     expenseBeforeBalance = settlementBeforeExpense.balance;
-    const rawAfterBalance = expenseBeforeBalance + recognizedExpense;
+    const rawAfterBalance = expenseBeforeBalance + amount - recognizedExpense;
     expenseAfterBalance = Math.abs(rawAfterBalance) > 0.5 ? rawAfterBalance : 0;
 
-    // IMPORTANTE: no hacemos transaction.get(expenseRef) antes de crear el gasto.
-    // La regla de Firestore de /gastos permite leer solo documentos que ya pertenecen
-    // al chofer. Un documento nuevo todavía no existe, por lo que ese get devolvía
-    // permission-denied y abortaba la transacción antes del create.
-    // El ID de operación ya es estable/idempotente: setDoc sobre el mismo ID permite
-    // reintentar sin duplicar y sin relajar las reglas de seguridad.
+    // El ID estable evita duplicados; las reglas preservan los datos ya registrados.
     const expensePayload = {
       amount,
       monto: amount,
       detail,
       notes: detail,
-      expenseType: "otros",
-      tipo: "otros",
-      category: "otros",
+      expenseType: type.id,
+      tipo: type.id,
+      category: type.id,
+      expenseLabel: type.label,
+      expenseResponsibility: type.group,
+      reimbursementRate: refundRate,
+      driverExpenseRate: 1 - refundRate,
       proofUrl,
       proofPath,
       receiptUrl: proofUrl,
@@ -5396,15 +5414,12 @@ $("expenseForm")?.addEventListener("submit", async e => {
       driverName: currentDriverName(),
       choferNombre: currentDriverName(),
       payerRole: "driver",
-      sharedRate: 0.5,
-      porcentajeCompartido: 50,
-      // Marcadores explícitos para que este gasto sea el que sí aplica 50% automático.
+      sharedRate: 1 - refundRate,
+      porcentajeCompartido: (1 - refundRate) * 100,
       autoApplyToBilling: true,
-      gastoAuto50: true,
-      billingImpactMode: "auto_50",
-      receiptFlowVersion: "gross_expense_driver_debit_50_v2",
-      billingImpactAmount: recognizedExpense,
-      // Telegram recibe el gasto nuevo, el 50% reconocido y el saldo final de facturación.
+      billingImpactMode: "expense_policy",
+      receiptFlowVersion: ExploraExpensePolicy.version,
+      billingImpactAmount: amount - recognizedExpense,
       telegramExpenseLoadedAmount: amount,
       telegramExpenseRecognizedAmount: recognizedExpense,
       telegramSettlementBeforeBalance: expenseBeforeBalance,
@@ -5447,7 +5462,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
         const committedSnapshot = await getDoc(expenseRef);
         const committedData = committedSnapshot.exists() ? committedSnapshot.data() : {};
         expenseBeforeBalance = Number(committedData.telegramSettlementBeforeBalance ?? expenseBeforeBalance ?? 0);
-        expenseAfterBalance = Number(committedData.telegramSettlementAfterBalance ?? (expenseBeforeBalance + amount * 0.50));
+        expenseAfterBalance = Number(committedData.telegramSettlementAfterBalance ?? (expenseBeforeBalance + amount * (1 - refundRate)));
       } catch (_) {}
       closeModalAndGoTop("expenseModal", 1200);
     } else {
@@ -5457,6 +5472,9 @@ $("expenseForm")?.addEventListener("submit", async e => {
   } finally {
     releaseSubmissionLock("expense");
     if (!completedSuccessfully) {
+      $("expenseStepBack").disabled = false;
+      setPhotoPickerDisabled("expense", false);
+      $("expenseModal").querySelectorAll("[data-close]").forEach(button => button.disabled = false);
       $("saveExpenseBtn").disabled = false;
       $("saveExpenseBtn").textContent = "Confirmar gasto";
     }
@@ -6286,15 +6304,64 @@ $("managementForm").addEventListener("submit", async event => {
   }
 });
 
+function renderExpenseTypes() {
+  $("expenseTypeGroups").innerHTML = ExploraExpensePolicy.groups.map(group => '<section class="charge-panel expense-type-group" data-responsibility="'+group.id+'"><h3>'+escapeHtml(group.label)+'</h3><p>'+escapeHtml(group.description)+'</p><div class="expense-type-options">'+ExploraExpensePolicy.types.filter(type => type.group === group.id).map(type => '<button type="button" class="expense-type-option" data-expense-type="'+type.id+'" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true">'+ExploraExpensePolicy.icons[type.icon]+'</svg><span>'+escapeHtml(type.label)+'</span></button>').join('')+'</div></section>').join('');
+}
+function showExpenseStep(step) {
+  $("expenseForm").dataset.step = String(step);
+  document.querySelectorAll("[data-expense-step]").forEach(panel => panel.classList.toggle("hidden", Number(panel.dataset.expenseStep) !== step));
+  const names = ["Tipo de gasto", "Monto y detalle", "Foto del comprobante", "Movimientos en tu cuenta"];
+  $("expenseStepLabel").textContent = "Paso " + (step + 1) + " de 4 · " + names[step];
+  $("expenseStepTrack").innerHTML = names.map((_,index) => '<span class="'+(index <= step ? 'complete' : '')+'"></span>').join('');
+  $("saveExpenseBtn").textContent = step === 3 ? "Confirmar gasto" : "Continuar";
+  $("expenseStepBack").textContent = step === 0 ? "Cancelar" : "Atrás";
+  $("expenseStatus").textContent = "";
+  renderExpensePreview();
+  $("expenseModal").scrollTop = 0;
+}
+function validateExpenseStep(step) {
+  let message = "";
+  if (step === 0 && !ExploraExpensePolicy.find($("expenseType").value)) message = "Elegí el tipo de gasto.";
+  const amount = parseMoneyInput($("expenseAmount").value);
+  if (step === 1 && !(Number.isFinite(amount) && amount > 0 && amount <= 100000000)) message = "Ingresá un importe válido de hasta $100.000.000.";
+  if (step === 2 && !selectedPhotoFile("expense")) message = "Adjuntá una foto del comprobante para continuar.";
+  if (!message) return true;
+  showExpenseStep(step);
+  $("expenseStatus").textContent = message;
+  $("expenseStatus").className = "status error";
+  return false;
+}
 function renderExpensePreview() {
+  const type = ExploraExpensePolicy.find($("expenseType").value);
   const amount = parseMoneyInput($("expenseAmount").value) || 0;
+  const rate = type?.refundRate || 0;
   const before = settlementModel().balance;
   const intermediate = normalizedSettlementBalance(before + amount);
-  const after = normalizedSettlementBalance(before + amount * 0.5);
+  const after = normalizedSettlementBalance(before + amount * (1 - rate));
   const row = (start,delta,end) => '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(start))+'</small></div><div><span>Impacto</span><strong class="'+(delta > 0 ? "negative" : "positive")+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(end))+'</small></div>';
   $("expenseGrossPreview").innerHTML = row(before,amount,intermediate);
-  $("expenseRefundPreview").innerHTML = row(intermediate,-amount * 0.5,after);
+  $("expenseRefundBlock").classList.toggle("hidden", !rate);
+  $("expenseRefundTitle").textContent = "Reintegro · " + (rate * 100) + "%";
+  $("expenseRefundPreview").innerHTML = rate ? row(intermediate,-amount * rate,after) : "";
+  $("expenseFinalBalance").textContent = receiptBalanceLabel(after);
+  document.querySelectorAll("[data-expense-selection]").forEach(item => {
+    item.innerHTML = type ? '<svg viewBox="0 0 24 24" aria-hidden="true">'+ExploraExpensePolicy.icons[type.icon]+'</svg><div><strong>'+escapeHtml(type.label)+'</strong><span>'+escapeHtml(type.groupLabel)+(rate ? ' · Reintegro '+rate*100+'%' : ' · Sin reintegro')+'</span></div>' : '';
+  });
 }
+$("expenseTypeGroups").addEventListener("click", event => {
+  const button = event.target.closest("[data-expense-type]");
+  if (!button || $("saveExpenseBtn").disabled) return;
+  $("expenseType").value = button.dataset.expenseType;
+  $("expenseTypeGroups").querySelectorAll("[data-expense-type]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+  $("expenseStatus").textContent = "";
+  renderExpensePreview();
+});
+$("expenseStepBack").addEventListener("click", () => {
+  if ($("saveExpenseBtn").disabled) return;
+  const step = Number($("expenseForm").dataset.step || 0);
+  if (step === 0) $("expenseModal").classList.add("hidden");
+  else showExpenseStep(step - 1);
+});
 $("expenseAmount").addEventListener("input", renderExpensePreview);
 
 function chargeSteps() {

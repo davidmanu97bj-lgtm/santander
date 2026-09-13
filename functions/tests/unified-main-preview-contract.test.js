@@ -23,15 +23,15 @@ test("efectivo genera su comprobante y otro comprobante de caja chica 5%", () =>
   assert.match(appSource, /service: "Caja chica 5%"/);
 });
 
-test("cobro guarda directamente con bloqueo y gasto conserva el segundo aviso", () => {
+test("cobro y gasto guardan con bloqueo sin abrir una segunda confirmación", () => {
   const chargePreview = appSource.indexOf('openOperationPreview({ kind:mode, amount, formId:"chargeForm" })');
   const chargeWrite = appSource.indexOf('acquireSubmissionLock("charge")');
   const expensePreview = appSource.indexOf('openOperationPreview({ kind:"expense", amount, formId:"expenseForm" })');
-  const expenseWrite = appSource.indexOf('acquireSubmissionLock("expense")', expensePreview);
+  const expenseWrite = appSource.indexOf('acquireSubmissionLock("expense")');
   assert.equal(chargePreview, -1);
   assert.ok(chargeWrite > -1);
-  assert.ok(expensePreview > -1 && expenseWrite > expensePreview);
-  assert.match(appSource, /form\.dataset\.previewConfirmed = "true"/);
+  assert.equal(expensePreview, -1);
+  assert.ok(expenseWrite > -1);
 });
 
 test("la vista previa usa las reglas de efectivo, digital y gasto", () => {

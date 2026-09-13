@@ -1,4 +1,5 @@
 "use strict";
+const expensePolicy = require('./expense-policy');
 
 const AMOUNT_FIELDS = [
   "amount", "monto", "valor", "finalPrice", "total", "importe", "price", "precio",
@@ -391,10 +392,15 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
 
   let expenseTotal = 0;
   let newExpenseTotal = 0;
+  let expenseShareTotal = 0;
   for (const expense of expenses || []) {
     if (!expense || movementIsDeleted(expense) || isSimulated(expense)) continue;
     const amount = amountOf(expense);
-    if (amount > 0) { expenseTotal += amount; if (expense.receiptFlowVersion === "gross_expense_driver_debit_50_v2") newExpenseTotal += amount; }
+    if (amount > 0) {
+      expenseTotal += amount;
+      expenseShareTotal += amount * expensePolicy.refundRate(expense);
+      if (["gross_expense_driver_debit_50_v2",expensePolicy.version].includes(expense.receiptFlowVersion)) newExpenseTotal += amount;
+    }
   }
 
   let adminDebtTotal = 0;
@@ -410,7 +416,7 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
   uberTransferTotal = roundMoney(uberTransferTotal);
   expenseTotal = roundMoney(expenseTotal);
   adminDebtTotal = roundMoney(adminDebtTotal);
-  const expenseShare = roundMoney(expenseTotal * 0.50);
+  const expenseShare = roundMoney(expenseShareTotal);
   const gross = roundMoney(cash + digital + uberGrossTotal);
   const shareEach = roundMoney(gross * 0.5);
   const netBeforeCashboxToDriver = roundMoney(shareEach - cash - uberCashTotal - uberPrincipalExtra);
@@ -468,6 +474,7 @@ function teamIsReimbursementCompensation(data = {}) {
 }
 
 function teamExpenseUsesAutomaticBilling50(data = {}) {
+  if (data.receiptFlowVersion === expensePolicy.version) return true;
   if (data.autoApplyToBilling === true || data.gastoAuto50 === true) return true;
   if (safeText(data.billingImpactMode).toLowerCase() === "auto_50") return true;
   return Object.prototype.hasOwnProperty.call(data, "telegramSettlementBeforeBalance") ||
@@ -480,7 +487,7 @@ function teamAutomaticExpenseImpact(expenses = [], cutoffMs = 0) {
     .filter(item => item && !movementIsDeleted(item) && !isSimulated(item))
     .filter(item => rowMs(item) > cutoffMs)
     .filter(teamExpenseUsesAutomaticBilling50)
-    .reduce((sum, item) => sum + (amountOf(item) * (item.receiptFlowVersion === "gross_expense_driver_debit_50_v2" ? -0.50 : 0.50)), 0));
+    .reduce((sum, item) => sum - amountOf(item) * expensePolicy.netDriverRate(item), 0));
 }
 
 function latestTeamReimbursementAnchor(records = [], baseline = 0) {

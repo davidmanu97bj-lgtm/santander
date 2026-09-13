@@ -50,7 +50,8 @@ test('el paquete de Hosting contiene solo recursos publicados, limpia sobrantes 
     const sha = 'a'.repeat(40);
     const output = buildHosting(root, sha);
     assert.equal(fs.existsSync(path.join(output, 'old.js')), false);
-    assert.equal(fs.existsSync(path.join(output, 'functions')), false);
+    assert.deepEqual(fs.readdirSync(path.join(output, 'functions')), ['expense-policy.js']);
+    assert.equal(fs.existsSync(path.join(output, 'functions/index.js')), false);
     const release = JSON.parse(fs.readFileSync(path.join(output, 'release.json')));
     assert.equal(release.commit, sha);
     assert.deepEqual(Object.keys(release.files).sort(), [...HOSTING_FILES].sort());

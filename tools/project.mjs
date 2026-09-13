@@ -8,7 +8,7 @@ export const PROJECT_ID = 'explora-control-operativo';
 export const HOSTING_FILES = [
   'index.html', 'app.js', 'tourism-catalog.js', 'styles.css', 'firebase-config.js',
   'service-worker.js', 'manifest.json', 'icon-192.png', 'icon-512.png',
-  'assets/explora-logo.png', 'assets/explora-logo-login.png', 'assets/uber-logo.svg'
+  'assets/explora-logo.png', 'assets/explora-logo-login.png', 'assets/uber-logo.svg', 'functions/expense-policy.js'
 ];
 
 export function assertNode22(version = process.versions.node) {

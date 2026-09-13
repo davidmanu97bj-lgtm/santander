@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png?v=20260913-identidad-explora" />
   <title>Explora — Control operativo</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
-  <link rel="modulepreload" href="./app.js?v=20260913-chofer-explora-debe" />
+  <link rel="modulepreload" href="./app.js?v=20260913-gastos-por-tipo" />
   <style>
     :root{
       --bg:#f3f5f7;--panel:#ffffff;--ink:#0e1116;--muted:#737a85;--line:#e7eaee;
@@ -117,7 +117,7 @@
       .service-option{min-height:80px;padding:13px 11px}.service-option strong{font-size:12px}.service-option span{font-size:16px}
     }
   </style>
-  <link rel="stylesheet" href="./styles.css?v=20260913-identidad-explora" />
+  <link rel="stylesheet" href="./styles.css?v=20260913-gastos-por-tipo" />
 </head>
 <body>
 <section id="splashScreen" class="splash-screen" aria-live="polite" aria-label="Cargando Explora">
@@ -474,7 +474,22 @@
   </div>
 </div>
 
-<div id="expenseModal" class="modal hidden" data-tone="expense" role="dialog" aria-modal="true" aria-labelledby="expenseTitle"><div class="charge-screen-card"><header class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span></header><button type="button" class="charge-back" data-close="expenseModal">‹ Inicio</button><div class="charge-heading"><span class="charge-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 21V3h10v18M4 10h10M2 21h14M14 7h2l4 4v7a1 1 0 0 0 2 0V8l-4-4"/></svg></span><div><h2 id="expenseTitle">Cargar gasto</h2><p>Explora reconoce el 50% del gasto registrado.</p></div></div><form id="expenseForm"><section class="charge-panel"><h3>Tipo de gasto</h3><div class="expense-quick-options" aria-label="Motivos frecuentes del gasto"><button type="button" class="expense-quick-option" data-expense-detail="Combustible" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V3h10v18M4 10h10M2 21h14M14 7h2l4 4v7a1 1 0 0 0 2 0V8l-4-4"/></svg><span>Combustible</span></button><button type="button" class="expense-quick-option" data-expense-detail="Lavadero" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 2-6h12l2 6M3 12h18v7H3zM6 19v2M18 19v2M6 15h2M16 15h2M5 2v1M12 1v2M19 2v1"/></svg><span>Lavadero</span></button><button type="button" class="expense-quick-option" data-expense-detail="Otro" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>Otro</span></button></div><div class="field"><label for="expenseAmount">Monto del gasto</label><div class="money-entry"><span>$</span><input id="expenseAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div></div><div class="field"><label for="expenseDetail">Detalle</label><input id="expenseDetail" placeholder="Ej. Carga en YPF" required></div></section><section class="charge-panel"><h3>Foto del comprobante obligatoria</h3>        <div class="photo-source-picker" data-photo-picker="expense">
+<div id="expenseModal" class="modal hidden" data-tone="expense" role="dialog" aria-modal="true" aria-labelledby="expenseTitle">
+  <div class="charge-screen-card">
+    <header class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span></header>
+    <button type="button" class="charge-back" data-close="expenseModal">‹ Inicio</button>
+    <div class="charge-heading"><span class="charge-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 21V3h10v18M4 10h10M2 21h14M14 7h2l4 4v7a1 1 0 0 0 2 0V8l-4-4"/></svg></span><div><h2 id="expenseTitle">Cargar gasto</h2><p>Elegí el gasto y adjuntá su comprobante.</p></div></div>
+    <form id="expenseForm" novalidate>
+      <input id="expenseType" type="hidden">
+      <div id="expenseStepLabel" class="charge-step-label" role="status" aria-live="polite"></div>
+      <div id="expenseStepTrack" class="charge-step-track" aria-hidden="true"></div>
+      <section data-expense-step="0" class="charge-step"><div id="expenseTypeGroups"></div></section>
+      <section data-expense-step="1" class="charge-step hidden charge-panel">
+        <div class="expense-selection" data-expense-selection></div>
+        <div class="field"><label for="expenseAmount">Monto del gasto</label><div class="money-entry"><span>$</span><input id="expenseAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div></div>
+        <div class="field"><label for="expenseDetail">Detalle <span class="expense-optional">(opcional)</span></label><input id="expenseDetail" placeholder="Ej. Carga en YPF" maxlength="280"></div>
+      </section>
+      <section data-expense-step="2" class="charge-step hidden charge-panel"><h3>Foto del comprobante</h3><p class="expense-photo-note">Obligatoria para registrar el gasto.</p><div class="photo-source-picker" data-photo-picker="expense">
           <div class="photo-source-actions" aria-label="Elegir origen de la foto">
             <button type="button" class="photo-source-action camera" data-photo-input="expenseProofCamera">Sacar foto con la cámara</button>
             <button type="button" class="photo-source-action gallery" data-photo-input="expenseProof">Subir foto de galería</button>
@@ -483,7 +498,19 @@
           <input id="expenseProof" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1">
           <div class="photo-source-selection" data-photo-selection aria-live="polite">Ninguna foto seleccionada.</div>
         </div>
-<p class="file-note">Sacá una foto o elegila de Fotos / Galería.</p></section><section class="charge-panel"><h3>Movimientos en tu cuenta</h3><h4>Gasto · 100%</h4><div id="expenseGrossPreview" class="charge-account" aria-live="polite"></div><h4>Reintegro · 50%</h4><div id="expenseRefundPreview" class="charge-account" aria-live="polite"></div></section><div id="expenseStatus" class="status" role="status"></div><div class="modal-actions"><button type="button" class="secondary" data-close="expenseModal">Cancelar</button><button id="saveExpenseBtn" type="submit" class="save">Confirmar gasto</button></div></form></div></div>
+<p class="file-note">Sacá una foto o elegila de Fotos / Galería.</p></section>
+      <section data-expense-step="3" class="charge-step hidden">
+        <div class="expense-selection" data-expense-selection></div>
+        <div class="charge-panel"><h3>Movimientos en tu cuenta</h3><h4 class="expense-movement-title negative">Gasto · 100%</h4><div id="expenseGrossPreview" class="charge-account"></div>
+          <div id="expenseRefundBlock"><h4 id="expenseRefundTitle" class="expense-movement-title positive"></h4><div id="expenseRefundPreview" class="charge-account"></div></div>
+          <div id="expenseFinalBalance" class="expense-final-balance" aria-live="polite"></div>
+        </div>
+      </section>
+      <div id="expenseStatus" class="status" role="status" aria-live="polite"></div>
+      <div class="modal-actions"><button id="expenseStepBack" type="button" class="secondary">Cancelar</button><button id="saveExpenseBtn" type="submit" class="save">Continuar</button></div>
+    </form>
+  </div>
+</div>
 
 <div id="operationPreviewModal" class="modal hidden expense-success-modal operation-preview-modal" role="dialog" aria-modal="true" aria-labelledby="operationPreviewTitle">
   <div class="expense-success-card">
@@ -746,57 +773,10 @@
       </form>
     </div>
   </div>
-</div>  <script>
-    document.addEventListener("click", function (event) {
-      const button = event.target.closest(".expense-quick-option");
-      if (!button) return;
-      const input = document.getElementById("expenseDetail");
-      if (!input) return;
-
-      const detail = button.dataset.expenseDetail || "";
-      document.querySelectorAll(".expense-quick-option").forEach(function (item) { item.classList.remove("selected"); });
-      button.classList.add("selected");
-
-      if (detail === "Otro") {
-        // "Otro" nunca completa el motivo automáticamente: el chofer debe especificarlo.
-        input.value = "";
-        input.dataset.expenseOther = "1";
-        input.placeholder = "Especifica el motivo del gasto";
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-        input.focus();
-        return;
-      }
-
-      delete input.dataset.expenseOther;
-      input.placeholder = "Ej. Productos de limpieza";
-      input.value = detail;
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-
-    document.getElementById("expenseDetail")?.addEventListener("input", function () {
-      const value = this.value.trim();
-      const otherSelected = this.dataset.expenseOther === "1";
-      document.querySelectorAll(".expense-quick-option").forEach(function (button) {
-        const detail = button.dataset.expenseDetail || "";
-        button.classList.toggle("selected", otherSelected ? detail === "Otro" : detail === value);
-        button.setAttribute("aria-pressed", String(button.classList.contains("selected")));
-      });
-    });
-
-    document.getElementById("expenseForm")?.addEventListener("reset", function () {
-      const input = document.getElementById("expenseDetail");
-      if (input) {
-        delete input.dataset.expenseOther;
-        input.placeholder = "Ej. Productos de limpieza";
-      }
-      document.querySelectorAll(".expense-quick-option").forEach(function (button) {
-        button.classList.remove("selected");
-        button.setAttribute("aria-pressed", "false");
-      });
-    });
-  </script>
+</div>
 
 
-<script type="module" src="./app.js?v=20260913-chofer-explora-debe"></script>
+<script src="./functions/expense-policy.js?v=20260913-gastos-por-tipo"></script>
+<script type="module" src="./app.js?v=20260913-gastos-por-tipo"></script>
 </body>
 </html>

@@ -18,9 +18,11 @@ function billingSummary({data,driverName,amount,cash,balance}) {
     ...(cashbox ? [`Caja chica 5%: ${money(cashbox)}`] : []),
     '',balanceLine(balance)].join('\n');
 }
-function expenseSummary({driverName,amount,recognized,balance,detail}) {
+function expenseSummary({driverName,amount,recognized,balance,detail,refundRate}) {
   return [`⛽ Gasto${clean(detail) ? ` · ${clean(detail)}` : ''}`,`👤 ${clean(driverName)}`,'',
-    `🔴 Gasto: ${money(amount)}`,`🟢 Reintegro: ${money(recognized)}`,'',balanceLine(balance)].join('\n');
+    `🔴 Gasto: ${money(amount)}`,
+    ...(refundRate === 0 ? ['100% chofer · Sin reintegro'] : [`🟢 Reintegro${refundRate == null ? '' : ' '+refundRate*100+'%'}: ${money(recognized)}`]),
+    '',balanceLine(balance)].join('\n');
 }
 function managementSummary({driverName,amount,paying,balance,note}) {
   return [paying ? '📤 Pago a Explora' : '📥 Cobro a Explora',`👤 ${clean(driverName)}`,

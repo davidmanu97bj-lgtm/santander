@@ -330,11 +330,37 @@ service cloud.firestore {
     // =========================================================
 
     match /gastos/{expenseId} {
+      function policyExpense(d) { return d.get('receiptFlowVersion', '') == 'gross_expense_policy_v3'; }
+      function expenseRefundRate(d) {
+        let type = d.get('expenseType', '');
+        return type in ['service','combustible','lavadero','patente','seguro_auto','control_municipal','vtv'] ? 0.5
+          : type in ['seguro_vida','monotributo','multa','choque','ruptura','prestamo','canon'] ? 0
+          : type in ['cubiertas','picos','luces','pastillas','disco_freno'] ? 1 : -1;
+      }
+      function validExpensePolicy(d) {
+        let rate = expenseRefundRate(d);
+        return rate >= 0
+          && d.amount is number && d.amount > 0 && d.amount <= 100000000 && d.monto == d.amount
+          && d.tipo == d.expenseType && d.category == d.expenseType
+          && d.reimbursementRate == rate && d.driverExpenseRate == 1 - rate
+          && d.sharedRate == 1 - rate && d.porcentajeCompartido == (1 - rate) * 100
+          && d.expenseResponsibility == (rate == 0.5 ? 'shared' : rate == 0 ? 'driver' : 'explora')
+          && d.autoApplyToBilling == true && d.billingImpactMode == 'expense_policy'
+          && d.billingImpactAmount == d.amount * (1 - rate)
+          && d.telegramExpenseLoadedAmount == d.amount && d.telegramExpenseRecognizedAmount == d.amount * rate
+          && d.proofUrl is string && d.proofUrl.size() > 0 && d.receiptUrl == d.proofUrl
+          && d.proofPath is string && d.proofPath.matches('gastos/' + request.auth.uid + '/[^/]+/[^/]+')
+          && d.receiptPath == d.proofPath && d.status == 'active';
+      }
       allow read: if isAdmin() || owns(resource.data);
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data));
+      allow create: if isAdmin() || (signedIn() && owns(request.resource.data)
+        && (!policyExpense(request.resource.data) || validExpensePolicy(request.resource.data)));
       allow update: if isAdmin() || (
         signedIn() && owns(resource.data) && owns(request.resource.data)
         && ownershipFieldsUnchanged() && adminFieldsUnchanged()
+        && (policyExpense(resource.data)
+          ? request.resource.data.diff(resource.data).affectedKeys().hasOnly(['createdAt'])
+          : !policyExpense(request.resource.data))
       );
       allow delete: if isAdmin();
     }
