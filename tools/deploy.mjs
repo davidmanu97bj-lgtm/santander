@@ -14,11 +14,13 @@ const SCOPES = new Set(['all', 'hosting', 'backend']);
 
 export function parseArguments(args) {
   if (!args.length || (args.length === 1 && args[0] === '--validate')) return { deploy: false };
+  const interactiveCount = args.filter(arg => arg === '--interactive').length;
+  args = args.filter(arg => arg !== '--interactive');
   if (args[0] !== '--deploy' || !/^[a-f0-9]{40}$/.test(args[1] || '') ||
-      ![2, 4].includes(args.length) || (args.length === 4 && (args[2] !== '--only' || !SCOPES.has(args[3])))) {
-    throw new Error('Uso: npm run deploy -- --deploy <commit SHA de 40 caracteres> [--only all|hosting|backend]. Sin argumentos solo valida.');
+      interactiveCount > 1 || ![2, 4].includes(args.length) || (args.length === 4 && (args[2] !== '--only' || !SCOPES.has(args[3])))) {
+    throw new Error('Uso: npm run deploy -- --deploy <commit SHA de 40 caracteres> [--only all|hosting|backend] [--interactive]. Sin argumentos solo valida.');
   }
-  return { deploy: true, sha: args[1], scope: args[3] || 'all' };
+  return { deploy: true, sha: args[1], scope: args[3] || 'all', interactive: interactiveCount === 1 };
 }
 
 export function verifyRelease(root, sha, run = command) {
@@ -44,7 +46,7 @@ function npmCli() {
   return cli;
 }
 
-export function deploySnapshot(snapshot, { sha, scope = 'all', npm = npmCli(), run = command, build = buildHosting, beforePublish = () => {}, progress = () => {} }) {
+export function deploySnapshot(snapshot, { sha, scope = 'all', interactive = false, npm = npmCli(), run = command, build = buildHosting, beforePublish = () => {}, progress = () => {} }) {
   if (!SCOPES.has(scope)) throw new Error('Alcance de despliegue inválido.');
   // Fiscal integration tests require the pinned backend dependencies even for Hosting validation.
   run(process.execPath, [npm, 'ci', '--prefix', 'functions', '--ignore-scripts', '--no-audit', '--no-fund'], snapshot);
@@ -58,7 +60,7 @@ export function deploySnapshot(snapshot, { sha, scope = 'all', npm = npmCli(), r
     beforePublish();
     run(process.execPath, [npm, 'exec', '--yes', `--package=firebase-tools@${FIREBASE_CLI_VERSION}`, '--',
       'firebase', 'deploy', '--project', PROJECT_ID, '--config', 'firebase.json',
-      '--only', stage, '--non-interactive', '--message', `GitHub main ${sha}`], snapshot);
+      '--only', stage, interactive && stage === 'functions' ? '--interactive' : '--non-interactive', '--message', `GitHub main ${sha}`], snapshot);
     progress(stage);
   }
 }
@@ -78,7 +80,7 @@ export function main(args = process.argv.slice(2)) {
   const temp = fs.mkdtempSync(path.join(parent, 'release-'));
   const snapshot = path.join(temp, 'source');
   fs.mkdirSync(snapshot);
-  const record = { commit: options.sha, project: PROJECT_ID, scope: options.scope,
+  const record = { commit: options.sha, project: PROJECT_ID, scope: options.scope, interactive: options.interactive,
     startedAt: new Date().toISOString(), completed: [], status: 'running' };
   const log = path.join(parent, path.basename(temp) + '.json');
   const save = () => fs.writeFileSync(log, JSON.stringify(record, null, 2) + '\n');

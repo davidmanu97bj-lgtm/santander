@@ -71,6 +71,13 @@ actualiza automáticamente a `latest`. No se usa `--force`; si se requiere elimi
 una Function, se debe revisar como una operación separada. Se reutiliza la sesión
 o identidad autorizada de Firebase, sin pedir ni guardar tokens en el repositorio.
 
+Para el primer despliegue de funciones con reintentos, añadir `--interactive` al
+comando de publicación permite confirmar esa política en la terminal. Solo la
+etapa de Functions admite esas preguntas; se mantienen las comprobaciones de Git,
+pruebas y copia fija. No aceptar borrados ni migraciones de eventos sin revisarlos.
+Si la carga local de Functions supera 10 segundos, establecer
+`FUNCTIONS_DISCOVERY_TIMEOUT=60` en el entorno de esa ejecución.
+
 Por defecto publica reglas, Functions y Hosting, en ese orden. Los alcances
 opcionales `--only hosting` y `--only backend` permiten una entrega parcial explícita.
 Firebase no publica todos los servicios de forma atómica: `.deploy/release-*.json`

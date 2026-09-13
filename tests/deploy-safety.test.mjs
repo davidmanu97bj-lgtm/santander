@@ -97,6 +97,24 @@ test('si main avanza durante las pruebas, no se inicia la publicación', () => {
   assert.equal(calls.some(args => args.includes('firebase')), false);
 });
 
+test('confirmación interactiva conserva controles y nunca acepta todas las advertencias', () => {
+  assert.equal(parseArguments(['--deploy', sha, '--interactive']).interactive, true);
+  assert.equal(parseArguments(['--deploy', sha, '--only', 'backend', '--interactive']).scope, 'backend');
+  assert.throws(() => parseArguments(['--interactive']));
+  assert.throws(() => parseArguments(['--deploy', sha, '--interactive', '--interactive']));
+  const calls = []; let checks = 0;
+  deploySnapshot(root, { sha, interactive: true, npm: 'npm-cli.js', build: () => {},
+    beforePublish: () => checks++, run: (exe, args) => calls.push(args) });
+  const deploys = calls.filter(args => args.includes('firebase'));
+  assert.equal(checks, 3);
+  for (const args of deploys) {
+    const isFunctions = args[args.indexOf('--only') + 1] === 'functions';
+    assert.equal(args.includes('--interactive'), isFunctions);
+    assert.equal(args.includes('--non-interactive'), !isFunctions);
+    assert.equal(args.includes('--force'), false);
+  }
+});
+
 test('los alcances parciales no publican servicios fuera de lo solicitado', () => {
   for (const scope of ['hosting', 'backend']) {
     const calls = [];
