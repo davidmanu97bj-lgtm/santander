@@ -3090,38 +3090,7 @@ a.proof:hover { background: #e3e7f0; }
   box-shadow: none;
 }
 
-.money-rolling {
-  font-variant-numeric: tabular-nums;
-  transform-origin: center bottom;
-  will-change: transform, opacity, filter;
-  animation: moneyRollUp .76s cubic-bezier(.22, .8, .24, 1);
-}
-
-@keyframes moneyRollUp {
-  0% {
-    transform: translateY(11px);
-    opacity: .35;
-    filter: blur(1.2px);
-  }
-  38% {
-    opacity: 1;
-    filter: blur(0);
-  }
-  72% {
-    transform: translateY(-3px);
-  }
-  100% {
-    transform: translateY(0);
-    opacity: 1;
-    filter: blur(0);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .money-rolling {
-    animation: none !important;
-  }
-
   .collect.tone-uber.has-pending-alert {
     animation: none !important;
     border-color: rgba(198, 47, 53, .65);

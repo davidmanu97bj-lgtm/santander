@@ -13,7 +13,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
   initializeFirestore, collection, addDoc, doc, getDoc, getDocFromServer, getDocs, setDoc,
-  onSnapshot, serverTimestamp, deleteField, query, where, or, orderBy, limit, writeBatch, runTransaction
+  onSnapshot, onSnapshotsInSync, serverTimestamp, deleteField, query, where, or, orderBy, limit, writeBatch, runTransaction
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import {
   getStorage, ref, uploadBytes, getDownloadURL
@@ -199,6 +199,7 @@ const PENDING_OPERATION_STORAGE_PREFIX = "explora_pending_operations_v1";
 const PENDING_OPERATION_TTL_MS = 48 * 60 * 60 * 1000;
 const pendingOperationFallback = new Map();
 const activeSubmissionLocks = new Set();
+const submissionPreviewBalances = new Map();
 
 function operationStorageKey(kind, uid) {
   return `${PENDING_OPERATION_STORAGE_PREFIX}:${String(uid || "anonymous")}:${kind}`;
@@ -298,11 +299,26 @@ async function buildSubmissionFingerprint(kind, fields) {
 function acquireSubmissionLock(kind) {
   if (activeSubmissionLocks.has(kind)) return false;
   activeSubmissionLocks.add(kind);
+  captureSubmissionBalance(kind);
   return true;
 }
 
 function releaseSubmissionLock(kind) {
   activeSubmissionLocks.delete(kind);
+  submissionPreviewBalances.delete(kind);
+  scheduleDashboardRender();
+}
+
+function captureSubmissionBalance(kind) {
+  const balance = settlementModel().balance;
+  if (activeSubmissionLocks.has(kind)) submissionPreviewBalances.set(kind, balance);
+  return balance;
+}
+
+function previewSettlementBalance(kind) {
+  // El listener puede recibir el alta mientras el formulario aún está abierto.
+  // Conservamos su punto de partida para no volver a sumar la misma operación.
+  return submissionPreviewBalances.get(kind) ?? settlementModel().balance;
 }
 
 function delay(ms) {
@@ -349,11 +365,11 @@ async function runTransactionWithRetry(handler) {
 }
 
 async function confirmCommittedOperation(documentRef, operationId, fingerprint) {
-  // Primero revisa el estado que ya conoce el cliente. Esto cubre el caso
-  // típico de una conexión 4G inestable donde Firebase confirma el write
-  // localmente pero la respuesta final del servidor se corta.
+  // Un dato local pendiente no equivale a una confirmación del servidor.
+  // Una conexión inestable nunca debe anunciar como guardado un alta sin confirmar.
   const matchesOperation = snapshot => {
     if (!snapshot?.exists?.()) return false;
+    if (snapshot.metadata?.hasPendingWrites || snapshot.metadata?.fromCache) return false;
     const data = snapshot.data() || {};
     return data.idempotencyKey === operationId && data.submissionFingerprint === fingerprint;
   };
@@ -691,15 +707,17 @@ function ownedQuery(collectionName, uid = currentDriverUid()) {
 }
 
 function createDashboardLoad(keys) {
-  const ready = new Set(), cached = new Set(), errors = new Set();
+  const ready = new Set(), cached = new Set(), errors = new Set(), pendingWrites = new Set();
   let resolve;
   const settled = new Promise(done => { resolve = done; });
   return {
-    ready, cached, errors, settled,
+    ready, cached, errors, pendingWrites, settled,
     complete: () => keys.every(key => ready.has(key)) && !errors.size,
-    update(key, fromCache, error = false) {
+    update(key, fromCache, error = false, hasPendingWrites = false) {
       if (error) { errors.add(key); resolve(); return; }
       errors.delete(key);
+      if (hasPendingWrites) pendingWrites.add(key);
+      else pendingWrites.delete(key);
       if (fromCache) cached.add(key);
       else { cached.delete(key); ready.add(key); }
       if (keys.every(item => ready.has(item))) resolve();
@@ -712,10 +730,16 @@ function scheduleDashboardRender(job = render) {
   if (dashboardRenderFrame !== null) return;
   dashboardRenderFrame = window.requestAnimationFrame(() => {
     dashboardRenderFrame = null;
-    const jobs = [...dashboardRenderJobs];
-    dashboardRenderJobs.clear();
-    for (const update of jobs) update();
+    flushDashboardRender();
   });
+}
+
+function flushDashboardRender() {
+  if (dashboardRenderFrame !== null) window.cancelAnimationFrame(dashboardRenderFrame);
+  dashboardRenderFrame = null;
+  const jobs = [...dashboardRenderJobs];
+  dashboardRenderJobs.clear();
+  for (const update of jobs) update();
 }
 
 function cancelDashboardRender() {
@@ -723,6 +747,21 @@ function cancelDashboardRender() {
   dashboardRenderFrame = null;
   dashboardRenderJobs.clear();
 }
+
+// Firestore avisa cuando todos los listeners afectados procesaron el cambio.
+// Dibujamos saldo e historial juntos, sin esperar otro frame ni consultar otra vez.
+onSnapshotsInSync(db, flushDashboardRender);
+
+function resumeDashboard() {
+  if (document.hidden || !auth.currentUser) return;
+  scheduleDashboardRender(isAdminProfile() ? renderAdminDashboardUpdates : render);
+  scheduleDashboardRender(renderTeamRealtimeList);
+  flushDashboardRender();
+}
+document.addEventListener("visibilitychange", resumeDashboard);
+window.addEventListener("pageshow", resumeDashboard);
+window.addEventListener("online", resumeDashboard);
+window.addEventListener("offline", resumeDashboard);
 
 async function waitForDashboard(load) {
   let timer;
@@ -735,8 +774,10 @@ function renderDriverLoadState() {
   const ready = dashboardLoad?.complete() === true;
   const failed = Boolean(dashboardLoad?.errors.size);
   const syncing = !ready || Boolean(dashboardLoad?.cached.size);
-  $("syncStatus").textContent = failed ? "No se pudo sincronizar · recargá" : syncing ? (navigator.onLine === false ? "Sin conexión" : "Sincronizando…") : "En tiempo real";
-  $("syncStatus").className = failed ? "sync bad" : syncing ? "sync" : "sync ok";
+  const pending = Boolean(dashboardLoad?.pendingWrites.size);
+  const offline = navigator.onLine === false;
+  $("syncStatus").textContent = failed ? "No se pudo sincronizar · recargá" : offline ? "Sin conexión" : pending ? "Guardando…" : syncing ? "Sincronizando…" : "En tiempo real";
+  $("syncStatus").className = failed ? "sync bad" : syncing || pending || offline ? "sync" : "sync ok";
   $("driverBalanceCard").setAttribute("aria-busy", String(!ready));
   document.querySelectorAll("#driverQuickActions button").forEach(button => { button.disabled = !ready; });
   if (!ready) {
@@ -754,17 +795,27 @@ function renderDriverLoadState() {
 
 function subscribeOwnedRecords(user, { collectionName, normalizer, assign, afterRender }) {
   const load = dashboardLoad;
+  const records = new Map();
   let active = true, received = false;
   const valid = () => active && dashboardLoad === load && auth.currentUser?.uid === user.uid;
   const stop = onSnapshot(ownedQuery(collectionName, user.uid), { includeMetadataChanges:true }, snap => {
     if (!valid()) return;
-    const changed = !received || snap.docChanges().length > 0;
+    const changes = snap.docChanges();
+    const changed = !received || changes.length > 0;
     const wasReady = load.complete();
-    received = true;
     if (changed) {
-      assign(snap.docs.map(row => normalizer(row.id, row.data())).sort((a,b) => recordTimestampMs(b)-recordTimestampMs(a)));
+      if (!received) {
+        for (const row of snap.docs) records.set(row.id, normalizer(row.id, row.data()));
+      } else {
+        for (const change of changes) {
+          if (change.type === "removed") records.delete(change.doc.id);
+          else records.set(change.doc.id, normalizer(change.doc.id, change.doc.data()));
+        }
+      }
+      assign([...records.values()].sort((a,b) => recordTimestampMs(b)-recordTimestampMs(a)));
     }
-    load.update(collectionName, snap.metadata.fromCache);
+    received = true;
+    load.update(collectionName, snap.metadata.fromCache, false, snap.metadata.hasPendingWrites);
     if (changed || wasReady !== load.complete()) scheduleDashboardRender();
     else scheduleDashboardRender(renderDriverLoadState);
     if (changed && afterRender) scheduleDashboardRender(afterRender);
@@ -837,97 +888,30 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-const money = value => new Intl.NumberFormat("es-AR", {
+const moneyFormatter = new Intl.NumberFormat("es-AR", {
   style: "currency", currency: "ARS", maximumFractionDigits: 0
-}).format(value || 0);
+});
+const money = value => moneyFormatter.format(value || 0);
 const signedMoney = value => {
   const numericValue = Number(value || 0);
   if (Math.abs(numericValue) < 0.5) return money(0);
   return `${numericValue > 0 ? "+" : "−"} ${money(Math.abs(numericValue))}`;
 };
 const moneyInputFormatter = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
-const moneyAnimationFrames = new WeakMap();
 
 function moneyForElement(element, value) {
   return element?.dataset.moneyFormat === "signed" ? signedMoney(value) : money(value);
 }
 
-function canAnimateMoney() {
-  try {
-    const reducesMotion = typeof window.matchMedia === "function"
-      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    return !reducesMotion
-      && typeof window.requestAnimationFrame === "function"
-      && typeof window.cancelAnimationFrame === "function";
-  } catch {
-    return false;
-  }
-}
-
-function setAnimatedMoney(elementOrId, targetValue) {
+function setMoney(elementOrId, targetValue) {
   const element = typeof elementOrId === "string" ? $(elementOrId) : elementOrId;
   if (!element) return;
-
   const target = Number(targetValue || 0);
-  const storedCurrent = Number(element.dataset.moneyCurrent);
-  const hasPreviousValue = element.dataset.moneyCurrent !== undefined && Number.isFinite(storedCurrent);
-  const previous = hasPreviousValue ? storedCurrent : target;
-  const activeFrame = moneyAnimationFrames.get(element);
-
-  if (activeFrame !== undefined) {
-    window.cancelAnimationFrame(activeFrame);
-    moneyAnimationFrames.delete(element);
-  }
-
-  // El valor correcto se muestra primero. La animación es una mejora visual y
-  // nunca debe impedir el inicio de sesión ni dejar una cifra desactualizada.
-  element.textContent = moneyForElement(element, target);
+  const formatted = moneyForElement(element, target);
+  // Siempre el importe exacto: sin interpolación ni lecturas que fuerzan layout.
+  element.textContent = formatted;
   element.dataset.moneyCurrent = String(target);
-  element.setAttribute("aria-label", moneyForElement(element, target));
-
-  if (!hasPreviousValue || Math.abs(target - previous) < 0.5 || !canAnimateMoney()) {
-    element.classList.remove("money-rolling");
-    return;
-  }
-
-  try {
-    element.classList.remove("money-rolling");
-    void element.offsetWidth;
-    element.classList.add("money-rolling");
-    element.addEventListener("animationend", () => {
-      element.classList.remove("money-rolling");
-    }, { once: true });
-
-    let startedAt;
-    const duration = 760;
-
-    const tick = now => {
-      if (startedAt === undefined) startedAt = now;
-      const progress = Math.min(1, (now - startedAt) / duration);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const current = previous + (target - previous) * eased;
-
-      element.textContent = moneyForElement(element, Math.round(current));
-      element.dataset.moneyCurrent = String(current);
-
-      if (progress < 1) {
-        moneyAnimationFrames.set(element, window.requestAnimationFrame(tick));
-        return;
-      }
-
-      element.textContent = moneyForElement(element, target);
-      element.dataset.moneyCurrent = String(target);
-      moneyAnimationFrames.delete(element);
-    };
-
-    moneyAnimationFrames.set(element, window.requestAnimationFrame(tick));
-  } catch (err) {
-    console.warn("Animación de importes desactivada:", err);
-    element.classList.remove("money-rolling");
-    element.textContent = money(target);
-    element.dataset.moneyCurrent = String(target);
-    moneyAnimationFrames.delete(element);
-  }
+  element.setAttribute("aria-label", formatted);
 }
 
 function moneyInputDigits(value) {
@@ -1999,7 +1983,7 @@ function render() {
   const receipts = buildUnifiedReceipts(receiptSortOrder);
   const visibleReceipts = visibleReceiptRows(receipts, Math.max(RECENT_RECEIPTS_LIMIT, visibleReceiptCount));
 
-  setAnimatedMoney("settlementTotal", Math.abs(model.balance));
+  setMoney("settlementTotal", Math.abs(model.balance));
   renderWalletStatus("settlementDirection", model.balance);
   $("settlementDirection").textContent = settlementPreviewCopy(model.balance).label;
   $("driverBalanceCard").dataset.state = model.balance > 0.5 ? "owing" : model.balance < -0.5 ? "receiving" : "balanced";
@@ -4364,7 +4348,7 @@ function renderChargePreview() {
   const principal = cash ? amount : -amount;
   const fee = amount * 0.05;
   const impact = normalizedSettlementBalance(principal + fee);
-  const before = settlementModel().balance;
+  const before = previewSettlementBalance("charge");
   const after = normalizedSettlementBalance(before + impact);
   const signed = value => `${value > 0 ? "+" : value < 0 ? "−" : ""}${money(Math.abs(value))}`;
   $("chargeInvoiceTotal").textContent = money(amount);
@@ -4393,21 +4377,12 @@ document.querySelectorAll("[data-close]").forEach(btn => {
   });
 });
 
-// Muestra el estado de éxito dentro del mismo modal y luego lo cierra solo.
-// También devuelve la pantalla principal al inicio para que el chofer vea
-// inmediatamente los totales actualizados.
-function closeModalAndGoTop(modalId, delayMs = 1000) {
-  const modal = $(modalId);
-  window.setTimeout(() => {
-    modal?.classList.add("hidden");
-    try {
-      window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
-    } catch (_) {
-      window.scrollTo(0, 0);
-    }
-    window.setTimeout(maybeShowDriverDebtConfirmation, 0);
-    window.setTimeout(maybeShowUberDriverConfirmation, 100);
-  }, delayMs);
+// Se llama únicamente después de confirmar el guardado, sin una espera visual extra.
+function closeModalAndGoTop(modalId) {
+  $(modalId)?.classList.add("hidden");
+  scheduleDashboardRender();
+  flushDashboardRender();
+  window.scrollTo({ top: 0, left: 0, behavior: "instant" });
 }
 
 function settlementState(balance, tense = "now") {
@@ -4793,9 +4768,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
   let completedSuccessfully = false;
   try {
     const enteredDetail = $("detail").value.trim();
-    const settlementBeforeCharge = settlementModel().balance;
     const chargeDelta = mode === "cash" ? amount * 1.05 : amount * -0.95;
-    const settlementAfterCharge = normalizedSettlementBalance(settlementBeforeCharge + chargeDelta);
     fingerprint = await buildSubmissionFingerprint("charge", {
       mode,
       amount,
@@ -4844,6 +4817,9 @@ $("chargeForm")?.addEventListener("submit", async e => {
         repaymentPlan.totalApplied > 0.5 ? `Aplicado al adelanto: ${money(repaymentPlan.totalApplied)}` : ""
       ].filter(Boolean).join(" · ");
 
+      const settlementBeforeCharge = captureSubmissionBalance("charge");
+      const settlementAfterCharge = normalizedSettlementBalance(settlementBeforeCharge + chargeDelta);
+      renderChargePreview();
       transaction.set(paymentRef, {
         method: mode,
         paymentMethod: mode === "cash" ? "cash" : "digital",
@@ -4922,7 +4898,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
     $("saveChargeBtn").textContent = "Éxito ✓";
     $("chargeForm").reset();
     syncChargeCustomerFields();
-    closeModalAndGoTop("chargeModal", 1200);
+    closeModalAndGoTop("chargeModal");
   } catch (err) {
     console.error(err);
     const committed = paymentRef && operation && fingerprint
@@ -4936,7 +4912,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
       $("saveChargeBtn").textContent = "Éxito ✓";
       $("chargeForm").reset();
     syncChargeCustomerFields();
-      closeModalAndGoTop("chargeModal", 1200);
+      closeModalAndGoTop("chargeModal");
     } else {
       $("chargeStatus").textContent = "No pudimos confirmar el cobro. Podés volver a tocar Registrar: se reintentará la misma operación sin duplicarla.";
       $("chargeStatus").className = "status error";
@@ -5416,7 +5392,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
       $("expenseStatus").className = "status success";
       completedSuccessfully = true;
       $("saveExpenseBtn").textContent = "Éxito ✓";
-      closeModalAndGoTop("expenseModal", 1200);
+      closeModalAndGoTop("expenseModal");
       return;
     }
     $("saveExpenseBtn").textContent = "Guardando…";
@@ -5430,9 +5406,9 @@ $("expenseForm")?.addEventListener("submit", async e => {
     // El gasto completo suma deuda y su reintegro se descuenta en el mismo registro.
     // Se congela el saldo justo antes del alta para mostrar el cambio exacto en el modal
     // y para que Telegram informe el mismo resultado que ve el chofer.
-    const settlementBeforeExpense = settlementModel();
     const recognizedExpense = amount * refundRate;
-    expenseBeforeBalance = settlementBeforeExpense.balance;
+    expenseBeforeBalance = captureSubmissionBalance("expense");
+    renderExpensePreview();
     const rawAfterBalance = expenseBeforeBalance + amount - recognizedExpense;
     expenseAfterBalance = Math.abs(rawAfterBalance) > 0.5 ? rawAfterBalance : 0;
 
@@ -5497,7 +5473,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
     completedSuccessfully = true;
     $("saveExpenseBtn").textContent = "Éxito ✓";
     $("expenseForm").reset();
-    closeModalAndGoTop("expenseModal", 1200);
+    closeModalAndGoTop("expenseModal");
   } catch (err) {
     console.error(err);
     const committed = expenseRef && operation && fingerprint
@@ -5516,7 +5492,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
         expenseBeforeBalance = Number(committedData.telegramSettlementBeforeBalance ?? expenseBeforeBalance ?? 0);
         expenseAfterBalance = Number(committedData.telegramSettlementAfterBalance ?? (expenseBeforeBalance + amount * (1 - refundRate)));
       } catch (_) {}
-      closeModalAndGoTop("expenseModal", 1200);
+      closeModalAndGoTop("expenseModal");
     } else {
       $("expenseStatus").textContent = "No pudimos confirmar el gasto. Podés volver a tocar Registrar: se reintentará la misma operación sin duplicarla.";
       $("expenseStatus").className = "status error";
@@ -5560,7 +5536,7 @@ function renderUberStep(step = uberStep) {
 }
 function renderUberAccountPreview() {
   const amount = parseUberAmount($("uberGrossAmount").value) || 0;
-  const before = settlementModel().balance;
+  const before = previewSettlementBalance("uber");
   const row = (start, delta, end) => '<div><span>Antes</span><small>' + escapeHtml(settlementPreviewCopy(start).label) + '</small><strong>' + money(Math.abs(start)) + '</strong></div><div><span>Impacto</span><strong class="positive">+' + money(delta) + '</strong></div><div><span>Después</span><small>' + escapeHtml(settlementPreviewCopy(end).label) + '</small><strong>' + money(Math.abs(end)) + '</strong></div>';
   $("uberPrincipalPreview").innerHTML = row(before, amount, before + amount);
   $("uberCashboxPreview").innerHTML = row(before + amount, amount * 0.05, before + amount * 1.05);
@@ -5733,7 +5709,7 @@ $("uberForm")?.addEventListener("submit", async e => {
     $("uberStatus").className = "status success";
     $("saveUberBtn").textContent = "Registrado ✓";
     $("uberForm").reset();
-    if (!remaining) closeModalAndGoTop("uberModal", 1300);
+    if (!remaining) closeModalAndGoTop("uberModal");
   } catch (err) {
     console.error(err);
     const code = firebaseErrorCode(err);
@@ -6279,7 +6255,7 @@ function selectManagement(direction) {
 function renderManagementPreview() {
   if (!managementDirection) return;
   const amount = parseMoneyInput($("managementAmount").value) || 0;
-  const before = settlementModel().balance;
+  const before = previewSettlementBalance("management");
   const delta = amount * (managementDirection === "driver_to_explora" ? -1 : 1);
   const after = normalizedSettlementBalance(before + delta);
   $("managementPreview").innerHTML = '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(before))+'</small></div><div><span>Impacto</span><strong class="'+(delta < 0 ? 'negative' : 'positive')+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(after))+'</small></div>';
@@ -6315,11 +6291,12 @@ $("managementForm").addEventListener("submit", async event => {
     const storageRef = ref(storage, proofPath);
     await retryFirebaseOperation(() => uploadBytes(storageRef, proof), 4);
     const proofUrl = await retryFirebaseOperation(() => getDownloadURL(storageRef), 4);
-    const before = settlementModel().balance;
-    const after = normalizedSettlementBalance(before + amount * (direction === "driver_to_explora" ? -1 : 1));
     await runTransactionWithRetry(async transaction => {
       const existing = await transaction.get(reference);
       if (existing.exists()) return;
+      const before = captureSubmissionBalance("management");
+      const after = normalizedSettlementBalance(before + amount * (direction === "driver_to_explora" ? -1 : 1));
+      renderManagementPreview();
       transaction.set(reference, {
         type:"settlement_adjustment", operationType:"settlement_adjustment", internalManagement:true,
         proofUrl,proofPath,receiptUrl:proofUrl,receiptPath:proofPath,receiptRequired:true,
@@ -6338,12 +6315,12 @@ $("managementForm").addEventListener("submit", async event => {
     });
     clearPendingOperation("management",user.uid,fingerprint,operation.operationId);
     $("managementStatus").textContent = "Movimiento registrado.";
-    closeModalAndGoTop("managementModal", 700);
+    closeModalAndGoTop("managementModal");
   } catch (error) {
     const committed = reference && operation && await confirmCommittedOperation(reference,operation.operationId,fingerprint);
     if (committed) {
       clearPendingOperation("management",user.uid,fingerprint,operation.operationId);
-      closeModalAndGoTop("managementModal",700);
+      closeModalAndGoTop("managementModal");
     } else {
       $("managementStatus").textContent = "No pudimos confirmar el movimiento. Reintentá: no se duplicará.";
       $("managementStatus").className = "status error";
@@ -6387,7 +6364,7 @@ function renderExpensePreview() {
   const type = ExploraExpensePolicy.find($("expenseType").value);
   const amount = parseMoneyInput($("expenseAmount").value) || 0;
   const rate = type?.refundRate || 0;
-  const before = settlementModel().balance;
+  const before = previewSettlementBalance("expense");
   const intermediate = normalizedSettlementBalance(before + amount);
   const after = normalizedSettlementBalance(before + amount * (1 - rate));
   const row = (start,delta,end) => '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(start))+'</small></div><div><span>Impacto</span><strong class="'+(delta > 0 ? "negative" : "positive")+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(end))+'</small></div>';

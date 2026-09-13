@@ -32,7 +32,7 @@ test('las actualizaciones simultáneas dibujan una vez y se cancelan al cambiar 
   let callback, frames=0, renders=0, cancelled=0;
   const ctx = vm.createContext({dashboardRenderJobs:new Set(),dashboardRenderFrame:null,render:()=>renders++,
     window:{requestAnimationFrame:fn=>{callback=fn;return ++frames;},cancelAnimationFrame:()=>cancelled++}});
-  vm.runInContext(declaration('scheduleDashboardRender')+'\n'+declaration('cancelDashboardRender'),ctx);
+  vm.runInContext(declaration('scheduleDashboardRender')+'\n'+declaration('flushDashboardRender')+'\n'+declaration('cancelDashboardRender'),ctx);
   for(let i=0;i<14;i++)ctx.scheduleDashboardRender();
   assert.equal(frames,1);
   callback(); assert.equal(renders,1);
@@ -58,7 +58,15 @@ test('el listener procesa modificaciones y bajas; ignora metadatos y respuestas 
     scheduleDashboardRender:()=>{},renderDriverLoadState:()=>{},recordTimestampMs:row=>row.time,console:{error:()=>{}}});
   vm.runInContext(declaration('subscribeOwnedRecords'),ctx);
   const stop=ctx.subscribeOwnedRecords(user,{collectionName:'gastos',normalizer:(id,data)=>{normalized++;return{id,...data};},assign:value=>{assigns++;rows=value;}});
-  const emit=(docs,changes=1,fromCache=false)=>snapshot({docs:docs.map(data=>({id:data.id,data:()=>data})),docChanges:()=>Array(changes).fill({}),metadata:{fromCache}});
+  let previous=new Map();
+  const emit=(docs,changes=1,fromCache=false)=>{
+    const wrappers=docs.map(data=>({id:data.id,data:()=>data}));
+    const next=new Map(wrappers.map(row=>[row.id,row]));
+    const delta=changes ? [...wrappers.map(doc=>({type:previous.has(doc.id)?'modified':'added',doc})),
+      ...[...previous.values()].filter(doc=>!next.has(doc.id)).map(doc=>({type:'removed',doc}))] : [];
+    previous=next;
+    snapshot({docs:wrappers,docChanges:()=>delta,metadata:{fromCache}});
+  };
   emit([{id:'legacy',time:1,amount:50}]);assert.equal(rows[0].amount,50);
   emit([{id:'legacy',time:1,amount:50}],0);assert.equal(assigns,1);assert.equal(normalized,1);
   emit([{id:'legacy',time:1,amount:25}]);assert.equal(rows[0].amount,25);
