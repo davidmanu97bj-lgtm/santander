@@ -2016,9 +2016,9 @@ function debtProofIsImage(item = {}) {
 
 function settlementPreviewCopy(balance) {
   const value = Math.abs(Number(balance || 0)) <= 0.5 ? 0 : Number(balance || 0);
-  if (value > 0) return { label:"Vos debés a Explora", amount:value, tone:"driver" };
-  if (value < 0) return { label:"Explora te debe", amount:Math.abs(value), tone:"explora" };
-  return { label:"Cuenta equilibrada", amount:0, tone:"balanced" };
+  if (value > 0) return { label:"Saldo a pagar", amount:value, tone:"driver" };
+  if (value < 0) return { label:"Saldo a cobrar", amount:Math.abs(value), tone:"explora" };
+  return { label:"Cuenta al día", amount:0, tone:"balanced" };
 }
 
 let activeDriverDebtConfirmationId = "";
