@@ -6,6 +6,7 @@ El resumen muestra tipo de operación, chofer, recorrido o semana cuando corresp
 - Gastos: importe completo en rojo y reintegro del 50% en verde.
 - Pagar/cobrar a Explora: importe y saldo, sin caja chica ni emisión fiscal.
 - Uber directo: ganancia semanal, caja chica y saldo final. Los avisos de revisión históricos mantienen su flujo anterior.
+- Calendario: un aviso de viaje agendado con chofer y fecha; si ya había otro viaje ese día, un segundo aviso de coincidencia en «Todos». No incluye teléfono ni detalle del pasajero. Ver `calendario.md`.
 
 Las fotos de gastos, gestión y Uber se adjuntan debajo del resumen usando `show_caption_above_media`. Para cobros con solicitud fiscal, `sendRichMessage` organiza texto, foto (si existe) y PDF como último bloque del mismo mensaje. Si ARCA aún no autorizó, el aviso indica factura pendiente. `notifyArcaInvoiceTelegramV1` edita ese mismo mensaje al autorizarse y añade el PDF generado por `arca-pdf.js`. No emite ni reemite comprobantes y no adjunta documentos de homologación como facturas reales.
 

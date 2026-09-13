@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const PROJECT_ID = 'explora-control-operativo';
 export const HOSTING_FILES = [
-  'index.html', 'app.js', 'tourism-catalog.js', 'styles.css', 'firebase-config.js',
+  'index.html', 'app.js', 'tourism-catalog.js', 'calendar-core.js', 'trip-calendar.js', 'styles.css', 'firebase-config.js',
   'service-worker.js', 'manifest.json', 'icon-192.png', 'icon-512.png',
   'assets/explora-logo.png', 'assets/explora-logo-login.png', 'assets/uber-logo.svg', 'functions/expense-policy.js'
 ];
@@ -44,7 +44,7 @@ export function validateProject(root = ROOT) {
   };
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   for (const match of html.matchAll(/\b(?:src|href)=["']([^"']+)["']/g)) check(match[1], 'index.html');
-  for (const file of ['app.js', 'firebase-config.js']) {
+  for (const file of ['app.js', 'firebase-config.js', 'calendar-core.js', 'trip-calendar.js']) {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
     for (const match of source.matchAll(/\bfrom\s*["']([^"']+)["']/g)) check(match[1], file);
   }

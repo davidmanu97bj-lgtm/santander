@@ -7424,3 +7424,81 @@ body .money-entry input:focus { outline:none !important; border-color:transparen
   #invoicesModal { padding-top:0; }
   #invoicesModal .invoices-header { padding-top:calc(26px + var(--app-safe-top)); }
 }
+:root { --calendar-ink: #102241; --calendar-muted: #6f8098; --calendar-accent: #008a76; }
+#tripCalendarModal {
+  display: block; position: fixed; inset: 0; z-index: 220; overflow-y: auto;
+  background: #f5f8fc; color: var(--calendar-ink); overscroll-behavior: contain;
+  padding: calc(24px + var(--app-safe-top, 0px)) max(14px, var(--app-safe-right, 0px)) calc(24px + var(--app-safe-bottom, 0px)) max(14px, var(--app-safe-left, 0px));
+}
+body:has(#tripCalendarModal:not(.hidden)) { overflow: hidden; }
+.trip-calendar-screen { max-width: 740px; margin: 0 auto; }
+.trip-calendar-header, .trip-calendar-header > div, .trip-calendar-panel-heading, .trip-month-nav, .trip-agenda-heading, .trip-contact { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.trip-calendar-header { margin-bottom: 22px; }
+.trip-calendar-header h2 { margin: 0; font-size: 27px; letter-spacing: -.8px; }
+.trip-calendar-emblem { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 15px; background: #e1f5f0; color: var(--calendar-accent); }
+.trip-calendar-emblem svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+#tripCalendarModal button { font: inherit; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+#tripCalendarModal button:disabled { cursor: default; opacity: .55; }
+#tripCalendarModal button:focus-visible, #tripCalendarModal a:focus-visible { outline: 2px solid #647e80; outline-offset: 3px; }
+#tripCalendarModal .trip-calendar-close { width: 44px; height: 44px; padding: 0; border: 1px solid #e0e7ef; border-radius: 50%; background: #fff; color: var(--calendar-ink); font-size: 28px; line-height: 1; }
+.trip-calendar-question { background: #e6f4f0; padding: 20px; border-radius: 20px; margin-bottom: 20px; }
+.trip-calendar-question strong { font-size: 19px; letter-spacing: -.3px; }
+.trip-calendar-question p { color: #526d6b; margin: 8px 0 18px; font-size: 14px; line-height: 1.5; }
+.trip-calendar-question > div:last-child, .trip-booking-actions { display: flex; gap: 10px; }
+.trip-calendar-question button, .trip-booking-actions button { min-height: 46px; border-radius: 12px; padding: 10px 15px; flex: 1; border: 1px solid #cbded8; color: #245c53; background: #fff; font-weight: 650 !important; }
+.trip-calendar-question button:first-child, #calendarSaveTrip { background: var(--calendar-accent); color: #fff; border-color: var(--calendar-accent); }
+.trip-save-notice:empty { display: none; }
+.trip-save-notice { background: #e1f5ea; color: #14673b; padding: 15px; margin: 0 0 18px; border-radius: 14px; line-height: 1.5; }
+.trip-calendar-panel { background: #fff; border: 1px solid #e3eaf3; box-shadow: 0 5px 20px #18314c05; border-radius: 22px; padding: 22px; margin-bottom: 22px; scroll-margin-top: 16px; }
+.trip-calendar-panel h3, .trip-calendar-panel h4 { margin: 0; }
+.trip-calendar-panel-heading h3 { font-size: 21px; letter-spacing: -.4px; }
+.trip-calendar-panel-heading > span { border-radius: 20px; background: #e9f6f2; color: #217364; padding: 6px 11px; font-size: 12px; white-space: nowrap; }
+[data-calendar="all"] .trip-calendar-panel-heading > span { background: #edf2fa; color: #476492; }
+.trip-month-nav { margin: 24px 0 16px; }
+.trip-month-nav h4 { text-transform: capitalize; text-align: center; font-size: 18px; font-weight: 650; }
+.trip-month-nav button { width: 44px; height: 44px; flex-shrink: 0; padding: 0; border: 1px solid #e4eaf1; border-radius: 13px; background: #f8fafc; color: #40597d; font-size: 27px !important; line-height: 1; }
+.trip-weekdays, .trip-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.trip-weekdays { color: var(--calendar-muted); text-align: center; font-size: 12px; margin-bottom: 8px; font-weight: 600; }
+#tripCalendarModal .trip-day { min-width: 0; min-height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 6px 0; background: #f8fafc; border: 1px solid transparent; border-radius: 12px; color: var(--calendar-ink); box-shadow: none; }
+.trip-day-number { font-size: 15px; font-weight: 550; }
+.trip-day-count { font-size: 10px; line-height: 1; color: #287468; white-space: nowrap; }
+#tripCalendarModal .trip-day.today { border-color: #bdd9d2; }
+#tripCalendarModal .trip-day.has-trips { background: #ebf7f3; }
+#tripCalendarModal [data-calendar="all"] .trip-day.has-trips { background: #eef3fa; }
+#tripCalendarModal .trip-day[aria-pressed="true"] { background: var(--calendar-accent); color: #fff; border-color: var(--calendar-accent); }
+#tripCalendarModal [data-calendar="all"] .trip-day[aria-pressed="true"] { background: #34577e; border-color: #34577e; }
+.trip-day[aria-pressed="true"] .trip-day-count { color: #fff; }
+.trip-month-status { min-height: 28px; padding-top: 10px; font-size: 11px; text-align: right; color: var(--calendar-muted); }
+.trip-month-status.error, .trip-booking-status { color: #ad382f; }
+.trip-month-status button { border: 0; background: transparent; text-decoration: underline; color: inherit; min-height: 44px; }
+.trip-booking-form { background: #f5faf8; border: 1px solid #dcece5; border-radius: 16px; padding: 18px; margin-top: 14px; }
+.trip-booking-form h4 { font-size: 18px; }
+#calendarBookingDate { color: #537568; font-size: 13px; line-height: 1.5; text-transform: none; margin: 8px 0 20px; }
+.trip-booking-form label { display: block; margin: 16px 0 8px; font-size: 14px; font-weight: 600; color: var(--calendar-ink); }
+.trip-booking-form input, .trip-booking-form textarea { width: 100%; max-width: 100%; min-height: 48px; padding: 12px; border: 1px solid #d7e2df; border-radius: 11px; background: #fff; font: inherit; font-size: 16px; color: var(--calendar-ink); outline: none; }
+.trip-booking-form textarea { resize: vertical; }
+.trip-booking-form input:focus, .trip-booking-form textarea:focus { border-color: #89a49a; box-shadow: 0 0 0 3px #72968812; }
+.trip-booking-status { font-size: 13px; line-height: 1.5; margin: 12px 0; }
+.trip-day-agenda { border-top: 1px solid #edf0f5; padding-top: 18px; margin-top: 12px; }
+.trip-day-agenda > h4 { text-transform: capitalize; font-size: 15px; margin-bottom: 12px; }
+.trip-day-empty { color: var(--calendar-muted); font-size: 13px; line-height: 1.5; margin: 12px 0; }
+.trip-agenda-item { background: #f8fafc; border: 1px solid #e9eef4; border-radius: 14px; padding: 14px; margin: 10px 0; overflow-wrap: anywhere; }
+.trip-agenda-heading { color: #327b6c; font-size: 12px; font-weight: 650; }
+[data-calendar="all"] .trip-agenda-heading { color: #48698e; }
+.trip-agenda-heading small { color: var(--calendar-muted); }
+.trip-agenda-item p { margin: 10px 0; font-size: 15px; line-height: 1.45; white-space: pre-wrap; }
+.trip-contact { flex-wrap: wrap; gap: 4px 10px; font-size: 13px; }
+.trip-contact a { color: #496485; min-height: 36px; display: inline-flex; align-items: center; text-decoration: none; }
+.trip-contact .trip-whatsapp { color: #168354; }
+.trip-add-for-day { background: #fff; border: 1px solid #d9e7e1; border-radius: 12px; color: #247767; padding: 12px 15px; min-height: 46px; width: 100%; margin-top: 10px; font-size: 14px !important; }
+@media (max-width: 480px) {
+  .trip-calendar-panel { padding: 16px 12px; border-radius: 18px; }
+  .trip-calendar-panel-heading, .trip-day-agenda { margin-left: 3px; margin-right: 3px; }
+  .trip-weekdays, .trip-month-grid { gap: 3px; }
+  #tripCalendarModal .trip-day { min-height: 54px; border-radius: 9px; }
+  .trip-calendar-question { padding: 18px; }
+  .trip-calendar-question > div:last-child { flex-wrap: wrap; }
+  .trip-calendar-question button { flex-basis: 120px; }
+  .trip-booking-form { padding: 14px; }
+  .trip-booking-actions button { padding: 12px 8px; font-size: 13px !important; }
+}

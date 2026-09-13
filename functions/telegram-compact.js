@@ -45,4 +45,14 @@ function invoiceFilename(invoice) {
   const prefix = invoice.environment === 'production' ? 'FC' : 'PRUEBA-FC';
   return `${prefix}-${Number(invoice.issuer.pointOfSale)}-${Number(invoice.number)}.pdf`;
 }
-module.exports = {balanceLine,billingSummary,expenseSummary,managementSummary,uberSummary,richMessage,invoiceFilename};
+const calendarDate = value => /^20\d{2}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('/') : 'Fecha no disponible';
+function calendarSummary({driverName,serviceDate}) {
+  return ['🗓 Viaje agendado',`👤 ${clean(driverName,120)}`,`📅 ${calendarDate(serviceDate)}`].join('\n');
+}
+function calendarCoincidenceSummary({driverName,serviceDate,coincidences,otherDrivers=[]}) {
+  const names=otherDrivers.slice(0,3).map(name=>clean(name,120)).join(', ');
+  return ['🗓 Coincidencia en Todos',`📅 ${calendarDate(serviceDate)}`,`👤 ${clean(driverName,120)}`,
+    `Ya ${coincidences===1?'hay otro viaje':'hay otros '+coincidences+' viajes'} ese día.`,
+    ...(names?[`Chofer${otherDrivers.length===1?'':'es'}: ${names}${otherDrivers.length>3?' y '+(otherDrivers.length-3)+' más':''}`]:[])].join('\n');
+}
+module.exports = {balanceLine,billingSummary,expenseSummary,managementSummary,uberSummary,richMessage,invoiceFilename,calendarSummary,calendarCoincidenceSummary};

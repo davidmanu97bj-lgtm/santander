@@ -83,6 +83,35 @@ service cloud.firestore {
       );
     }
 
+    // One trip shared by the personal and team month views; no financial entries.
+    match /trip_calendar/{tripId} {
+      allow read: if isActiveTeamViewer();
+      allow create: if isActiveTeamViewer()
+        && request.resource.data.keys().hasOnly([
+          'version','driverUid','driverName','serviceDate','detail','phone',
+          'idempotencyKey','submissionFingerprint','createdAt'
+        ])
+        && request.resource.data.version == 'trip_calendar_v1'
+        && request.resource.data.driverUid == uid()
+        && request.resource.data.driverName is string
+        && request.resource.data.driverName.size() > 0
+        && request.resource.data.driverName.size() <= 120
+        && request.resource.data.serviceDate is string
+        && request.resource.data.serviceDate.matches('20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])')
+        && request.resource.data.detail is string
+        && request.resource.data.detail.size() > 0
+        && request.resource.data.detail.size() <= 500
+        && request.resource.data.phone is string
+        && request.resource.data.phone.matches('[+]?[0-9]{7,15}')
+        && request.resource.data.idempotencyKey == tripId
+        && request.resource.data.submissionFingerprint is string
+        && request.resource.data.submissionFingerprint.size() > 0
+        && request.resource.data.submissionFingerprint.size() <= 100
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     function ownershipFieldsUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
         'driverUid', 'choferUid', 'userUid', 'ownerUid', 'uid',

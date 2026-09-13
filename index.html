@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png?v=20260913-identidad-explora" />
   <title>Explora — Control operativo</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
-  <link rel="modulepreload" href="./app.js?v=20260913-gastos-por-tipo" />
+  <link rel="modulepreload" href="./app.js?v=20260913-calendario" />
   <style>
     :root{
       --bg:#f3f5f7;--panel:#ffffff;--ink:#0e1116;--muted:#737a85;--line:#e7eaee;
@@ -117,7 +117,7 @@
       .service-option{min-height:80px;padding:13px 11px}.service-option strong{font-size:12px}.service-option span{font-size:16px}
     }
   </style>
-  <link rel="stylesheet" href="./styles.css?v=20260913-zona-segura" />
+  <link rel="stylesheet" href="./styles.css?v=20260913-calendario" />
 </head>
 <body>
 <section id="splashScreen" class="splash-screen" aria-live="polite" aria-label="Cargando Explora">
@@ -179,6 +179,7 @@
       </div>
 
       <div class="admin-action-grid" aria-label="Acciones del administrador">
+        <button id="adminCalendarBtn" class="admin-action-btn" type="button"><strong>Calendario</strong><span>Viajes del equipo.</span></button>
         <button id="adminInvoicesBtn" class="admin-action-btn" type="button"><strong>Facturas ARCA</strong><span>Autorizaciones, pendientes y PDF.</span></button>
         <button id="adminDriversBtn" class="admin-action-btn primary" type="button">
           <strong>Crear / editar / borrar chofer</strong>
@@ -247,7 +248,7 @@
       <nav class="driver-nav" aria-label="Navegación del conductor">
         <button type="button" data-driver-nav="home" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-8 9 8v11h-6v-7H9v7H3Z"/></svg><span>Inicio</span></button>
         <button type="button" data-driver-nav="charges"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg><span>Cobros</span></button>
-        <button type="button" data-driver-nav="history"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span>Historial</span></button>
+        <button type="button" data-driver-nav="calendar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18m-13 4h1m3 0h1m3 0h1M8 17h1m3 0h1"/></svg><span>Calendario</span></button>
         <button type="button" data-driver-nav="profile"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg><span>Perfil</span></button>
       </nav>
     </div>
@@ -262,6 +263,8 @@
     <button id="logoutBtn" class="secondary" type="button">Cerrar sesión</button>
   </div>
 </div>
+
+<div id="tripCalendarModal" class="modal trip-calendar-modal hidden" role="dialog" aria-modal="true" aria-labelledby="tripCalendarTitle"></div>
 
 <div id="invoicesModal" class="modal invoices-screen hidden" role="dialog" aria-modal="true" aria-labelledby="invoicesTitle">
   <div class="modal-card invoices-screen-card">
@@ -777,6 +780,6 @@
 
 
 <script src="./functions/expense-policy.js?v=20260913-gastos-por-tipo"></script>
-<script type="module" src="./app.js?v=20260913-gastos-por-tipo"></script>
+<script type="module" src="./app.js?v=20260913-calendario"></script>
 </body>
 </html>

@@ -1,4 +1,6 @@
 import { tourismCatalog, tourismRoute, searchTourismPlaces, tourismCountryNames } from "./tourism-catalog.js";
+import { mountTripCalendar } from "./trip-calendar.js";
+import { monthRange, normalizeTripDraft } from "./calendar-core.js";
 import * as firebaseSettings from "./firebase-config.js?v=20260824-15";
 
 const { firebaseConfig, BUSINESS_ID, USER_EMAIL_DOMAIN } = firebaseSettings;
@@ -2519,9 +2521,41 @@ function openDriverProfile(opener) {
   $("driverProfileModal").querySelector("[data-close]").focus();
 }
 $("driverProfileBtn")?.addEventListener("click", event => openDriverProfile(event.currentTarget));
+const tripCalendar = mountTripCalendar({
+  getUser: () => auth.currentUser ? {uid:auth.currentUser.uid,name:currentDriverName()} : null,
+  listenMonth(month, onRows, onError) {
+    const {start,end} = monthRange(month);
+    return onSnapshot(query(collection(db,"trip_calendar"),
+      where("serviceDate",">=",start),where("serviceDate","<",end),orderBy("serviceDate")),
+      {includeMetadataChanges:true}, snapshot => onRows(snapshot.docs.map(item => ({
+        ...item.data(),id:item.id,pending:item.metadata.hasPendingWrites
+      })),{fromCache:snapshot.metadata.fromCache}),onError);
+  },
+  async saveTrip(input) {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Iniciá sesión para agendar.");
+    const driverName = currentDriverName().slice(0,120);
+    const draft = normalizeTripDraft(input);
+    const fingerprint = await buildSubmissionFingerprint("calendar",draft);
+    const operation = reservePendingOperation("calendar",user.uid,fingerprint);
+    const target = doc(db,"trip_calendar",operation.operationId);
+    await runTransaction(db,async transaction => {
+      const existing = await transaction.get(target);
+      if (existing.exists() && existing.data().driverUid !== user.uid) throw new Error("Viaje de otro chofer.");
+      if (assertSameCommittedOperation(existing,operation.operationId,fingerprint)) return;
+      transaction.set(target,{
+        version:"trip_calendar_v1",driverUid:user.uid,driverName,...draft,
+        idempotencyKey:operation.operationId,submissionFingerprint:fingerprint,createdAt:serverTimestamp()
+      });
+    });
+    clearPendingOperation("calendar",user.uid,fingerprint,operation.operationId);
+  }
+});
+$("adminCalendarBtn")?.addEventListener("click",event => tripCalendar.open(event.currentTarget));
 document.querySelectorAll("[data-driver-nav]").forEach(button => {
   button.addEventListener("click", () => {
     const destination = button.dataset.driverNav;
+    if (destination === "calendar") { tripCalendar.open(button); return; }
     if (destination === "profile") { openDriverProfile(button); return; }
     document.querySelectorAll("[data-driver-nav]").forEach(item => item.removeAttribute("aria-current"));
     button.setAttribute("aria-current", "page");
@@ -4168,6 +4202,7 @@ $("adminManageClosuresBtn")?.addEventListener("click", () => {
 });
 
 onAuthStateChanged(auth, async user => {
+  tripCalendar.reset();
   const generation = ++authGeneration;
   const isCurrent = () => generation === authGeneration && auth.currentUser?.uid === user?.uid;
   cancelDashboardRender();

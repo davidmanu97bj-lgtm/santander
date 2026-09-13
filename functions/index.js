@@ -3032,6 +3032,18 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
   });
 });
 
+// Each calendar trip emits one short notice, plus a same-day coincidence when needed.
+exports.notifyCalendarTrip = onDocumentCreated({
+  document: "trip_calendar/{docId}",
+  region: TELEGRAM_FUNCTION_REGION,
+  memory: "256MiB",
+  timeoutSeconds: 120,
+  retry: true,
+  secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
+}, require("./calendar-notification").createCalendarNotifier({
+  db,notify:telegramProcessNotification,notificationKey:telegramOperationNotificationKey,compact:telegramCompact
+}));
+
 // Envía a Telegram cada gasto nuevo con la foto del comprobante.
 exports.notifyExpenseV2 = onDocumentCreated({
   document: "gastos/{docId}",
