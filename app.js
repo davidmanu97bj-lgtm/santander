@@ -6572,13 +6572,13 @@ async function prepareInvoiceDownload(id, button, panel) {
       actions.append(share);
     }
     panel.append(actions);
-    status.textContent = "PDF listo. Tocá Guardar PDF; si el navegador no lo descarga, usá Abrir PDF.";
+    status.textContent = "PDF listo para guardar o compartir.";
     button.remove();
   } catch {
     if (generation !== invoiceFileGeneration || auth.currentUser?.uid !== uid) return;
     status.textContent = "No pudimos preparar el PDF. Volvé a intentarlo.";
     button.disabled = false;
-    button.textContent = "Ver y descargar factura";
+    button.textContent = "Obtener PDF";
   }
 }
 async function refreshArcaBillingStatus() {
@@ -6591,41 +6591,125 @@ async function refreshArcaBillingStatus() {
     $("arcaModeNote").textContent="Consultá el estado de la factura después de registrar el cobro.";
   }
 }
-const invoiceStatusLabels={queued:"Pendiente de ARCA",reserved:"Preparando factura",sent:"Solicitando autorización",uncertain:"Pendiente de verificar en ARCA",authorized:"Factura autorizada",rejected:"Rechazada por ARCA · revisar",review:"Requiere revisión",disabled:"Pendiente de activación"};
+const invoiceStatusLabels={queued:"En proceso",reserved:"En proceso",sent:"En proceso",uncertain:"Verificando",authorized:"Autorizada",rejected:"Rechazada",review:"Revisar",disabled:"Sin emitir"};
+let invoiceRows = [], invoiceFilter = "all";
+function invoiceElement(tag, className, text) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  if (text !== undefined) element.textContent = text;
+  return element;
+}
+function invoiceDisplayDate(invoice) {
+  const value = String(invoice.detail?.CbteFch || "");
+  const date = /^\d{8}$/.test(value)
+    ? new Date(`${value.slice(0,4)}-${value.slice(4,6)}-${value.slice(6,8)}T12:00:00-03:00`)
+    : new Date(Number(invoice.createdAtMs));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+function createInvoiceCard(invoice) {
+  const card = invoiceElement("article", "invoice-card");
+  const authorized = invoice.status === "authorized";
+  const tone = authorized ? "success" : ["review","rejected"].includes(invoice.status) ? "attention" : "pending";
+  const top = invoiceElement("div", "invoice-card-top");
+  const date = invoiceDisplayDate(invoice);
+  const dateLabel = date ? date.toLocaleDateString("es-AR", {day:"numeric",month:"short",year:"numeric",timeZone:"America/Argentina/Buenos_Aires"}) : "Fecha pendiente";
+  top.append(invoiceElement("span", "invoice-date", dateLabel), invoiceElement("span", `invoice-badge invoice-badge-${tone}`, invoiceStatusLabels[invoice.status] || "Pendiente"));
+  const main = invoiceElement("div", "invoice-card-main");
+  const amount = invoiceElement("div", "invoice-amount");
+  amount.append(invoiceElement("span", "invoice-caption", "Importe facturado"), invoiceElement("strong", "", money(invoice.detail?.ImpTotal || 0)));
+  if (!authorized) amount.firstChild.textContent = "Importe a facturar";
+  const reference = invoiceElement("div", "invoice-number");
+  reference.append(invoiceElement("span", "invoice-caption", "Factura C"), invoiceElement("strong", "", authorized ? `${String(invoice.issuer.pointOfSale).padStart(5,"0")}-${String(invoice.number).padStart(8,"0")}` : "Pendiente de emisión"));
+  main.append(amount, reference);
+  const route = String(invoice.description || "Servicio de traslado")
+    .replace(/^Traslado de pasajeros con chofer\.\s*/, "")
+    .replace(/\.\s*Servicio:\s*\d{4}-\d{2}-\d{2}\.\s*$/, "");
+  const trip = invoiceElement("div", "invoice-trip");
+  trip.append(invoiceElement("span", "invoice-caption", "Recorrido"), invoiceElement("p", "invoice-route", route));
+  const method = invoice.paymentMethod === "cash" ? "Cobro en efectivo" : invoice.paymentMethod === "digital" ? "Cobro digital" : "Cobro registrado";
+  trip.append(invoiceElement("span", "invoice-payment", method));
+  card.append(top, main, trip);
+  const reasons = {international_requires_review:"Viaje internacional: revisar el tipo de factura.",issuer_print_data_missing:"Faltan datos fiscales del emisor.",customer_identification_required:"Falta identificar al pasajero.",point_of_sale_unavailable:"Revisar el punto de venta.",number_conflict:"El número corresponde a otros datos. Requiere revisión.",awaiting_reconciliation:"Esperando confirmar la autorización en ARCA."};
+  const notices = [...new Set([...(invoice.issues || []),invoice.issue].filter(Boolean).map(code => reasons[code] || "Revisar los datos de la solicitud."))];
+  if (notices.length) card.append(invoiceElement("p", "invoice-notice", notices.join(" ")));
+  if (invoice.environment === "homologation") card.append(invoiceElement("p", "invoice-notice", "PRUEBA · Sin validez fiscal"));
+  const details = invoiceElement("details", "invoice-details");
+  details.append(invoiceElement("summary", "", "Ver detalles"));
+  const data = invoiceElement("dl", "invoice-data");
+  function addData(label, value) { if (value) { const row = invoiceElement("div"); row.append(invoiceElement("dt", "", label), invoiceElement("dd", "", value)); data.append(row); } }
+  addData("Pasajero", invoice.customer?.name || "Consumidor final");
+  addData("Emisor", invoice.issuer?.legalName);
+  addData("CUIT", invoice.issuer?.cuit);
+  if (authorized) {
+    addData("CAE", invoice.cae);
+    const expires = String(invoice.caeExpires || "");
+    if (/^\d{8}$/.test(expires)) addData("Vencimiento CAE", `${expires.slice(6,8)}/${expires.slice(4,6)}/${expires.slice(0,4)}`);
+  }
+  addData("Servicio", invoice.description);
+  details.append(data); card.append(details);
+  if (authorized) {
+    const footer = invoiceElement("div", "invoice-card-footer");
+    const button = invoiceElement("button", "invoice-pdf-button", "Obtener PDF"); button.type = "button";
+    button.addEventListener("click", () => prepareInvoiceDownload(invoice.id,button,footer));
+    footer.append(button); card.append(footer);
+  }
+  return card;
+}
+function renderInvoices() {
+  clearInvoiceFiles();
+  const list = $("invoicesList"); list.replaceChildren();
+  const rows = invoiceRows.filter(invoice => invoiceFilter === "all" || (invoiceFilter === "authorized" ? invoice.status === "authorized" : invoice.status !== "authorized"));
+  const counts = {all:invoiceRows.length, authorized:invoiceRows.filter(row=>row.status === "authorized").length};
+  counts.pending = counts.all-counts.authorized;
+  $("invoicesFilters").hidden = !invoiceRows.length;
+  document.querySelectorAll("[data-invoice-filter]").forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.invoiceFilter === invoiceFilter)));
+  document.querySelectorAll("[data-invoice-count]").forEach(label=>{label.textContent = counts[label.dataset.invoiceCount];});
+  $("invoicesStatus").textContent = rows.length ? `${rows.length} ${rows.length === 1 ? "comprobante" : "comprobantes"} · Más recientes primero${invoiceRows.length === 30 ? " · Últimos 30" : ""}` : "";
+  if (!rows.length) {
+    const empty = invoiceElement("div", "invoices-empty");
+    empty.append(invoiceElement("strong", "", !invoiceRows.length ? "Tus facturas aparecerán acá" : invoiceFilter === "pending" ? "Todo al día" : "Sin facturas emitidas"), invoiceElement("p", "", !invoiceRows.length ? "Después de registrar un viaje, podés consultar su factura en este espacio." : invoiceFilter === "pending" ? "No hay comprobantes por resolver en esta lista." : "Las facturas autorizadas por ARCA se mostrarán acá."));
+    list.append(empty); return;
+  }
+  const groups = new Map();
+  for (const invoice of rows) {
+    const date = invoiceDisplayDate(invoice);
+    const month = date ? date.toLocaleDateString("es-AR", {month:"long",year:"numeric",timeZone:"America/Argentina/Buenos_Aires"}) : "Sin fecha";
+    if (!groups.has(month)) {
+      const group = invoiceElement("section", "invoice-month");
+      group.setAttribute("aria-label",month);
+      group.append(invoiceElement("h3", "invoice-month-title", month));
+      groups.set(month,group); list.append(group);
+    }
+    groups.get(month).append(createInvoiceCard(invoice));
+  }
+}
 function showInvoices(allDrivers = false) {
   const user=auth.currentUser;if(!user)return;
   clearInvoiceFiles();
+  invoiceRows=[]; invoiceFilter="all"; $("invoicesFilters").hidden=true;
   $("driverProfileModal").classList.add("hidden");$("invoicesModal").classList.remove("hidden");
-  $("invoicesStatus").textContent="Cargando…";$("invoicesList").replaceChildren();
+  $("invoicesStatus").textContent="Buscando tus facturas…";$("invoicesList").replaceChildren();
+  document.querySelector('[data-close="invoicesModal"]').focus();
   stopInvoiceSubscription?.();
   const invoiceQuery = allDrivers && isAdminProfile()
     ? query(collection(db,"arca_invoices"),orderBy("createdAtMs","desc"),limit(30))
     : query(collection(db,"arca_invoices"),where("driverUid","==",user.uid),orderBy("createdAtMs","desc"),limit(30));
   stopInvoiceSubscription=onSnapshot(invoiceQuery,snapshot=>{
-    clearInvoiceFiles();
-    $("invoicesStatus").textContent=snapshot.empty ? "Todavía no hay solicitudes de factura." : "Últimos 30 viajes";
-    $("invoicesList").replaceChildren();
-    for(const row of snapshot.docs){
-      const invoice=row.data(),card=document.createElement("article");card.className="charge-panel";
-      const title=document.createElement("strong");title.textContent=invoiceStatusLabels[invoice.status]||"Pendiente";card.append(title);
-      const text=document.createElement("p");text.textContent=money(invoice.detail.ImpTotal)+" · "+invoice.description;card.append(text);
-      const reasons = {...{international_requires_review:"Viaje internacional: revisar el tipo de factura.",issuer_print_data_missing:"Faltan datos fiscales del emisor.",customer_identification_required:"Falta identificar al pasajero.",point_of_sale_unavailable:"Revisar el punto de venta.",number_conflict:"El número corresponde a otros datos. Requiere revisión.",awaiting_reconciliation:"Esperando confirmar si ARCA autorizó la factura."}};
-      const notices=[...(invoice.issues||[]),invoice.issue].filter(Boolean).map(code=>reasons[code]||"Revisar los datos de la solicitud.");
-      if(notices.length){const note=document.createElement("p");note.textContent=[...new Set(notices)].join(" ");card.append(note);}
-      if(invoice.environment==="homologation"){const note=document.createElement("p");note.textContent="PRUEBA · Sin validez fiscal";card.append(note);}
-      if(invoice.status==="authorized"){
-        const reference=document.createElement("p");reference.className="invoice-reference";
-        reference.textContent=`Factura C ${String(invoice.issuer.pointOfSale).padStart(5,"0")}-${String(invoice.number).padStart(8,"0")} · CAE ${invoice.cae}`;
-        card.append(reference);
-        const button=document.createElement("button");button.className="secondary";button.type="button";button.textContent="Ver y descargar factura";
-        button.addEventListener("click",()=>prepareInvoiceDownload(row.id,button,card));card.append(button);
-      }
-      $("invoicesList").append(card);
-    }
+    invoiceRows=snapshot.docs.map(row=>({...row.data(),id:row.id}));
+    renderInvoices();
   },()=>{$("invoicesStatus").textContent="No pudimos consultar las facturas. Cerrá y volvé a intentar.";});
 }
+document.querySelectorAll("[data-invoice-filter]").forEach(button=>button.addEventListener("click",()=>{invoiceFilter=button.dataset.invoiceFilter;renderInvoices();$("invoicesList").scrollTop=0;}));
 $("showInvoicesBtn").addEventListener("click",()=>showInvoices());
 $("adminInvoicesBtn").addEventListener("click",()=>showInvoices(true));
 // Do not retain another driver's fiscal data after sign-out or account switch.
-onAuthStateChanged(auth,()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;clearInvoiceFiles();$("invoicesList").replaceChildren();$("invoicesModal").classList.add("hidden");});
-document.querySelector('[data-close="invoicesModal"]').addEventListener('click',()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;clearInvoiceFiles();$("invoicesList").replaceChildren();});
+onAuthStateChanged(auth,()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;clearInvoiceFiles();invoiceRows=[];$("invoicesList").replaceChildren();$("invoicesModal").classList.add("hidden");});
+document.querySelector('[data-close="invoicesModal"]').addEventListener('click',()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;clearInvoiceFiles();invoiceRows=[];$("invoicesList").replaceChildren();});
+$("invoicesModal").addEventListener("keydown",event=>{
+  if(event.key==="Escape"){event.preventDefault();document.querySelector('[data-close="invoicesModal"]').click();return;}
+  if(event.key!=="Tab")return;
+  const controls=[...$("invoicesModal").querySelectorAll('button:not(:disabled), a[href], summary')].filter(element=>element.getClientRects().length);
+  const first=controls[0],last=controls[controls.length-1];
+  if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
+  else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
+});

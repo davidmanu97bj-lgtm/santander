@@ -115,7 +115,7 @@
       .service-option{min-height:80px;padding:13px 11px}.service-option strong{font-size:12px}.service-option span{font-size:16px}
     }
   </style>
-  <link rel="stylesheet" href="./styles.css?v=20260913-facturas" />
+  <link rel="stylesheet" href="./styles.css?v=20260913-facturas-organizadas" />
 </head>
 <body>
 <section id="splashScreen" class="splash-screen" aria-live="polite" aria-label="Cargando Explora">
@@ -258,12 +258,28 @@
     <div class="modal-head"><h2 id="driverProfileTitle">Mi perfil</h2><button class="x" data-close="driverProfileModal" aria-label="Cerrar perfil">×</button></div>
     <p id="driverProfileName"></p><p id="driverProfileEmail"></p><span class="driver-profile-role">Conductor · Explora Iguazú</span>
     <details class="file-note"><summary>Créditos</summary><small class="route-attribution">Direcciones y rutas: <a href="https://openrouteservice.org" target="_blank" rel="noopener">openrouteservice</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a></small></details>
-    <button id="showInvoicesBtn" class="secondary" type="button">Facturas de viajes</button>
+    <button id="showInvoicesBtn" class="profile-invoices-link" type="button"><span class="profile-invoices-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h5"/></svg></span><span>Facturas de viajes</span><span aria-hidden="true">›</span></button>
     <button id="logoutBtn" class="secondary" type="button">Cerrar sesión</button>
   </div>
 </div>
 
-<div id="invoicesModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="invoicesTitle"><div class="modal-card"><div class="modal-head"><h2 id="invoicesTitle">Facturas de viajes</h2><button class="x" data-close="invoicesModal" aria-label="Cerrar facturas">×</button></div><p id="invoicesStatus" role="status"></p><div id="invoicesList"></div></div></div>
+<div id="invoicesModal" class="modal invoices-screen hidden" role="dialog" aria-modal="true" aria-labelledby="invoicesTitle">
+  <div class="modal-card invoices-screen-card">
+    <header class="invoices-header">
+      <div class="invoices-heading"><span class="invoices-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h5"/></svg></span><div><span class="invoices-eyebrow">EXPLORA IGUAZÚ</span><h2 id="invoicesTitle">Facturas de viajes</h2></div></div>
+      <button class="x" data-close="invoicesModal" aria-label="Cerrar facturas">×</button>
+    </header>
+    <div class="invoices-toolbar">
+      <div id="invoicesFilters" class="invoices-filters" role="group" aria-label="Filtrar facturas" hidden>
+        <button type="button" data-invoice-filter="all" aria-pressed="true">Todas <span data-invoice-count="all">0</span></button>
+        <button type="button" data-invoice-filter="authorized" aria-pressed="false">Emitidas <span data-invoice-count="authorized">0</span></button>
+        <button type="button" data-invoice-filter="pending" aria-pressed="false">Por resolver <span data-invoice-count="pending">0</span></button>
+      </div>
+      <p id="invoicesStatus" role="status"></p>
+    </div>
+    <div id="invoicesList" class="invoices-list"></div>
+  </div>
+</div>
 <div id="chargeModal" class="modal charge-screen hidden" role="dialog" aria-modal="true" aria-labelledby="chargeTitle">
   <div class="modal-card charge-screen-card">
     <div class="charge-brand"><strong>Explora Iguazú</strong><span>App del conductor</span></div>
@@ -785,6 +801,6 @@
   </script>
 
 
-<script type="module" src="./app.js?v=20260913-facturas"></script>
+<script type="module" src="./app.js?v=20260913-facturas-organizadas"></script>
 </body>
 </html>
