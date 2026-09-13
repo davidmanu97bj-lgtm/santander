@@ -6569,9 +6569,12 @@ function initializeTourismSelector(part) {
   });
   input.addEventListener("focus",showMatches);
   input.addEventListener("click",showMatches);
-  input.closest(".tourism-location-field").addEventListener("focusout",event=>{
-    if(!input.closest(".tourism-location-field").contains(event.relatedTarget))closeMatches();
-  });
+  const field=input.closest(".tourism-location-field");
+  const closeWhenOutside=event=>{if(!field.contains(event.target))closeMatches();};
+  // Un desenfoque táctil puede llegar antes del click y sin relatedTarget.
+  // Cerrar por la interacción exterior conserva la opción hasta seleccionarla.
+  document.addEventListener("pointerdown",closeWhenOutside);
+  document.addEventListener("focusin",closeWhenOutside);
   input.addEventListener("keydown",event=>{
     if(event.key==="ArrowDown"&&matches.querySelector("button")){event.preventDefault();matches.querySelector("button").focus();}
     if(event.key==="Escape")closeMatches();
