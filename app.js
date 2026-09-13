@@ -1495,62 +1495,6 @@ function renderUberPendingBadge() {
 setInterval(() => { if (auth.currentUser && !isAdminProfile()) renderUberPendingBadge(); }, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && auth.currentUser && !isAdminProfile()) renderUberPendingBadge(); });
 
-function uberReminderSnapshot(referenceDate = new Date()) {
-  const today = parseLocalDateKey(localDayKey(referenceDate));
-  if (!today) return null;
-  const pending = pendingUberWeeks(referenceDate);
-  if (pending.length) return { week:pending[0], days:0, due:true };
-
-  const week = currentUberWeek(referenceDate);
-  const closeDate = parseLocalDateKey(week.weekCloseDate);
-  if (!closeDate) return null;
-  const days = Math.round((closeDate.getTime() - today.getTime()) / 86400000);
-  return days === 1 || days === 2 ? { week, days, due:false } : null;
-}
-
-function uberReminderStorageKey(snapshot) {
-  const uid = auth.currentUser?.uid || "anonymous";
-  return `explora_uber_reminder_v82:${uid}:${localDayKey()}:${snapshot.week.weekKey}:${snapshot.days}`;
-}
-
-function maybeShowUberReminder() {
-  if (!auth.currentUser || isAdminProfile()) return;
-  const snapshot = uberReminderSnapshot();
-  const modal = $("uberReminderModal");
-  if (!snapshot || !modal || !modal.classList.contains("hidden")) return;
-
-  try {
-    if (localStorage.getItem(uberReminderStorageKey(snapshot)) === "confirmed") return;
-  } catch (_) {}
-
-  const anotherModalOpen = Array.from(document.querySelectorAll(".modal:not(.hidden)"))
-    .some(node => node.id !== "uberReminderModal");
-  if (anotherModalOpen) return;
-
-  const message = snapshot.due
-    ? "Hoy debes cargar tu cierre semanal de Uber."
-    : snapshot.days === 1
-      ? "En 1 día podrás cargar tu cierre semanal de Uber."
-      : "En 2 días podrás cargar tu cierre semanal de Uber.";
-  $("uberReminderTitle").textContent = snapshot.due ? "Hoy debes cargar Uber" : "Se acerca el cierre de Uber";
-  $("uberReminderMessage").textContent = message;
-  $("uberReminderCloseDate").textContent = new Intl.DateTimeFormat("es-AR", {
-    weekday:"long", day:"numeric", month:"long", year:"numeric"
-  }).format(parseLocalDateKey(snapshot.week.weekCloseDate));
-  const confirm = $("confirmUberReminder");
-  confirm.textContent = snapshot.due ? "Cargar cierre de Uber ahora" : "Entendido";
-  confirm.dataset.reminderKey = uberReminderStorageKey(snapshot);
-  confirm.dataset.openUber = snapshot.due ? "true" : "false";
-  modal.classList.remove("hidden");
-}
-
-$("confirmUberReminder")?.addEventListener("click", () => {
-  const confirm = $("confirmUberReminder");
-  try { localStorage.setItem(confirm.dataset.reminderKey || "", "confirmed"); } catch (_) {}
-  $("uberReminderModal")?.classList.add("hidden");
-  if (confirm.dataset.openUber === "true") $("addUberBtn")?.click();
-});
-
 function formatDate(dateString) {
   const [y,m,d] = String(dateString || "").split("-").map(Number);
   if (!y || !m || !d) return "Sin fecha";
@@ -2059,7 +2003,6 @@ function render() {
   if (!$("expenseModal").classList.contains("hidden")) renderExpensePreview();
   window.setTimeout(maybeShowDriverDebtConfirmation, 0);
   window.setTimeout(maybeShowUberDriverConfirmation, 120);
-  window.setTimeout(maybeShowUberReminder, 260);
 }
 
 function debtProofIsImage(item = {}) {
@@ -2087,7 +2030,6 @@ function closeDriverDebtConfirmationModal() {
   document.body.classList.remove("driver-debt-modal-open");
   activeDriverDebtConfirmationId = "";
   window.setTimeout(maybeShowUberDriverConfirmation, 100);
-  window.setTimeout(maybeShowUberReminder, 220);
 }
 
 function syncDriverDebtConfirmationModal() {
@@ -2240,7 +2182,6 @@ function closeUberDriverConfirmationModal() {
   $("uberDriverConfirmationModal")?.classList.add("hidden");
   activeUberDriverConfirmationId = "";
   window.setTimeout(maybeShowUberDriverConfirmation, 100);
-  window.setTimeout(maybeShowUberReminder, 220);
 }
 
 function syncUberDriverConfirmationModal() {
@@ -4377,7 +4318,6 @@ document.querySelectorAll("[data-close]").forEach(btn => {
     if (btn.dataset.close === "driverProfileModal") driverProfileOpener?.focus();
     window.setTimeout(maybeShowDriverDebtConfirmation, 0);
     window.setTimeout(maybeShowUberDriverConfirmation, 100);
-    window.setTimeout(maybeShowUberReminder, 220);
   });
 });
 
@@ -4395,7 +4335,6 @@ function closeModalAndGoTop(modalId, delayMs = 1000) {
     }
     window.setTimeout(maybeShowDriverDebtConfirmation, 0);
     window.setTimeout(maybeShowUberDriverConfirmation, 100);
-    window.setTimeout(maybeShowUberReminder, 220);
   }, delayMs);
 }
 

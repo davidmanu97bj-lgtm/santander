@@ -6502,94 +6502,6 @@ body.proof-image-viewer-open {
   font-weight: 950;
 }
 
-#uberReminderModal {
-  background: rgba(15, 23, 42, .68);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-}
-
-#uberReminderModal .uber-reminder-card {
-  width: min(92vw, 440px);
-  padding: 26px 22px max(24px, env(safe-area-inset-bottom));
-  border: 1px solid rgba(245, 197, 54, .55);
-  border-radius: 28px;
-  background: #fff;
-  text-align: center;
-}
-
-.uber-reminder-icon {
-  display: grid;
-  place-items: center;
-  width: 58px;
-  height: 58px;
-  margin: 0 auto 13px;
-  border-radius: 18px;
-  background: #f6ce4e;
-  color: #171c2d;
-  font-size: 27px;
-  font-weight: 1000;
-}
-
-.uber-reminder-kicker {
-  margin: 0 0 7px;
-  color: #987000;
-  font-size: 10px;
-  font-weight: 950;
-  letter-spacing: .16em;
-}
-
-#uberReminderModal h2 {
-  margin: 0;
-  color: #111827;
-  font-size: 25px;
-  line-height: 1.08;
-}
-
-#uberReminderMessage {
-  margin: 12px 0 16px;
-  color: #374151;
-  font-size: 15px;
-  font-weight: 800;
-  line-height: 1.42;
-}
-
-.uber-reminder-date {
-  display: grid;
-  gap: 5px;
-  padding: 14px;
-  border-radius: 17px;
-  background: #fff8dd;
-}
-
-.uber-reminder-date span {
-  color: #8a6a0a;
-  font-size: 10px;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-}
-
-.uber-reminder-date strong {
-  color: #2c2512;
-  font-size: 15px;
-  text-transform: capitalize;
-}
-
-.uber-reminder-note {
-  margin: 13px 0 18px;
-  color: #6b7280;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.4;
-}
-
-#confirmUberReminder {
-  width: 100%;
-  min-height: 56px;
-  background: #171c2d;
-  color: #fff;
-}
-
 @media (max-width: 620px) {
   .uber-payment-split { grid-template-columns: 1fr; gap: 9px; }
   .uber-payment-split .field { padding: 12px; border-radius: 16px; }
@@ -7513,6 +7425,7 @@ body .money-entry input:focus { outline:none !important; border-color:transparen
 #uberModal .charge-panel h4 { color:#10164c; margin:18px 0 12px; }
 @media(max-width:480px) { .driver-uber-action { min-height:50px; font-size:13px; } #uberModal .photo-source-actions { grid-template-columns:1fr; } }
 
+.uber-confirmation-kicker { margin:0 0 7px; color:#987000; font-size:10px; font-weight:950; letter-spacing:.16em; }
 .uber-scan-feedback { color:#9d5425; font-size:14px; line-height:1.5; }
 .uber-scan-example { padding:16px; border:1px solid #eadbc5; border-radius:14px; background:#fffaf0; }
 .uber-scan-example.hidden { display:none; }

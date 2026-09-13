@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
   <title>Explora — Control operativo</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
-  <link rel="modulepreload" href="./app.js?v=20260913-uber-semanal" />
+  <link rel="modulepreload" href="./app.js?v=20260913-sin-aviso-uber" />
   <style>
     :root{
       --bg:#f3f5f7;--panel:#ffffff;--ink:#0e1116;--muted:#737a85;--line:#e7eaee;
@@ -117,7 +117,7 @@
       .service-option{min-height:80px;padding:13px 11px}.service-option strong{font-size:12px}.service-option span{font-size:16px}
     }
   </style>
-  <link rel="stylesheet" href="./styles.css?v=20260913-uber-semanal" />
+  <link rel="stylesheet" href="./styles.css?v=20260913-sin-aviso-uber" />
 </head>
 <body>
 <section id="splashScreen" class="splash-screen" aria-live="polite" aria-label="Cargando Explora">
@@ -599,26 +599,11 @@
 
 <div id="uberDriverConfirmationModal" class="modal hidden uber-driver-confirmation-modal" data-tone="uber" role="dialog" aria-modal="true" aria-labelledby="uberDriverConfirmationTitle">
   <div class="modal-card uber-driver-confirmation-card">
-    <p class="uber-reminder-kicker">RESPUESTA DE DAVID</p>
+    <p class="uber-confirmation-kicker">RESPUESTA DE DAVID</p>
     <h2 id="uberDriverConfirmationTitle">Cierre semanal de Uber</h2>
     <div id="uberDriverConfirmationBody"></div>
     <div id="uberDriverConfirmationStatus" class="status" aria-live="polite"></div>
     <button id="confirmUberDriverResult" type="button" class="save">Entendido</button>
-  </div>
-</div>
-
-<div id="uberReminderModal" class="modal hidden uber-reminder-modal" data-tone="uber" role="dialog" aria-modal="true" aria-labelledby="uberReminderTitle">
-  <div class="modal-card uber-reminder-card">
-    <div class="uber-reminder-icon" aria-hidden="true">U</div>
-    <p class="uber-reminder-kicker">CIERRE SEMANAL DE UBER</p>
-    <h2 id="uberReminderTitle">Próximo cierre de Uber</h2>
-    <p id="uberReminderMessage">Pronto podrás cargar tu cierre semanal de Uber.</p>
-    <div class="uber-reminder-date">
-      <span>Fecha de cierre automática</span>
-      <strong id="uberReminderCloseDate">—</strong>
-    </div>
-    <p class="uber-reminder-note">Al cargar el total y el comprobante podrás ver cuánto cambiaría el saldo antes de enviarlo a David.</p>
-    <button id="confirmUberReminder" type="button" class="save">Entendido</button>
   </div>
 </div>
 
@@ -813,6 +798,6 @@
   </script>
 
 
-<script type="module" src="./app.js?v=20260913-uber-semanal"></script>
+<script type="module" src="./app.js?v=20260913-sin-aviso-uber"></script>
 </body>
 </html>
