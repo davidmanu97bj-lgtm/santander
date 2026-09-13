@@ -1,6 +1,8 @@
 # Preparación de facturación ARCA
 
-Estado: preparación interna, sin conexión a ARCA ni emisión fiscal.
+Este documento describe la preparación histórica `arca_preparation_v1`.
+Para la integración actual `arca_c_v1`, su estado y los pasos de activación,
+consultar [arca-integracion.md](arca-integracion.md).
 
 Los nuevos cobros guardan `invoiceRequest` con fecha, recorrido real, kilómetros,
 trayecto nacional/internacional y medio de pago. El formulario habitual no pide
@@ -16,8 +18,10 @@ actualiza correcciones y cancela borradores de cobros eliminados. No modifica
 documentos con un estado posterior a preparación. Los cobros anteriores sin
 solicitud fiscal no generan borradores.
 
-El escenario objetivo es régimen general, con inscripción y tratamiento de IVA
-pendientes de verificación. No se supone Responsable Inscripto ni IVA Exento.
+El escenario actual es monotributo, según lo informado por el titular. Para nuevos
+borradores nacionales se propone Factura C (11), sin IVA discriminado. Los
+internacionales conservan revisión pendiente: no se asimilan automáticamente a
+una factura C ni a una exportación E. No se supone inscripción verificada.
 Los kilómetros orientan la revisión, nunca autorizan una exención. El total
 fiscal propuesto es el importe completo del servicio: no se suma ni descuenta
 la caja chica interna. Efectivo: +100% y +5%; digital: −100% y +5%.
@@ -30,6 +34,7 @@ No hay envío externo ni facturación automática de los gastos o de los chofere
 
 Configurar exclusivamente en el entorno privado de Functions:
 
+- `ARCA_ISSUER_REGIME` (`monotributo` por defecto; `general` para futura migración)
 - `ARCA_ISSUER_CUIT`
 - `ARCA_ISSUER_LEGAL_NAME` (nombre legal, no solo nombre comercial)
 - `ARCA_POINT_OF_SALE`
@@ -83,3 +88,17 @@ el 100% al saldo del chofer; el reintegro resta el 50%. Por ejemplo, desde cero,
 50.000 de gasto y −25.000 de reintegro dejan 25.000 a pagar a Explora.
 El gasto conserva el color rojo y el reintegro verde, independientemente del signo.
 Los registros anteriores conservan su versión y los cierres no se recalculan.
+
+## Activación pendiente (monotributo)
+
+No hay cliente WSAA/WSFE ni credenciales ARCA configuradas en esta aplicación.
+El cambio de régimen prepara borradores, no activa facturación real. Se necesita
+confirmar nombre legal, CUIT, punto de venta Web Services de monotributo y
+certificado asociado al servicio wsfe. Las claves privadas se guardarán solo en
+Secret Manager. No se usa la clave fiscal del titular dentro de la aplicación.
+
+Los borradores existentes conservan su régimen al actualizarse. Cambiar
+ARCA_ISSUER_REGIME no migra facturas ni valida el tratamiento de IVA del régimen
+general: también deberán revisarse tipos de comprobante y configuración fiscal.
+
+Fuente: https://www.afip.gob.ar/facturacion/monotributo/

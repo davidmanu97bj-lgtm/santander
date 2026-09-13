@@ -46,15 +46,14 @@ function npmCli() {
 
 export function deploySnapshot(snapshot, { sha, scope = 'all', npm = npmCli(), run = command, build = buildHosting, beforePublish = () => {}, progress = () => {} }) {
   if (!SCOPES.has(scope)) throw new Error('Alcance de despliegue inválido.');
+  // Fiscal integration tests require the pinned backend dependencies even for Hosting validation.
+  run(process.execPath, [npm, 'ci', '--prefix', 'functions', '--ignore-scripts', '--no-audit', '--no-fund'], snapshot);
+  progress('dependencies');
   run(process.execPath, ['tools/check.mjs'], snapshot);
   progress('validation');
-  if (scope !== 'hosting') {
-    run(process.execPath, [npm, 'ci', '--prefix', 'functions', '--ignore-scripts', '--no-audit', '--no-fund'], snapshot);
-    progress('dependencies');
-  }
   if (scope !== 'backend') build(snapshot, sha);
   const stages = scope === 'hosting' ? ['hosting'] : scope === 'backend'
-    ? ['firestore:rules,storage', 'functions'] : ['firestore:rules,storage', 'functions', 'hosting'];
+    ? ['firestore:rules,firestore:indexes,storage', 'functions'] : ['firestore:rules,firestore:indexes,storage', 'functions', 'hosting'];
   for (const stage of stages) {
     beforePublish();
     run(process.execPath, [npm, 'exec', '--yes', `--package=firebase-tools@${FIREBASE_CLI_VERSION}`, '--',

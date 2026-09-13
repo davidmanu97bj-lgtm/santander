@@ -58,15 +58,17 @@ function pipeline(failAt) {
   return { execute, calls, builds: () => builds };
 }
 
-test('una prueba fallida impide cualquier instalación o publicación', () => {
+test('las dependencias se instalan antes de probar y una prueba fallida impide publicar', () => {
   const p = pipeline('tools/check.mjs');
   assert.throws(p.execute, /fallo simulado/);
-  assert.equal(p.calls.length, 1);
+  assert.equal(p.calls.length, 2);
+  assert.ok(p.calls[0].includes('ci'));
+  assert.equal(p.calls.some(args => args.includes('firebase')), false);
   assert.equal(p.builds(), 0);
 });
 
 test('fallos de dependencias y reglas detienen las etapas posteriores', () => {
-  for (const stage of ['ci', 'firestore:rules,storage', 'functions']) {
+  for (const stage of ['ci', 'firestore:rules,firestore:indexes,storage', 'functions']) {
     const p = pipeline(stage);
     assert.throws(p.execute, /fallo simulado/);
     assert.equal(p.calls.some(args => args.includes('hosting')), false);
@@ -77,7 +79,7 @@ test('una entrega válida publica las tres etapas del mismo commit sin force', (
   const p = pipeline(); p.execute();
   assert.equal(p.builds(), 1);
   const deploys = p.calls.filter(args => args.includes('firebase'));
-  assert.deepEqual(deploys.map(args => args[args.indexOf('--only') + 1]), ['firestore:rules,storage', 'functions', 'hosting']);
+  assert.deepEqual(deploys.map(args => args[args.indexOf('--only') + 1]), ['firestore:rules,firestore:indexes,storage', 'functions', 'hosting']);
   for (const args of deploys) {
     assert.ok(args.includes('--package=firebase-tools@15.30.0'));
     assert.ok(args.includes('explora-control-operativo'));
@@ -102,8 +104,8 @@ test('los alcances parciales no publican servicios fuera de lo solicitado', () =
     deploySnapshot(root, { sha, scope, npm: 'npm-cli.js',
       run: (exe, args) => calls.push(args), build: () => builds++ });
     const stages = calls.filter(args => args.includes('firebase')).map(args => args[args.indexOf('--only') + 1]);
-    assert.deepEqual(stages, scope === 'hosting' ? ['hosting'] : ['firestore:rules,storage', 'functions']);
-    assert.equal(calls.some(args => args.includes('ci')), scope !== 'hosting');
+    assert.deepEqual(stages, scope === 'hosting' ? ['hosting'] : ['firestore:rules,firestore:indexes,storage', 'functions']);
+    assert.equal(calls.some(args => args.includes('ci')), true);
     assert.equal(builds, scope === 'hosting' ? 1 : 0);
   }
 });

@@ -1,7 +1,6 @@
-// Precalculated driving distances; no network requests during selection.
 export const tourismCatalog = {
   "version": 1,
-  "calculatedAt": "2026-09-12T22:44:54.090Z",
+  "calculatedAt": "2026-09-12T22:52:58.229Z",
   "source": "HeiGIT / OpenRouteService · OpenStreetMap",
   "places": [
     {
@@ -471,6 +470,57 @@ export const tourismCatalog = {
         "parque nacional iguazu",
         "cataratas arg"
       ]
+    },
+    {
+      "id": "aduana-tancredo-argentina",
+      "name": "Aduana argentina · Puente Tancredo Neves",
+      "city": "Iguazú",
+      "country": "ARG",
+      "coordinates": [
+        -54.561975,
+        -25.59997
+      ],
+      "aliases": [
+        "cabecera argentina",
+        "frontera tancredo neves",
+        "migraciones argentina"
+      ],
+      "label": "Aduana argentina · Puente Tancredo Neves · Iguazú"
+    },
+    {
+      "id": "aduana-tancredo-brasil",
+      "name": "Aduana brasileña · Puente Tancredo Neves",
+      "city": "Foz do Iguaçu",
+      "country": "BRA",
+      "coordinates": [
+        -54.558019,
+        -25.578968
+      ],
+      "aliases": [
+        "cabecera brasil",
+        "aduana brasileira",
+        "alfandega",
+        "frontera tancredo neves"
+      ],
+      "label": "Aduana brasileña · Puente Tancredo Neves · Foz do Iguaçu"
+    },
+    {
+      "id": "aduana-amistad-paraguay",
+      "name": "Aduana · Cabecera Puente de la Amistad",
+      "city": "Ciudad del Este",
+      "country": "PRY",
+      "coordinates": [
+        -54.605599,
+        -25.509422
+      ],
+      "aliases": [
+        "aduana paraguaya",
+        "puente amistad",
+        "ponte amizade",
+        "cabecera paraguay",
+        "migraciones"
+      ],
+      "label": "Aduana · Cabecera Puente de la Amistad · Ciudad del Este"
     }
   ],
   "distances": [
@@ -516,7 +566,10 @@ export const tourismCatalog = {
       53,
       20.4,
       31.4,
-      6.2
+      6.2,
+      19.8,
+      22.7,
+      36.1
     ],
     [
       20.5,
@@ -560,7 +613,10 @@ export const tourismCatalog = {
       35.8,
       0.5,
       14.2,
-      14.5
+      14.5,
+      2.6,
+      5.5,
+      18.9
     ],
     [
       22.1,
@@ -604,7 +660,10 @@ export const tourismCatalog = {
       37.6,
       2.6,
       16.1,
-      16.1
+      16.1,
+      4.5,
+      7.3,
+      20.7
     ],
     [
       18.1,
@@ -648,7 +707,10 @@ export const tourismCatalog = {
       36.2,
       3.5,
       14.6,
-      12.1
+      12.1,
+      3,
+      5.9,
+      19.3
     ],
     [
       16.5,
@@ -692,7 +754,10 @@ export const tourismCatalog = {
       37,
       4.4,
       15.4,
-      10.5
+      10.5,
+      3.8,
+      6.7,
+      20.1
     ],
     [
       21.5,
@@ -736,7 +801,10 @@ export const tourismCatalog = {
       38.1,
       5.4,
       16.5,
-      15.4
+      15.4,
+      4.9,
+      7.8,
+      21.2
     ],
     [
       19.7,
@@ -780,7 +848,10 @@ export const tourismCatalog = {
       34.6,
       1.1,
       13,
-      13.7
+      13.7,
+      1.4,
+      4.3,
+      17.7
     ],
     [
       21.9,
@@ -824,7 +895,10 @@ export const tourismCatalog = {
       36.8,
       1.6,
       15.2,
-      15.9
+      15.9,
+      3.6,
+      6.5,
+      19.9
     ],
     [
       18.6,
@@ -868,7 +942,10 @@ export const tourismCatalog = {
       36.4,
       3.8,
       14.8,
-      12.5
+      12.5,
+      3.2,
+      6.1,
+      19.5
     ],
     [
       17.3,
@@ -912,7 +989,10 @@ export const tourismCatalog = {
       37.1,
       4.4,
       15.5,
-      11.3
+      11.3,
+      3.9,
+      6.8,
+      20.1
     ],
     [
       18.6,
@@ -956,7 +1036,10 @@ export const tourismCatalog = {
       35.5,
       2.1,
       14,
-      12.6
+      12.6,
+      2.4,
+      5.2,
+      18.6
     ],
     [
       21.2,
@@ -1000,7 +1083,10 @@ export const tourismCatalog = {
       36.1,
       1.2,
       14.6,
-      15.2
+      15.2,
+      3,
+      5.8,
+      19.2
     ],
     [
       50,
@@ -1044,7 +1130,10 @@ export const tourismCatalog = {
       84.3,
       51.7,
       62.8,
-      44
+      44,
+      51.2,
+      54.1,
+      67.4
     ],
     [
       47.2,
@@ -1088,7 +1177,10 @@ export const tourismCatalog = {
       81.5,
       48.9,
       60,
-      41.1
+      41.1,
+      48.4,
+      51.2,
+      64.6
     ],
     [
       41.7,
@@ -1132,7 +1224,10 @@ export const tourismCatalog = {
       76.1,
       43.4,
       54.5,
-      35.7
+      35.7,
+      42.9,
+      45.8,
+      59.2
     ],
     [
       38.5,
@@ -1176,7 +1271,10 @@ export const tourismCatalog = {
       72.9,
       40.3,
       51.3,
-      32.5
+      32.5,
+      39.8,
+      42.6,
+      56
     ],
     [
       41.9,
@@ -1220,7 +1318,10 @@ export const tourismCatalog = {
       76.3,
       43.6,
       54.7,
-      35.9
+      35.9,
+      43.1,
+      46,
+      59.3
     ],
     [
       33.2,
@@ -1264,7 +1365,10 @@ export const tourismCatalog = {
       37.4,
       15.3,
       3.8,
-      27.2
+      27.2,
+      13.1,
+      10,
+      20.5
     ],
     [
       33.8,
@@ -1308,7 +1412,10 @@ export const tourismCatalog = {
       38.1,
       16,
       4.5,
-      27.8
+      27.8,
+      13.8,
+      10.6,
+      21.2
     ],
     [
       25.3,
@@ -1352,7 +1459,10 @@ export const tourismCatalog = {
       30.3,
       7.4,
       13.8,
-      19.2
+      19.2,
+      5.2,
+      5.4,
+      13.4
     ],
     [
       41.2,
@@ -1396,7 +1506,10 @@ export const tourismCatalog = {
       26.4,
       23.3,
       25,
-      35.2
+      35.2,
+      21.1,
+      18,
+      9.5
     ],
     [
       31.7,
@@ -1440,7 +1553,10 @@ export const tourismCatalog = {
       21.9,
       13.9,
       15.5,
-      25.7
+      25.7,
+      11.7,
+      8.5,
+      5
     ],
     [
       32.2,
@@ -1484,7 +1600,10 @@ export const tourismCatalog = {
       23.2,
       14.4,
       16,
-      26.2
+      26.2,
+      12.2,
+      9,
+      6.3
     ],
     [
       29,
@@ -1528,7 +1647,10 @@ export const tourismCatalog = {
       33.3,
       11.2,
       4.4,
-      23
+      23,
+      9,
+      5.8,
+      16.4
     ],
     [
       26.7,
@@ -1572,7 +1694,10 @@ export const tourismCatalog = {
       27.3,
       8.9,
       10.5,
-      20.7
+      20.7,
+      6.7,
+      3.5,
+      10.4
     ],
     [
       26,
@@ -1616,7 +1741,10 @@ export const tourismCatalog = {
       28.3,
       8.2,
       9.8,
-      20
+      20,
+      6,
+      2.8,
+      11.4
     ],
     [
       30.2,
@@ -1660,7 +1788,10 @@ export const tourismCatalog = {
       34.4,
       12.3,
       5.6,
-      24.1
+      24.1,
+      10.1,
+      7,
+      17.5
     ],
     [
       35.8,
@@ -1704,7 +1835,10 @@ export const tourismCatalog = {
       17.4,
       18,
       19.6,
-      29.8
+      29.8,
+      15.8,
+      12.6,
+      0.5
     ],
     [
       36.2,
@@ -1748,7 +1882,10 @@ export const tourismCatalog = {
       17.2,
       18.4,
       20,
-      30.2
+      30.2,
+      16.2,
+      13,
+      0.9
     ],
     [
       37.3,
@@ -1792,7 +1929,10 @@ export const tourismCatalog = {
       15.7,
       19.4,
       21.1,
-      31.3
+      31.3,
+      17.3,
+      14.1,
+      2
     ],
     [
       36.4,
@@ -1836,7 +1976,10 @@ export const tourismCatalog = {
       17.4,
       18.6,
       20.2,
-      30.4
+      30.4,
+      16.4,
+      13.2,
+      1.1
     ],
     [
       36.2,
@@ -1880,7 +2023,10 @@ export const tourismCatalog = {
       17.2,
       18.4,
       20,
-      30.2
+      30.2,
+      16.2,
+      13,
+      0.9
     ],
     [
       36.8,
@@ -1924,7 +2070,10 @@ export const tourismCatalog = {
       17.5,
       19,
       20.6,
-      30.8
+      30.8,
+      16.8,
+      13.6,
+      1.5
     ],
     [
       39.6,
@@ -1968,7 +2117,10 @@ export const tourismCatalog = {
       18.9,
       21.8,
       23.4,
-      33.6
+      33.6,
+      19.6,
+      16.4,
+      4.3
     ],
     [
       46.1,
@@ -2012,7 +2164,10 @@ export const tourismCatalog = {
       6.6,
       28.3,
       29.9,
-      40.1
+      40.1,
+      26.1,
+      22.9,
+      10.8
     ],
     [
       47.9,
@@ -2056,7 +2211,10 @@ export const tourismCatalog = {
       4.9,
       30,
       31.7,
-      41.9
+      41.9,
+      27.8,
+      24.7,
+      12.6
     ],
     [
       64.4,
@@ -2100,7 +2258,10 @@ export const tourismCatalog = {
       12.3,
       46.6,
       48.2,
-      58.4
+      58.4,
+      44.4,
+      41.2,
+      29.1
     ],
     [
       50.7,
@@ -2144,7 +2305,10 @@ export const tourismCatalog = {
       1.4,
       32.8,
       34.5,
-      44.7
+      44.7,
+      30.6,
+      27.5,
+      15.4
     ],
     [
       52.1,
@@ -2188,7 +2352,10 @@ export const tourismCatalog = {
       null,
       34.3,
       35.9,
-      46.1
+      46.1,
+      32.1,
+      28.9,
+      16.8
     ],
     [
       20.8,
@@ -2232,7 +2399,10 @@ export const tourismCatalog = {
       35.7,
       null,
       14.1,
-      14.8
+      14.8,
+      2.5,
+      5.4,
+      18.8
     ],
     [
       32.6,
@@ -2276,7 +2446,10 @@ export const tourismCatalog = {
       36.8,
       14.7,
       null,
-      26.5
+      26.5,
+      12.5,
+      9.4,
+      19.9
     ],
     [
       6.6,
@@ -2320,6 +2493,150 @@ export const tourismCatalog = {
       47.4,
       14.7,
       25.8,
+      null,
+      14.2,
+      17.1,
+      30.4
+    ],
+    [
+      20,
+      2.2,
+      3.9,
+      2.8,
+      3.6,
+      4.7,
+      1.1,
+      3.3,
+      3.4,
+      2.8,
+      1.7,
+      2.6,
+      50.8,
+      48.1,
+      42.7,
+      39.5,
+      42.8,
+      12.5,
+      12.8,
+      5.8,
+      21.2,
+      12.5,
+      12.6,
+      8.4,
+      6.7,
+      7.2,
+      6.6,
+      17.3,
+      17.7,
+      18.5,
+      17.5,
+      17.5,
+      18.4,
+      20.5,
+      27.7,
+      29.5,
+      45.9,
+      32.3,
+      33.7,
+      2.2,
+      12.1,
+      14,
+      null,
+      3.4,
+      16.8
+    ],
+    [
+      23.6,
+      5.8,
+      7.5,
+      6.4,
+      7.2,
+      8.2,
+      4.7,
+      6.8,
+      7,
+      6.4,
+      5.3,
+      6.2,
+      54.4,
+      51.7,
+      46.2,
+      43.1,
+      46.4,
+      9.1,
+      9.4,
+      4.2,
+      17.8,
+      9.1,
+      9.2,
+      5,
+      3.2,
+      3.8,
+      3.2,
+      13.9,
+      14.3,
+      15,
+      14.1,
+      14.1,
+      14.9,
+      17.1,
+      24.3,
+      26.1,
+      42.5,
+      28.9,
+      30.3,
+      5.7,
+      8.7,
+      17.6,
+      3.5,
+      null,
+      13.4
+    ],
+    [
+      35.8,
+      18,
+      19.7,
+      18.6,
+      19.4,
+      20.5,
+      16.9,
+      19.1,
+      19.2,
+      18.6,
+      17.5,
+      18.5,
+      66.6,
+      63.9,
+      58.5,
+      55.3,
+      58.6,
+      20,
+      20.3,
+      12.9,
+      9.7,
+      4.1,
+      5.7,
+      15.9,
+      10,
+      9.9,
+      14.1,
+      0.5,
+      0.9,
+      1.7,
+      0.8,
+      0.7,
+      1.6,
+      3.7,
+      10.9,
+      12.7,
+      29.1,
+      15.5,
+      16.9,
+      18,
+      19.6,
+      29.8,
+      15.8,
+      12.6,
       null
     ]
   ]
@@ -2343,12 +2660,29 @@ function tourismEditDistance(a,b) {
   }
   return d[a.length][b.length];
 }
-export function searchTourismPlaces(query) {
+export const tourismCountryNames = { ARG: "Argentina", BRA: "Brasil", PRY: "Paraguay" };
+const tourismCountryAliases = { ARG: ["argentina", "argentino", "arg"], BRA: ["brasil", "brazil", "brasileiro", "brasileno"], PRY: ["paraguay", "paraguai", "paraguayo"] };
+// Initial suggestions; local selections progressively personalize their order.
+function tourismPriority(place) {
+  if(place.id === 'cataratas-argentina') return 100;
+  if(place.name.startsWith('Aeropuerto')) return 90;
+  if(place.name.startsWith('Terminal')) return 80;
+  if(place.name.includes('Cataratas')) return 70;
+  if(place.id.startsWith('aduana-')) return 60;
+  return 0;
+}
+export function searchTourismPlaces(query, usage = {}, suggest = false) {
   const normalized=normalizeTourism(query).slice(0,120);
-  if(normalized.length<2)return [];
-  const tokens=normalized.split(" ").filter(t=>!["de","del","do","da","las","los","el","la"].includes(t));
-  if(!tokens.length)return [];
-  return tourismCatalog.places.map(place=>{
+  if(normalized.length<2 && !(suggest && !normalized))return [];
+  let tokens=normalized.split(" ").filter(Boolean).filter(t=>!["de","del","do","da","las","los","el","la"].includes(t));
+  if(!tokens.length && normalized)return [];
+  const countries = new Set();
+  tokens = tokens.filter(token => {
+    const country = Object.keys(tourismCountryAliases).find(code => tourismCountryAliases[code].some(alias => alias === token || (token.length >= 6 && tourismEditDistance(token, alias) <= 1)));
+    if (country) countries.add(country);
+    return !country;
+  });
+  return tourismCatalog.places.filter(place => !countries.size || countries.has(place.country)).map(place=>{
     const words=normalizeTourism([place.name,place.city,...(place.aliases||[])].join(" ")).split(" ");
     let score=0;
     for(const token of tokens){
@@ -2356,5 +2690,5 @@ export function searchTourismPlaces(query) {
       const cost=Math.min(...costs);if(!Number.isFinite(cost))return null;score+=cost;
     }
     return {place,score};
-  }).filter(Boolean).sort((a,b)=>a.score-b.score||a.place.name.localeCompare(b.place.name,"es")).slice(0,7).map(item=>item.place);
+  }).filter(Boolean).sort((a,b)=>a.score-b.score||(Number(usage[b.place.id])||0)-(Number(usage[a.place.id])||0)||tourismPriority(b.place)-tourismPriority(a.place)||a.place.name.localeCompare(b.place.name,"es")).slice(0,7).map(item=>item.place);
 }

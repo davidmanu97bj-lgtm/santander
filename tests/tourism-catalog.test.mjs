@@ -16,7 +16,7 @@ test('catálogo: seis ciudades, identificadores únicos y matriz completa de ida
    count++;
   }
  }
- assert.equal(count,1722);
+ assert.equal(count,c.places.length*(c.places.length-1));
 });
 test('catálogo: conserva la medición comprobada aeropuerto-terminal y rechaza opciones inválidas',()=>{
  const airport=c.places.find(p=>p.name==='Aeropuerto Internacional de Puerto Iguazú');
@@ -34,4 +34,20 @@ test("búsqueda local tolera tildes, fragmentos y errores sin elegir automática
  assert.deepEqual(searchTourismPlaces(""),[]);
  const point=c.places.find(p=>p.id==="cataratas-argentina");
  assert.ok(point && c.places.every(p=>p.id===point.id || tourismRoute(p.id,point.id)));
+});
+
+test('países filtran solos y combinados con lugares y errores',()=>{
+ for(const [query,country] of [['paraguay','PRY'],['paraguai','PRY'],['brasil','BRA'],['brazil','BRA'],['argentina','ARG'],['aduana paraguai','PRY'],['aduana brasil','BRA']]){
+  const results=searchTourismPlaces(query);assert.ok(results.length,query);assert.ok(results.every(p=>p.country===country),query);
+ }
+ assert.ok(searchTourismPlaces('cabecera paraguai').some(p=>p.id==='aduana-amistad-paraguay'));
+ assert.ok(searchTourismPlaces('tancredo argentina').some(p=>p.id==='aduana-tancredo-argentina'));
+ assert.deepEqual(searchTourismPlaces('cataratas paraguay'),[]);
+});
+
+test('sugerencias priorizan habituales y aprenden sin ignorar país ni coincidencia',()=>{
+ assert.equal(searchTourismPlaces('',{},true)[0].id,'cataratas-argentina');
+ assert.equal(searchTourismPlaces('',{'place-2':4},true)[0].id,'place-2');
+ assert.ok(searchTourismPlaces('brasil',{'place-2':100},true).every(p=>p.country==='BRA'));
+ assert.equal(searchTourismPlaces('picafloerz',{'place-2':100},true)[0].name,'Jardín de los Picaflores');
 });

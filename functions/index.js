@@ -84,6 +84,7 @@ exports.prepareArcaInvoiceDraft = onDocumentWritten({document:"billing_records/{
       return;
     }
     const draft = prepareInvoiceDraft(payment,event.params.paymentId,{
+      regime:existing.exists ? existing.data().targetRegime : (process.env.ARCA_ISSUER_REGIME || "monotributo"),
       cuit:process.env.ARCA_ISSUER_CUIT,
       legalName:process.env.ARCA_ISSUER_LEGAL_NAME,
       pointOfSale:process.env.ARCA_POINT_OF_SALE
@@ -863,7 +864,7 @@ const PROTECTED_ROOT_COLLECTIONS = new Set([
   "system", "configuracion", "explora_config", "tarifas", "settings",
   "app_reset_audit", "app_operational_state", "app_reset_storage_manifests",
   "app_reset_storage_manifest_items", DELETION_JOBS_COLLECTION, ADMIN_AUDIT_COLLECTION,
-  "administradores", "admins"
+  "administradores", "admins", "arca_invoices", "arca_invoice_drafts", "arca_settings", "arca_series", "arca_tickets"
 ]);
 const SPECIAL_ROOT_COLLECTIONS = new Set(["choferes", "login_aliases", "vehiculos"]);
 
@@ -1162,6 +1163,7 @@ async function processCollection(collectionRef, aliases, adminUid, counters) {
         throw new HttpsError("resource-exhausted", "La eliminación superó el límite seguro de documentos. La cuenta quedó deshabilitada para reintentar.");
       }
       const data = docSnap.data() || {};
+      if (collectionRef.id === "billing_records" && data.invoiceRequest?.version === "arca_c_v1") continue;
       const classification = classifyDocument(data, aliases);
       if (classification.action === "delete") {
         await deleteStorageForDocument(data, counters);
@@ -1225,6 +1227,7 @@ async function processCollectionForDriverReset(collectionRef, aliases, counters)
         throw new HttpsError("resource-exhausted", "El reseteo superó el límite seguro de documentos. No se modificó la cuenta ni el acceso del chofer.");
       }
       const data = docSnap.data() || {};
+      if (collectionRef.id === "billing_records" && data.invoiceRequest?.version === "arca_c_v1") continue;
       if (classifyDriverResetDocument(data, aliases, collectionRef.id) === "delete") {
         await deleteDriverResetStorageForDocument(data, counters);
         await db.recursiveDelete(docSnap.ref);
@@ -2247,6 +2250,7 @@ exports.adminDeleteFinancialMovement = onCall({ region:"southamerica-east1", tim
   const receiptIndexes = type === "caja_chica" ? [] : await financialReceiptIndexDocuments(documentId, type);
   if (!snap.exists && !receiptIndexes.length) throw new HttpsError("not-found", "El movimiento ya no existe en Firestore.");
   const data = snap.exists ? (snap.data() || {}) : ({ id:documentId, ...(receiptIndexes[0]?.data() || {}) });
+  if(type !== "gasto" && data.invoiceRequest?.version === "arca_c_v1") throw new HttpsError("failed-precondition", "Este cobro tiene un trámite fiscal. Su corrección requiere revisión y, si fue autorizado, una nota de crédito.");
   const requestedMatches = requestedDriverUid ? await financialBelongsToDriver(data, requestedDriverUid) : false;
   const driverUid = requestedMatches ? requestedDriverUid : (financialDriverValues(data)[0] || requestedDriverUid);
   if (!driverUid) throw new HttpsError("failed-precondition", "El movimiento no tiene un chofer identificable.");
@@ -2396,6 +2400,7 @@ exports.adminModifyBillingAmount = onCall({ region:"southamerica-east1", timeout
   const initialSnapshot = await paymentRef.get();
   if (!initialSnapshot.exists) throw new HttpsError("not-found", "El cobro original ya no existe en Firestore.");
   const initialData = initialSnapshot.data() || {};
+  if(initialData.invoiceRequest?.version === "arca_c_v1") throw new HttpsError("failed-precondition", "El importe está vinculado a una solicitud fiscal y no se puede modificar.");
   if (financialIsBillingSettlementPayment(initialData) || normalized(initialData.type) === "settlement_adjustment" || normalized(initialData.type).includes("compensation")) {
     throw new HttpsError("failed-precondition", "Este movimiento es un ajuste interno y no se puede editar desde Cobros/Gastos.");
   }
@@ -3273,3 +3278,6 @@ exports.notifyUberClosureWhatsappGroupV1 = onDocumentWritten({
   document: "uber_weekly_closures/{docId}",
   region: TELEGRAM_FUNCTION_REGION
 }, async () => ({ skipped: true, reason: "whatsapp-disabled-use-telegram-group" }));
+
+// ARCA services share the initialized admin app and authorization checks.
+Object.assign(exports, require("./arca-functions")({db,assertAdmin}));

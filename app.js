@@ -1,4 +1,4 @@
-import { tourismCatalog, tourismRoute, searchTourismPlaces } from "./tourism-catalog.js";
+import { tourismCatalog, tourismRoute, searchTourismPlaces, tourismCountryNames } from "./tourism-catalog.js";
 import * as firebaseSettings from "./firebase-config.js?v=20260824-15";
 
 const { firebaseConfig, BUSINESS_ID, USER_EMAIL_DOMAIN } = firebaseSettings;
@@ -11,7 +11,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
   initializeFirestore, collection, addDoc, doc, getDoc, getDocFromServer, getDocs, setDoc,
-  onSnapshot, serverTimestamp, query, where, limit, writeBatch, runTransaction
+  onSnapshot, serverTimestamp, query, where, orderBy, limit, writeBatch, runTransaction
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import {
   getStorage, ref, uploadBytes, getDownloadURL
@@ -4269,6 +4269,7 @@ onAuthStateChanged(auth, async user => {
 document.querySelectorAll("[data-mode]").forEach(btn => {
   btn.addEventListener("click", () => {
     const mode = btn.dataset.mode;
+    refreshArcaBillingStatus();
     $("chargeForm").reset();
     resetChargeRoute();
     syncChargeCustomerFields();
@@ -4305,7 +4306,7 @@ function syncChargeCustomerFields() {
 $("chargeNamedInvoice")?.addEventListener("change", syncChargeCustomerFields);
 function chargeDraftRequest() {
   return {
-    version:"arca_preparation_v1",
+    version:"arca_c_v1",
     serviceDate:$("chargeServiceDate").value,
     origin:$("chargeOrigin").value.trim(), destination:$("chargeDestination").value.trim(),
     distanceKm:Number($("chargeDistance").value), scope:$("chargeTripScope").value,
@@ -4873,8 +4874,8 @@ $("chargeForm")?.addEventListener("submit", async e => {
     $("chargeStatus").textContent = transactionResult?.alreadyRegistered
       ? "Éxito. El cobro ya estaba registrado y se mantuvo una sola vez."
       : mode === "cash"
-        ? "Éxito. Cobro en efectivo registrado correctamente."
-        : "Éxito. Cobro digital registrado correctamente.";
+        ? "Cobro en efectivo guardado. Consultá su factura en Perfil → Facturas de viajes."
+        : "Cobro digital guardado. Consultá su factura en Perfil → Facturas de viajes.";
     $("chargeStatus").className = "status success";
     completedSuccessfully = true;
     $("saveChargeBtn").textContent = "Éxito ✓";
@@ -6339,6 +6340,13 @@ function showChargeStep(step) {
   $("chargeModal").scrollTop = 0;
 }
 function validateChargeStep(step) {
+  if (step === 3 && parseMoneyInput($("chargeAmount").value) >= 10000000 && !$("chargeNamedInvoice").checked) {
+    $("chargeNamedInvoice").checked = true;
+    syncChargeCustomerFields();
+    showChargeStep(3);
+    $("chargeStatus").textContent = "Por este importe, ARCA exige identificar al pasajero. Completá sus datos.";
+    return false;
+  }
   if (step === 1 && !tourismRoute($("tourismOrigin").value,$("tourismDestination").value)) {
     showChargeStep(1); $("chargeRouteStatus").textContent="Elegí dos lugares diferentes de la lista."; return false;
   }
@@ -6375,7 +6383,7 @@ function resetChargeRoute() {
     $("route"+part+"Results").replaceChildren();
     document.querySelector('[data-route-search="'+part+'"]').disabled = false;
   }
-  $("chargeRouteStatus").textContent = "Elegí un recorrido para ver los kilómetros.";
+  $("chargeRouteStatus").textContent = "";
 }
 function invalidateChargeRoute(part) {
   chargeRouteState.version++;
@@ -6473,38 +6481,99 @@ function selectTourismRoute() {
   $("chargeOrigin").value="";$("chargeDestination").value="";$("chargeDistance").value="";
   chargeRouteState.points={};
   if (!route) {
-    $("chargeRouteStatus").textContent=originId && destinationId ? "Elegí dos lugares diferentes con un recorrido disponible." : "Elegí salida y llegada de la lista.";return;
+    $("chargeRouteStatus").textContent=originId && destinationId ? "Elegí dos lugares diferentes con un recorrido disponible." : "";return;
   }
   chargeRouteState.points={Origin:route.origin,Destination:route.destination};
   $("chargeOrigin").value=route.origin.name+" · "+route.origin.city;
   $("chargeDestination").value=route.destination.name+" · "+route.destination.city;
   $("chargeDistance").value=String(route.distance);
   $("chargeTripScope").value=[route.origin.country,route.destination.country].some(c=>["BRA","BR","PRY","PY"].includes(c))?"international":"national";
-  $("chargeRouteStatus").textContent=route.distance>100?"Este recorrido supera los 100 km por carretera.":"Recorrido seleccionado. Kilómetros precalculados por carretera.";
+  $("chargeRouteStatus").textContent=route.distance>100?"Este recorrido supera los 100 km por carretera.":"";
 }
 
+const tourismUsageKey = "explora-tourism-usage-v1";
+let tourismUsage = {};
+try { const saved = JSON.parse(localStorage.getItem(tourismUsageKey) || "{}"); if(saved && typeof saved === "object" && !Array.isArray(saved)) tourismUsage = saved; } catch {}
 for(const part of ["Origin","Destination"]) {
   const input=$("tourism"+part+"Search"), matches=$("tourism"+part+"Matches");
-  input.addEventListener("input",()=>{
-    $("tourism"+part).value=""; selectTourismRoute();
+  const showMatches=()=>{
     matches.replaceChildren();
-    const places=searchTourismPlaces(input.value);
+    const places=searchTourismPlaces(input.value,tourismUsage,true);
     for(const place of places){
       const button=document.createElement("button");
       button.type="button";button.className="route-result";
-      button.textContent=place.name+" · "+place.city;
+      button.textContent=place.name+" · "+place.city+" · "+tourismCountryNames[place.country];
       button.addEventListener("click",()=>{
         input.value=place.name+" · "+place.city;
         $("tourism"+part).value=place.id;
+        tourismUsage[place.id]=Math.max(0,Number(tourismUsage[place.id])||0)+1;
+        try { localStorage.setItem(tourismUsageKey,JSON.stringify(tourismUsage)); } catch {}
         matches.replaceChildren();
         selectTourismRoute();
       });
       matches.append(button);
     }
     if(input.value.trim().length>=2&&!places.length)matches.textContent="No hay coincidencias en los lugares cargados.";
+  };
+  input.addEventListener("input",()=>{
+    $("tourism"+part).value=""; selectTourismRoute(); showMatches();
   });
+  input.addEventListener("focus",()=>{ if(!$("tourism"+part).value)showMatches(); });
   input.addEventListener("keydown",event=>{
     if(event.key==="ArrowDown"&&matches.querySelector("button")){event.preventDefault();matches.querySelector("button").focus();}
     if(event.key==="Escape")matches.replaceChildren();
   });
 }
+
+
+let stopInvoiceSubscription = null;
+async function refreshArcaBillingStatus() {
+  try {
+    const {data}=await httpsCallable(functions,"arcaBillingStatus")({});
+    $("arcaModeLabel").textContent=data.enabled ? (data.environment === "production" ? "Automática" : "Pruebas") : "Sin activar";
+    $("arcaModeNote").textContent=data.enabled ? (data.environment === "production" ? "Al confirmar se solicitará la factura. Los viajes internacionales quedan para revisión." : "Homologación: las facturas de prueba no tienen validez fiscal.") : "El viaje se guarda. La emisión fiscal todavía no está activada.";
+  } catch {
+    $("arcaModeLabel").textContent="Por verificar";
+    $("arcaModeNote").textContent="Consultá el estado de la factura después de registrar el cobro.";
+  }
+}
+const invoiceStatusLabels={queued:"Pendiente de ARCA",reserved:"Preparando factura",sent:"Solicitando autorización",uncertain:"Pendiente de verificar en ARCA",authorized:"Factura autorizada",rejected:"Rechazada por ARCA · revisar",review:"Requiere revisión",disabled:"Pendiente de activación"};
+function showInvoices(allDrivers = false) {
+  const user=auth.currentUser;if(!user)return;
+  $("driverProfileModal").classList.add("hidden");$("invoicesModal").classList.remove("hidden");
+  $("invoicesStatus").textContent="Cargando…";$("invoicesList").replaceChildren();
+  stopInvoiceSubscription?.();
+  const invoiceQuery = allDrivers && isAdminProfile()
+    ? query(collection(db,"arca_invoices"),orderBy("createdAtMs","desc"),limit(30))
+    : query(collection(db,"arca_invoices"),where("driverUid","==",user.uid),orderBy("createdAtMs","desc"),limit(30));
+  stopInvoiceSubscription=onSnapshot(invoiceQuery,snapshot=>{
+    $("invoicesStatus").textContent=snapshot.empty ? "Todavía no hay solicitudes de factura." : "Últimos 30 viajes";
+    $("invoicesList").replaceChildren();
+    for(const row of snapshot.docs){
+      const invoice=row.data(),card=document.createElement("article");card.className="charge-panel";
+      const title=document.createElement("strong");title.textContent=invoiceStatusLabels[invoice.status]||"Pendiente";card.append(title);
+      const text=document.createElement("p");text.textContent=money(invoice.detail.ImpTotal)+" · "+invoice.description;card.append(text);
+      const reasons = {...{international_requires_review:"Viaje internacional: revisar el tipo de factura.",issuer_print_data_missing:"Faltan datos fiscales del emisor.",customer_identification_required:"Falta identificar al pasajero.",point_of_sale_unavailable:"Revisar el punto de venta.",number_conflict:"El número corresponde a otros datos. Requiere revisión.",awaiting_reconciliation:"Esperando confirmar si ARCA autorizó la factura."}};
+      const notices=[...(invoice.issues||[]),invoice.issue].filter(Boolean).map(code=>reasons[code]||"Revisar los datos de la solicitud.");
+      if(notices.length){const note=document.createElement("p");note.textContent=[...new Set(notices)].join(" ");card.append(note);}
+      if(invoice.environment==="homologation"){const note=document.createElement("p");note.textContent="PRUEBA · Sin validez fiscal";card.append(note);}
+      if(invoice.status==="authorized"){
+        const button=document.createElement("button");button.className="secondary";button.type="button";button.textContent="Descargar factura";
+        button.addEventListener("click",async()=>{
+          button.disabled=true;
+          try {
+            const {data}=await httpsCallable(functions,"arcaInvoicePdf")({id:row.id});
+            const bytes=Uint8Array.from(atob(data.base64),c=>c.charCodeAt(0)),url=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"}));
+            const link=document.createElement("a");link.href=url;link.download=data.filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+          }catch{$("invoicesStatus").textContent="No pudimos descargar la factura. Intentá nuevamente.";}finally{button.disabled=false;}
+        });card.append(button);
+      }
+      $("invoicesList").append(card);
+    }
+  },()=>{$("invoicesStatus").textContent="No pudimos consultar las facturas. Cerrá y volvé a intentar.";});
+}
+$("showInvoicesBtn").addEventListener("click",()=>showInvoices());
+$("adminInvoicesBtn").addEventListener("click",()=>showInvoices(true));
+// Do not retain another driver's fiscal data after sign-out or account switch.
+onAuthStateChanged(auth,()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;$("invoicesList").replaceChildren();$("invoicesModal").classList.add("hidden");});
+document.querySelector('[data-close="invoicesModal"]').addEventListener('click',()=>{stopInvoiceSubscription?.();stopInvoiceSubscription=null;});

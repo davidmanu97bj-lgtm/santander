@@ -1,6 +1,6 @@
 # Catálogo turístico precalculado
 
-42 puntos y 1.722 combinaciones direccionales. Fuente de coordenadas: HeiGIT/Pelias. Distancias en automóvil: HeiGIT/OpenRouteService Matrix, calculadas el 12/09/2026, en kilómetros. No son distancias de Google ni una certificación fiscal.
+45 puntos y 1.980 combinaciones direccionales. Fuente de coordenadas: HeiGIT/Pelias. Distancias en automóvil: HeiGIT/OpenRouteService Matrix, calculadas el 12/09/2026, en kilómetros. No son distancias de Google ni una certificación fiscal.
 
 La aplicación usa este catálogo sin consultar mapas al cobrar. Las distancias son estimadas por carretera, no mediciones GPS del servicio. No se representa la totalidad de los establecimientos turísticos de la región.
 
@@ -84,3 +84,13 @@ Gran Meliá, estacionamiento argentino del Parque Nacional Iguazú, Templo Budis
 Se incorpora el acceso vial identificado por HeiGIT/Pelias como Acceso a las Cataratas del Iguazú, en [-54.475139,-25.689604], con ajuste a carretera de 0,07 m. Las distancias terminan en ese acceso vial y no en el estacionamiento, que continúa pendiente de coordenadas verificadas. Referencia oficial del acceso: https://iguazuargentina.com/planifica-tu-visita/faqs/ . La terminal de Puerto Iguazú hasta este acceso arroja 14,5 km. No presentar esa cifra como distancia hasta el estacionamiento.
 
 El buscador local elimina tildes y permite prefijos y pequeños errores (incluida transposición); solo se guarda una selección explícita del catálogo. Cambiar el texto invalida la selección y la distancia.
+
+## Fronteras y búsqueda por país
+
+La búsqueda reconoce Argentina, Brasil/Brazil y Paraguay/Paraguai, solos o combinados con un lugar. Filtra antes de limitar las sugerencias y requiere seleccionar el punto.
+
+Se agregaron Aduana argentina y Aduana brasileña del paso Tancredo Neves, y Aduana de la cabecera paraguaya del Puente de la Amistad. Coordenadas obtenidas de Pelias; ajuste a carretera: 6,52 m, 15,83 m y 2,21 m. La aduana argentina corresponde al complejo fronterizo, no al centro del puente.
+
+Referencias: [Paso Iguazú–Foz](https://www.argentina.gob.ar/seguridad/pasosinternacionales/detalle/ruta/2/Iguaz%C3%BA-Foz-de-Iguaz%C3%BA), [Receita Federal Foz](https://www.gov.br/receitafederal/pt-br/assuntos/aduana-e-comercio-exterior/atendimento/alfandegas-da-receita-federal-atendimento-especifico-ou-especializado/rf09/alf-foz), [DNIT: cabecera paraguaya](https://www.dnit.gov.py/en/web/portal-institucional/cont%C3%A1ctenos).
+
+Pendientes de coordenadas verificadas: cabecera brasileña de Amistad y accesos del Puente de la Integración. No se incluyeron puntos medios de puentes como paradas ni oficinas aduaneras del centro como cabeceras. El catálogo no certifica habilitación de pasos ni tratamiento fiscal.
