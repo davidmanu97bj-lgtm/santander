@@ -1,0 +1,57 @@
+{
+  "engine": "Chromium desktop with 390/412/1280 CSS viewport; not physical Safari or Android",
+  "external_network": "blocked",
+  "tests": [
+    {
+      "viewport": 390,
+      "history_cases": 10,
+      "modal_and_action_checks": "passed",
+      "cash_digital": [
+        {
+          "method": "cash",
+          "principal": "rgb(230, 38, 50)",
+          "fee": "rgb(230, 38, 50)"
+        },
+        {
+          "method": "digital",
+          "principal": "rgb(0, 153, 61)",
+          "fee": "rgb(230, 38, 50)"
+        }
+      ]
+    },
+    {
+      "viewport": 412,
+      "history_cases": 10,
+      "modal_and_action_checks": "passed",
+      "cash_digital": [
+        {
+          "method": "cash",
+          "principal": "rgb(230, 38, 50)",
+          "fee": "rgb(230, 38, 50)"
+        },
+        {
+          "method": "digital",
+          "principal": "rgb(0, 153, 61)",
+          "fee": "rgb(230, 38, 50)"
+        }
+      ]
+    },
+    {
+      "viewport": 1280,
+      "history_cases": 10,
+      "modal_and_action_checks": "passed",
+      "cash_digital": [
+        {
+          "method": "cash",
+          "principal": "rgb(230, 38, 50)",
+          "fee": "rgb(230, 38, 50)"
+        },
+        {
+          "method": "digital",
+          "principal": "rgb(0, 153, 61)",
+          "fee": "rgb(230, 38, 50)"
+        }
+      ]
+    }
+  ]
+}

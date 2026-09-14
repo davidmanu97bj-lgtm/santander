@@ -1,19 +1,20 @@
+import { createFinancialStore, ledgerReceiptRows } from "./financial-store.js?v=20260914-colors-login";
+import { movementColor } from "./movement-colors.js?v=20260914-colors-login";
+import { app, auth, authReady } from "./auth-session.js?v=20260914-colors-login";
 import { tourismCatalog, tourismRoute, searchTourismPlaces, tourismCountryNames } from "./tourism-catalog.js";
 import { mountTripCalendar } from "./trip-calendar.js?v=20260913-calendario-detalles";
 import { monthRange, normalizeTripDraft, canManageTrip } from "./calendar-core.js?v=20260913-calendario-detalles";
 import * as firebaseSettings from "./firebase-config.js?v=20260824-15";
 
-const { firebaseConfig, BUSINESS_ID, USER_EMAIL_DOMAIN } = firebaseSettings;
+const { BUSINESS_ID, USER_EMAIL_DOMAIN } = firebaseSettings;
 const LOGIN_ALIASES = firebaseSettings.LOGIN_ALIASES || {};
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 import {
-  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
-  setPersistence, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence
+  onAuthStateChanged, signInWithEmailAndPassword, signOut
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
-  initializeFirestore, collection, addDoc, doc, getDoc, getDocFromServer, getDocs, setDoc,
-  onSnapshot, onSnapshotsInSync, serverTimestamp, deleteField, query, where, or, orderBy, limit, writeBatch, runTransaction
+  initializeFirestore, collection, addDoc as nativeAddDoc, doc, getDoc, getDocFromServer, getDocs, setDoc as nativeSetDoc,
+  onSnapshot, onSnapshotsInSync, serverTimestamp, deleteField, query, where, or, orderBy, limit, writeBatch as nativeWriteBatch, runTransaction as nativeRunTransaction
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import {
   getStorage, ref, uploadBytes, getDownloadURL
@@ -22,11 +23,22 @@ import {
   getFunctions, httpsCallable
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
 const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 const storage = getStorage(app);
 const functions = getFunctions(app, "southamerica-east1");
+// Only these wrappers can write financial collections. Cached previews are never
+// accepted as authoritative balances; the server returns the committed account.
+const { setDoc, addDoc, writeBatch, runTransaction } = createFinancialStore({
+  db,
+  sdk: { setDoc:nativeSetDoc, addDoc:nativeAddDoc, writeBatch:nativeWriteBatch,
+    runTransaction:nativeRunTransaction, getDocFromServer, doc, serverTimestamp, deleteField },
+  commit:httpsCallable(functions, "commitFinancialOperation", {timeout:180000}),
+  onConfirmed:applyConfirmedFinancialResponse,
+  onError:showFinancialError
+});
+const reviewSettlementAccountCallable = httpsCallable(functions, "reviewSettlementAccount", {timeout:180000});
+const activateSettlementAccountCallable = httpsCallable(functions, "activateSettlementAccount", {timeout:180000});
+
 const exploraRouteCallable = httpsCallable(functions, "exploraRoute");
 const adminCreateDriverCallable = httpsCallable(functions, "adminCreateDriver");
 const adminUpdateDriverCallable = httpsCallable(functions, "adminUpdateDriver");
@@ -34,10 +46,6 @@ const ensureTeamRealtimeBalancesCallable = httpsCallable(functions, "ensureTeamR
 const adminDeleteFinancialMovementCallable = httpsCallable(functions, "adminDeleteFinancialMovement");
 const adminModifyExpenseAmountCallable = httpsCallable(functions, "adminModifyExpenseAmount");
 const adminModifyBillingAmountCallable = httpsCallable(functions, "adminModifyBillingAmount");
-const authReady = setPersistence(auth, browserLocalPersistence)
-  .catch(() => setPersistence(auth, browserSessionPersistence))
-  .catch(() => setPersistence(auth, inMemoryPersistence))
-  .catch(err => console.warn("No se pudo guardar la persistencia de sesión:", err));
 const AUTH_READY_TIMEOUT_MS = 2500;
 
 const $ = id => document.getElementById(id);
@@ -126,6 +134,86 @@ let debtPayments = [];
 let advances = [];
 let advancesLoaded = false;
 let currentProfile = null;
+const CONFIRMED_LEDGER_VERSION = "confirmed_account_v1";
+let confirmedSettlementAccount = null;
+let confirmedSettlementEntries = [];
+let confirmedSettlementStops = [];
+let adminConfirmedAccounts = new Map();
+let lastSettlementReview = null;
+let confirmedAccountReadReady = false;
+
+function showFinancialError(error) {
+  const status = $("financialStatus");
+  if (!status) return;
+  status.textContent = error?.message || "No se confirmó la operación. Revisá la conexión y volvé a intentarlo.";
+  status.className = "financial-status error";
+}
+function renderConfirmedAccountStatus() {
+  const status = $("financialStatus");
+  if (!status || !auth.currentUser) return;
+  if (isAdminProfile()) {
+    status.textContent = "Saldos confirmados: revisá y activá cada cuenta histórica en «Saldos seguros» antes de registrar nuevos movimientos.";
+  } else if (confirmedSettlementAccount?.status === "active") {
+    status.textContent = `Saldo confirmado · operación #${confirmedSettlementAccount.sequence || 0}. Los movimientos anteriores a la activación conservan su historial original.`;
+  } else {
+    status.textContent = confirmedAccountReadReady
+      ? "Cuenta pendiente de activación. Admin debe revisar el saldo inicial en «Saldos seguros». Una cuenta sin movimientos se inicia automáticamente."
+      : "Consultando el saldo confirmado…";
+  }
+  status.className = "financial-status";
+}
+function applyConfirmedFinancialResponse(response) {
+  for (const account of response.accounts || []) {
+    const uid = account.driverUid;
+    if (uid === auth.currentUser?.uid && (!confirmedSettlementAccount || Number(account.sequence) >= Number(confirmedSettlementAccount.sequence))) {
+      confirmedSettlementAccount = account;
+    }
+    const old = adminConfirmedAccounts.get(uid);
+    if (!old || Number(account.sequence) >= Number(old.sequence)) adminConfirmedAccounts.set(uid, account);
+  }
+  renderConfirmedAccountStatus();
+  if (isAdminProfile()) renderAdminDashboardUpdates(); else render();
+}
+function stopConfirmedSettlement() {
+  confirmedSettlementStops.forEach(stop => stop());
+  confirmedSettlementStops = [];
+  confirmedSettlementAccount = null;
+  confirmedSettlementEntries = [];
+  adminConfirmedAccounts = new Map();
+  confirmedAccountReadReady = false;
+  lastSettlementReview = null;
+}
+function subscribeConfirmedSettlement(user) {
+  stopConfirmedSettlement();
+  const generation = authGeneration;
+  const isCurrent = () => authGeneration === generation && auth.currentUser?.uid === user.uid;
+  if (isAdminProfile()) {
+    confirmedSettlementStops.push(onSnapshot(collection(db,"driver_settlement_accounts"), snapshot => {
+      if (!isCurrent()) return;
+      // Never let an older cache/event downgrade an already acknowledged sequence.
+      for (const row of snapshot.docs) {
+        const next = row.data(), old = adminConfirmedAccounts.get(next.driverUid);
+        if (!old || Number(next.sequence) >= Number(old.sequence)) adminConfirmedAccounts.set(next.driverUid,next);
+      }
+      renderAdminDashboardUpdates();
+    }, showFinancialError));
+  } else {
+    confirmedSettlementStops.push(onSnapshot(doc(db,"driver_settlement_accounts",user.uid), {includeMetadataChanges:true}, snapshot => {
+      if (!isCurrent()) return;
+      if (!snapshot.metadata.fromCache) confirmedAccountReadReady = true;
+      const next = snapshot.exists() ? snapshot.data() : null;
+      if (next && (!confirmedSettlementAccount || Number(next.sequence) >= Number(confirmedSettlementAccount.sequence))) confirmedSettlementAccount = next;
+      renderConfirmedAccountStatus(); render();
+    }, showFinancialError));
+    confirmedSettlementStops.push(onSnapshot(query(collection(db,"driver_settlement_entries"),where("driverUid","==",user.uid)), snapshot => {
+      if (!isCurrent()) return;
+      confirmedSettlementEntries = snapshot.docs.map(row => ({id:row.id,...row.data()}));
+      render();
+    }, showFinancialError));
+  }
+  renderConfirmedAccountStatus();
+}
+
 let teamRealtimeBalances = [];
 let unsubscribeTeamRealtimeBalances = null;
 let teamRealtimeLoadError = "";
@@ -306,6 +394,7 @@ function releaseSubmissionLock(kind) {
   scheduleDashboardRender();
 }
 
+// Preview only. commitFinancialOperation discards these fields and confirms them transactionally.
 function captureSubmissionBalance(kind) {
   const balance = settlementModel().balance;
   if (activeSubmissionLocks.has(kind)) submissionPreviewBalances.set(kind, balance);
@@ -761,7 +850,7 @@ window.addEventListener("online", resumeDashboard);
 window.addEventListener("offline", resumeDashboard);
 
 function renderDriverLoadState() {
-  const ready = dashboardLoad?.complete() === true;
+  const ready = dashboardLoad?.complete() === true && (typeof confirmedAccountReadReady === "undefined" || confirmedAccountReadReady || confirmedSettlementAccount?.status === "active");
   const failed = Boolean(dashboardLoad?.errors.size);
   const syncing = !ready || Boolean(dashboardLoad?.cached.size);
   const pending = Boolean(dashboardLoad?.pendingWrites.size);
@@ -1642,7 +1731,9 @@ function settlementModel() {
     balance = baseBalance - driverPaid + exploraPaid;
   }
 
-  const normalizedBalance = Math.abs(balance) > 0.5 ? balance : 0;
+  const confirmed = typeof confirmedSettlementAccount !== "undefined" && confirmedSettlementAccount?.status === "active"
+    ? Number(confirmedSettlementAccount.balance) : balance;
+  const normalizedBalance = Math.abs(confirmed) > 0.5 ? confirmed : 0;
   const compensationAvailable = 0;
 
   return {
@@ -1802,7 +1893,7 @@ function openAdvanceModal() {
 
 function buildUnifiedReceipts(order = "newest") {
   const regularPayments = payments
-    .filter(item => !movementIsDeleted(item))
+    .filter(item => !movementIsDeleted(item) && item.financialOriginVersion !== "confirmed_account_v1")
     .map(item => ({ ...item, _receiptGroupKey:`payment:${item.id}`, _sortPriority: 2 }));
 
   // Cada cobro con caja chica muestra el ingreso y su 5% separado. El segundo se deriva del primero para
@@ -1825,7 +1916,7 @@ function buildUnifiedReceipts(order = "newest") {
     }));
 
   const debtReceipts = debts
-    .filter(item => !movementIsDeleted(item) && debtImpactsSettlement(item))
+    .filter(item => !movementIsDeleted(item) && debtImpactsSettlement(item) && item.financialLedgerVersion !== "confirmed_account_v1")
     .map(item => ({
       ...item,
       method: "debt",
@@ -1836,7 +1927,7 @@ function buildUnifiedReceipts(order = "newest") {
       _sortPriority: 2
     }));
 
-  const advanceReceipts = advances.map(item => {
+  const advanceReceipts = advances.filter(item => item.financialOriginVersion !== "confirmed_account_v1").map(item => {
     const state = String(item.approvalStatus || item.status || "active").toLowerCase();
     const pending = /pending/.test(state);
     const rejected = /reject|rechaz/.test(state);
@@ -1856,7 +1947,7 @@ function buildUnifiedReceipts(order = "newest") {
   });
 
   const uberReceipts = uberClosures
-    .filter(item => !movementIsDeleted(item))
+    .filter(item => !movementIsDeleted(item) && item.financialOriginVersion !== "confirmed_account_v1")
     .filter(uberImpactsSettlement)
     .flatMap(item => {
       const gross = uberGrossRevenueOf(item);
@@ -1885,7 +1976,7 @@ function buildUnifiedReceipts(order = "newest") {
     });
 
   const expenseReceipts = expenses
-    .filter(item => !movementIsDeleted(item))
+    .filter(item => !movementIsDeleted(item) && item.financialOriginVersion !== "confirmed_account_v1")
     .flatMap(item => {
       const refundRate = expenseRefundRate(item);
       const expense = {
@@ -1917,7 +2008,8 @@ function buildUnifiedReceipts(order = "newest") {
     ...debtReceipts,
     ...advanceReceipts,
     ...uberReceipts,
-    ...expenseReceipts
+    ...expenseReceipts,
+    ...(typeof confirmedSettlementEntries === "undefined" ? [] : ledgerReceiptRows(confirmedSettlementEntries))
   ], order);
 }
 
@@ -1927,6 +2019,15 @@ function receiptGroupKey(item) {
 
 function sortUnifiedReceipts(receipts, order = "newest") {
   return [...receipts].sort((a, b) => {
+    // The reviewed opening is a boundary, not a rewrite of legacy timestamps.
+    if (Boolean(a.financialConfirmedReceipt) !== Boolean(b.financialConfirmedReceipt)) {
+      return (a.financialConfirmedReceipt ? 1 : -1) * (order === "oldest" ? 1 : -1);
+    }
+    if (a.financialConfirmedReceipt && b.financialConfirmedReceipt) {
+      const sequential = Number(a.financialSequence) - Number(b.financialSequence)
+        || Number(a.financialComponentIndex) - Number(b.financialComponentIndex);
+      if (sequential) return order === "oldest" ? sequential : -sequential;
+    }
     const byDate = recordTimestampMs(a) - recordTimestampMs(b);
     if (byDate) return order === "oldest" ? byDate : -byDate;
     const byGroup = receiptGroupKey(a).localeCompare(receiptGroupKey(b));
@@ -2319,6 +2420,13 @@ function receiptFooterLabel(item = {}) {
 // Historical balances must come from the operation's saved snapshot. Never
 // backfill old receipts from today's balance or count the cashbox detail twice.
 function receiptBalanceSnapshot(item = {}) {
+  if (!item.financialConfirmedReceipt && item.financialLedgerVersion === "confirmed_account_v1" && item.financialOriginVersion !== "confirmed_account_v1") {
+    if (!item.financialOriginalSnapshot) return null;
+    item = {...item,telegramSettlementBeforeBalance:item.financialOriginalSnapshot.before,telegramSettlementAfterBalance:item.financialOriginalSnapshot.after};
+  }
+  if (item.financialConfirmedReceipt && Number.isFinite(item.confirmedBefore) && Number.isFinite(item.confirmedAfter)) {
+    return {before:item.confirmedBefore, after:item.confirmedAfter, movementImpact:item.confirmedAfter-item.confirmedBefore};
+  }
   if (item.type === "cash_advance" || Number(item.amountCorrectionCount || 0) > 0 || cashboxIsExcluded(item)) return null;
   const before = item.telegramSettlementBeforeBalance ?? item.settlementBeforeAdminDecision;
   const after = item.telegramSettlementAfterBalance ?? item.settlementAfterAdminDecision;
@@ -2434,7 +2542,7 @@ function renderList(containerId, items) {
     const snapshot = receiptBalanceSnapshot(item);
     const impact = snapshot?.movementImpact || 0;
     const currentRule = item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1";
-    const title = cashboxReceipt && currentRule ? `Caja ${item.method === "cash" ? "efectivo" : "digital"} · 5%` : regularCashReceipt ? "Cobro en efectivo" : digitalReceipt ? "Cobro digital" : item.service || proofLabel;
+    const title = item.financialConfirmedReceipt ? item.service : cashboxReceipt && currentRule ? `Caja ${item.method === "cash" ? "efectivo" : "digital"} · 5%` : regularCashReceipt ? "Cobro en efectivo" : digitalReceipt ? "Cobro digital" : item.service || proofLabel;
     const strip = snapshot
       ? `<div class="movement-balances" aria-label="Saldo histórico de esta operación">
           <div><span>Antes</span><p>${escapeHtml(receiptBalanceLabel(snapshot.before))}</p></div>
@@ -2442,9 +2550,9 @@ function renderList(containerId, items) {
           <div><span>Después</span><p>${escapeHtml(receiptBalanceLabel(snapshot.after))}</p></div>
         </div>`
       : `<div class="movement-no-snapshot"><span>${cashboxReceipt ? "Incluida en el cobro · a favor de Explora" : cashAdvance ? "Adelanto · cuenta separada" : "Saldo histórico no disponible"}</span><strong>${money(item.amount)}</strong></div>`;
-    return `<article class="movement-card ${receiptToneClass}">
+    return `<article class="movement-card ${receiptToneClass}" data-movement-color="${movementColor(item, {expensePolicy:ExploraExpensePolicy})}">
       <details class="movement-details">
-        <summary><span class="movement-icon">${icon}</span><span class="movement-copy"><strong>${escapeHtml(title)}</strong></span><span class="movement-date">${receiptFooterLabel(item)}</span><span class="movement-chevron" aria-hidden="true">›</span></summary>
+        <summary><span class="movement-icon">${icon}</span><span class="movement-copy"><strong>${escapeHtml(title)}</strong></span><span class="movement-date">${item.financialConfirmedReceipt ? `#${item.financialSequence} · ` : ""}${receiptFooterLabel(item)}</span><span class="movement-chevron" aria-hidden="true">›</span></summary>
         <div class="movement-attachment"><p>${escapeHtml(item.detail || "Operación registrada")}</p>${currentRule && !cashboxIsExcluded(item) && (regularCashReceipt || digitalReceipt) ? `<p>El 100% ${regularCashReceipt ? "del efectivo queda en poder del chofer y suma al saldo" : "del digital lo recibe Explora y resta del saldo"}. La caja chica de 5% se suma una sola vez, en la tarjeta siguiente.</p>` : ""}${proof}${snapshot ? `<small>Saldo positivo: el chofer debe a Explora. Saldo negativo: Explora debe al chofer. Los importes muestran el paso histórico de esta tarjeta.</small>` : ""}</div>
       </details>${strip}
     </article>`;
@@ -2559,9 +2667,15 @@ async function loadProfile(user) {
     } catch (_) {}
   }
 
+  // Only when both direct documents are missing: start the two historical
+  // lookups together, but keep the original uid-before-email role priority.
+  const byUidTask = getDocs(query(collection(db, "choferes"), where("uid", "==", user.uid), limit(1))).catch(() => null);
+  const byEmailTask = user.email
+    ? getDocs(query(collection(db, "choferes"), where("email", "==", user.email.toLowerCase()), limit(1))).catch(() => null)
+    : Promise.resolve(null);
   try {
-    const byUid = await getDocs(query(collection(db, "choferes"), where("uid", "==", user.uid), limit(1)));
-    if (!byUid.empty) {
+    const byUid = await byUidTask;
+    if (byUid && !byUid.empty) {
       const data = byUid.docs[0].data() || {};
       return {
         ...data,
@@ -2575,8 +2689,8 @@ async function loadProfile(user) {
 
   if (user.email) {
     try {
-      const byEmail = await getDocs(query(collection(db, "choferes"), where("email", "==", user.email.toLowerCase()), limit(1)));
-      if (!byEmail.empty) {
+      const byEmail = await byEmailTask;
+      if (byEmail && !byEmail.empty) {
         const data = byEmail.docs[0].data() || {};
         return {
           ...data,
@@ -2875,6 +2989,9 @@ function adminBillingBaselineForDriver(driver = {}) {
 }
 
 function adminBillingBalanceForDriver(driver = {}) {
+  const confirmedUid = String(driver.authUid || driver.uid || driver.driverUid || driver.id || "");
+  const confirmed = typeof adminConfirmedAccounts !== "undefined" ? adminConfirmedAccounts.get(confirmedUid) : null;
+  if (confirmed?.status === "active") return Number(confirmed.balance);
   const baseline = adminBillingBaselineForDriver(driver);
   const adminDebtTotal = adminDebts
     .filter(item => adminRecordBelongsToDriver(item, driver))
@@ -3050,7 +3167,8 @@ function renderAdminHistory() {
       detail: item.detail || item.notes || "",
       proofUrl: item.proofUrl || "",
       createdAt: recordTimestampMs(item),
-      className: "adjustment"
+      className: "adjustment",
+      visualMovementColor: movementColor(item)
     }));
 
   adminDebts
@@ -3090,7 +3208,8 @@ function renderAdminHistory() {
       detail: String(item.status || item.estado || ""),
       proofUrl: item.proofUrl || "",
       createdAt: recordTimestampMs(item),
-      className: "closure"
+      className: "closure",
+      visualMovementColor: movementColor(item)
     }));
 
   rows.sort((a, b) => b.createdAt - a.createdAt);
@@ -3105,7 +3224,7 @@ function renderAdminHistory() {
     const date = item.createdAt
       ? new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(item.createdAt))
       : "Sin fecha";
-    return `<article class="admin-history-item ${item.className}">
+    return `<article class="admin-history-item ${item.className}" data-movement-color="${item.visualMovementColor || ""}">
       <div class="admin-history-top"><span>${escapeHtml(item.kind)}</span><b>${money(item.amount || item.originalAmount || 0)}</b></div>
       <strong>${escapeHtml(item.title)}</strong>
       ${item.detail ? `<p>${escapeHtml(item.detail)}</p>` : ""}
@@ -3220,6 +3339,7 @@ function adminFinancialMovementRows() {
         detail:item.detail || item.notes || item.service || "",
         createdAt:recordTimestampMs(item),
         method:item.method,
+        visualMovementColor:movementColor(item),
         proofUrl:item.proofUrl || item.receiptUrl || ""
       }));
   }
@@ -3236,6 +3356,7 @@ function adminFinancialMovementRows() {
         detail:item.detail || item.notes || item.expenseType || "",
         createdAt:recordTimestampMs(item),
         method:"expense",
+        visualMovementColor:movementColor({...item, method:"expense"}, {expensePolicy:ExploraExpensePolicy}),
         proofUrl:item.proofUrl || item.receiptUrl || ""
       }));
   }
@@ -3266,13 +3387,13 @@ function renderAdminFinancialMovements() {
   }
   box.innerHTML = rows.map(item => {
     const when = item.createdAt ? new Date(item.createdAt).toLocaleString("es-AR", { dateStyle:"short", timeStyle:"short" }) : "";
-    return `<article class="admin-movement-item">
+    return `<article class="admin-movement-item" data-movement-color="${item.visualMovementColor || ""}">
       <div class="admin-history-top"><span>${escapeHtml(item.label)}</span><b>${money(item.amount)}</b></div>
       <strong>${escapeHtml(item.detail || "Sin detalle")}</strong>
       <div class="admin-history-foot">
         <div><small>${escapeHtml(when)}</small>${item.proofUrl ? `<a target="_blank" rel="noopener" href="${item.proofUrl}">Comprobante</a>` : ""}</div>
         <div class="admin-movement-actions">
-          ${item.type === "uber" ? "" : `<button type="button" data-edit-financial="${escapeHtml(item.id)}" data-financial-type="${item.type}" data-financial-amount="${item.amount}">Modificar</button>`}
+          ${item.type === "uber" ? "" : `<button type="button" data-edit-financial="${escapeHtml(item.id)}" data-financial-type="${item.type}" data-financial-amount="${item.amount}" data-financial-color="${item.visualMovementColor || ""}">Modificar</button>`}
           <button type="button" class="danger" data-delete-financial="${escapeHtml(item.id)}" data-financial-type="${item.type}">Eliminar</button>
         </div>
       </div>
@@ -3283,7 +3404,8 @@ function renderAdminFinancialMovements() {
     button.addEventListener("click", () => openAdminFinancialEdit({
       id:button.dataset.editFinancial,
       type:button.dataset.financialType,
-      amount:Number(button.dataset.financialAmount || 0)
+      amount:Number(button.dataset.financialAmount || 0),
+      visualMovementColor:button.dataset.financialColor || ""
     }));
   });
   box.querySelectorAll("[data-delete-financial]").forEach(button => {
@@ -3294,6 +3416,7 @@ function renderAdminFinancialMovements() {
 function openAdminFinancialEdit(item = {}) {
   const driver = adminDriverById($("movementDriver")?.value || "");
   if (!driver || !item.id) return;
+  $("financialEditModal").dataset.movementColor = ["green","red"].includes(item.visualMovementColor) ? item.visualMovementColor : "";
   $("financialEditDocumentId").value = item.id;
   $("financialEditType").value = item.type;
   $("financialEditDriverId").value = driver.id;
@@ -3691,7 +3814,8 @@ async function approveUberClosureFromAdmin(item = {}) {
   if (!$("adminUberVerified")?.checked) throw new Error("Marcá que verificaste el comprobante y la semana.");
 
   const uberRef = doc(db, ROOT_COLLECTIONS.uber, item.id);
-  const currentSnap = await getDoc(uberRef);
+  await runTransaction(db, async transaction => {
+  const currentSnap = await transaction.get(uberRef);
   if (!currentSnap.exists()) throw new Error("El pedido ya no existe.");
   const current = currentSnap.data() || {};
   if (String(current.settlementWorkflowVersion || "").toLowerCase() !== "v84_driver_submission_admin_review"
@@ -3714,7 +3838,7 @@ async function approveUberClosureFromAdmin(item = {}) {
   const submittedAmount = uberGrossRevenueOf(current);
   const corrected = Math.abs(submittedAmount - amount) > 0.5;
 
-  await setDoc(uberRef, {
+  transaction.set(uberRef, {
     driverSubmittedAmount:Number(current.driverSubmittedAmount ?? submittedAmount),
     grossAmount:amount,
     totalAmount:amount,
@@ -3751,6 +3875,7 @@ async function approveUberClosureFromAdmin(item = {}) {
     updatedAt:serverTimestamp(),
     updatedAtMs:Date.now()
   }, { merge:true });
+  });
 }
 
 async function releaseLegacyUberRequestFromAdmin(item = {}) {
@@ -4171,6 +4296,7 @@ $("adminManageClosuresBtn")?.addEventListener("click", () => {
 onAuthStateChanged(auth, async user => {
   tripCalendar.reset();
   const generation = ++authGeneration;
+  stopConfirmedSettlement();
   const isCurrent = () => generation === authGeneration && auth.currentUser?.uid === user?.uid;
   cancelDashboardRender();
   dashboardLoad = null;
@@ -4220,6 +4346,7 @@ onAuthStateChanged(auth, async user => {
   const initialAdmin = isAdminProfile();
   const profileTask = loadProfile(user);
   const subscribeDashboard = () => {
+    subscribeConfirmedSettlement(user);
     dashboardLoad = createDashboardLoad(isAdminProfile()
       ? [...ADMIN_REQUIRED_SNAPSHOT_KEYS] : Object.values(ROOT_COLLECTIONS));
     if (isAdminProfile()) subscribeAdminDashboard();
@@ -4326,6 +4453,9 @@ function renderChargePreview() {
   const row = (start, delta, end) => `<div><span>Antes</span><small>${escapeHtml(settlementPreviewCopy(start).label)}</small><strong>${money(Math.abs(start))}</strong></div><div><span>Impacto</span><strong class="${delta < 0 ? "negative" : delta > 0 ? "positive" : "neutral"}">${signed(delta)}</strong></div><div><span>Después</span><small>${escapeHtml(settlementPreviewCopy(end).label)}</small><strong>${money(Math.abs(end))}</strong></div>`;
   const afterPrincipal = normalizedSettlementBalance(before + principal);
   $("chargeAccountTitle").textContent = cash ? "Cobro en efectivo · 100%" : "Cobro digital · 100%";
+  $("chargeModal").dataset.movementColor = cash ? "red" : "green";
+  $("chargeAccountPreview").dataset.movementColor = cash ? "red" : "green";
+  $("chargeCashboxPreview").dataset.movementColor = "red";
   $("chargeAccountPreview").innerHTML = row(before, principal, afterPrincipal);
   $("chargeCashboxPreview").innerHTML = row(afterPrincipal, fee, after);
 }
@@ -4439,6 +4569,9 @@ function renderOperationPreview() {
   const afterState = settlementState(pendingOperationPreview.afterBalance, "now");
 
   $("operationPreviewModal").dataset.tone = pendingOperationPreview.kind;
+  $("operationPreviewModal").dataset.movementColor = movementColor({
+    method:pendingOperationPreview.kind, type:pendingOperationPreview.kind === "expense" ? "expense_receipt" : "billing", ...details
+  }, {expensePolicy:ExploraExpensePolicy});
   $("operationPreviewTitle").textContent = definition.title;
   $("operationPreviewSubtitle").textContent = definition.subtitle;
   $("operationPreviewAmountLabel").textContent = definition.amountLabel;
@@ -4446,9 +4579,9 @@ function renderOperationPreview() {
   $("operationPreviewImpactLabel").textContent = definition.impactLabel;
   const isCharge = ["cash","digital"].includes(pendingOperationPreview.kind);
   const principal = pendingOperationPreview.amount * (pendingOperationPreview.kind === "cash" ? 1 : -1);
-  $("operationPreviewImpact").textContent = isCharge
-    ? `${signedMoney(principal)} / caja ${signedMoney(pendingOperationPreview.amount * 0.05)}`
-    : signedMoney(definition.delta);
+  if (isCharge) {
+    $("operationPreviewImpact").innerHTML = `<span data-movement-color="${pendingOperationPreview.kind === "cash" ? "red" : "green"}" class="movement-value">${signedMoney(principal)}</span> / caja <span data-movement-color="red" class="movement-value">${signedMoney(pendingOperationPreview.amount * 0.05)}</span>`;
+  } else $("operationPreviewImpact").textContent = signedMoney(definition.delta);
   $("operationPreviewBeforeLabel").textContent = beforeState.label;
   $("operationPreviewBeforeAmount").textContent = money(beforeState.amount);
   $("operationPreviewAfterLabel").textContent = afterState.label;
@@ -5147,6 +5280,7 @@ $("adminAdjustmentForm")?.addEventListener("submit", async event => {
           remainingPayment -= applied;
         }
 
+        if (remainingPayment > 0.5) throw new Error("La deuda cambió. Actualizá el importe antes de registrar el pago.");
         transaction.set(paymentRef, {
           type: "admin_debt_payment",
           operationType: "debt_payment",
@@ -5668,6 +5802,7 @@ $("uberForm")?.addEventListener("submit", async e => {
     const {data:result} = await httpsCallable(functions,"registerUberLiquidation",{timeout:90000})({
       verifiedProofId:uberProofCheck.id, amount, weekStartDate:week.weekStartDate, weekCloseDate:week.weekCloseDate
     });
+    applyConfirmedFinancialResponse(result);
     const saved = normalizeUberRecord(result.id,result.record);
     uberClosures = [saved, ...uberClosures.filter(item => item.id !== result.id)];
     render();
@@ -6097,9 +6232,15 @@ $("adminPaymentForm")?.addEventListener("submit", async event => {
 
     const paymentRef = doc(collection(db, ROOT_COLLECTIONS.payments));
     const closureRef = doc(db, ROOT_COLLECTIONS.closures, item.id);
-    const newPaidTotal = Number(item.paidAmountTotal || 0) + amount;
-    const newRemaining = Math.max(0, remaining - amount);
-    const batch = writeBatch(db);
+    let newRemaining = remaining;
+    await runTransactionWithRetry(async batch => {
+    const latestSnapshot = await batch.get(closureRef);
+    if (!latestSnapshot.exists()) throw new Error("El cierre ya no existe.");
+    const latest = {...latestSnapshot.data(), id:item.id};
+    const confirmedRemaining = closureRemaining(latest);
+    if (amount > confirmedRemaining + 0.5) throw new Error("El cierre ya recibió un pago. Actualizá el importe pendiente.");
+    const newPaidTotal = Number(latest.paidAmountTotal || 0) + amount;
+    newRemaining = Math.max(0, confirmedRemaining - amount);
     batch.set(paymentRef, {
       // Ajuste interno: la UI lo muestra del lado efectivo del chofer, pero no debe
       // sumarse otra vez a la facturación histórica ni disparar un Telegram de cobro.
@@ -6163,7 +6304,7 @@ $("adminPaymentForm")?.addEventListener("submit", async event => {
       lastPaymentAt: serverTimestamp(),
       completedAt: newRemaining <= 0.5 ? serverTimestamp() : null
     });
-    await batch.commit();
+    });
 
     $("adminPaymentStatus").textContent = newRemaining <= 0.5
       ? "Pago registrado. El cierre quedó equilibrado."
@@ -6203,6 +6344,7 @@ window.addEventListener("pageshow", () => {
 let managementDirection = "";
 function openManagement() {
   managementDirection = "";
+  delete $("managementModal").dataset.movementColor;
   $("managementForm").classList.add("hidden");
   $("managementChoices").classList.remove("hidden");
   $("managementTitle").textContent = "Gestión";
@@ -6219,6 +6361,7 @@ function selectManagement(direction) {
   $("managementConfirm").textContent = paying ? "Confirmar pago" : "Confirmar cobro";
   $("managementConfirm").disabled = false;
   $("managementModal").dataset.tone = paying ? "digital" : "cash";
+  $("managementModal").dataset.movementColor = paying ? "green" : "red";
   $("managementChoices").classList.add("hidden");
   $("managementForm").classList.remove("hidden");
   renderManagementPreview();
@@ -6229,6 +6372,7 @@ function renderManagementPreview() {
   const before = previewSettlementBalance("management");
   const delta = amount * (managementDirection === "driver_to_explora" ? -1 : 1);
   const after = normalizedSettlementBalance(before + delta);
+  $("managementPreview").dataset.movementColor = managementDirection === "driver_to_explora" ? "green" : "red";
   $("managementPreview").innerHTML = '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(before))+'</small></div><div><span>Impacto</span><strong class="'+(delta < 0 ? 'negative' : 'positive')+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(after))+'</small></div>';
 }
 $("managementPay").addEventListener("click", () => selectManagement("driver_to_explora"));
@@ -6339,6 +6483,10 @@ function renderExpensePreview() {
   const intermediate = normalizedSettlementBalance(before + amount);
   const after = normalizedSettlementBalance(before + amount * (1 - rate));
   const row = (start,delta,end) => '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(start))+'</small></div><div><span>Impacto</span><strong class="'+(delta > 0 ? "negative" : "positive")+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(end))+'</small></div>';
+  const visualColor = rate === 1 ? "green" : "red";
+  $("expenseModal").dataset.movementColor = visualColor;
+  $("expenseGrossPreview").dataset.movementColor = visualColor;
+  $("expenseRefundBlock").dataset.movementColor = "green";
   $("expenseGrossPreview").innerHTML = row(before,amount,intermediate);
   $("expenseRefundBlock").classList.toggle("hidden", !rate);
   $("expenseRefundTitle").textContent = "Reintegro · " + (rate * 100) + "%";
@@ -6851,4 +6999,62 @@ $("invoicesModal").addEventListener("keydown",event=>{
   const first=controls[0],last=controls[controls.length-1];
   if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
   else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
+});
+
+
+// Safe opening of the ledger: review is read-only; activation requires an explicit
+// confirmation and a hash of the exact source version reviewed by Admin.
+$("adminSettlementAccountsBtn")?.addEventListener("click", () => {
+  if (!isAdminProfile()) return;
+  lastSettlementReview = null;
+  $("settlementAccountDriver").innerHTML = adminDrivers.filter(d => !adminDriverIsAdministrator(d))
+    .map(d => `<option value="${escapeHtml(d.authUid || d.uid || d.driverUid || d.id)}">${escapeHtml(adminDriverLabel(d))}</option>`).join("");
+  $("settlementReviewResult").textContent = "Elegí un chofer y revisá su saldo. Esta consulta no modifica movimientos.";
+  $("settlementReviewed").checked = false;
+  $("activateSettlementAccountBtn").disabled = true;
+  $("settlementAccountsModal").classList.remove("hidden");
+});
+function invalidateSettlementReview() {
+  lastSettlementReview = null;
+  $("settlementReviewed").checked = false;
+  $("activateSettlementAccountBtn").disabled = true;
+}
+$("settlementAccountDriver")?.addEventListener("change", invalidateSettlementReview);
+$("settlementReviewed")?.addEventListener("change", () => {
+  $("activateSettlementAccountBtn").disabled = !lastSettlementReview || lastSettlementReview.active || !$("settlementReviewed").checked;
+});
+$("reviewSettlementAccountBtn")?.addEventListener("click", async () => {
+  invalidateSettlementReview();
+  const button = $("reviewSettlementAccountBtn");
+  button.disabled = true;
+  $("settlementReviewResult").textContent = "Leyendo movimientos y sus reglas originales en el servidor…";
+  try {
+    const {data} = await reviewSettlementAccountCallable({driverUid:$("settlementAccountDriver").value});
+    lastSettlementReview = data;
+    const count = Object.values(data.counts || {}).reduce((sum,n) => sum + Number(n),0);
+    const difference = data.active ? Number(data.balance)-Number(data.confirmedBalance) : 0;
+    $("settlementReviewResult").textContent = `${data.driverName}\nSaldo reconstruido: ${receiptBalanceLabel(data.balance)}\n${count} documentos revisados.\n`
+      + (data.active ? `Cuenta activa · secuencia #${data.sequence}. Diferencia con sus fuentes: ${money(difference)}.\n` : "Cuenta pendiente de activación.\n")
+      + `${data.historicDiscontinuityCount || 0} posibles discontinuidades entre fotos históricas (no prueban una deuda incorrecta).\n`
+      + (data.historicDiscontinuities || []).slice(0,5).map(item=>`${item.previousSource} → ${item.nextSource}: diferencia ${signedMoney(item.difference)}${item.ambiguousTime ? " · orden temporal ambiguo" : ""}`).join("\n") + "\n"
+      + "Se preservan los porcentajes históricos, los cierres y las bases de migración. No se reescribe el historial ni se agrega un ajuste.\n"
+      + (Math.abs(difference) > .005 ? "ATENCIÓN: la cuenta activa difiere de sus fuentes. Necesita auditoría; no se permite reactivarla para ocultar la diferencia." : "Contrastá este saldo con tus registros y respaldos antes de confirmar.");
+  } catch (error) {
+    $("settlementReviewResult").textContent = error.message || "No se pudo revisar la cuenta.";
+  } finally { button.disabled = false; }
+});
+$("activateSettlementAccountBtn")?.addEventListener("click", async () => {
+  if (!lastSettlementReview || !$("settlementReviewed").checked) return;
+  const button = $("activateSettlementAccountBtn");
+  button.disabled = true;
+  try {
+    const {data} = await activateSettlementAccountCallable({driverUid:lastSettlementReview.driverUid,
+      sourceHash:lastSettlementReview.sourceHash,confirmReviewed:true});
+    if (data.account) applyConfirmedFinancialResponse({accounts:[data.account]});
+    $("settlementReviewResult").textContent = `Cuenta activada. Saldo inicial: ${receiptBalanceLabel(data.balance)}. Los nuevos movimientos usarán una secuencia confirmada. No se alteró ningún movimiento histórico.`;
+    invalidateSettlementReview();
+  } catch (error) {
+    $("settlementReviewResult").textContent = error.message || "No se pudo activar la cuenta. Volvé a revisar.";
+    invalidateSettlementReview();
+  }
 });

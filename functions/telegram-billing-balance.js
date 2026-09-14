@@ -77,11 +77,22 @@ function timestampMs(value) {
 }
 
 function rowMs(data = {}) {
-  return Math.max(
-    timestampMs(data.createdAt), timestampMs(data.completedAt), timestampMs(data.updatedAt),
-    timestampMs(data.expenseDate), timestampMs(data.fechaISO),
-    Number(data.createdAtMs || 0), Number(data.timestampMs || 0), Number(data.completedAtMs || 0)
-  );
+  for (const value of [data.createdAt,data.completedAt,data.updatedAt,data.expenseDate,data.receiptUploadedAt]) {
+    if (!value) continue;
+    if (typeof value.toMillis === "function") return value.toMillis();
+    if (typeof value.toDate === "function") return value.toDate().getTime();
+    if (value instanceof Date) return value.getTime();
+    if (typeof value.seconds === "number" || typeof value._seconds === "number") return timestampMs(value);
+  }
+  for (const value of [data.createdAtMs,data.completedAtMs,data.updatedAtMs,data.timestampMs]) {
+    const number = Number(value || 0);
+    if (number>0) return number;
+  }
+  for (const value of [data.fechaISO,data.date,data.fecha]) {
+    const parsed = Date.parse(String(value || ""));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
 }
 
 function movementIsDeleted(data = {}) {

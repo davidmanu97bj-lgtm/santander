@@ -1,0 +1,46 @@
+{
+  "base": "Explora_GitHub_colores_login_saldos.zip",
+  "original_git_commit": "54e76aa02ef90589c88ea95e21f23d720d190c53",
+  "modified_existing_files": [
+    "LEER_PRIMERO_ENTREGA_20260914.md",
+    "docs/colores-login-cloudshell/BASES_CONOCIDAS.json",
+    "tools/cloudshell-release.sh",
+    "tools/safe-release-overlay.py"
+  ],
+  "added_files": [
+    "LEER_PRIMERO_INSTALADOR_V2.md",
+    "docs/instalador-v2/BUILD.txt",
+    "docs/instalador-v2/CAMBIOS.json",
+    "docs/instalador-v2/PRUEBAS_INSTALADOR.txt",
+    "docs/instalador-v2/PRUEBAS_SELECCIONADAS.txt",
+    "docs/instalador-v2/QA.md",
+    "docs/instalador-v2/REPRODUCCION.json",
+    "docs/instalador-v2/SINTAXIS.txt",
+    "tests/test_release_base_history.py"
+  ],
+  "removed_files": [],
+  "runtime_and_functions_and_rules_byte_identical": true,
+  "tests": {
+    "python_installer": {
+      "passed": 27,
+      "failed": 0
+    },
+    "node_selected": {
+      "passed": 58,
+      "failed": 0
+    },
+    "javascript_syntax_files": 46,
+    "hosting_build": "passed"
+  },
+  "not_run": [
+    "Full suite with installed dependencies in this revision",
+    "Firebase emulators in this revision",
+    "Production deploy"
+  ],
+  "sha256_changed": {
+    "LEER_PRIMERO_ENTREGA_20260914.md": "7a906a3dcded239e675feae197c43dacb82fa2e1503636efebacd366d20445de",
+    "docs/colores-login-cloudshell/BASES_CONOCIDAS.json": "6d0c63d87c797af1a57b8fc4db850a98a6ad4222082245ddfaed09e0616dae0f",
+    "tools/cloudshell-release.sh": "787727905cdd1e978504ca73aaff8b833825485e8532d44a6927a6631b220437",
+    "tools/safe-release-overlay.py": "5edfaa4e8e71546ca1812ef15a86f4912b759be9b4db82c191a789fe4a80bbb4"
+  }
+}

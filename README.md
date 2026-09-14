@@ -1,5 +1,11 @@
 # Explora
 
+## Actualización: saldos confirmados (14/09/2026)
+
+**Antes de publicar, leer [LEER_PRIMERO_SALDOS_CONFIRMADOS.md](LEER_PRIMERO_SALDOS_CONFIRMADOS.md).**
+Esta versión cambia el guardado de dinero en funciones, reglas y cliente: no alcanza con subir `index.html` o publicar solo Hosting. Las cuentas históricas requieren revisión y activación explícita de Admin.
+
+
 Fuente del código: https://github.com/davidmanu97bj-lgtm/santander.
 Backend y Hosting de producción: `explora-control-operativo`.
 
@@ -28,8 +34,9 @@ mismas comprobaciones completas que `npm test`.
 
 Se consolidaron las pruebas de Functions en `functions/tests/`: las dos copias
 idénticas y la suite antigua de saldo en `functions/test/` fueron reemplazadas por
-los contratos actuales (50% + 5% de caja chica, sin reiniciar el histórico al cerrar).
-Los cálculos de la aplicación y el backend no se cambiaron. La vista previa se
+los contratos históricos de esa limpieza. La versión de saldo confirmado conserva
+las reglas de cada comprobante: 100% + caja chica separada en los registros nuevos,
+y las fórmulas/compensaciones originales de los registros anteriores. La vista previa se
 prueba ejecutando sus funciones puras reales, sin conectar Firebase.
 
 Los antiguos comandos `test:mileage` y `test:admin-production` apuntaban a archivos

@@ -1,0 +1,149 @@
+{
+  "base": "santander-main (79).zip",
+  "baseSha256": "ae576c68929f8c823959d38dfb98b2c687f3e3eba4f7fcf6aadee3dcc087ea7d",
+  "originalFileCount": 429,
+  "modified": [
+    {
+      "path": "README.md",
+      "sha256": "b338115b212b1c04fbfdb2d1fdee43e2d06bb9e7ba59908bd7581b11521fe8b9",
+      "previousSha256": "f45acc192a916fb0f7cfdc8db313e18673049a72eb37a9eaad1df21e9d7a57d1",
+      "bytes": 5701
+    },
+    {
+      "path": "app.js",
+      "sha256": "491a3fa83d40f34aeb8bd298c45dbbaee881b51a86546bee1210a39f2c28d8fd",
+      "previousSha256": "6ca869d7e5b403b3602029a702f34fddfc1972a55d89ea1d001f5c2f4834a3d0",
+      "bytes": 330256
+    },
+    {
+      "path": "firestore.rules",
+      "sha256": "220021a02823429a2601661f02d1ed17bf016a915a36a8c344148d29df2531b8",
+      "previousSha256": "e3b9113c97fb4cffc280bbe89637b0d33f11425289a7ab9fb721117987d3e7f5",
+      "bytes": 50486
+    },
+    {
+      "path": "functions/index.js",
+      "sha256": "489f82b93d97f24f8a23e1ead0e4b44bbf617912d31cd61a9bd53335722ef62b",
+      "previousSha256": "b65c7ff7d4a6d0a876a7a5ce855a11e4abc179a58bb025c1badeb85d06e9c85a",
+      "bytes": 180875
+    },
+    {
+      "path": "functions/telegram-billing-balance.js",
+      "sha256": "54f4f28019b7810982bbe263081959ea90d05ffdb3c05e8c9bd7443ac6cc5fbd",
+      "previousSha256": "d7ddce61ce6946c1c13a16e92dc7a52b6733a95bff83e94a011d182669697433",
+      "bytes": 28410
+    },
+    {
+      "path": "functions/uber-submission.js",
+      "sha256": "0005a6ca4e69526ccfd225bfa0ffc26c2de6b4d56365c5901c8184212c6dc6d2",
+      "previousSha256": "cbcbeb9ebca19e96a3359c7484c59bed52c6a0856b11824ee617c7f9b4cd765c",
+      "bytes": 8244
+    },
+    {
+      "path": "index.html",
+      "sha256": "3c1283ca7f4e7d00a8c3570fe94070725b09ffdcda09b18737adc17515e061e1",
+      "previousSha256": "1b4fcb0c1556dd962aab2783e001cfb53166dadfa52d6a6bbfa47ffce698152d",
+      "bytes": 76827
+    },
+    {
+      "path": "package.json",
+      "sha256": "15ffbc1e306debd0f6c6db1ea80d984678298dbf9efbc72d5cc388c7c84d683d",
+      "previousSha256": "6fe9e298f3244ddcf68efc40c1771583fe74a13869f60159827128cff44eabee",
+      "bytes": 1016
+    },
+    {
+      "path": "styles.css",
+      "sha256": "78a868029af283c072751aafcf90ef84d3abc81b4f9676f88331ed5c772a659b",
+      "previousSha256": "5a6146e9d74dd850380b508e6d8cf7c8e6d1fa4c16ce6ae67adf81aa3355fc13",
+      "bytes": 205153
+    },
+    {
+      "path": "tests/loading-performance.test.mjs",
+      "sha256": "053be745387974a115578b9998106bb51d5edc24e5f88d5b6cafdc4fa17e5d4f",
+      "previousSha256": "f9e3ee8038b6ea23b810d55699d96982a3d24764a92d463715d5b43a75579b0f",
+      "bytes": 11222
+    },
+    {
+      "path": "tools/check-syntax.mjs",
+      "sha256": "ea6d7ff5d8ada2a44bf0a796a3fbf3e7310de15cb91dab2db2353ab53de1ca18",
+      "previousSha256": "836b8c0c9abdb7f5b1de82fd2624d25af6a87d80253e8df0c2ab8bdf51cb9fcb",
+      "bytes": 582
+    },
+    {
+      "path": "tools/project.mjs",
+      "sha256": "5cc9d27ebed8ae12d5bc137dfe0e8b2d944eac805b89986144ef7d168607a2ea",
+      "previousSha256": "695db3318c7985c74f0eaed90a197dedc1beb32bc9daf3d2c610d0631b6e73be",
+      "bytes": 4296
+    }
+  ],
+  "added": [
+    {
+      "path": "LEER_PRIMERO_SALDOS_CONFIRMADOS.md",
+      "sha256": "a791c4b9c749553e537ea8b53f4e07796290d22848525402d509ee793341897d",
+      "bytes": 11920
+    },
+    {
+      "path": "docs/saldos-confirmados/PRUEBAS_COMPLETAS.txt",
+      "sha256": "ec3c9973de570d2a6473301dd7efe6ef0cf70082738b607944724df5d0cef120",
+      "bytes": 50232
+    },
+    {
+      "path": "docs/saldos-confirmados/PRUEBAS_SALDOS.txt",
+      "sha256": "6f6a128d5671266862b945fd54e7cf46cd202a160cc21f7ee54e74178e57475d",
+      "bytes": 5509
+    },
+    {
+      "path": "docs/saldos-confirmados/RESUMEN_QA.md",
+      "sha256": "b801757857fd34e465df838ad8bd82a63723e3cddebf6083ec656f3fd4b298a8",
+      "bytes": 3161
+    },
+    {
+      "path": "financial-store.js",
+      "sha256": "78493636aa28e934e857862c61f0bfb5861634efad40cd43642cc1db4b18c8cd",
+      "bytes": 6238
+    },
+    {
+      "path": "firebase.ledger-emulator.json",
+      "sha256": "227c547335e7f76738ff5d14e2b0aa9a66b8deb3fb4ab60f5af454d9d4c34a85",
+      "bytes": 270
+    },
+    {
+      "path": "functions/settlement-api.js",
+      "sha256": "f020ca9342d5f3428c99f378c2ad0ad83f256c7a7975de5d59e57db52cdd5420",
+      "bytes": 17466
+    },
+    {
+      "path": "functions/settlement-ledger.js",
+      "sha256": "c052893f0d1509facd93303855895c9739af06fa41a40793bc1a254da911a73e",
+      "bytes": 27891
+    },
+    {
+      "path": "tests/settlement-emulator.test.mjs",
+      "sha256": "39b70b77f1006f22ca2dff09b0c534518856d567f20f766eb724f85cf78583fe",
+      "bytes": 4341
+    },
+    {
+      "path": "tests/settlement-integration.test.mjs",
+      "sha256": "ffb857dcdf22d698ff2d0cba97998a6124334c495ef548f7b49c54a9137fa51c",
+      "bytes": 12472
+    },
+    {
+      "path": "tests/settlement-ledger.test.mjs",
+      "sha256": "56a74dbb97e26ca58c3f1429eaa5733a575cb4f9f9ab9f193d782aa27a29ecb0",
+      "bytes": 8990
+    },
+    {
+      "path": "tests/support/load-server.mjs",
+      "sha256": "ba24059c5fe95cf3d1767976b189c0f47707ad88bdbbd084d50fd3ad32348a19",
+      "bytes": 2511
+    },
+    {
+      "path": "tests/support/settlement-memory.mjs",
+      "sha256": "68f210c52881aae5acb8e98b621242993789153e6299afa1848920fd0037a2e1",
+      "bytes": 4561
+    }
+  ],
+  "manifestPath": "docs/saldos-confirmados/CAMBIOS.json",
+  "removed": [],
+  "deployed": false
+}

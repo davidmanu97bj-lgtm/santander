@@ -26,3 +26,7 @@ arca-config.local.json
 # Paquetes de Hosting y registros de despliegue
 dist/
 .deploy/
+
+# Pruebas locales del paquete Cloud Shell
+__pycache__/
+*.pyc

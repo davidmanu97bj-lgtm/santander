@@ -1,0 +1,29 @@
+{
+  "scenario": "Complete original ZIP79 in temporary local Git repository",
+  "actual_original_zip_commit": "54e76aa02ef90589c88ea95e21f23d720d190c53",
+  "test_local_commit": "61b7d6be618e9b53fddc34bb3425cfae92bd856d",
+  "old_conflicts": [
+    "LEER_PRIMERO_SALDOS_CONFIRMADOS.md: eliminado en GitHub respecto de la base; no se recrea automáticamente",
+    "docs/saldos-confirmados/CAMBIOS.json: eliminado en GitHub respecto de la base; no se recrea automáticamente",
+    "docs/saldos-confirmados/PRUEBAS_COMPLETAS.txt: eliminado en GitHub respecto de la base; no se recrea automáticamente",
+    "docs/saldos-confirmados/PRUEBAS_SALDOS.txt: eliminado en GitHub respecto de la base; no se recrea automáticamente",
+    "docs/saldos-confirmados/RESUMEN_QA.md: eliminado en GitHub respecto de la base; no se recrea automáticamente",
+    "financial-store.js: eliminado en GitHub respecto de la base; no se recrea automáticamente",
+    "firebase.ledger-emulator.json: eliminado en GitHub respecto de la base; no se recrea automáticamente",
+    "functions/settlement-api.js: eliminado en GitHub respecto de la base; no se recrea automáticamente",
+    "functions/settlement-ledger.js: eliminado en GitHub respecto de la base; no se recrea automáticamente",
+    "tests/settlement-emulator.test.mjs: eliminado en GitHub respecto de la base; no se recrea automáticamente",
+    "tests/settlement-integration.test.mjs: eliminado en GitHub respecto de la base; no se recrea automáticamente",
+    "tests/settlement-ledger.test.mjs: eliminado en GitHub respecto de la base; no se recrea automáticamente",
+    "tests/support/load-server.mjs: eliminado en GitHub respecto de la base; no se recrea automáticamente",
+    "tests/support/settlement-memory.mjs: eliminado en GitHub respecto de la base; no se recrea automáticamente"
+  ],
+  "old_conflict_count": 14,
+  "fixed_ok": true,
+  "fixed_copied_files": 468,
+  "all_copied_files_byte_identical": true,
+  "legacy_whitespace_gate_return_code": 2,
+  "fixed_commit_gate_return_code": 0,
+  "git_diff_check": "docs/colores-login-cloudshell/SUITE_COMPLETA_INTENTO.txt:1480: trailing whitespace.\n+Error: /opt/nvm/versions/node/v22.16.0/bin/node --test tests/admin-activity-financial-actions.test.mjs tests/admin-debt-ledger.test.mjs tests/admin-debt-menu-release.test.mjs tests/admin-debt-payment.test.mjs tests/billing-driver-payment.test.mjs tests/calendar-core.test.mjs tests/closure-direct-flow.test.mjs tests/deploy-safety.test.mjs tests/driver-history-snapshot.test.mjs tests/financial-receipt-actions.test.mjs tests/frontend-runtime.test.mjs tests/invoice-download.test.mjs tests/loading-performance.test.mjs tests/login-performance.test.mjs tests/movement-colors.test.mjs tests/realtime-balance.test.mjs tests/settlement-emulator.test.mjs tests/settlement-gross-flow.test.mjs tests/settlement-integration.test.mjs tests/settlement-ledger.test.mjs tests/tourism-catalog.test.mjs tests/tourism-selector.test.mjs tests/uber-schedule-proof.test.mjs tests/uber-weekly-split-flow.test.mjs functions/tests/arca-integration.test.js functions/tests/arca-invoice-draft.test.js functions/tests/calendar-notification.test.js functions/tests/client-idempotency-contract.test.js functions/tests/route-service.test.js functions/tests/team-realtime-contract.test.js functions/tests/telegram-billing-balance.test.js functions/tests/telegram-debt-payment.test.js functions/tests/telegram-driver-debt.test.js functions/tests/telegram-expense.test.js functions/tests/telegram-trip-delivery.test.js functions/tests/telegram-uber-notification-contract.test.js functions/tests/uber-proof-ocr.test.js functions/tests/uber-submission.test.js functions/tests/unified-main-preview-contract.test.js falló (1). \ndocs/colores-login-cloudshell/SUITE_COMPLETA_INTENTO.txt:1492: trailing whitespace.\n+Error: /opt/nvm/versions/node/v22.16.0/bin/node tools/run-tests.mjs falló (1). \nfirestore.rules:299: trailing whitespace.\n+    \nfirestore.rules:386: trailing whitespace.\n+    \nfirestore.rules:395: trailing whitespace.\n+    \nfirestore.rules:546: trailing whitespace.\n+    \nfirestore.rules:621: trailing whitespace.\n+    \nfirestore.rules:685: trailing whitespace.\n+    \nfirestore.rules:729: trailing whitespace.\n+    \nfirestore.rules:780: trailing whitespace.\n+    \n",
+  "cloud_writes": false
+}

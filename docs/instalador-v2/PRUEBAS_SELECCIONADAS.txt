@@ -1,0 +1,372 @@
+TAP version 13
+# Subtest: validar es la opción predeterminada y publicar exige SHA completo
+ok 1 - validar es la opción predeterminada y publicar exige SHA completo
+  ---
+  duration_ms: 1.43634
+  type: 'test'
+  ...
+# Subtest: la aprobación remota es de solo lectura y bloquea copias locales, remotos incorrectos y red caída
+ok 2 - la aprobación remota es de solo lectura y bloquea copias locales, remotos incorrectos y red caída
+  ---
+  duration_ms: 0.571811
+  type: 'test'
+  ...
+# Subtest: las dependencias se instalan antes de probar y una prueba fallida impide publicar
+ok 3 - las dependencias se instalan antes de probar y una prueba fallida impide publicar
+  ---
+  duration_ms: 0.371168
+  type: 'test'
+  ...
+# Subtest: fallos de dependencias y reglas detienen las etapas posteriores
+ok 4 - fallos de dependencias y reglas detienen las etapas posteriores
+  ---
+  duration_ms: 0.445851
+  type: 'test'
+  ...
+# Subtest: una entrega válida publica las tres etapas del mismo commit sin force
+ok 5 - una entrega válida publica las tres etapas del mismo commit sin force
+  ---
+  duration_ms: 0.258739
+  type: 'test'
+  ...
+# Subtest: si main avanza durante las pruebas, no se inicia la publicación
+ok 6 - si main avanza durante las pruebas, no se inicia la publicación
+  ---
+  duration_ms: 0.165269
+  type: 'test'
+  ...
+# Subtest: confirmación interactiva conserva controles y nunca acepta todas las advertencias
+ok 7 - confirmación interactiva conserva controles y nunca acepta todas las advertencias
+  ---
+  duration_ms: 0.559442
+  type: 'test'
+  ...
+# Subtest: los alcances parciales no publican servicios fuera de lo solicitado
+ok 8 - los alcances parciales no publican servicios fuera de lo solicitado
+  ---
+  duration_ms: 0.182624
+  type: 'test'
+  ...
+# Subtest: usuario habitual entra directamente sin esperar la consulta de aliases
+ok 9 - usuario habitual entra directamente sin esperar la consulta de aliases
+  ---
+  duration_ms: 4.340319
+  type: 'test'
+  ...
+# Subtest: un alias anterior sigue funcionando y no repite el primer intento fallido
+ok 10 - un alias anterior sigue funcionando y no repite el primer intento fallido
+  ---
+  duration_ms: 1.180916
+  type: 'test'
+  ...
+# Subtest: email explícito, credenciales incorrectas y errores de red no generan intentos duplicados
+ok 11 - email explícito, credenciales incorrectas y errores de red no generan intentos duplicados
+  ---
+  duration_ms: 2.456896
+  type: 'test'
+  ...
+# Subtest: un perfil encontrado no espera una segunda lectura lenta y conserva su prioridad y desactivación
+ok 12 - un perfil encontrado no espera una segunda lectura lenta y conserva su prioridad y desactivación
+  ---
+  duration_ms: 5.523609
+  type: 'test'
+  ...
+# Subtest: un perfil inexistente o no legible usa el perfil del chofer sin perder compatibilidad
+ok 13 - un perfil inexistente o no legible usa el perfil del chofer sin perder compatibilidad
+  ---
+  duration_ms: 1.424203
+  type: 'test'
+  ...
+# Subtest: cerrar la carga muestra inmediatamente la pantalla correcta y no reabre una sesión anterior
+ok 14 - cerrar la carga muestra inmediatamente la pantalla correcta y no reabre una sesión anterior
+  ---
+  duration_ms: 1.092243
+  type: 'test'
+  ...
+# Subtest: la preparación de la sesión limpia su timeout cuando Firebase ya está listo
+ok 15 - la preparación de la sesión limpia su timeout cuando Firebase ya está listo
+  ---
+  duration_ms: 1.011531
+  type: 'test'
+  ...
+# Subtest: las búsquedas heredadas por uid y email arrancan juntas y conservan prioridad
+ok 16 - las búsquedas heredadas por uid y email arrancan juntas y conservan prioridad
+  ---
+  duration_ms: 2.307441
+  type: 'test'
+  ...
+# Subtest: auth empieza en un módulo temprano sin resolver de ventanas ni segunda migración de persistencia
+ok 17 - auth empieza en un módulo temprano sin resolver de ventanas ni segunda migración de persistencia
+  ---
+  duration_ms: 2.195813
+  type: 'test'
+  ...
+# Subtest: color por operación: Cobro digital
+ok 18 - color por operación: Cobro digital
+  ---
+  duration_ms: 1.507207
+  type: 'test'
+  ...
+# Subtest: color por operación: Caja digital
+ok 19 - color por operación: Caja digital
+  ---
+  duration_ms: 0.11966
+  type: 'test'
+  ...
+# Subtest: color por operación: Cobro efectivo
+ok 20 - color por operación: Cobro efectivo
+  ---
+  duration_ms: 0.122785
+  type: 'test'
+  ...
+# Subtest: color por operación: Caja efectivo
+ok 21 - color por operación: Caja efectivo
+  ---
+  duration_ms: 0.136045
+  type: 'test'
+  ...
+# Subtest: color por operación: Gasto compartido
+ok 22 - color por operación: Gasto compartido
+  ---
+  duration_ms: 0.216325
+  type: 'test'
+  ...
+# Subtest: color por operación: Reintegro
+ok 23 - color por operación: Reintegro
+  ---
+  duration_ms: 0.113961
+  type: 'test'
+  ...
+# Subtest: color por operación: Gasto Explora
+ok 24 - color por operación: Gasto Explora
+  ---
+  duration_ms: 0.12676
+  type: 'test'
+  ...
+# Subtest: color por operación: Gasto chofer
+ok 25 - color por operación: Gasto chofer
+  ---
+  duration_ms: 0.077286
+  type: 'test'
+  ...
+# Subtest: color por operación: Pagar a Explora
+ok 26 - color por operación: Pagar a Explora
+  ---
+  duration_ms: 0.317027
+  type: 'test'
+  ...
+# Subtest: color por operación: Cobrar a Explora
+ok 27 - color por operación: Cobrar a Explora
+  ---
+  duration_ms: 0.266381
+  type: 'test'
+  ...
+# Subtest: el catálogo histórico no se convierte al régimen nuevo para colorearlo
+ok 28 - el catálogo histórico no se convierte al régimen nuevo para colorearlo
+  ---
+  duration_ms: 0.138148
+  type: 'test'
+  ...
+# Subtest: Uber y cuentas de adelantos/deudas ajenas al pedido conservan sus tonos anteriores
+ok 29 - Uber y cuentas de adelantos/deudas ajenas al pedido conservan sus tonos anteriores
+  ---
+  duration_ms: 0.096295
+  type: 'test'
+  ...
+# Subtest: componentes confirmados: responsabilidad completa y parcial sin mutar importes
+ok 30 - componentes confirmados: responsabilidad completa y parcial sin mutar importes
+  ---
+  duration_ms: 0.545
+  type: 'test'
+  ...
+# Subtest: Gestión confirmada mantiene colores sin depender del medio de entrega
+ok 31 - Gestión confirmada mantiene colores sin depender del medio de entrega
+  ---
+  duration_ms: 0.073581
+  type: 'test'
+  ...
+# Subtest: vistas previas: el digital sigue restando 100% y ambas cajas suman 5%
+ok 32 - vistas previas: el digital sigue restando 100% y ambas cajas suman 5%
+  ---
+  duration_ms: 1.873769
+  type: 'test'
+  ...
+# Subtest: gastos: solo el color cambia; bruto +100% y reintegro 0/50/100% permanecen
+ok 33 - gastos: solo el color cambia; bruto +100% y reintegro 0/50/100% permanecen
+  ---
+  duration_ms: 3.103549
+  type: 'test'
+  ...
+# Subtest: Gestión: pagar resta y cobrar suma sin alterar el signo para colorear
+ok 34 - Gestión: pagar resta y cobrar suma sin alterar el signo para colorear
+  ---
+  duration_ms: 1.060936
+  type: 'test'
+  ...
+# Subtest: todos los puntos de presentación tienen hooks; CSS no cambia estructura
+ok 35 - todos los puntos de presentación tienen hooks; CSS no cambia estructura
+  ---
+  duration_ms: 0.815166
+  type: 'test'
+  ...
+# applyDailyDebtPenalties {
+#   processed: 1,
+#   skipped: 0,
+#   scanned: 1,
+#   totalInterest: 60.9,
+#   todayKey: '2026-09-22'
+# }
+# applyDailyDebtPenalties {
+#   processed: 0,
+#   skipped: 1,
+#   scanned: 1,
+#   totalInterest: 0,
+#   todayKey: '2026-09-22'
+# }
+# Subtest: handlers reales: modifica y anula manteniendo una única secuencia y audit
+ok 36 - handlers reales: modifica y anula manteniendo una única secuencia y audit
+  ---
+  duration_ms: 36.109497
+  type: 'test'
+  ...
+# Subtest: handlers reales: gasto, corrección de reintegro y caja digital separada
+ok 37 - handlers reales: gasto, corrección de reintegro y caja digital separada
+  ---
+  duration_ms: 14.866222
+  type: 'test'
+  ...
+# Subtest: Uber verificado utiliza el mismo saldo; reintento no duplica prueba ni entrada
+ok 38 - Uber verificado utiliza el mismo saldo; reintento no duplica prueba ni entrada
+  ---
+  duration_ms: 31.638872
+  type: 'test'
+  ...
+# Subtest: Gestión usa ±100%, ignora saldos del navegador y rechaza simulación
+ok 39 - Gestión usa ±100%, ignora saldos del navegador y rechaza simulación
+  ---
+  duration_ms: 9.813982
+  type: 'test'
+  ...
+# Subtest: cierre pendiente no mueve saldo; un pago concurrente usa revisión de servidor
+ok 40 - cierre pendiente no mueve saldo; un pago concurrente usa revisión de servidor
+  ---
+  duration_ms: 10.691372
+  type: 'test'
+  ...
+# Subtest: dos solicitudes de adelanto concurrentes no se aprueban ni duplican
+ok 41 - dos solicitudes de adelanto concurrentes no se aprueban ni duplican
+  ---
+  duration_ms: 10.794437
+  type: 'test'
+  ...
+# Subtest: adaptador del navegador: respuesta perdida reintenta misma clave sin write directo
+ok 42 - adaptador del navegador: respuesta perdida reintenta misma clave sin write directo
+  ---
+  duration_ms: 14.203155
+  type: 'test'
+  ...
+# Subtest: adaptador: dos lectores de la misma deuda no pisan actualizaciones
+ok 43 - adaptador: dos lectores de la misma deuda no pisan actualizaciones
+  ---
+  duration_ms: 11.863876
+  type: 'test'
+  ...
+# Subtest: las reglas bloquean escrituras financieras directas, también para Admin
+ok 44 - las reglas bloquean escrituras financieras directas, también para Admin
+  ---
+  duration_ms: 1.27621
+  type: 'test'
+  ...
+# Subtest: intereses diarios concurrentes: una sola aplicación, deuda y cuenta juntas
+ok 45 - intereses diarios concurrentes: una sola aplicación, deuda y cuenta juntas
+  ---
+  duration_ms: 10.958764
+  type: 'test'
+  ...
+# Subtest: el evento Tiempo real atrasado publica la cuenta vigente, no un valor calculado antes
+ok 46 - el evento Tiempo real atrasado publica la cuenta vigente, no un valor calculado antes
+  ---
+  duration_ms: 9.223183
+  type: 'test'
+  ...
+# Subtest: fecha de creación anterior al corte no se vuelve a incluir por una edición reciente
+ok 47 - fecha de creación anterior al corte no se vuelve a incluir por una edición reciente
+  ---
+  duration_ms: 6.246767
+  type: 'test'
+  ...
+# Subtest: reset o borrado de perfil no destruyen identidad, saldo ni historial
+ok 48 - reset o borrado de perfil no destruyen identidad, saldo ni historial
+  ---
+  duration_ms: 8.319935
+  type: 'test'
+  ...
+# Subtest: no activa ni reescribe historia sin revisión de Admin
+ok 49 - no activa ni reescribe historia sin revisión de Admin
+  ---
+  duration_ms: 7.984961
+  type: 'test'
+  ...
+# Subtest: reproduce y corrige exactamente el salto de $80.750 con snapshots locales falsos
+ok 50 - reproduce y corrige exactamente el salto de $80.750 con snapshots locales falsos
+  ---
+  duration_ms: 8.252654
+  type: 'test'
+  ...
+# Subtest: dos sesiones concurrentes se serializan; los relojes del teléfono no ordenan el libro
+ok 51 - dos sesiones concurrentes se serializan; los relojes del teléfono no ordenan el libro
+  ---
+  duration_ms: 2.662325
+  type: 'test'
+  ...
+# Subtest: una respuesta perdida y un nuevo intento del mismo comprobante no duplican saldo ni secuencia
+ok 52 - una respuesta perdida y un nuevo intento del mismo comprobante no duplican saldo ni secuencia
+  ---
+  duration_ms: 2.442003
+  type: 'test'
+  ...
+# Subtest: gastos respetan las tres responsabilidades existentes y generan una única secuencia por gasto
+ok 53 - gastos respetan las tres responsabilidades existentes y generan una única secuencia por gasto
+  ---
+  duration_ms: 2.642695
+  type: 'test'
+  ...
+# Subtest: deuda pendiente no impacta; su aceptación usa la cuenta común
+ok 54 - deuda pendiente no impacta; su aceptación usa la cuenta común
+  ---
+  duration_ms: 1.397873
+  type: 'test'
+  ...
+# Subtest: anular un registro crea contrapartida y conserva la entrada original
+ok 55 - anular un registro crea contrapartida y conserva la entrada original
+  ---
+  duration_ms: 1.647047
+  type: 'test'
+  ...
+# Subtest: bloquea deriva externa y no corrige dinero silenciosamente
+ok 56 - bloquea deriva externa y no corrige dinero silenciosamente
+  ---
+  duration_ms: 1.669351
+  type: 'test'
+  ...
+# Subtest: deniega identidad ajena, adelantos inventados y confirmación de Uber desde navegador
+ok 57 - deniega identidad ajena, adelantos inventados y confirmación de Uber desde navegador
+  ---
+  duration_ms: 0.930429
+  type: 'test'
+  ...
+# Subtest: revisión histórica detecta la discontinuidad de $80.750 sin inventar un ajuste
+ok 58 - revisión histórica detecta la discontinuidad de $80.750 sin inventar un ajuste
+  ---
+  duration_ms: 0.815306
+  type: 'test'
+  ...
+1..58
+# tests 58
+# suites 0
+# pass 58
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 303.716767
