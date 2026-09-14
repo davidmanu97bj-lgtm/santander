@@ -6,13 +6,12 @@ const WORKFLOW = 'v85_verified_direct';
 const RULE = 'uber_gross_cash_cashbox_5_v1';
 const inactive = row => row.deleted === true || row.isDeleted === true || /reject|rechaz|cancel|anulad|deleted/.test(String(row.reviewStatus || row.status || ''));
 
-async function registerUberSubmission({db, ledger, uid, input, driverName, balance, businessId, now = Date.now()}) {
+async function registerUberSubmission({db, uid, input, driverName, balance, businessId, now = Date.now()}) {
   const proofId = String(input.verifiedProofId || '');
   if (!/^[a-zA-Z0-9_-]{1,100}$/.test(proofId)) throw new HttpsError('invalid-argument','Volvé a verificar la captura.');
   const proofRef = db.collection('uber_proof_checks').doc(proofId);
   // The server owns the week and amount; the browser cannot set applied totals.
-  const transact = ledger ? (handler => ledger.runTransaction(handler,{actorUid:uid})) : (handler => db.runTransaction(handler));
-  const committed = await transact(async tx => {
+  return db.runTransaction(async tx => {
     const proofSnap = await tx.get(proofRef);
     const proof = proofSnap.data() || {};
     if (!proofSnap.exists || proof.uid !== uid || proof.valid !== true) throw new HttpsError('permission-denied','La captura no corresponde a tu cuenta.');
@@ -57,31 +56,18 @@ async function registerUberSubmission({db, ledger, uid, input, driverName, balan
     tx.update(proofRef,{usedAt:Timestamp.fromMillis(now),closureId:id});
     return {id,record,alreadyRegistered:false};
   });
-  const result = ledger ? committed.result : committed;
-  if (ledger && result?.id && !result.alreadyRegistered) {
-    // Return the immutable result of THIS transaction. A later edit/delete cannot
-    // change the receipt returned to the client between commit and response.
-    const saved = committed.confirmedSources.find(row=>row.path===`uber_weekly_closures/${result.id}`);
-    return {...result,record:saved.data,accounts:committed.accounts || [],entries:committed.entries || []};
-  }
-  return result;
 }
-
-async function deleteUberSubmission({db,ledger,documentId,adminUid,reason,getBalance,now=Date.now()}) {
+async function deleteUberSubmission({db,documentId,adminUid,reason,getBalance,now=Date.now()}) {
   const ref = db.collection('uber_weekly_closures').doc(documentId);
   const audit = db.collection('admin_audit').doc();
-  const transact = ledger ? (handler => ledger.runTransaction(handler,{actorUid:adminUid,reason})) : (handler => db.runTransaction(handler));
-  const committed = await transact(async tx => {
+  return db.runTransaction(async tx => {
     const snap = await tx.get(ref);
     if (!snap.exists) return {ok:true,type:'uber',documentId,alreadyDeleted:true};
     const data = snap.data();
     const driverUid = data.driverUid || data.operatorUid || data.choferUid || data.uid;
     if (!driverUid) throw new HttpsError('failed-precondition','No se pudo identificar al chofer.');
     if (getBalance) {
-      const settlement = ledger
-        ? require('./telegram-billing-balance').calculateTeamRealtimeSettlementBalance(
-          await ledger.readSources(tx,await ledger.identityInTransaction(tx,driverUid)))
-        : await getBalance(driverUid);
+      const settlement = await getBalance(driverUid);
       const createdAt = data.createdAtMs || data.createdAt?.toMillis() || 0;
       if (createdAt <= Number(settlement.effectiveCutoffMs || settlement.baseline || 0)) {
         throw new HttpsError('failed-precondition','Esta liquidación ya está incluida en un cierre o ajuste. Corregí ese cierre antes de eliminarla.');
@@ -96,18 +82,15 @@ async function deleteUberSubmission({db,ledger,documentId,adminUid,reason,getBal
     tx.delete(ref);
     return {ok:true,type:'uber',collectionName:'uber_weekly_closures',documentId,driverUid};
   });
-  return ledger ? {...committed.result,accounts:committed.accounts || [],entries:committed.entries || []} : committed;
 }
-
-function createUberSubmissionFunction({db,ledger,businessId,assertViewer,getProfile,getBalance}) {
-  if (!ledger) throw new Error('registerUberLiquidation requires the confirmed accounting ledger');
+function createUberSubmissionFunction({db,businessId,assertViewer,getProfile,getBalance}) {
   return onCall({region:'southamerica-east1',timeoutSeconds:90,memory:'256MiB'},async request => {
     const uid = await assertViewer(request);
-    const profile = await getProfile(uid);
+    const [profile, settlement] = await Promise.all([getProfile(uid),getBalance(uid)]);
     const data = profile?.data() || {};
-    return registerUberSubmission({db,ledger,uid,businessId,input:request.data || {},
+    return registerUberSubmission({db,uid,businessId,input:request.data || {},
       driverName:String(data.displayName || data.nombreCompleto || data.nombre || data.name || data.username || data.usuario || 'Chofer'),
-      balance:0});
+      balance:Number(settlement.balance || 0)});
   });
 }
 module.exports = {registerUberSubmission,deleteUberSubmission,createUberSubmissionFunction,WORKFLOW,RULE};

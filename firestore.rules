@@ -293,12 +293,20 @@ service cloud.firestore {
       // Reading a missing operation is needed by the idempotent create transaction.
       allow get: if signedIn() && (!exists(/databases/$(database)/documents/billing_records/$(recordId)) || isAdmin() || owns(resource.data));
       allow list: if isAdmin() || (signedIn() && owns(resource.data));
-      allow create: if false; // server-only confirmed ledger
-      allow update: if false; // server-only confirmed ledger
-      allow delete: if false; // server-only confirmed ledger
-    
-      allow get: if signedIn() && !exists(/databases/$(database)/documents/billing_records/$(recordId));
-}
+      allow create: if isAdmin() || (signedIn() && owns(request.resource.data) && (
+        !request.resource.data.keys().hasAny(['invoiceRequest'])
+        || request.resource.data.invoiceRequest.get('version', '') != 'arca_c_v1'
+        || (isActiveTeamViewer() && request.resource.data.driverUid == uid() && request.resource.data.createdAt == request.time)
+      ));
+      allow update: if (!resource.data.keys().hasAny(["invoiceRequest"]) || resource.data.invoiceRequest.get('version', '') != "arca_c_v1") && (isAdmin() || (
+        signedIn()
+        && owns(resource.data)
+        && owns(request.resource.data)
+        && ownershipFieldsUnchanged()
+        && adminFieldsUnchanged()
+      ));
+      allow delete: if isAdmin() && (!resource.data.keys().hasAny(["invoiceRequest"]) || resource.data.invoiceRequest.get('version', '') != "arca_c_v1");
+    }
 
     match /facturaciones/{recordId} {
       allow read: if signedIn();
@@ -380,21 +388,27 @@ service cloud.firestore {
           && d.receiptPath == d.proofPath && d.status == 'active';
       }
       allow read: if isAdmin() || owns(resource.data);
-      allow create: if false; // server-only confirmed ledger
-      allow update: if false; // server-only confirmed ledger
-      allow delete: if false; // server-only confirmed ledger
-    
-      allow get: if signedIn() && !exists(/databases/$(database)/documents/gastos/$(expenseId));
-}
+      allow create: if isAdmin() || (signedIn() && owns(request.resource.data)
+        && (!policyExpense(request.resource.data) || validExpensePolicy(request.resource.data)));
+      allow update: if isAdmin() || (
+        signedIn() && owns(resource.data) && owns(request.resource.data)
+        && ownershipFieldsUnchanged() && adminFieldsUnchanged()
+        && (policyExpense(resource.data)
+          ? request.resource.data.diff(resource.data).affectedKeys().hasOnly(['createdAt'])
+          : !policyExpense(request.resource.data))
+      );
+      allow delete: if isAdmin();
+    }
 
     match /prestamos_operativos/{loanId} {
       allow read: if isAdmin() || owns(resource.data);
-      allow create: if false; // server-only confirmed ledger
-      allow update: if false; // server-only confirmed ledger
-      allow delete: if false; // server-only confirmed ledger
-    
-      allow get: if signedIn() && !exists(/databases/$(database)/documents/prestamos_operativos/$(loanId));
-}
+      allow create: if isAdmin() || (signedIn() && owns(request.resource.data));
+      allow update: if isAdmin() || (
+        signedIn() && owns(resource.data) && owns(request.resource.data)
+        && ownershipFieldsUnchanged() && adminFieldsUnchanged()
+      );
+      allow delete: if isAdmin();
+    }
 
     match /deudas_choferes/{debtId} {
       function driverDebtAckUpdate() {
@@ -528,24 +542,25 @@ service cloud.firestore {
           && ownershipFieldsUnchanged();
       }
 
-      allow create: if false; // server-only confirmed ledger
-      allow update: if false; // server-only confirmed ledger
-      allow delete: if false; // server-only confirmed ledger
+      allow create: if isAdmin() || isUberWeeklyDebtCreate();
+      allow update: if isAdmin()
+        || driverDebtAckUpdate()
+        || driverDebtPaymentUpdate()
+        || driverUberDebtResubmissionUpdate();
+      allow delete: if isAdmin();
 
       match /payments/{paymentId} {
         allow read: if isAdmin()
           || owns(get(/databases/$(database)/documents/deudas_choferes/$(debtId)).data);
-        allow write: if false; // server-only confirmed ledger
+        allow write: if isAdmin();
       }
 
       match /payment_history/{paymentId} {
         allow read: if isAdmin()
           || owns(get(/databases/$(database)/documents/deudas_choferes/$(debtId)).data);
-        allow write: if false; // server-only confirmed ledger
+        allow write: if isAdmin();
       }
-    
-      allow get: if signedIn() && !exists(/databases/$(database)/documents/deudas_choferes/$(debtId));
-}
+    }
 
 
     match /uber_weekly_closures/{closureId} {
@@ -610,17 +625,34 @@ service cloud.firestore {
       allow list: if isAdmin()
         || (signedIn() && resource.data.driverUid == uid());
 
-      allow create: if false; // server-only confirmed ledger
+      allow create: if signedIn()
+        && owns(request.resource.data)
+        && validUberClosureRequest(request.resource.data);
 
       // El chofer crea el pedido con monto y comprobante. Únicamente David puede
       // aprobar, corregir o rechazar; su confirmación es la que impacta el saldo.
       // Se conserva la confirmación v82 sólo para documentos históricos ya creados.
-      allow update: if false; // server-only confirmed ledger
+      allow update: if isAdmin() || (
+        signedIn()
+        && owns(resource.data)
+        && owns(request.resource.data)
+        && resource.data.settlementWorkflowVersion == 'v82_admin_driver_confirmation'
+        && resource.data.reviewStatus == 'awaiting_driver_confirmation'
+        && resource.data.driverConfirmed == false
+        && request.resource.data.reviewStatus == 'approved'
+        && request.resource.data.status == 'approved'
+        && request.resource.data.driverConfirmed == true
+        && request.resource.data.driverConfirmedByUid == uid()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'driverConfirmed', 'driverConfirmedByUid', 'driverConfirmedAt', 'driverConfirmedAtMs',
+          'settlementBeforeConfirmation', 'telegramSettlementBeforeBalance',
+          'telegramSettlementAfterBalance', 'telegramSettlementPayer',
+          'reviewStatus', 'status', 'updatedAt', 'updatedAtMs'
+        ])
+      );
 
-      allow delete: if false; // server-only confirmed ledger
-    
-      allow get: if signedIn() && !exists(/databases/$(database)/documents/uber_weekly_closures/$(closureId));
-}
+      allow delete: if isAdmin();
+    }
 
     match /deuda_pagos/{paymentId} {
       function isStandardDebtPaymentCreate() {
@@ -680,11 +712,9 @@ service cloud.firestore {
 
       allow get: if isAdmin() || owns(resource.data);
       allow list: if isAdmin() || owns(resource.data);
-      allow create: if false; // server-only confirmed ledger
-      allow update, delete: if false; // server-only confirmed ledger
-    
-      allow get: if signedIn() && !exists(/databases/$(database)/documents/deuda_pagos/$(paymentId));
-}
+      allow create: if isAdmin() || isStandardDebtPaymentCreate() || isExpenseDebtOffsetCreate();
+      allow update, delete: if isAdmin();
+    }
 
     match /deuda_movimientos/{movementId} {
       function isStandardDebtMovementCreate() {
@@ -724,11 +754,9 @@ service cloud.firestore {
 
       allow get: if isAdmin() || owns(resource.data);
       allow list: if isAdmin() || owns(resource.data);
-      allow create: if false; // server-only confirmed ledger
-      allow update, delete: if false; // server-only confirmed ledger
-    
-      allow get: if signedIn() && !exists(/databases/$(database)/documents/deuda_movimientos/$(movementId));
-}
+      allow create: if isAdmin() || isStandardDebtMovementCreate() || isExpenseDebtMovementCreate();
+      allow update, delete: if isAdmin();
+    }
 
     // =========================================================
     // DERIVACIONES
@@ -774,12 +802,16 @@ service cloud.firestore {
     match /cierres_semanales/{closureId} {
       allow get: if signedIn();
       allow list: if isAdmin() || owns(resource.data);
-      allow create: if false; // server-only confirmed ledger
-      allow update: if false; // server-only confirmed ledger
-      allow delete: if false; // server-only confirmed ledger
-    
-      allow get: if signedIn() && !exists(/databases/$(database)/documents/cierres_semanales/$(closureId));
-}
+      allow create: if isAdmin() || (signedIn() && owns(request.resource.data));
+      allow update: if isAdmin() || (
+        signedIn()
+        && owns(resource.data)
+        && owns(request.resource.data)
+        && ownershipFieldsUnchanged()
+        && adminFieldsUnchanged()
+      );
+      allow delete: if isAdmin();
+    }
 
     match /pagos_semanales/{paymentId} {
       allow get: if signedIn();
@@ -1218,30 +1250,6 @@ service cloud.firestore {
 
     // DENEGACIÓN FINAL
     // =========================================================
-
-
-    // Immutable accounting collections. Even administrators cannot bypass the
-    // callable transaction with direct SDK/REST writes from an old client.
-    match /driver_settlement_accounts/{driverUid} {
-      allow get: if isAdmin() || (signedIn() && driverUid == uid());
-      allow list: if isAdmin();
-      allow write: if false;
-    }
-    match /driver_settlement_entries/{entryId} {
-      allow read: if isAdmin() || (signedIn() && resource.data.driverUid == uid());
-      allow write: if false;
-    }
-    match /settlement_entry_changes/{changeId} {
-      allow read: if isAdmin();
-      allow write: if false;
-    }
-    match /settlement_account_reviews/{reviewId} {
-      allow read: if isAdmin();
-      allow write: if false;
-    }
-    match /settlement_commit_requests/{requestId} {
-      allow read, write: if false;
-    }
 
     match /{document=**} {
       allow read, write: if false;

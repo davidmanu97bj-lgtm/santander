@@ -7,7 +7,7 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
-const { getFirestore, FieldValue, FieldPath, Timestamp, Filter } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue, FieldPath } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const {
   calculateOpenBillingBalance,
@@ -28,21 +28,11 @@ const STORAGE_BUCKET = `${PROJECT_ID}.firebasestorage.app`;
 
 initializeApp({ storageBucket: STORAGE_BUCKET });
 const db = getFirestore();
-const { createSettlementLedger, ACCOUNTS:SETTLEMENT_ACCOUNTS } = require("./settlement-ledger");
-const settlementLedger = createSettlementLedger({db,Timestamp,FieldValue,Filter,HttpsError});
-const settlementApi = require("./settlement-api").createSettlementApi({
-  db,ledger:settlementLedger,onCall,HttpsError,Timestamp,FieldValue,
-  assertAdmin,assertViewer:assertTeamRealtimeViewer
-});
-exports.commitFinancialOperation = settlementApi.commit;
-exports.reviewSettlementAccount = settlementApi.review;
-exports.activateSettlementAccount = settlementApi.activate;
-
 const auth = getAuth();
 const bucket = getStorage().bucket(STORAGE_BUCKET);
 exports.verifyUberScreenshot = require("./uber-proof").createUberProofFunction({db,bucket,assertViewer:assertTeamRealtimeViewer});
 exports.registerUberLiquidation = require("./uber-submission").createUberSubmissionFunction({
-  db, ledger:settlementLedger, businessId:PROJECT_ID, assertViewer:assertTeamRealtimeViewer,
+  db, businessId:PROJECT_ID, assertViewer:assertTeamRealtimeViewer,
   getProfile:teamRealtimeProfileForIdentity, getBalance:teamRealtimeBalanceForDriver
 });
 
@@ -317,35 +307,39 @@ async function teamRealtimeBalanceForDriver(driverUid = "") {
 }
 
 async function refreshTeamRealtimeBalanceForProfile(profileSnap) {
-  if (!profileSnap?.exists) return {skipped:true,reason:"missing-profile"};
+  if (!profileSnap?.exists) return { skipped:true, reason:"missing-profile" };
   const profileId = text(profileSnap.id);
-  return db.runTransaction(async tx => {
-    // Re-read profile as well: delayed triggers cannot republish disabled users.
-    const currentProfile = await tx.get(db.collection("choferes").doc(profileId));
-    const publicRef = db.collection(TEAM_REALTIME_BALANCES_COLLECTION).doc(profileId);
-    const profile = currentProfile.exists ? currentProfile.data() : {};
-    if (!currentProfile.exists || !teamRealtimeDriverIsActive(profile) || teamRealtimeDriverIsAdmin(profileId,profile)) {
-      tx.delete(publicRef); return {removed:true,profileId};
-    }
-    const driverUid = text(profile.authUid || profile.uid || profile.driverUid || profileId);
-    const account = await tx.get(db.collection(SETTLEMENT_ACCOUNTS).doc(driverUid));
-    if (account.exists && account.data().status === "active") {
-      const summary = settlementLedger.publicSummary({...account.data(),driverName:teamRealtimeDriverName(profile)});
-      tx.set(publicRef,summary);
-      return {refreshed:true,profileId,driverUid,sequence:summary.sequence};
-    }
-    // Before activation, expose a clearly marked, read-only reconstructed total.
-    const identity = await settlementLedger.identityInTransaction(tx,driverUid);
-    const rows = await settlementLedger.readSources(tx,identity);
-    const result = calculateTeamRealtimeSettlementBalance(rows);
-    tx.set(publicRef,{profileDocumentId:profileId,driverId:profileId,driverUid,
-      driverName:teamRealtimeDriverName(profile),active:true,direction:result.direction,
-      settlementBalance:result.balance,amount:result.amount,amountFromDriver:result.amountFromDriver,
-      amountToDriver:result.amountToDriver,billingBaselineMs:result.baseline,
-      schemaVersion:2,calculationVersion:"legacy_pending_activation",requiresActivation:true,
-      updatedAtMs:Date.now(),updatedAt:FieldValue.serverTimestamp()});
-    return {refreshed:true,profileId,driverUid,requiresActivation:true};
+  const profile = profileSnap.data() || {};
+  const publicRef = db.collection(TEAM_REALTIME_BALANCES_COLLECTION).doc(profileId);
+
+  if (!teamRealtimeDriverIsActive(profile) || teamRealtimeDriverIsAdmin(profileId, profile)) {
+    await publicRef.delete().catch(error => {
+      if (error?.code !== 5 && error?.code !== "not-found") throw error;
+    });
+    return { removed:true, profileId };
+  }
+
+  const driverUid = text(profile.authUid || profile.uid || profile.driverUid || profileId);
+  const result = await teamRealtimeBalanceForDriver(driverUid);
+  const nowMs = Date.now();
+  await publicRef.set({
+    profileDocumentId:profileId,
+    driverId:profileId,
+    driverUid,
+    driverName:teamRealtimeDriverName(profile),
+    active:true,
+    direction:result.direction,
+    settlementBalance:result.balance,
+    amount:result.amount,
+    amountFromDriver:result.amountFromDriver,
+    amountToDriver:result.amountToDriver,
+    billingBaselineMs:result.baseline,
+    schemaVersion:1,
+    calculationVersion:"v73-team-realtime",
+    updatedAtMs:nowMs,
+    updatedAt:FieldValue.serverTimestamp()
   });
+  return { refreshed:true, profileId, driverUid, direction:result.direction, amount:result.amount };
 }
 
 async function refreshTeamRealtimeBalanceForIdentity(identity = "") {
@@ -392,7 +386,7 @@ exports.ensureTeamRealtimeBalances = onCall({
 
   const publicRefs = profiles.map(profile => db.collection(TEAM_REALTIME_BALANCES_COLLECTION).doc(profile.id));
   const existing = await db.getAll(...publicRefs);
-  const pending = profiles.filter((profile, index) => !existing[index]?.exists || Number(existing[index].data()?.schemaVersion || 0) !== 2);
+  const pending = profiles.filter((profile, index) => !existing[index]?.exists || Number(existing[index].data()?.schemaVersion || 0) !== 1);
   const results = await Promise.all(pending.map(refreshTeamRealtimeBalanceForProfile));
   return { ok:true, activeDrivers:profiles.length, initialized:results.length };
 });
@@ -647,9 +641,6 @@ async function telegramProcessNotification({
   caption,
   requirePhoto = true
 }) {
-  if (data?.financialLedgerVersion === "confirmed_account_v1" && Number.isFinite(data.financialSequence)) {
-    caption = `${caption}\nOperación confirmada #${data.financialSequence}`;
-  }
   const { claimed, ref } = await telegramClaimNotification(
     kind,
     notificationKey,
@@ -749,7 +740,7 @@ function closureTelegramText(data = {}) {
     lines.push(`CUIT del titular: ${telegramCuit(data.recipientCuit || "No informado")}`);
   }
   lines.push(
-    Number.isFinite(data.telegramSettlementAfterBalance) ? telegramSignedSettlementLine(data.telegramSettlementAfterBalance) : amountFromDriver > 0.49
+    amountFromDriver > 0.49
       ? `Estado: Chofer debe ${telegramMoney(amountFromDriver)}`
       : amountToDriver > 0.49
         ? `Estado: Explora debe ${telegramMoney(amountToDriver)}`
@@ -1550,7 +1541,6 @@ exports.adminUpdateDriver = onCall({ region: "southamerica-east1", timeoutSecond
   const aliasRef = username ? db.collection("login_aliases").doc(username) : null;
 
   if (deleteDriver) {
-    throw new HttpsError("failed-precondition", "La eliminación del perfil está bloqueada para conservar su identidad contable. Usá Desactivar: mantiene la cuenta y el historial.");
     const batch = db.batch();
     batch.delete(driverRef);
     if (aliasRef) batch.delete(aliasRef);
@@ -1660,8 +1650,6 @@ exports.adminUpdateDriver = onCall({ region: "southamerica-east1", timeoutSecond
 
 exports.adminResetDriverOperationalData = onCall({ region: "southamerica-east1", timeoutSeconds: 540, memory: "1GiB" }, async request => {
   const adminUid = await assertAdmin(request);
-  throw new HttpsError("failed-precondition", "El borrado/reset masivo está bloqueado para conservar la contabilidad confirmada. Podés desactivar al chofer sin borrar su historial; las correcciones individuales se registran con auditoría.");
-
   const driverId = text(request.data?.driverId);
   const confirmation = text(request.data?.confirmation);
   if (!driverId) throw new HttpsError("invalid-argument", "Falta el ID del chofer.");
@@ -1737,8 +1725,6 @@ exports.adminResetDriverOperationalData = onCall({ region: "southamerica-east1",
 
 exports.adminDeleteDriverCompletely = onCall({ region: "southamerica-east1", timeoutSeconds: 540, memory: "1GiB" }, async request => {
   const adminUid = await assertAdmin(request);
-  throw new HttpsError("failed-precondition", "El borrado/reset masivo está bloqueado para conservar la contabilidad confirmada. Podés desactivar al chofer sin borrar su historial; las correcciones individuales se registran con auditoría.");
-
   const driverId = text(request.data?.driverId);
   const confirmation = text(request.data?.confirmation);
   if (!driverId) throw new HttpsError("invalid-argument", "Falta el ID del chofer.");
@@ -1939,15 +1925,25 @@ function financialExpenseParts(data = {}) {
   return { amount, driverPart, exploraPart };
 }
 
-async function financialRelatedClosures(driverUid, documentId, includeField, transaction = null) {
-  if (transaction) {
-    const identity = await settlementLedger.identityInTransaction(transaction,driverUid);
-    const fields = ["driverUid","choferUid","uid","driverId","choferId","operatorUid","ownerUid","userUid"];
-    const query = db.collection("cierres_semanales").where(Filter.or(...fields.flatMap(field => identity.aliases.map(uid => Filter.where(field,"==",uid)))));
-    const snapshot = await transaction.get(query);
-    return snapshot.docs.filter(row => Array.isArray(row.data()[includeField]) && row.data()[includeField].map(text).includes(text(documentId)));
+async function financialRelatedClosures(driverUid, documentId, includeField) {
+  const results = new Map();
+  const collectionRef = db.collection("cierres_semanales");
+  try {
+    const direct = await collectionRef.where(includeField, "array-contains", documentId).get();
+    direct.docs.forEach(docSnap => results.set(docSnap.id, docSnap));
+  } catch (error) {
+    console.warn("[admin financial delete] included query skipped", includeField, error?.code || error?.message || error);
   }
-  return db.runTransaction(tx => financialRelatedClosures(driverUid,documentId,includeField,tx));
+  for (const field of ["driverUid", "choferUid", "uid", "driverId", "choferId"]) {
+    try {
+      const snap = await collectionRef.where(field, "==", driverUid).limit(300).get();
+      snap.docs.forEach(docSnap => {
+        const data = docSnap.data() || {};
+        if (Array.isArray(data[includeField]) && data[includeField].map(text).includes(documentId)) results.set(docSnap.id, docSnap);
+      });
+    } catch (_) {}
+  }
+  return [...results.values()];
 }
 
 function financialBillingClosurePatch(closure = {}, movement = {}, { cashboxOnly = false } = {}) {
@@ -2166,13 +2162,12 @@ function financialCashboxAmountCorrectionPatch(closure = {}, movement = {}, newA
   return { gross, cashboxGross:gross, mainTotal:total, cashboxTotal:total, cashboxInDriver:total, cashboxInExplora:0, amountDueFromDriver:total, amountFromDriver:total, amountDueToDriver:0, amountToDriver:0, netSettlementToDriver:-total };
 }
 
-async function financialAdjustClosures({ type, driverUid, documentId, movement, adminUid, transaction }) {
-  if (!transaction) throw new HttpsError("failed-precondition","La corrección requiere una transacción contable.");
+async function financialAdjustClosures({ type, driverUid, documentId, movement, adminUid }) {
   const settlementPayment = type === "cobro" && financialIsBillingSettlementPayment(movement);
   const includeField = type === "gasto" ? "includedExpenseIds" : settlementPayment ? "includedBillingSettlementPaymentIds" : "includedBillingIds";
   const docsMap = new Map();
   for (const field of (type === "gasto" || settlementPayment ? [includeField] : [includeField, "includedCashboxIds"])) {
-    const found = await financialRelatedClosures(driverUid, documentId, field, transaction);
+    const found = await financialRelatedClosures(driverUid, documentId, field);
     found.forEach(docSnap => docsMap.set(docSnap.id, docSnap));
   }
   const docs = [...docsMap.values()];
@@ -2202,9 +2197,9 @@ async function financialAdjustClosures({ type, driverUid, documentId, movement, 
     const cashboxIds = Array.isArray(closure.includedCashboxIds)
       ? financialRemoveArrayItem(closure.includedCashboxIds, documentId)
       : closure.includedCashboxIds;
-    transaction.set(docSnap.ref, {
+    await docSnap.ref.set({
       ...patch,
-      ...(remainingIds !== undefined ? {[includeField]:remainingIds} : {}),
+      [includeField]:remainingIds,
       ...(generatedIds !== undefined ? { includedCashboxGeneratedBillingIds:generatedIds } : {}),
       ...(eligibleIds !== undefined ? { includedCashboxEligibleBillingIds:eligibleIds } : {}),
       ...(cashboxIds !== undefined ? { includedCashboxIds:cashboxIds } : {}),
@@ -2261,45 +2256,57 @@ async function financialDeleteStorageArtifacts(rows = [], counters = { deletedFi
   }
 }
 
-exports.adminDeleteFinancialMovement = onCall({region:"southamerica-east1",timeoutSeconds:180,memory:"512MiB"}, async request => {
+exports.adminDeleteFinancialMovement = onCall({ region:"southamerica-east1", timeoutSeconds:180, memory:"512MiB" }, async request => {
   const adminUid = await assertAdmin(request);
   const type = normalized(request.data?.type);
   const documentId = text(request.data?.documentId);
-  const reason = text(request.data?.reason || "Anulación manual desde Admin").slice(0,280);
-  if (!documentId || documentId.includes("/")) throw new HttpsError("invalid-argument","Falta el movimiento.");
-  if (!["cobro","gasto","caja_chica","uber"].includes(type)) throw new HttpsError("invalid-argument","Tipo inválido.");
-  if (type === "uber") return require("./uber-submission").deleteUberSubmission({
-    db,ledger:settlementLedger,documentId,adminUid,reason,getBalance:teamRealtimeBalanceForDriver});
+  const requestedDriverUid = text(request.data?.driverUid);
+  const reason = text(request.data?.reason || "Borrado manual desde panel administrador").slice(0, 280);
+  if (!documentId) throw new HttpsError("invalid-argument", "Falta el movimiento.");
+  if (!["cobro", "gasto", "caja_chica", "uber"].includes(type)) throw new HttpsError("invalid-argument", "Tipo de movimiento no permitido.");
+
+  if (type === "uber") {
+    return require("./uber-submission").deleteUberSubmission({db,documentId,adminUid,reason,getBalance:teamRealtimeBalanceForDriver});
+  }
+
   const collectionName = type === "gasto" ? "gastos" : "billing_records";
   const ref = db.collection(collectionName).doc(documentId);
-  const auditRef = db.collection(ADMIN_AUDIT_COLLECTION).doc();
-  const receiptIndexes = type === "caja_chica" ? [] : await financialReceiptIndexDocuments(documentId,type);
-  const committed = await settlementLedger.runTransaction(async transaction => {
-    const snap = await transaction.get(ref);
-    if (!snap.exists) return {ok:true,type,documentId,alreadyDeleted:true};
-    const data = snap.data();
-    if (type !== "gasto" && data.invoiceRequest?.version === "arca_c_v1") throw new HttpsError("failed-precondition","Este cobro tiene un trámite fiscal. Su corrección requiere revisión y, si fue autorizado, una nota de crédito.");
-    const driverUid = financialDriverValues(data)[0];
-    if (!driverUid) throw new HttpsError("failed-precondition","El movimiento no tiene un chofer identificable.");
-    if (type === "caja_chica" && financialMethodOf(data) !== "cash" && data.settlementRuleVersion !== "gross_cash_digital_cashbox_5_v1") throw new HttpsError("failed-precondition","Este cobro no genera caja chica.");
-    if (type === "caja_chica" && (data.excludeFromCashbox || data.cashboxExcluded)) return {ok:true,type,documentId,alreadyDeleted:true};
-    const closuresAdjusted = await financialAdjustClosures({type,driverUid,documentId,movement:data,adminUid,transaction});
-    if (type === "caja_chica") {
-      transaction.set(ref,{excludeFromCashbox:true,cashboxExcluded:true,cajaChicaEliminada:true,
-        cajaChicaEliminadaAt:FieldValue.serverTimestamp(),cajaChicaEliminadaAtMs:Date.now(),
-        cajaChicaEliminadaByUid:adminUid,cajaChicaEliminadaReason:reason,
-        updatedAt:FieldValue.serverTimestamp(),updatedAtMs:Date.now(),updatedByUid:adminUid},{merge:true});
-    } else {
-      transaction.delete(ref);
-      receiptIndexes.forEach(item => transaction.delete(item.ref));
-    }
-    transaction.create(auditRef,{action:"admin_delete_financial_movement",type,collectionName,documentId,driverUid,
-      adminUid,reason,amount:financialAmountOf(data),method:financialMethodOf(data),targetName:telegramDriverName(data),
-      closuresAdjusted,sourceRecord:data,proofsRetainedForAudit:true,deletedFiles:0,
-      deletedReceiptIndexes:receiptIndexes.length,createdAt:FieldValue.serverTimestamp(),createdAtMs:Date.now(),version:"confirmed_account_v1"});
-    return {ok:true,type,collectionName,documentId,driverUid,closuresAdjusted,deletedFiles:0,proofsRetainedForAudit:true,deletedReceiptIndexes:receiptIndexes.length};
-  },{actorUid:adminUid,reason});
-  return {...committed.result,accounts:committed.accounts || [],entries:committed.entries || []};
+  const snap = await ref.get();
+  const receiptIndexes = type === "caja_chica" ? [] : await financialReceiptIndexDocuments(documentId, type);
+  if (!snap.exists && !receiptIndexes.length) throw new HttpsError("not-found", "El movimiento ya no existe en Firestore.");
+  const data = snap.exists ? (snap.data() || {}) : ({ id:documentId, ...(receiptIndexes[0]?.data() || {}) });
+  if(type !== "gasto" && data.invoiceRequest?.version === "arca_c_v1") throw new HttpsError("failed-precondition", "Este cobro tiene un trámite fiscal. Su corrección requiere revisión y, si fue autorizado, una nota de crédito.");
+  const requestedMatches = requestedDriverUid ? await financialBelongsToDriver(data, requestedDriverUid) : false;
+  const driverUid = requestedMatches ? requestedDriverUid : (financialDriverValues(data)[0] || requestedDriverUid);
+  if (!driverUid) throw new HttpsError("failed-precondition", "El movimiento no tiene un chofer identificable.");
+  if (type === "caja_chica" && financialMethodOf(data) !== "cash") throw new HttpsError("failed-precondition", "Solo los cobros en efectivo generan caja chica.");
+
+  const auditRef = db.collection(ADMIN_AUDIT_COLLECTION).doc(`financial_delete_${Date.now()}_${documentId}`);
+  const counters = { deletedFiles:0 };
+  const closuresAdjusted = await financialAdjustClosures({ type, driverUid, documentId, movement:data, adminUid });
+
+  if (type === "caja_chica") {
+    await ref.set({
+      excludeFromCashbox:true, cashboxExcluded:true, cajaChicaEliminada:true,
+      cajaChicaEliminadaAt:FieldValue.serverTimestamp(), cajaChicaEliminadaAtMs:Date.now(),
+      cajaChicaEliminadaByUid:adminUid,
+      cajaChicaEliminadaReason:reason,
+      updatedAt:FieldValue.serverTimestamp(), updatedAtMs:Date.now(), updatedByUid:adminUid
+    }, { merge:true });
+  } else {
+    await financialDeleteStorageArtifacts([data, ...receiptIndexes], counters);
+    const batch = db.batch();
+    if (snap.exists) batch.delete(ref);
+    receiptIndexes.forEach(item => batch.delete(item.ref));
+    await batch.commit();
+  }
+
+  await auditRef.set({
+    action:"admin_delete_financial_movement", type, collectionName, documentId, driverUid,
+    adminUid, reason, amount:financialAmountOf(data), method:financialMethodOf(data), targetName:telegramDriverName(data), closuresAdjusted,
+    deletedFiles:counters.deletedFiles || 0, deletedReceiptIndexes:receiptIndexes.length, createdAt:FieldValue.serverTimestamp(), createdAtMs:Date.now(), version:"v67-admin-financial-actions"
+  }, { merge:true }).catch(() => {});
+  return { ok:true, type, collectionName, documentId, driverUid, closuresAdjusted, deletedFiles:counters.deletedFiles || 0, deletedReceiptIndexes:receiptIndexes.length };
 });
 
 exports.adminModifyExpenseAmount = onCall({ region:"southamerica-east1", timeoutSeconds:180, memory:"512MiB" }, async request => {
@@ -2320,16 +2327,16 @@ exports.adminModifyExpenseAmount = onCall({ region:"southamerica-east1", timeout
   if (!driverUid) throw new HttpsError("failed-precondition", "El gasto no tiene un chofer identificable.");
 
   const receiptIndexes = await financialReceiptIndexDocuments(documentId, "gasto");
+  const closureDocuments = await financialRelatedClosures(driverUid, documentId, "includedExpenseIds");
   const auditRef = db.collection(ADMIN_AUDIT_COLLECTION).doc(`expense_modify_${Date.now()}_${documentId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 180));
   let previousAmount = 0;
   const closureUpdates = [];
 
-  await settlementLedger.runTransaction(async transaction => {
+  await db.runTransaction(async transaction => {
     const expenseSnapshot = await transaction.get(expenseRef);
     if (!expenseSnapshot.exists) throw new HttpsError("not-found", "El gasto original ya no existe en Firestore.");
     const indexSnapshots = [];
     for (const item of receiptIndexes) indexSnapshots.push(await transaction.get(item.ref));
-    const closureDocuments = await financialRelatedClosures(driverUid,documentId,"includedExpenseIds",transaction);
     const closureSnapshots = [];
     for (const item of closureDocuments) closureSnapshots.push({ id:item.id, ref:item.ref, snapshot:await transaction.get(item.ref) });
 
@@ -2406,7 +2413,7 @@ exports.adminModifyExpenseAmount = onCall({ region:"southamerica-east1", timeout
       createdAt:FieldValue.serverTimestamp(), createdAtMs:Date.now(),
       version:"v4146-expense-receipt-actions"
     }, { merge:false });
-  }, {actorUid:adminUid,reason});
+  });
 
   return {
     ok:true, type:"gasto", collectionName:"gastos", documentId, driverUid,
@@ -2441,26 +2448,25 @@ exports.adminModifyBillingAmount = onCall({ region:"southamerica-east1", timeout
   if (!driverUid) throw new HttpsError("failed-precondition", "El cobro no tiene un chofer identificable.");
 
   const receiptIndexes = await financialReceiptIndexDocuments(documentId, "cobro");
+  const closureMap = new Map();
+  for (const field of ["includedBillingIds", "includedCashboxIds"]) {
+    const docs = await financialRelatedClosures(driverUid, documentId, field);
+    docs.forEach(item => closureMap.set(item.id, item));
+  }
+  const closureDocuments = [...closureMap.values()];
   const auditRef = db.collection(ADMIN_AUDIT_COLLECTION).doc(`billing_modify_${Date.now()}_${documentId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 180));
   let previousAmount = 0;
   const closureUpdates = [];
 
-  await settlementLedger.runTransaction(async transaction => {
+  await db.runTransaction(async transaction => {
     const paymentSnapshot = await transaction.get(paymentRef);
     if (!paymentSnapshot.exists) throw new HttpsError("not-found", "El cobro original ya no existe en Firestore.");
     const indexSnapshots = [];
     for (const item of receiptIndexes) indexSnapshots.push(await transaction.get(item.ref));
-    const closureMap = new Map();
-    for (const field of ["includedBillingIds","includedCashboxIds"]) {
-      const found = await financialRelatedClosures(driverUid,documentId,field,transaction);
-      found.forEach(row => closureMap.set(row.id,row));
-    }
-    const closureDocuments = [...closureMap.values()];
     const closureSnapshots = [];
     for (const item of closureDocuments) closureSnapshots.push({ id:item.id, ref:item.ref, snapshot:await transaction.get(item.ref) });
 
     const paymentData = paymentSnapshot.data() || {};
-    if (paymentData.invoiceRequest?.version === "arca_c_v1") throw new HttpsError("failed-precondition","La corrección del cobro fiscal requiere revisión fiscal.");
     previousAmount = Math.max(0, Math.round(financialAmountOf(paymentData)));
     if (!(previousAmount > 0)) throw new HttpsError("failed-precondition", "El cobro anterior no tiene un importe válido.");
     if (previousAmount === newAmount) return;
@@ -2504,7 +2510,7 @@ exports.adminModifyBillingAmount = onCall({ region:"southamerica-east1", timeout
     });
 
     transaction.set(auditRef, { action:"admin_modify_billing_amount", type:"cobro", collectionName:"billing_records", documentId, recordId:documentId, driverUid, adminUid, previousAmount, newAmount, difference:newAmount-previousAmount, reason, method:financialMethodOf(paymentData), targetName:telegramDriverName(paymentData), adjustedClosureCount:closureUpdates.length, adjustedClosureIds:closureUpdates.map(item=>item.id), createdAt:FieldValue.serverTimestamp(), createdAtMs:Date.now(), version:"v67-admin-financial-actions" }, { merge:false });
-  }, {actorUid:adminUid,reason});
+  });
 
   return { ok:true, type:"cobro", collectionName:"billing_records", documentId, driverUid, previousAmount, newAmount, closureUpdates, adjustedClosureCount:closureUpdates.length, updatedReceiptIndexes:receiptIndexes.length };
 });
@@ -2720,45 +2726,82 @@ exports.onBillingRecordWritePersonalRecord = onDocumentWritten({
   for (const uid of affected) await recomputePersonalRecord(uid);
 });
 
-exports.applyDailyDebtPenalties = onSchedule({schedule:"15 3 * * *",timeZone:"America/Argentina/Buenos_Aires",
-  region:"southamerica-east1",timeoutSeconds:540,memory:"512MiB"}, async () => {
-  const nowMs = Date.now(), todayKey = debtPenaltyDayKey(nowMs);
-  const snapshot = await db.collection("deudas_choferes").limit(1000).get();
-  let processed=0, skipped=0, totalInterest=0;
-  for (const docSnap of snapshot.docs) {
-    try {
-      const result = await settlementLedger.runTransaction(async tx => {
-        const current = await tx.get(docSnap.ref);
-        const row = current.exists ? current.data() : {};
-        if (!current.exists || row.penaltyEnabled === false || !debtPenaltyStatusIsActive(row)
-          || String(row.lastPenaltyAppliedDay || "") === todayKey) return {skipped:true};
-        const remaining = debtPenaltyRemaining(row), rate = Number(row.penaltyDailyRate ?? .03);
-        const days = debtPenaltyDaysToApply({row,nowMs,rate});
-        if (!(remaining>0) || !(days>0)) return {skipped:true};
-        const interestAmount = debtPenaltyMoney(remaining*(Math.pow(1+rate,days)-1));
-        if (!(interestAmount>0)) return {skipped:true};
-        const newBalance = debtPenaltyMoney(remaining+interestAmount);
-        const driverUid = text(row.driverUid || row.choferUid || row.uid || row.driverId);
-        const movementId = `penalty_${docSnap.id}_${todayKey}`;
-        const movementRef = db.collection("deuda_movimientos").doc(movementId);
-        if ((await tx.get(movementRef)).exists) return {skipped:true};
-        tx.set(docSnap.ref,{remainingAmount:newBalance,saldoPendiente:newBalance,
-          penaltyAccruedAmount:debtPenaltyMoney(Number(row.penaltyAccruedAmount || 0)+interestAmount),
-          lastPenaltyAppliedAt:FieldValue.serverTimestamp(),lastPenaltyAppliedAtMs:nowMs,lastPenaltyAppliedDay:todayKey,
-          updatedAt:FieldValue.serverTimestamp(),updatedAtMs:nowMs,sourceModule:"pendientes"},{merge:true});
-        tx.create(movementRef,{movementId,driverUid,debtId:text(row.debtId || row.id || docSnap.id),type:"penalty",
-          amount:interestAmount,previousBalance:remaining,newBalance,rate,days,dayKey:todayKey,
-          createdAt:FieldValue.serverTimestamp(),createdAtMs:nowMs,sourceModule:"pendientes",version:"applyDailyDebtPenalties-v1"});
-        return {interestAmount};
-      },{actorUid:"server:daily-penalties",reason:"Interés diario"});
-      if (result.result?.interestAmount) { processed++; totalInterest=debtPenaltyMoney(totalInterest+result.result.interestAmount); }
-      else skipped++;
-    } catch(error) {
-      // No partial debt mutation. Inactive/drifting accounts require Admin review.
-      skipped++; console.error("Penalty not committed",{debtId:docSnap.id,code:error.code,message:error.message});
-    }
+exports.applyDailyDebtPenalties = onSchedule({
+  schedule: "15 3 * * *",
+  timeZone: "America/Argentina/Buenos_Aires",
+  region: "southamerica-east1",
+  timeoutSeconds: 540,
+  memory: "512MiB"
+}, async () => {
+  const nowMs = Date.now();
+  const todayKey = debtPenaltyDayKey(nowMs);
+  const snap = await db.collection("deudas_choferes").limit(1000).get();
+  let batch = db.batch();
+  let writes = 0;
+  let processed = 0;
+  let skipped = 0;
+  let totalInterest = 0;
+  const commitIfNeeded = async (force = false) => {
+    if (!writes) return;
+    if (!force && writes < 420) return;
+    await batch.commit();
+    batch = db.batch();
+    writes = 0;
+  };
+
+  for (const docSnap of snap.docs) {
+    const row = docSnap.data() || {};
+    if (row.penaltyEnabled === false) { skipped += 1; continue; }
+    if (!debtPenaltyStatusIsActive(row)) { skipped += 1; continue; }
+    if (String(row.lastPenaltyAppliedDay || "") === todayKey) { skipped += 1; continue; }
+    const remaining = debtPenaltyRemaining(row);
+    if (!(remaining > 0)) { skipped += 1; continue; }
+    const rate = Number(row.penaltyDailyRate ?? 0.03);
+    const days = debtPenaltyDaysToApply({ row, nowMs, rate });
+    if (!(days > 0)) { skipped += 1; continue; }
+    const interestAmount = debtPenaltyMoney(remaining * (Math.pow(1 + rate, days) - 1));
+    if (!(interestAmount > 0)) { skipped += 1; continue; }
+    const newBalance = debtPenaltyMoney(remaining + interestAmount);
+    const driverUid = text(row.driverUid || row.choferUid || row.uid || row.driverId);
+    const debtId = text(row.debtId || row.id || docSnap.id) || docSnap.id;
+    const movementId = `penalty_${docSnap.id}_${todayKey}`;
+
+    batch.set(docSnap.ref, {
+      remainingAmount: newBalance,
+      saldoPendiente: newBalance,
+      penaltyAccruedAmount: FieldValue.increment(interestAmount),
+      lastPenaltyAppliedAt: FieldValue.serverTimestamp(),
+      lastPenaltyAppliedAtMs: nowMs,
+      lastPenaltyAppliedDay: todayKey,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedAtMs: nowMs,
+      sourceModule: "pendientes"
+    }, { merge:true });
+    writes += 1;
+
+    batch.set(db.collection("deuda_movimientos").doc(movementId), {
+      movementId,
+      driverUid,
+      debtId,
+      type: "penalty",
+      amount: interestAmount,
+      previousBalance: remaining,
+      newBalance,
+      rate,
+      days,
+      dayKey: todayKey,
+      createdAt: FieldValue.serverTimestamp(),
+      createdAtMs: nowMs,
+      sourceModule: "pendientes",
+      version: "applyDailyDebtPenalties-v1"
+    }, { merge:false });
+    writes += 1;
+    processed += 1;
+    totalInterest = debtPenaltyMoney(totalInterest + interestAmount);
+    await commitIfNeeded(false);
   }
-  console.info("applyDailyDebtPenalties",{processed,skipped,scanned:snapshot.size,totalInterest,todayKey});
+  await commitIfNeeded(true);
+  console.info("applyDailyDebtPenalties", { processed, skipped, scanned:snap.size, totalInterest, todayKey });
 });
 
 
@@ -2822,9 +2865,6 @@ function telegramAdminAuditText(data = {}) {
   if (typeof data.active === "boolean") lines.push(`Estado: ${data.active ? "activo" : "inactivo"}`);
   if (data.passwordChanged === true) lines.push("Clave: modificada");
   if (telegramSafeText(data.reason)) lines.push(`Motivo: ${telegramSafeText(data.reason).slice(0, 500)}`);
-  if (data.financialLedgerVersion === "confirmed_account_v1" && Number.isFinite(Number(data.telegramSettlementAfterBalance))) {
-    lines.push(telegramSignedSettlementLine(Number(data.telegramSettlementAfterBalance)));
-  }
   lines.push(...telegramDateTimeLines(data));
   return lines.join("\n");
 }
@@ -3058,8 +3098,7 @@ exports.notifyAdminDebtPaymentTelegramV1 = onDocumentCreated({
     return { skipped: true, reason: "invalid-payment-amount" };
   }
 
-  const settlement = data.financialLedgerVersion === "confirmed_account_v1" && Number.isFinite(data.telegramSettlementAfterBalance)
-    ? {balance:data.telegramSettlementAfterBalance} : await teamRealtimeBalanceForDriver(telegramDriverUid(data));
+  const settlement = await teamRealtimeBalanceForDriver(telegramDriverUid(data));
   const payload = { ...data, telegramSettlementAfterBalance:Number(settlement.balance || 0) };
   const docId = telegramSafeText(event.params?.docId || event.data?.id);
   return telegramProcessNotification({
@@ -3100,8 +3139,7 @@ exports.notifyAdminDriverDebtTelegramV1 = onDocumentWritten({
   if (!(telegramAmount(after) > 0)) return { skipped:true, reason:"invalid-debt-amount" };
 
   const driverUid = telegramDriverUid(after);
-  const settlement = after.financialLedgerVersion === "confirmed_account_v1" && Number.isFinite(after.telegramSettlementAfterBalance)
-    ? {balance:after.telegramSettlementAfterBalance} : await teamRealtimeBalanceForDriver(driverUid);
+  const settlement = await teamRealtimeBalanceForDriver(driverUid);
   const data = {
     ...after,
     telegramSettlementAfterBalance:Number(settlement.balance || 0),
@@ -3198,11 +3236,10 @@ exports.notifyUberClosureTelegramGroupV1 = onDocumentWritten({
   if (isDirect) {
     const current = (await db.collection("uber_weekly_closures").doc(docId).get()).data();
     if (!current || current.verifiedProofId !== after.verifiedProofId) return {skipped:true,reason:"deleted-or-replaced"};
-    const settlement = after.financialLedgerVersion === "confirmed_account_v1" && Number.isFinite(after.telegramSettlementAfterBalance)
-      ? {balance:after.telegramSettlementAfterBalance} : await teamRealtimeBalanceForDriver(telegramDriverUid(after));
+    const settlement = await teamRealtimeBalanceForDriver(telegramDriverUid(after));
     notificationData = {...after,telegramSettlementAfterBalance:normalizedTelegramSettlement(settlement.balance)};
   }
-  if (after.financialLedgerVersion !== "confirmed_account_v1" && workflow === "v84_driver_submission_admin_review" && review === "approved") {
+  if (workflow === "v84_driver_submission_admin_review" && review === "approved") {
     try {
       const settlement = await teamRealtimeBalanceForDriver(telegramDriverUid(after));
       const actualBalance = normalizedTelegramSettlement(settlement.balance);
@@ -3218,7 +3255,7 @@ exports.notifyUberClosureTelegramGroupV1 = onDocumentWritten({
       console.warn("[telegram uber] No se pudo recalcular el saldo v84; se usa la vista guardada.", error?.code || error?.message || error);
     }
   }
-  if (after.financialLedgerVersion !== "confirmed_account_v1" && workflow === "v82_admin_driver_confirmation" && ["awaiting_driver_confirmation", "approved"].includes(review)) {
+  if (workflow === "v82_admin_driver_confirmation" && ["awaiting_driver_confirmation", "approved"].includes(review)) {
     try {
       const settlement = await teamRealtimeBalanceForDriver(telegramDriverUid(after));
       const actualBalance = normalizedTelegramSettlement(settlement.balance);

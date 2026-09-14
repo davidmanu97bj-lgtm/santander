@@ -91,7 +91,7 @@ function authHarness(profile) {
     onAuthStateChanged:(_auth,callback)=>{ctx.callback=callback;}});
   for(const name of ['cancelDashboardRender','applyRoleUI','subscribeOwnProfileDashboard','subscribeTeamRealtimeDashboard',
     'renderDriverLoadState','unsubscribeTeamRealtimeDashboard','unsubscribeOwnProfileDashboard','unsubscribeAdminDashboard',
-    'renderAdminDashboardUpdates','render','refreshArcaBillingStatus','stopConfirmedSettlement','subscribeConfirmedSettlement'])ctx[name]=noop;
+    'renderAdminDashboardUpdates','render','refreshArcaBillingStatus'])ctx[name]=noop;
   for(const name of ['Payments','Expenses','Uber','Debts','DebtPayments','Advances','Closures'])ctx['unsubscribe'+name]=noop;
   ctx.isAdminProfile=()=>ctx.currentProfile?.role==='admin';
   const start=source.indexOf('onAuthStateChanged(auth, async user => {');

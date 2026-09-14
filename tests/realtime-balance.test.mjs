@@ -108,7 +108,7 @@ for (const [kind,preview,ids,delta] of [
   ['uber','renderUberAccountPreview',['uberPrincipalPreview','uberCashboxPreview'],105000]
 ]) test(`${kind}: el impacto no se vuelve a sumar al recibir el alta, pero sí refresca otros cambios antes de guardar`, () => {
   let balance=0;
-  const nodes=new Map(),$=id=>{if(!nodes.has(id))nodes.set(id,{value:'100000',dataset:{},classList:{toggle(){}},textContent:'',innerHTML:''});return nodes.get(id);};
+  const nodes=new Map(),$=id=>{if(!nodes.has(id))nodes.set(id,{value:'100000',classList:{toggle(){}},textContent:'',innerHTML:''});return nodes.get(id);};
   $('chargeMode').value='cash';
   const ctx=vm.createContext({$,activeSubmissionLocks:new Set(),submissionPreviewBalances:new Map(),
     settlementModel:()=>({balance}),scheduleDashboardRender(){},parseMoneyInput:Number,parseUberAmount:Number,

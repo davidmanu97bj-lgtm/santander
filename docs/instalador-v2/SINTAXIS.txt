@@ -1,5 +1,0 @@
-
-> explora-pago-home-cierre-demanda@2.5.4 syntax
-> node tools/check-syntax.mjs
-
-Sintaxis: 46 archivos OK

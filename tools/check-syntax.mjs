@@ -3,7 +3,7 @@ import path from 'node:path';
 import { ROOT } from './project.mjs';
 import { command } from './command.mjs';
 
-const files = ['app.js', 'auth-session.js', 'movement-colors.js', 'financial-store.js', 'firebase-config.js', 'service-worker.js', 'calendar-core.js', 'trip-calendar.js'];
+const files = ['app.js', 'firebase-config.js', 'service-worker.js', 'calendar-core.js', 'trip-calendar.js'];
 for (const dir of ['functions', 'tools', 'js/core']) {
   files.push(...fs.readdirSync(path.join(ROOT, dir)).filter(name => /\.(mjs|js)$/.test(name)).map(name => `${dir}/${name}`));
 }

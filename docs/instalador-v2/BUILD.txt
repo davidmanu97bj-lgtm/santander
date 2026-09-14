@@ -1,5 +1,0 @@
-
-> explora-pago-home-cierre-demanda@2.5.4 build
-> node tools/build-hosting.mjs
-
-Hosting preparado: /mnt/data/explora_installer_fix/santander-main/dist
