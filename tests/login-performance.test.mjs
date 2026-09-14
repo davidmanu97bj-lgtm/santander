@@ -85,3 +85,28 @@ test('la preparación de la sesión limpia su timeout cuando Firebase ya está l
   const ctx=vm.createContext({authReady:Promise.resolve(),AUTH_READY_TIMEOUT_MS:2500,setTimeout:()=>7,clearTimeout:id=>cleared=id});
   load(ctx,'waitForAuthReady');await ctx.waitForAuthReady();assert.equal(cleared,7);
 });
+
+test('las búsquedas heredadas por uid y email arrancan juntas y conservan prioridad',async()=>{
+  const starts=[];let finishUid;
+  const ctx=profileHarness(async()=>({exists:()=>false}),async query=>{
+    const field=query[1].field;starts.push(field);
+    if(field==='uid')return new Promise(resolve=>{finishUid=resolve;});
+    return{empty:false,docs:[{data:()=>({nombre:'Email secundario',role:'chofer'})}]};
+  });
+  const pending=ctx.loadProfile({uid:'prueba',email:'prueba@example.test'});
+  await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(starts,['uid','email']);
+  finishUid({empty:false,docs:[{data:()=>({nombre:'UID prioritario',role:'chofer',activo:false})}]});
+  const profile=await pending;assert.equal(profile.displayName,'UID prioritario');assert.equal(profile.active,false);
+});
+test('auth empieza en un módulo temprano sin resolver de ventanas ni segunda migración de persistencia',()=>{
+  const authSource=fs.readFileSync(new URL('../auth-session.js',import.meta.url),'utf8');
+  const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
+  const ctx=vm.createContext({initializeApp:config=>({config}),firebaseConfig:{projectId:'demo'},
+    browserLocalPersistence:'local',indexedDBLocalPersistence:'indexed',browserSessionPersistence:'session',inMemoryPersistence:'memory',
+    initializeAuth:(app,options)=>{ctx.options=options;return{authStateReady:()=>Promise.resolve()};}});
+  const executable=authSource.replace(/import\s+[\s\S]*?\s+from\s+"[^"]+";/g,'').replace(/export const /g,'const ');
+  vm.runInContext(executable,ctx);
+  assert.deepEqual(Array.from(ctx.options.persistence),['local','indexed','session','memory']);
+  assert.equal('popupRedirectResolver' in ctx.options,false);assert.doesNotMatch(source,/setPersistence\s*\(|getAuth\s*\(/);
+  assert.ok(html.indexOf('src="./auth-session.js')<html.indexOf('src="./app.js'));
+});

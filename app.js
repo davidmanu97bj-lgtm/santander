@@ -1,15 +1,15 @@
+import { app, auth, authReady } from "./auth-session.js?v=20260914-web-only-1";
+import { movementColor } from "./movement-colors.js?v=20260914-web-only-1";
 import { tourismCatalog, tourismRoute, searchTourismPlaces, tourismCountryNames } from "./tourism-catalog.js";
 import { mountTripCalendar } from "./trip-calendar.js?v=20260913-calendario-detalles";
 import { monthRange, normalizeTripDraft, canManageTrip } from "./calendar-core.js?v=20260913-calendario-detalles";
 import * as firebaseSettings from "./firebase-config.js?v=20260824-15";
 
-const { firebaseConfig, BUSINESS_ID, USER_EMAIL_DOMAIN } = firebaseSettings;
+const { BUSINESS_ID, USER_EMAIL_DOMAIN } = firebaseSettings;
 const LOGIN_ALIASES = firebaseSettings.LOGIN_ALIASES || {};
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 import {
-  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
-  setPersistence, browserLocalPersistence, browserSessionPersistence, inMemoryPersistence
+  onAuthStateChanged, signInWithEmailAndPassword, signOut
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
   initializeFirestore, collection, addDoc, doc, getDoc, getDocFromServer, getDocs, setDoc,
@@ -22,8 +22,6 @@ import {
   getFunctions, httpsCallable
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
 const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 const storage = getStorage(app);
 const functions = getFunctions(app, "southamerica-east1");
@@ -34,10 +32,6 @@ const ensureTeamRealtimeBalancesCallable = httpsCallable(functions, "ensureTeamR
 const adminDeleteFinancialMovementCallable = httpsCallable(functions, "adminDeleteFinancialMovement");
 const adminModifyExpenseAmountCallable = httpsCallable(functions, "adminModifyExpenseAmount");
 const adminModifyBillingAmountCallable = httpsCallable(functions, "adminModifyBillingAmount");
-const authReady = setPersistence(auth, browserLocalPersistence)
-  .catch(() => setPersistence(auth, browserSessionPersistence))
-  .catch(() => setPersistence(auth, inMemoryPersistence))
-  .catch(err => console.warn("No se pudo guardar la persistencia de sesión:", err));
 const AUTH_READY_TIMEOUT_MS = 2500;
 
 const $ = id => document.getElementById(id);
@@ -2442,7 +2436,7 @@ function renderList(containerId, items) {
           <div><span>Después</span><p>${escapeHtml(receiptBalanceLabel(snapshot.after))}</p></div>
         </div>`
       : `<div class="movement-no-snapshot"><span>${cashboxReceipt ? "Incluida en el cobro · a favor de Explora" : cashAdvance ? "Adelanto · cuenta separada" : "Saldo histórico no disponible"}</span><strong>${money(item.amount)}</strong></div>`;
-    return `<article class="movement-card ${receiptToneClass}">
+    return `<article class="movement-card ${receiptToneClass}" data-movement-color="${movementColor(item, {expensePolicy:ExploraExpensePolicy})}">
       <details class="movement-details">
         <summary><span class="movement-icon">${icon}</span><span class="movement-copy"><strong>${escapeHtml(title)}</strong></span><span class="movement-date">${receiptFooterLabel(item)}</span><span class="movement-chevron" aria-hidden="true">›</span></summary>
         <div class="movement-attachment"><p>${escapeHtml(item.detail || "Operación registrada")}</p>${currentRule && !cashboxIsExcluded(item) && (regularCashReceipt || digitalReceipt) ? `<p>El 100% ${regularCashReceipt ? "del efectivo queda en poder del chofer y suma al saldo" : "del digital lo recibe Explora y resta del saldo"}. La caja chica de 5% se suma una sola vez, en la tarjeta siguiente.</p>` : ""}${proof}${snapshot ? `<small>Saldo positivo: el chofer debe a Explora. Saldo negativo: Explora debe al chofer. Los importes muestran el paso histórico de esta tarjeta.</small>` : ""}</div>
@@ -2559,9 +2553,15 @@ async function loadProfile(user) {
     } catch (_) {}
   }
 
+  // Only when both direct documents are missing: start the two historical
+  // lookups together, but keep the original uid-before-email role priority.
+  const byUidTask = getDocs(query(collection(db, "choferes"), where("uid", "==", user.uid), limit(1))).catch(() => null);
+  const byEmailTask = user.email
+    ? getDocs(query(collection(db, "choferes"), where("email", "==", user.email.toLowerCase()), limit(1))).catch(() => null)
+    : Promise.resolve(null);
   try {
-    const byUid = await getDocs(query(collection(db, "choferes"), where("uid", "==", user.uid), limit(1)));
-    if (!byUid.empty) {
+    const byUid = await byUidTask;
+    if (byUid && !byUid.empty) {
       const data = byUid.docs[0].data() || {};
       return {
         ...data,
@@ -2575,8 +2575,8 @@ async function loadProfile(user) {
 
   if (user.email) {
     try {
-      const byEmail = await getDocs(query(collection(db, "choferes"), where("email", "==", user.email.toLowerCase()), limit(1)));
-      if (!byEmail.empty) {
+      const byEmail = await byEmailTask;
+      if (byEmail && !byEmail.empty) {
         const data = byEmail.docs[0].data() || {};
         return {
           ...data,
@@ -3050,7 +3050,8 @@ function renderAdminHistory() {
       detail: item.detail || item.notes || "",
       proofUrl: item.proofUrl || "",
       createdAt: recordTimestampMs(item),
-      className: "adjustment"
+      className: "adjustment",
+      visualMovementColor: movementColor(item)
     }));
 
   adminDebts
@@ -3090,7 +3091,8 @@ function renderAdminHistory() {
       detail: String(item.status || item.estado || ""),
       proofUrl: item.proofUrl || "",
       createdAt: recordTimestampMs(item),
-      className: "closure"
+      className: "closure",
+      visualMovementColor: movementColor(item)
     }));
 
   rows.sort((a, b) => b.createdAt - a.createdAt);
@@ -3105,7 +3107,7 @@ function renderAdminHistory() {
     const date = item.createdAt
       ? new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(item.createdAt))
       : "Sin fecha";
-    return `<article class="admin-history-item ${item.className}">
+    return `<article class="admin-history-item ${item.className}" data-movement-color="${item.visualMovementColor || ""}">
       <div class="admin-history-top"><span>${escapeHtml(item.kind)}</span><b>${money(item.amount || item.originalAmount || 0)}</b></div>
       <strong>${escapeHtml(item.title)}</strong>
       ${item.detail ? `<p>${escapeHtml(item.detail)}</p>` : ""}
@@ -3220,6 +3222,7 @@ function adminFinancialMovementRows() {
         detail:item.detail || item.notes || item.service || "",
         createdAt:recordTimestampMs(item),
         method:item.method,
+        visualMovementColor:movementColor(item),
         proofUrl:item.proofUrl || item.receiptUrl || ""
       }));
   }
@@ -3236,6 +3239,7 @@ function adminFinancialMovementRows() {
         detail:item.detail || item.notes || item.expenseType || "",
         createdAt:recordTimestampMs(item),
         method:"expense",
+        visualMovementColor:movementColor({...item, method:"expense"}, {expensePolicy:ExploraExpensePolicy}),
         proofUrl:item.proofUrl || item.receiptUrl || ""
       }));
   }
@@ -3266,13 +3270,13 @@ function renderAdminFinancialMovements() {
   }
   box.innerHTML = rows.map(item => {
     const when = item.createdAt ? new Date(item.createdAt).toLocaleString("es-AR", { dateStyle:"short", timeStyle:"short" }) : "";
-    return `<article class="admin-movement-item">
+    return `<article class="admin-movement-item" data-movement-color="${item.visualMovementColor || ""}">
       <div class="admin-history-top"><span>${escapeHtml(item.label)}</span><b>${money(item.amount)}</b></div>
       <strong>${escapeHtml(item.detail || "Sin detalle")}</strong>
       <div class="admin-history-foot">
         <div><small>${escapeHtml(when)}</small>${item.proofUrl ? `<a target="_blank" rel="noopener" href="${item.proofUrl}">Comprobante</a>` : ""}</div>
         <div class="admin-movement-actions">
-          ${item.type === "uber" ? "" : `<button type="button" data-edit-financial="${escapeHtml(item.id)}" data-financial-type="${item.type}" data-financial-amount="${item.amount}">Modificar</button>`}
+          ${item.type === "uber" ? "" : `<button type="button" data-edit-financial="${escapeHtml(item.id)}" data-financial-type="${item.type}" data-financial-amount="${item.amount}" data-financial-color="${item.visualMovementColor || ""}">Modificar</button>`}
           <button type="button" class="danger" data-delete-financial="${escapeHtml(item.id)}" data-financial-type="${item.type}">Eliminar</button>
         </div>
       </div>
@@ -3283,7 +3287,8 @@ function renderAdminFinancialMovements() {
     button.addEventListener("click", () => openAdminFinancialEdit({
       id:button.dataset.editFinancial,
       type:button.dataset.financialType,
-      amount:Number(button.dataset.financialAmount || 0)
+      amount:Number(button.dataset.financialAmount || 0),
+      visualMovementColor:button.dataset.financialColor || ""
     }));
   });
   box.querySelectorAll("[data-delete-financial]").forEach(button => {
@@ -3294,6 +3299,7 @@ function renderAdminFinancialMovements() {
 function openAdminFinancialEdit(item = {}) {
   const driver = adminDriverById($("movementDriver")?.value || "");
   if (!driver || !item.id) return;
+  $("financialEditModal").dataset.movementColor = ["green","red"].includes(item.visualMovementColor) ? item.visualMovementColor : "";
   $("financialEditDocumentId").value = item.id;
   $("financialEditType").value = item.type;
   $("financialEditDriverId").value = driver.id;
@@ -4326,6 +4332,9 @@ function renderChargePreview() {
   const row = (start, delta, end) => `<div><span>Antes</span><small>${escapeHtml(settlementPreviewCopy(start).label)}</small><strong>${money(Math.abs(start))}</strong></div><div><span>Impacto</span><strong class="${delta < 0 ? "negative" : delta > 0 ? "positive" : "neutral"}">${signed(delta)}</strong></div><div><span>Después</span><small>${escapeHtml(settlementPreviewCopy(end).label)}</small><strong>${money(Math.abs(end))}</strong></div>`;
   const afterPrincipal = normalizedSettlementBalance(before + principal);
   $("chargeAccountTitle").textContent = cash ? "Cobro en efectivo · 100%" : "Cobro digital · 100%";
+  $("chargeModal").dataset.movementColor = cash ? "red" : "green";
+  $("chargeAccountPreview").dataset.movementColor = cash ? "red" : "green";
+  $("chargeCashboxPreview").dataset.movementColor = "red";
   $("chargeAccountPreview").innerHTML = row(before, principal, afterPrincipal);
   $("chargeCashboxPreview").innerHTML = row(afterPrincipal, fee, after);
 }
@@ -4439,6 +4448,9 @@ function renderOperationPreview() {
   const afterState = settlementState(pendingOperationPreview.afterBalance, "now");
 
   $("operationPreviewModal").dataset.tone = pendingOperationPreview.kind;
+  $("operationPreviewModal").dataset.movementColor = movementColor({
+    method:pendingOperationPreview.kind, type:pendingOperationPreview.kind === "expense" ? "expense_receipt" : "billing", ...details
+  }, {expensePolicy:ExploraExpensePolicy});
   $("operationPreviewTitle").textContent = definition.title;
   $("operationPreviewSubtitle").textContent = definition.subtitle;
   $("operationPreviewAmountLabel").textContent = definition.amountLabel;
@@ -4446,9 +4458,9 @@ function renderOperationPreview() {
   $("operationPreviewImpactLabel").textContent = definition.impactLabel;
   const isCharge = ["cash","digital"].includes(pendingOperationPreview.kind);
   const principal = pendingOperationPreview.amount * (pendingOperationPreview.kind === "cash" ? 1 : -1);
-  $("operationPreviewImpact").textContent = isCharge
-    ? `${signedMoney(principal)} / caja ${signedMoney(pendingOperationPreview.amount * 0.05)}`
-    : signedMoney(definition.delta);
+  if (isCharge) {
+    $("operationPreviewImpact").innerHTML = `<span data-movement-color="${pendingOperationPreview.kind === "cash" ? "red" : "green"}" class="movement-value">${signedMoney(principal)}</span> / caja <span data-movement-color="red" class="movement-value">${signedMoney(pendingOperationPreview.amount * 0.05)}</span>`;
+  } else $("operationPreviewImpact").textContent = signedMoney(definition.delta);
   $("operationPreviewBeforeLabel").textContent = beforeState.label;
   $("operationPreviewBeforeAmount").textContent = money(beforeState.amount);
   $("operationPreviewAfterLabel").textContent = afterState.label;
@@ -6203,6 +6215,7 @@ window.addEventListener("pageshow", () => {
 let managementDirection = "";
 function openManagement() {
   managementDirection = "";
+  delete $("managementModal").dataset.movementColor;
   $("managementForm").classList.add("hidden");
   $("managementChoices").classList.remove("hidden");
   $("managementTitle").textContent = "Gestión";
@@ -6219,6 +6232,7 @@ function selectManagement(direction) {
   $("managementConfirm").textContent = paying ? "Confirmar pago" : "Confirmar cobro";
   $("managementConfirm").disabled = false;
   $("managementModal").dataset.tone = paying ? "digital" : "cash";
+  $("managementModal").dataset.movementColor = paying ? "green" : "red";
   $("managementChoices").classList.add("hidden");
   $("managementForm").classList.remove("hidden");
   renderManagementPreview();
@@ -6229,6 +6243,7 @@ function renderManagementPreview() {
   const before = previewSettlementBalance("management");
   const delta = amount * (managementDirection === "driver_to_explora" ? -1 : 1);
   const after = normalizedSettlementBalance(before + delta);
+  $("managementPreview").dataset.movementColor = managementDirection === "driver_to_explora" ? "green" : "red";
   $("managementPreview").innerHTML = '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(before))+'</small></div><div><span>Impacto</span><strong class="'+(delta < 0 ? 'negative' : 'positive')+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(after))+'</small></div>';
 }
 $("managementPay").addEventListener("click", () => selectManagement("driver_to_explora"));
@@ -6339,6 +6354,10 @@ function renderExpensePreview() {
   const intermediate = normalizedSettlementBalance(before + amount);
   const after = normalizedSettlementBalance(before + amount * (1 - rate));
   const row = (start,delta,end) => '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(start))+'</small></div><div><span>Impacto</span><strong class="'+(delta > 0 ? "negative" : "positive")+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(end))+'</small></div>';
+  const visualColor = rate === 1 ? "green" : "red";
+  $("expenseModal").dataset.movementColor = visualColor;
+  $("expenseGrossPreview").dataset.movementColor = visualColor;
+  $("expenseRefundBlock").dataset.movementColor = "green";
   $("expenseGrossPreview").innerHTML = row(before,amount,intermediate);
   $("expenseRefundBlock").classList.toggle("hidden", !rate);
   $("expenseRefundTitle").textContent = "Reintegro · " + (rate * 100) + "%";
