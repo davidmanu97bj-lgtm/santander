@@ -89,6 +89,7 @@ async function deleteUberSubmission({db,documentId,adminUid,reason,getBalance,no
 function createUberSubmissionFunction({db,businessId,assertViewer,getProfile,getBalance}) {
   return onCall({region:'southamerica-east1',timeoutSeconds:90,memory:'256MiB'},async request => {
     const uid = await assertViewer(request);
+    if(request.data?.settlementRuleVersion!==periodPolicy.VERSION)throw new HttpsError('failed-precondition','Actualizá la página para usar las billeteras nuevas antes de liquidar Uber.');
     const [profile, settlement] = await Promise.all([getProfile(uid),getBalance(uid)]);
     const data = profile?.data() || {};
     return registerUberSubmission({db,uid,businessId,input:request.data || {},

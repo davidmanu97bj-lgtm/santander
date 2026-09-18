@@ -401,6 +401,7 @@ service cloud.firestore {
       allow create: if isAdmin() || (signedIn() && owns(request.resource.data)
         && request.resource.data.get('expenseType', '') in ['combustible','lavadero','seguro_auto','control_municipal','vtv','peaje']
         && request.resource.data.get('expensePaymentMethod', 'cash') == 'cash'
+        && request.resource.data.get('settlementRuleVersion', '') == 'net_wallets_cashbox_10_v1'
         && policyExpense(request.resource.data) && validExpensePolicy(request.resource.data));
       allow update: if isAdmin() || (
         signedIn() && owns(resource.data) && owns(request.resource.data)

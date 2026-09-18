@@ -114,8 +114,8 @@
   },
   "protectedFiles": {
     "firestore.rules": {
-      "hash": "36367002359d22ec558c870518a03c4146f2778b93e097509355c5f764fa92cc",
-      "reason": "Publicación autorizada: preserva saldo previo mediante migración auditada; cierres y ajustes financieros solo desde servidor, cobros válidos del titular, sin avisos falsos de migración en Telegram."
+      "hash": "1e2c27b8b116fd19bfa16c9e314252cc80b75d238147513e369177271e899cc0",
+      "reason": "Publicación autorizada: los movimientos nuevos requieren la regla de billeteras netas; las versiones anteriores deben actualizarse para evitar registrar operaciones con la fórmula antigua. Los documentos históricos se conservan."
     },
     "functions/expense-policy.js": {
       "hash": "044e01190580912b786c33020c3b663b16eee01da5c6a7600482301a11abffa2",
@@ -142,8 +142,8 @@
       "reason": "Expectativas matemáticas de la nueva regla con sus ramas históricas."
     },
     "functions/uber-submission.js": {
-      "hash": "2660492d2d3dc502a2140f8348c27577dd782e15416c63af371fe37c7c0c713f",
-      "reason": "Nuevas liquidaciones usan 50%+10% según versión explícita; liquidaciones antiguas sin cambios."
+      "hash": "e79bf5a9538c83b0660cafabc1ea0df181394773273b19380b557e26f41fd8a6",
+      "reason": "Publicación autorizada: los movimientos nuevos requieren la regla de billeteras netas; las versiones anteriores deben actualizarse para evitar registrar operaciones con la fórmula antigua. Los documentos históricos se conservan."
     },
     "package.json": {
       "hash": "40c21405917c3460de89730d565da267aadda0dcbb8c67cfc2e50c2245cc746a",
