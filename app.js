@@ -1,6 +1,6 @@
-import { mountPeriodClose } from "./period-ui.js";
-import { mountMonthlyManagement } from "./monthly-management.js";
-import { exploraIcon, activityKind, activityRowContent, recentActivitiesMarkup } from "./explora-ui.js";
+import { mountPeriodClose } from "./period-ui.js?v=20260918-produccion-2";
+import { mountMonthlyManagement } from "./monthly-management.js?v=20260918-produccion-2";
+import { exploraIcon, activityKind, activityRowContent, recentActivitiesMarkup } from "./explora-ui.js?v=20260918-produccion-2";
 import { app, auth, authReady } from "./auth-session.js?v=20260914-web-only-1";
 import { movementColor } from "./movement-colors.js?v=20260914-web-only-1";
 import { mountTripCalendar } from "./trip-calendar.js?v=20260913-calendario-detalles";

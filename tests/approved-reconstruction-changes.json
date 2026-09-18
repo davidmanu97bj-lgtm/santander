@@ -156,6 +156,10 @@
     "styles.css": {
       "hash": "ff22e0d57f8f97edfecf0ca0ffa17a5b745ac62ba6dc0ecc043a46910f081c92",
       "reason": "Presentación móvil de la reconstrucción: cada paso de efectivo, digital y gasto mantiene sus datos y acciones visibles en el alto del teléfono; el comprobante digital replica los botones de Cargar gasto."
+    },
+    "firebase.json": {
+      "hash": "18394688c9724275f63283dcea3fb6e30685c3250b36b408e6ddcb12687b9480",
+      "reason": "Publicación autorizada: exigir revalidación de JavaScript y CSS para evitar mezclar archivos financieros y visuales de versiones distintas en navegadores con caché."
     }
   }
 }

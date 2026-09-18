@@ -1,4 +1,4 @@
-import {exploraIcon,escapeUi} from './explora-ui.js';
+import {exploraIcon,escapeUi} from './explora-ui.js?v=20260918-produccion-2';
 const money=value=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value)||0);
 const row=(label,value,total=false,subtitle='')=>`<div class="period-row${total?' period-total':''}"><span>${escapeUi(label)}${subtitle?`<small class="period-row-subtitle">${escapeUi(subtitle)}</small>`:''}</span><strong>${escapeUi(money(value))}</strong></div>`;
 function section(tone,icon,title,description,body){return `<section class="period-section ${tone}"><div class="period-section-label"><span class="period-section-icons">${exploraIcon(icon)}${tone==='cash'?'<img class="period-uber-logo" src="./assets/uber-logo.svg" alt="" width="34" height="12">':''}</span><h2>${title}</h2><p>${description}</p></div><div class="period-section-data">${body}</div></section>`;}
