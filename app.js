@@ -1977,7 +1977,7 @@ function render() {
   syncDriverDebtConfirmationModal();
   syncUberDriverConfirmationModal();
   const model = settlementModel();
-  const receipts = buildUnifiedReceipts(receiptSortOrder).filter(item => !isCashboxReceipt(item));
+  const receipts = buildUnifiedReceipts(receiptSortOrder).filter(item => !isCashboxReceipt(item) && item.migrationVersion !== "opening_balance_20260918_v1");
   const visibleReceipts = visibleReceiptRows(receipts, Math.max(RECENT_RECEIPTS_LIMIT, visibleReceiptCount));
 
   setMoney("settlementTotal", Math.abs(model.balance));

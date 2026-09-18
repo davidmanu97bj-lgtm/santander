@@ -42,8 +42,8 @@
       "reason": "Inicio y actividades con presentación compartida; nuevo período tras cierre sin eliminar el historial."
     },
     "render": {
-      "hash": "48a5512149916f2c378e90e61f511838489b0b57c0841afa59b3add58a995efd",
-      "reason": "Inicio y actividades con presentación compartida; nuevo período tras cierre sin eliminar historial. Oculta comprobantes de caja chica solo en Todas las actividades, antes de contar y paginar, sin modificar cálculos ni registros."
+      "hash": "51efd30855fc1eaff2edb1ac922ec4da31543a7ac301ccb455464e4e9da06e15",
+      "reason": "Inicio y actividades con presentación compartida; nuevo período tras cierre sin eliminar historial. Oculta comprobantes de caja chica solo en Todas las actividades, antes de contar y paginar, sin modificar cálculos ni registros. Oculta el asiento interno de migración únicamente en actividades; la deuda inicial continúa en Billeteras y en el cálculo."
     },
     "receiptBalanceSnapshot": {
       "hash": "bdfe1105dc2cf1b591f7c1358e8d67178437fb2d5f70c43b661aa9a0cb199ed2",
