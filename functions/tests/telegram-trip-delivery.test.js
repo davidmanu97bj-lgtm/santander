@@ -6,13 +6,12 @@ const {deliverTripNotification}=require('../telegram-trip-delivery');
 const compact=require('../telegram-compact');
 const fs=require('node:fs'),vm=require('node:vm');
 const invoice={status:'authorized',environment:'production',number:123,issuer:{pointOfSale:2}};
-test('Telegram informa el porcentaje de reintegro y omite el reintegro para gastos del chofer',()=>{
+test('Telegram informa el importe completo cargado sin confundirlo con el reparto',()=>{
   for (const refundRate of [0,0.5,1]) {
-    const message=compact.expenseSummary({driverName:'Ana',amount:50000,recognized:50000*refundRate,refundRate,balance:50000*(1-refundRate),detail:'Gasto de prueba'});
-    assert.match(message,/🔴 Gasto:.*50\.000/);
-    if (refundRate) assert.match(message,new RegExp('🟢 Reintegro '+refundRate*100+'%:'));
-    else { assert.doesNotMatch(message,/🟢/); assert.match(message,/100% chofer · Sin reintegro/); }
-    assert.doesNotMatch(message,/Total con caja/);
+    const message=compact.expenseSummary({driverName:'Ana',amount:50000,refundRate,detail:'Gasto de prueba',dateLines:['Fecha: 17/09/2026','Hora: 10:15']});
+    assert.match(message,/Ana Gasto:/);assert.match(message,/Total cargado del gasto:.*50\.000/);
+    assert.match(message,/Fecha: 17\/09\/2026/);assert.match(message,/Hora: 10:15/);
+    assert.doesNotMatch(message,/Reintegro|Total con caja/);
   }
 });
 function setup() {
@@ -25,15 +24,15 @@ function setup() {
   return {db,ref,calls,options,run:changes=>deliverTripNotification({...options,...changes}),get pdfCalls(){return pdfCalls;}};
 }
 function content(call) {return call.options?.multipart ? JSON.parse(call.payload.get('rich_message')) : call.payload.rich_message;}
-test('resúmenes: bruto y caja, gestión sin caja, gasto y reintegro, saldo con las dos etiquetas',()=>{
+test('resúmenes operativos con ubicación y total; gestión histórica conserva su formato',()=>{
   const data={settlementRuleVersion:'gross_cash_digital_cashbox_5_v1',invoiceRequest:{origin:'Iguazú',destination:'Cataratas'}};
   const cash=compact.billingSummary({data,driverName:'Ana',amount:100000,cash:true,balance:105000});
   const digital=compact.billingSummary({data,driverName:'Ana',amount:100000,cash:false,balance:10000});
-  assert.match(cash,/Iguazú → Cataratas/);assert.match(cash,/Caja chica 5%:.*5\.000/);
-  assert.match(digital,/Caja chica 5%:.*5\.000/);assert.match(digital,/Chofer debe:.*10\.000/);
+  assert.match(cash,/Iguazú → Cataratas/);assert.match(cash,/Ana cobro efectivo/);
+  assert.match(digital,/Ana cobro digital/);assert.match(digital,/Total cargado del cobro:.*100\.000/);
   for (const message of [cash,digital,compact.uberSummary({data:{amount:100000},driverName:'Ana',balance:105000})]) assert.doesNotMatch(message,/Total con caja/);
   const expense=compact.expenseSummary({driverName:'Ana',amount:50000,recognized:25000,balance:-25000,detail:'Combustible'});
-  assert.match(expense,/🔴 Gasto:.*50\.000/);assert.match(expense,/🟢 Reintegro:.*25\.000/);assert.match(expense,/Explora debe:.*25\.000/);
+  assert.match(expense,/Ana Gasto:/);assert.match(expense,/Total cargado del gasto:.*50\.000/);
   for(const paying of [true,false]) {
     const msg=compact.managementSummary({driverName:'Ana',amount:20000,paying,balance:paying ? -10000 : 10000});
     assert.match(msg,paying ? /Pago a Explora/ : /Cobro a Explora/);

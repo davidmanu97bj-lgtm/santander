@@ -289,21 +289,31 @@ service cloud.firestore {
     // =========================================================
 
     match /billing_records/{recordId} {
+      function validDriverCharge(d) {
+        return isActiveTeamViewer() && d.driverUid == uid()
+          && d.uid == uid() && d.choferUid == uid() && d.ownerUid == uid() && d.driverId == uid() && d.operatorUid == uid()
+          && d.get('settlementRuleVersion', '') == 'net_wallets_cashbox_10_v1'
+          && d.type in ['billing', 'payment'] && d.method in ['cash', 'digital']
+          && d.paymentMethod == d.method && d.status == 'completed'
+          && d.amount is number && d.amount > 0 && d.amount <= 100000000
+          && d.monto == d.amount && d.grossAmount == d.amount
+          && d.createdAt == request.time
+          && d.get('invoiceRequest', {}).get('version', '') == 'arca_c_v1'
+          && !d.keys().hasAny(['settlementAfter','migrationVersion','periodDebtSettlementAmount','adjustmentDirection','internalSettlementAdjustment','affectsBillingSettlement','excludeFromCashbox','cashboxExcluded','cajaChicaEliminada','ignoreCashbox','noCashbox'])
+          && (d.method == 'cash' || (d.proofPath is string && d.proofPath.matches('billing_receipts/' + uid() + '/[^/]+/[^/]+') && d.proofUrl is string && d.proofUrl.size() > 0));
+      }
       // The source also contains passenger identity. Only its owner/admin may read it.
       // Reading a missing operation is needed by the idempotent create transaction.
       allow get: if signedIn() && (!exists(/databases/$(database)/documents/billing_records/$(recordId)) || isAdmin() || owns(resource.data));
       allow list: if isAdmin() || (signedIn() && owns(resource.data));
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data) && (
-        !request.resource.data.keys().hasAny(['invoiceRequest'])
-        || request.resource.data.invoiceRequest.get('version', '') != 'arca_c_v1'
-        || (isActiveTeamViewer() && request.resource.data.driverUid == uid() && request.resource.data.createdAt == request.time)
-      ));
+      allow create: if isAdmin() || (signedIn() && owns(request.resource.data) && validDriverCharge(request.resource.data));
       allow update: if (!resource.data.keys().hasAny(["invoiceRequest"]) || resource.data.invoiceRequest.get('version', '') != "arca_c_v1") && (isAdmin() || (
         signedIn()
         && owns(resource.data)
         && owns(request.resource.data)
         && ownershipFieldsUnchanged()
         && adminFieldsUnchanged()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['createdAt'])
       ));
       allow delete: if isAdmin() && (!resource.data.keys().hasAny(["invoiceRequest"]) || resource.data.invoiceRequest.get('version', '') != "arca_c_v1");
     }
@@ -368,7 +378,7 @@ service cloud.firestore {
       function policyExpense(d) { return d.get('receiptFlowVersion', '') == 'gross_expense_policy_v3'; }
       function expenseRefundRate(d) {
         let type = d.get('expenseType', '');
-        return type in ['service','combustible','lavadero','patente','seguro_auto','control_municipal','vtv'] ? 0.5
+        return type in ['service','combustible','lavadero','patente','seguro_auto','control_municipal','vtv','peaje'] ? 0.5
           : type in ['seguro_vida','monotributo','multa','choque','ruptura','prestamo','canon'] ? 0
           : type in ['cubiertas','picos','luces','pastillas','disco_freno'] ? 1 : -1;
       }
@@ -381,7 +391,7 @@ service cloud.firestore {
           && d.sharedRate == 1 - rate && d.porcentajeCompartido == (1 - rate) * 100
           && d.expenseResponsibility == (rate == 0.5 ? 'shared' : rate == 0 ? 'driver' : 'explora')
           && d.autoApplyToBilling == true && d.billingImpactMode == 'expense_policy'
-          && d.billingImpactAmount == d.amount * (1 - rate)
+          && d.billingImpactAmount == d.amount * (d.get('settlementRuleVersion', '') == 'net_wallets_cashbox_10_v1' ? -0.5 : 1 - rate)
           && d.telegramExpenseLoadedAmount == d.amount && d.telegramExpenseRecognizedAmount == d.amount * rate
           && d.proofUrl is string && d.proofUrl.size() > 0 && d.receiptUrl == d.proofUrl
           && d.proofPath is string && d.proofPath.matches('gastos/' + request.auth.uid + '/[^/]+/[^/]+')
@@ -389,7 +399,9 @@ service cloud.firestore {
       }
       allow read: if isAdmin() || owns(resource.data);
       allow create: if isAdmin() || (signedIn() && owns(request.resource.data)
-        && (!policyExpense(request.resource.data) || validExpensePolicy(request.resource.data)));
+        && request.resource.data.get('expenseType', '') in ['combustible','lavadero','seguro_auto','control_municipal','vtv','peaje']
+        && request.resource.data.get('expensePaymentMethod', 'cash') == 'cash'
+        && policyExpense(request.resource.data) && validExpensePolicy(request.resource.data));
       allow update: if isAdmin() || (
         signedIn() && owns(resource.data) && owns(request.resource.data)
         && ownershipFieldsUnchanged() && adminFieldsUnchanged()
@@ -802,14 +814,8 @@ service cloud.firestore {
     match /cierres_semanales/{closureId} {
       allow get: if signedIn();
       allow list: if isAdmin() || owns(resource.data);
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data));
-      allow update: if isAdmin() || (
-        signedIn()
-        && owns(resource.data)
-        && owns(request.resource.data)
-        && ownershipFieldsUnchanged()
-        && adminFieldsUnchanged()
-      );
+      // Driver closes through confirmPeriodClosure: server validates proof and balance atomically.
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
@@ -1243,6 +1249,14 @@ service cloud.firestore {
     }
 
     match /arca_invoices/{id} {
+      allow read: if isAdmin() || (signedIn() && resource.data.driverUid == request.auth.uid);
+      allow write: if false;
+    }
+    match /driver_monthly_reports/{id} {
+      allow read: if isAdmin() || (signedIn() && resource.data.driverUid == request.auth.uid);
+      allow write: if false;
+    }
+    match /driver_monthly_invoices/{id} {
       allow read: if isAdmin() || (signedIn() && resource.data.driverUid == request.auth.uid);
       allow write: if false;
     }

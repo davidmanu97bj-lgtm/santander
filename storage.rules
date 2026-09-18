@@ -324,6 +324,15 @@ service firebase.storage {
     // DENEGACIÓN FINAL
     // =========================================================
 
+    match /monthly_reports/{ownerUid}/{allPaths=**} {
+      allow read: if isAuthorizedAdmin() || isOwner(ownerUid);
+      allow write: if false;
+    }
+    match /driver_monthly_invoices/{ownerUid}/{month}/{file} {
+      allow read: if isAuthorizedAdmin() || isOwner(ownerUid);
+      allow create: if isOwner(ownerUid) && validOperationalUpload() && request.resource.contentType == 'application/pdf';
+      allow update, delete: if false;
+    }
     match /{allPaths=**} {
       allow read, write: if false;
     }

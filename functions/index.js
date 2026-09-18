@@ -17,9 +17,11 @@ const {
 const { isAdminDebtPayment } = require("./telegram-debt-payment");
 const { isAdminDriverDebt } = require("./telegram-driver-debt");
 const { prepareInvoiceDraft } = require("./arca-invoice-draft");
-const { validateRouteRequest, queryRouteService, RouteError } = require("./route-service");
+const { validateRouteRequest, RouteError } = require("./route-service");
+const { queryGoogleRoute: queryRouteService } = require("./google-route-service");
 const telegramCompact = require("./telegram-compact");
 const expensePolicy = require("./expense-policy");
+const periodPolicy = require("./period-policy");
 const { deliverTripNotification } = require("./telegram-trip-delivery");
 const { invoicePdf } = require("./arca-pdf");
 
@@ -30,6 +32,8 @@ initializeApp({ storageBucket: STORAGE_BUCKET });
 const db = getFirestore();
 const auth = getAuth();
 const bucket = getStorage().bucket(STORAGE_BUCKET);
+Object.assign(exports, require("./period-closure").createPeriodFunctions({db,bucket,assertViewer:assertTeamRealtimeViewer}));
+Object.assign(exports, require("./monthly-report-functions")({db,bucket,assertViewer:assertTeamRealtimeViewer}));
 exports.verifyUberScreenshot = require("./uber-proof").createUberProofFunction({db,bucket,assertViewer:assertTeamRealtimeViewer});
 exports.registerUberLiquidation = require("./uber-submission").createUberSubmissionFunction({
   db, businessId:PROJECT_ID, assertViewer:assertTeamRealtimeViewer,
@@ -44,12 +48,12 @@ const ADMIN_AUDIT_COLLECTION = "admin_audit";
 const TEAM_REALTIME_BALANCES_COLLECTION = "team_realtime_balances";
 const PAGE_SIZE = 180;
 
-const OPENROUTESERVICE_API_KEY = defineSecret("OPENROUTESERVICE_API_KEY");
-exports.exploraRoute = onCall({region:"southamerica-east1", secrets:[OPENROUTESERVICE_API_KEY], timeoutSeconds:30, maxInstances:3}, async request => {
+const GOOGLE_MAPS_API_KEY = defineSecret("GOOGLE_MAPS_API_KEY");
+exports.exploraRoute = onCall({region:"southamerica-east1", secrets:[GOOGLE_MAPS_API_KEY], timeoutSeconds:30, maxInstances:3}, async request => {
   const uid = await assertTeamRealtimeViewer(request);
   try {
     const data = validateRouteRequest(request.data);
-    const key = OPENROUTESERVICE_API_KEY.value();
+    const key = GOOGLE_MAPS_API_KEY.value();
     if (!key) return await queryRouteService(data,key);
     // Server-only counters; fixed documents avoid accumulating per-query data.
     const globalRef = db.collection("route_usage").doc("global");
@@ -114,6 +118,30 @@ const TELEGRAM_FUNCTION_REGION = "us-central1";
 const TELEGRAM_PROCESSING_LEASE_MS = 10 * 60 * 1000;
 const TELEGRAM_BALANCE_FALLBACK_DRIVER_FIELDS = ["choferUid", "uid", "driverId", "choferId", "ownerUid"];
 
+exports.sendDailyDriverSummary = onSchedule({
+  schedule: "0 0 * * *", timeZone: "America/Argentina/Buenos_Aires",
+  region: TELEGRAM_FUNCTION_REGION, secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID],
+  timeoutSeconds: 300, memory: "256MiB", retryCount: 3, minBackoffSeconds: 600
+}, async event => {
+  const {previousDay,messagesForDay}=require('./telegram-daily-summary');
+  const day=previousDay(event.scheduleTime || Date.now());
+  const source=db.collection('billing_records');
+  const [profiles,timestampRows,numericRows]=await Promise.all([
+    db.collection('choferes').get(),
+    source.where('createdAt','>=',new Date(day.start)).where('createdAt','<',new Date(day.end)).get(),
+    source.where('createdAtMs','>=',day.start).where('createdAtMs','<',day.end).get()
+  ]);
+  const drivers=profiles.docs.filter(d=>teamRealtimeDriverIsActive(d.data())&&!teamRealtimeDriverIsAdmin(d.id,d.data())).map(d=>{
+    const p=d.data();return {id:d.id,name:teamRealtimeDriverName(p),aliases:[d.id,p.uid,p.authUid,p.driverUid,p.choferUid,p.driverId,p.choferId]};
+  });
+  const records=[...timestampRows.docs,...numericRows.docs].map(d=>({...d.data(),id:d.id}));
+  const pages=messagesForDay(drivers,records,day);
+  for(let i=0;i<pages.length;i++)await telegramProcessNotification({
+    kind:'daily_driver_summary',docId:`${day.day}_${i}`,sourceCollection:'billing_records',
+    eventId:event.scheduleTime||day.day,data:{},caption:pages[i],requirePhoto:false
+  });
+});
+
 // WhatsApp operativo deshabilitado: todas las notificaciones solicitadas salen por Telegram.
 
 function telegramSafeText(value) {
@@ -167,6 +195,18 @@ function telegramDriverName(data = {}) {
     data.driverName || data.choferNombre || data.nombreChofer || data.nombreConductor ||
     data.displayName || data.chofer || data.usuario || "Chofer"
   );
+}
+
+async function telegramNamedData(data) {
+  if (telegramDriverName(data) !== "Chofer") return data;
+  const uid = telegramDriverUid(data);
+  if (!uid) return data;
+  for (const collection of ["usuarios", "choferes"]) {
+    const profile = (await db.collection(collection).doc(uid).get()).data();
+    const name = profile?.displayName || profile?.driverName || profile?.nombre || profile?.username;
+    if (name) return {...data,driverName:telegramSafeText(name)};
+  }
+  return data;
 }
 
 function telegramAmount(data = {}) {
@@ -589,7 +629,7 @@ async function telegramSendPhoto(photoUrl, caption) {
 
 function telegramAttachmentIsPdf(data = {}, url = "") {
   const mimeType = telegramSafeText(
-    data.receiptMimeType || data.comprobanteMimeType || data.fileMimeType || data.mimeType
+    data.proofMimeType || data.receiptMimeType || data.comprobanteMimeType || data.fileMimeType || data.mimeType
   ).toLowerCase();
   const fileName = telegramSafeText(
     data.receiptName || data.receiptFileName || data.comprobanteNombre || data.fileName
@@ -2359,14 +2399,15 @@ exports.adminModifyExpenseAmount = onCall({ region:"southamerica-east1", timeout
     }
     if (expenseData.receiptFlowVersion === expensePolicy.version) {
       const recognized = newAmount * expensePolicy.refundRate(expenseData);
+      const impact = periodPolicy.isNew(expenseData) ? newAmount * periodPolicy.expenseRate(expenseData, expensePolicy.find(expenseData.expenseType)) : newAmount - recognized;
       Object.assign(expenseUpdate, {
-        billingImpactAmount:newAmount - recognized,
+        billingImpactAmount:impact,
         telegramExpenseLoadedAmount:newAmount,
         telegramExpenseRecognizedAmount:recognized
       });
       const before = Number(expenseData.telegramSettlementBeforeBalance);
       if (Number.isFinite(before)) {
-        const after = before + newAmount - recognized;
+        const after = before + impact;
         expenseUpdate.telegramSettlementAfterBalance = Math.abs(after) > .5 ? after : 0;
         expenseUpdate.telegramSettlementPayer = after > .5 ? "driver" : after < -.5 ? "explora" : "balanced";
       }
@@ -2479,10 +2520,11 @@ exports.adminModifyBillingAmount = onCall({ region:"southamerica-east1", timeout
       amountCorrectedAt:FieldValue.serverTimestamp(), updatedAt:FieldValue.serverTimestamp(), updatedAtMs:Date.now(),
       version:"v67-admin-financial-actions"
     };
-    if (paymentData.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1") {
+    if (["gross_cash_digital_cashbox_5_v1", periodPolicy.VERSION].includes(paymentData.settlementRuleVersion)) {
       paymentUpdate.grossAmount = newAmount;
       paymentUpdate.principalMovementAmount = financialMethodOf(paymentData) === "cash" ? newAmount : -newAmount;
-      paymentUpdate.cashboxAmount = newAmount * 0.05;
+      paymentUpdate.cashboxAmount = newAmount * periodPolicy.cashboxRate(paymentData);
+      if (periodPolicy.isNew(paymentData)) paymentUpdate.principalMovementAmount *= 0.5;
     }
     for (const key of ["valor", "billingAmount", "finalPrice", "finalAmount", "totalAmount", "importe", "price", "total"]) {
       if (Object.prototype.hasOwnProperty.call(paymentData, key)) paymentUpdate[key] = newAmount;
@@ -2923,11 +2965,8 @@ function telegramAdvanceDecisionText(data = {}) {
 // - digital (tarjeta, QR o transferencia), con foto;
 // - efectivo, sin foto pero con los datos de la operación.
 async function telegramTripCaption(data, docId) {
-  const payload = Number(data.telegramSettlementAfterBalance);
-  const settlement = Number.isFinite(payload) ? null : await telegramOpenBillingBalance(data, docId);
-  const balance = Number.isFinite(payload) ? payload : Number(settlement.amountFromDriver || 0) - Number(settlement.amountToDriver || 0);
-  return telegramCompact.billingSummary({data,driverName:telegramDriverName(data),amount:telegramAmount(data),
-    cash:telegramPaymentMethod(data).key === "cash",balance});
+  data = await telegramNamedData(data);
+  return telegramCompact.billingSummary({data,driverName:telegramDriverName(data),amount:telegramAmount(data),cash:telegramPaymentMethod(data).key === "cash"});
 }
 
 async function telegramDeliverInvoicedTrip(data, docId, caption) {
@@ -2936,7 +2975,7 @@ async function telegramDeliverInvoicedTrip(data, docId, caption) {
   const ref = db.collection(TELEGRAM_NOTIFICATIONS_COLLECTION).doc(
     telegramNotificationDocId("billing",telegramOperationNotificationKey(data,docId)));
   return deliverTripNotification({db,ref,paymentId:docId,chatId,api:telegramApi,invoicePdf,
-    caption:caption || await telegramTripCaption(data,docId),photo:telegramDirectPhotoUrl(data)});
+    caption:caption || await telegramTripCaption(data,docId),photo:telegramPaymentMethod(data).key === "cash" ? "" : await telegramResolvePhotoUrl("billing",docId,data)});
 }
 
 exports.notifyArcaInvoiceTelegramV1 = onDocumentWritten({
@@ -2964,12 +3003,14 @@ exports.notifyBillingRecordV2 = onDocumentCreated({
 }, async event => {
   const data = event.data?.data() || {};
   const internalMovement = telegramInternalBillingMovement(data);
+  if (data.migrationVersion === "opening_balance_20260918_v1") return {skipped:true,reason:"opening-balance-migration"};
   if (data.suppressTelegram === true && !internalMovement) {
     return { skipped: true, reason: "suppressed-by-source" };
   }
   if (data.isSimulated === true || data.createdBySimulation === true || data.verificationMode === "simulation") {
     return { skipped: true, reason: "simulation-record" };
   }
+  if (internalMovement && data.notificationHandledByClosure === true && data.closureId) return {skipped:true,reason:"notified-by-closure"};
   if (internalMovement) {
     const docId = telegramSafeText(event.params?.docId || event.data?.id);
     const internalData = Number.isFinite(Number(data.telegramSettlementAfterBalance ?? data.settlementAfter)) ? data :
@@ -3053,20 +3094,15 @@ exports.notifyExpenseV2 = onDocumentCreated({
   retry: true,
   secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
 }, async event => {
-  const data = event.data?.data() || {};
+  const data = await telegramNamedData(event.data?.data() || {});
   const docId = telegramSafeText(event.params?.docId || event.data?.id);
   if (data.suppressTelegram === true || data.isSimulated === true || data.createdBySimulation === true || data.verificationMode === "simulation") return {skipped:true};
   const notes = telegramSafeText(data.notes || data.detalle || data.descripcion || data.observaciones);
   const loadedAmount = Number(data.telegramExpenseLoadedAmount ?? telegramAmount(data) ?? 0);
-  const settlementPayload = Number(data.telegramSettlementAfterBalance);
-  const settlementBalance = Number.isFinite(settlementPayload)
-    ? settlementPayload
-    : Number((await teamRealtimeBalanceForDriver(telegramDriverUid(data))).balance || 0);
   const policyType = data.receiptFlowVersion === expensePolicy.version ? expensePolicy.find(data.expenseType) : null;
   const expenseDetail = data.detail || notes || telegramExpenseType(data);
-  const caption = telegramCompact.expenseSummary({driverName:telegramDriverName(data),amount:loadedAmount,
-    recognized:policyType ? loadedAmount * policyType.refundRate : Number(data.telegramExpenseRecognizedAmount ?? loadedAmount * 0.5),
-    refundRate:policyType?.refundRate, balance:settlementBalance,
+  const caption = telegramCompact.expenseSummary({data,driverName:telegramDriverName(data),amount:loadedAmount,
+    dateLines:telegramDateTimeLines(data),
     detail:policyType && expenseDetail !== policyType.label ? policyType.label + " · " + expenseDetail : expenseDetail});
 
   return telegramProcessNotification({
@@ -3119,8 +3155,7 @@ exports.notifyAdminDebtPaymentTelegramV1 = onDocumentCreated({
   });
 });
 
-// La deuda NO avisa al cargarse. Telegram se envía únicamente cuando el chofer
-// pasa la deuda de pendiente a aceptada; recién ahí la deuda impacta el saldo.
+// Avisa al registrar la deuda; la aceptación no duplica el aviso.
 exports.notifyAdminDriverDebtTelegramV1 = onDocumentWritten({
   document: "deudas_choferes/{docId}",
   region: TELEGRAM_FUNCTION_REGION,
@@ -3131,39 +3166,36 @@ exports.notifyAdminDriverDebtTelegramV1 = onDocumentWritten({
 }, async event => {
   const before = event.data?.before?.exists ? (event.data.before.data() || {}) : null;
   const after = event.data?.after?.exists ? (event.data.after.data() || {}) : null;
-  if (!before || !after) return { skipped:true, reason:"wait-for-driver-acceptance" };
-  if (!isAdminDriverDebt(after)) return { skipped:true, reason:"not-an-admin-driver-debt" };
-  if (before.acknowledgedByDriver === true || after.acknowledgedByDriver !== true) {
-    return { skipped:true, reason:"driver-acceptance-not-transitioned" };
-  }
-  if (!(telegramAmount(after) > 0)) return { skipped:true, reason:"invalid-debt-amount" };
-
-  const driverUid = telegramDriverUid(after);
-  const settlement = await teamRealtimeBalanceForDriver(driverUid);
-  const data = {
-    ...after,
-    telegramSettlementAfterBalance:Number(settlement.balance || 0),
-    createdAt:after.acknowledgedAt || after.updatedAt || after.createdAt,
-    createdAtMs:after.acknowledgedAtMs || after.updatedAtMs || after.createdAtMs
-  };
+  if (before || !after) return {skipped:true,reason:"not-a-new-debt"};
+  if (!isAdminDriverDebt(after) || after.deleted === true || after.isSimulated === true || after.createdBySimulation === true || after.verificationMode === "simulation" || after.suppressTelegram === true) return {skipped:true};
+  const data = await telegramNamedData(after);
   const docId = telegramSafeText(event.params?.docId || event.data?.after?.id);
   return telegramProcessNotification({
-    kind: "admin_driver_debt_accepted",
+    kind: "admin_driver_debt_created",
     docId,
-    notificationKey:`${docId}_accepted`,
+    notificationKey:`${docId}_created`,
     sourceCollection: "deudas_choferes",
     sourceDocumentId: docId,
     data,
     eventId: event.id,
-    caption: telegramSimpleFinancialText({
-      title:"DEUDA AGREGADA",
-      data,
-      amount:telegramAmount(data),
-      detail:telegramSafeText(data.detail || data.reason || data.notes || "Deuda agregada por Explora"),
-      balance:Number(settlement.balance || 0),
-      dateData:data
-    }),
+    caption:telegramCompact.debtSummary({data,driverName:telegramDriverName(data),amount:telegramAmount(data),dateLines:telegramDateTimeLines(data)}),
     requirePhoto: Boolean(telegramDirectPhotoUrl(data))
+  });
+});
+
+exports.notifyGroupDebtTelegram = onDocumentCreated({
+  document:'admin_audit/{docId}',region:TELEGRAM_FUNCTION_REGION,memory:'256MiB',timeoutSeconds:120,retry:true,
+  secrets:[TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID]
+}, async event => {
+  const data=event.data?.data();
+  if(data?.action!=='admin_group_debt_completed'||!Array.isArray(data.drivers)||!data.drivers.length||data.suppressTelegram)return;
+  const caption=telegramCompact.groupDebtSummary({data,dateLines:telegramDateTimeLines(data)});
+  // A large roster is sent in bounded parts rather than silently truncated.
+  const parts=[];let part='';for(const line of caption.split('\n')){if(part.length+line.length+1>900){parts.push(part);part='';}part+=(part?'\n':'')+line;}if(part)parts.push(part);
+  for(let i=0;i<parts.length;i++)await telegramProcessNotification({
+    kind:'admin_group_debt',docId:event.params.docId,notificationKey:`${event.params.docId}_${i}`,
+    sourceCollection:'admin_audit',sourceDocumentId:event.params.docId,data,eventId:event.id,
+    caption:parts[i],requirePhoto:i===0&&Boolean(telegramDirectPhotoUrl(data))
   });
 });
 
@@ -3177,21 +3209,22 @@ exports.notifyClosureTelegramGroupV1 = onDocumentWritten({
   secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]
 }, async event => {
   const before = event.data?.before?.exists ? (event.data.before.data() || {}) : null;
-  const after = event.data?.after?.exists ? (event.data.after.data() || {}) : null;
+  const after = event.data?.after?.exists ? await telegramNamedData(event.data.after.data() || {}) : null;
+  if (after?.isSimulated || after?.createdBySimulation || after?.verificationMode === "simulation" || after?.suppressTelegram) return {skipped:true};
   if (!after) return { skipped:true, reason:"deleted" };
   if (!closureTelegramAllowed(after)) return { skipped: true, reason: "not-an-operational-closure" };
   const docId = telegramSafeText(event.params?.docId || event.data?.after?.id);
   if (!before) {
     return telegramProcessNotification({
       kind: "closure", docId, sourceCollection:"cierres_semanales", sourceDocumentId:docId,
-      data:after, eventId:event.id, caption:closureTelegramText(after), requirePhoto:Boolean(telegramDirectPhotoUrl(after))
+      data:after, eventId:event.id, caption:telegramCompact.closureSummary({data:after,driverName:telegramDriverName(after),dateLines:telegramDateTimeLines(after)}), requirePhoto:Boolean(telegramDirectPhotoUrl(after))
     });
   }
   if (!closureTelegramUpdateChanged(before, after)) return { skipped:true, reason:"no-meaningful-closure-change" };
   const revisionKey = `${docId}_${Number(after.updatedAtMs || after.paidAmountTotal || Date.now())}_${telegramSafeText(after.status)}`;
   return telegramProcessNotification({
     kind:"closure_update", docId, notificationKey:revisionKey, sourceCollection:"cierres_semanales", sourceDocumentId:docId,
-    data:after, eventId:event.id, caption:closureTelegramUpdateText(after), requirePhoto:Boolean(telegramDirectPhotoUrl(after))
+    data:after, eventId:event.id, caption:telegramCompact.closureSummary({data:after,driverName:telegramDriverName(after),dateLines:telegramDateTimeLines(after)}), requirePhoto:Boolean(telegramDirectPhotoUrl(after))
   });
 });
 

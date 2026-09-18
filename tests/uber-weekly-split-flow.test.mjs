@@ -21,18 +21,18 @@ assert.doesNotMatch(html, /id="uberTransferAmount"/);
 assert.doesNotMatch(html, /id="adminUberCashAmount"/);
 assert.doesNotMatch(html, /id="adminUberTransferAmount"/);
 
-// La vista previa deja sólo las dos cifras necesarias: total semanal y 50% + 5%.
+// La vista previa deja sólo las dos cifras necesarias: total semanal y 50% + 10%; conserva las reglas históricas.
 assert.match(app, /function uberDriverSubmissionDelta\(grossAmount = 0, item/);
 assert.match(app, /uberUsesGrossCashRule\(item\) \? 1\.05 : 0\.55/);
-assert.match(app, /impactLabel: "Importe completo \+ 5% de caja chica"/);
+assert.match(app, /impactLabel: "Reparto 50% \+ caja chica 10%"/);
 assert.doesNotMatch(html, /operationPreviewUberGross|operationPreviewUberExplora|operationPreviewUberCashbox|operationPreviewUberDriver/);
 assert.match(app, /httpsCallable\(functions,"registerUberLiquidation"/);
 assert.match(submission, /v85_verified_direct/);
 assert.match(submission, /reviewStatus:'completed'/);
 assert.match(app, /selectedPhotoFile\("uber"\)/);
 assert.match(app, /verifyUberPhoto\(file, week, amount\)/);
-assert.match(html, /Al registrar, el total y el 5% de caja chica se aplican a tu saldo/);
-assert.match(html, /Liquidación UBER · 100%/);
+assert.match(html, /Al registrar, el reparto del 50% y el 10% de caja chica se aplican a tu saldo/);
+assert.match(html, /Liquidación UBER · 50%/);
 
 // Se conservan los controles para pedidos históricos que aún esperan revisión.
 assert.match(app, /id="adminUberVerifiedAmount"/);

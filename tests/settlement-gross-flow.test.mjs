@@ -60,7 +60,7 @@ test('los nuevos cobros aplican el bruto completo y el 5% por separado', () => {
   assertBalance({records:[payment('cash',10000)]}, 10500);
   const digital = assertBalance({records:[payment('digital',10000)]}, -9500);
   assert.equal(digital.cashbox, 500);
-  assert.equal(digital.preview, -9500);
+  assert.equal(digital.preview, -4000); // Entry preview uses the newly approved rule; stored historical records above keep -9500.
   assert.equal(digital.receipts.length, 2);
   assert.equal(digital.receipts.find(row => row.type === 'cashbox_receipt').amount, 500);
   assertBalance({records:[payment('cash',10000),payment('digital',10000)]}, 1000);

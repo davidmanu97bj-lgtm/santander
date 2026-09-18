@@ -1,6 +1,8 @@
+import { mountPeriodClose } from "./period-ui.js";
+import { mountMonthlyManagement } from "./monthly-management.js";
+import { exploraIcon, activityKind, activityRowContent, recentActivitiesMarkup } from "./explora-ui.js";
 import { app, auth, authReady } from "./auth-session.js?v=20260914-web-only-1";
 import { movementColor } from "./movement-colors.js?v=20260914-web-only-1";
-import { tourismCatalog, tourismRoute, searchTourismPlaces, tourismCountryNames } from "./tourism-catalog.js";
 import { mountTripCalendar } from "./trip-calendar.js?v=20260913-calendario-detalles";
 import { monthRange, normalizeTripDraft, canManageTrip } from "./calendar-core.js?v=20260913-calendario-detalles";
 import * as firebaseSettings from "./firebase-config.js?v=20260824-15";
@@ -32,7 +34,30 @@ const ensureTeamRealtimeBalancesCallable = httpsCallable(functions, "ensureTeamR
 const adminDeleteFinancialMovementCallable = httpsCallable(functions, "adminDeleteFinancialMovement");
 const adminModifyExpenseAmountCallable = httpsCallable(functions, "adminModifyExpenseAmount");
 const adminModifyBillingAmountCallable = httpsCallable(functions, "adminModifyBillingAmount");
+const periodClose = mountPeriodClose({
+  getQuote:async () => (await httpsCallable(functions,"getPeriodQuote")({})).data,
+  uploadProof:async (file,quoteId) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error("Iniciá sesión para cerrar.");
+    const path = `cierres_semanales/period/${uid}/${quoteId}/${file.name.replace(/[^a-zA-Z0-9._-]/g,"_")}`;
+    await uploadBytes(ref(storage,path),file,{contentType:file.type});
+    return path;
+  },
+  confirmClose:async input => (await httpsCallable(functions,"confirmPeriodClosure",{timeout:120000})(input)).data,
+  showScreen:destination => showDriverScreen(destination),
+  onCompleted:() => scheduleDashboardRender()
+});
 const AUTH_READY_TIMEOUT_MS = 2500;
+const monthlyManagement=mountMonthlyManagement({
+  loadReport:async(month,pdf)=>(await httpsCallable(functions,"driverMonthlyReport",{timeout:300000})({month,pdf})).data,
+  uploadInvoice:async(month,file)=>{
+    if(file.type!=="application/pdf"||file.size>15*1024*1024||file.size===0)throw new Error("Elegí un PDF de hasta 15 MB.");
+    const uid=auth.currentUser?.uid;if(!uid)throw new Error("Iniciá sesión.");
+    const path=`driver_monthly_invoices/${uid}/${month}/${crypto.randomUUID()}.pdf`;
+    await uploadBytes(ref(storage,path),file,{contentType:"application/pdf"});
+    await httpsCallable(functions,"attachDriverMonthlyInvoice")({month,path});
+  }
+});
 
 const $ = id => document.getElementById(id);
 
@@ -93,6 +118,9 @@ function initializePhotoSourcePickers() {
           const source = input.dataset.photoSource === "camera" ? "Foto tomada" : input.dataset.photoSource === "file" ? "Archivo seleccionado" : "Foto de galería";
           selection.textContent = `${source}: ${file.name || "imagen seleccionada"}`;
           selection.classList.add("has-photo");
+        }
+        if (picker.dataset.photoPicker === "expense") {
+          showExpenseStep(2);
         }
       });
     });
@@ -581,6 +609,7 @@ function uberGrossPrincipalDelta(records = []) {
   return records.filter(uberUsesGrossCashRule).reduce((sum, item) => sum + uberCashRevenueOf(item) * 0.50, 0);
 }
 function uberDriverSubmissionDelta(grossAmount = 0, item = {settlementRuleVersion:"uber_gross_cash_cashbox_5_v1"}) {
+  if (item.settlementRuleVersion === "net_wallets_cashbox_10_v1") return Number(grossAmount || 0) * 0.60;
   return Math.max(0, Number(grossAmount || 0)) * (uberUsesGrossCashRule(item) ? 1.05 : 0.55);
 }
 
@@ -772,6 +801,7 @@ function renderDriverLoadState() {
     $("driverBalanceBadge").textContent = failed ? "Reintentar" : "Actualizando";
     $("receiptCount").textContent = "";
     $("receiptList").innerHTML = `<div class="empty">${failed ? "No pudimos cargar los movimientos. Recargá para volver a intentar." : "Consultando tus movimientos…"}</div>`;
+    $("recentActivities").innerHTML = $("receiptList").innerHTML;
     $("receiptsToggle").classList.add("hidden");
   }
   return ready;
@@ -1022,9 +1052,15 @@ function digitalCashboxAmount(records = []) {
   return records
     .filter(item => !movementIsDeleted(item) && !isSettlementAdjustment(item) && !isReimbursementCompensation(item))
     .filter(item => item.method === "digital" && !cashboxIsExcluded(item))
-    .filter(item => item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1")
-    .reduce((sum, item) => sum + Number(item.amount || 0) * 0.05, 0);
+    .filter(item => ["gross_cash_digital_cashbox_5_v1", "net_wallets_cashbox_10_v1"].includes(item.settlementRuleVersion))
+    .reduce((sum, item) => sum + Number(item.amount || 0) * (item.settlementRuleVersion === "net_wallets_cashbox_10_v1" ? 0.10 : 0.05), 0);
 }
+function newCashboxSupplement(records = [], uber = []) {
+  const cash = records.filter(item => item.settlementRuleVersion === "net_wallets_cashbox_10_v1" && item.method === "cash" && !movementIsDeleted(item) && !cashboxIsExcluded(item) && !isSettlementAdjustment(item) && !isReimbursementCompensation(item)).reduce((sum,item)=>sum+Number(item.amount||0),0);
+  const uberCash = uber.filter(item => item.settlementRuleVersion === "net_wallets_cashbox_10_v1" && !movementIsDeleted(item) && uberImpactsSettlement(item)).reduce((sum,item)=>sum+uberCashRevenueOf(item),0);
+  return (cash + uberCash) * 0.05;
+}
+
 function grossFlowPrincipalDelta(records = []) {
   // Legacy calculators already include 50% of each payment. New receipts add
   // the other 50% with the same sign; cashbox is counted separately, exactly once.
@@ -1046,7 +1082,7 @@ function adjustmentTotal(direction) {
       const paidToAdvance = direction === "driver_to_explora"
         ? Number(item.advanceRepaymentAmount || 0)
         : 0;
-      return total + Math.max(0, amount - paidToAdvance);
+      return total + Math.max(0, amount - paidToAdvance) + Number(item.periodDebtSettlementAmount || 0) * (direction === "driver_to_explora" ? -1 : 1);
     }, 0);
 }
 function expensesTotal() {
@@ -1084,6 +1120,7 @@ function expenseRefundRate(item = {}) {
   return item.receiptFlowVersion === "gross_expense_policy_v3" ? ExploraExpensePolicy.refundRate(item) : 0.5;
 }
 function expenseNetDriverRate(item = {}) {
+  if (item.settlementRuleVersion === "net_wallets_cashbox_10_v1") return ExploraPeriodPolicy.expenseRate(item, ExploraExpensePolicy.find(item.expenseType));
   if (item.receiptFlowVersion === "gross_expense_policy_v3") return 1 - expenseRefundRate(item);
   return item.receiptFlowVersion === "gross_expense_driver_debit_50_v2" ? 0.5 : -0.5;
 }
@@ -1256,11 +1293,11 @@ function settlementMovementDeltaSince(cutoffMs, sourcePayments = payments, sourc
 
   const driverPaid = scopedPayments
     .filter(item => isSettlementAdjustment(item) && item.adjustmentDirection === "driver_to_explora")
-    .reduce((sum, item) => sum + Math.max(0, Number(item.amount || 0) - Number(item.advanceRepaymentAmount || 0)), 0);
+    .reduce((sum, item) => sum + (Math.max(0, Number(item.amount || 0) - Number(item.advanceRepaymentAmount || 0)) - Number(item.periodDebtSettlementAmount || 0)), 0);
 
   const exploraPaid = scopedPayments
     .filter(item => isSettlementAdjustment(item) && item.adjustmentDirection === "explora_to_driver")
-    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    .reduce((sum, item) => sum + Number(item.amount || 0) + Number(item.periodDebtSettlementAmount || 0), 0);
 
   const scopedUber = sourceUber
     .filter(item => !movementIsDeleted(item))
@@ -1271,7 +1308,7 @@ function settlementMovementDeltaSince(cutoffMs, sourcePayments = payments, sourc
   const uberTransferRevenue = scopedUber.reduce((sum, item) => sum + uberTransferRevenueOf(item), 0);
   const uberRevenue = uberCashRevenue + uberTransferRevenue;
 
-  const cashBox = (cashboxEligibleCash + uberCashRevenue) * 0.05 + digitalCashboxAmount(scopedPayments);
+  const cashBox = (cashboxEligibleCash + uberCashRevenue) * 0.05 + digitalCashboxAmount(scopedPayments) + newCashboxSupplement(scopedPayments, scopedUber);
   const automaticExpenseImpact = automaticExpenseBillingImpactTotal(sourceExpenses, cutoffMs);
   const delta = (cashRevenue * 0.50) + (uberCashRevenue * 0.50 + uberPrincipalExtra) + cashBox
     - (digitalRevenue * 0.50) - (uberTransferRevenue * 0.50)
@@ -1557,7 +1594,7 @@ function openCashboxAmount() {
     .filter(uberImpactsSettlement)
     .reduce((sum,item) => sum + uberCashRevenueOf(item), 0);
   const digitalCashbox = digitalCashboxAmount(payments.filter(item => recordTimestampMs(item) > baseline));
-  return (regularCash + uberCash) * 0.05 + digitalCashbox;
+  return (regularCash + uberCash) * 0.05 + digitalCashbox + newCashboxSupplement(payments.filter(item => recordTimestampMs(item) > baseline), uberClosures.filter(item => recordTimestampMs(item) > baseline));
 }
 
 function openExpenses() {
@@ -1802,16 +1839,16 @@ function buildUnifiedReceipts(order = "newest") {
   // Cada cobro con caja chica muestra el ingreso y su 5% separado. El segundo se deriva del primero para
   // que una corrección o eliminación nunca deje valores huérfanos.
   const cashboxReceipts = regularPayments
-    .filter(item => item.method === "cash" || (item.method === "digital" && item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1"))
+    .filter(item => item.method === "cash" || (item.method === "digital" && ["gross_cash_digital_cashbox_5_v1","net_wallets_cashbox_10_v1"].includes(item.settlementRuleVersion)))
     .filter(item => !isSettlementAdjustment(item) && !isReimbursementCompensation(item))
     .filter(item => !cashboxIsExcluded(item))
     .map(item => ({
       ...item,
       id: `${item.id}_cashbox_5`,
       type: "cashbox_receipt",
-      service: "Caja chica 5%",
+      service: item.settlementRuleVersion === "net_wallets_cashbox_10_v1" ? "Caja chica 10%" : "Caja chica 5%",
       detail: `A favor de Explora · Incluida en el cobro ${item.method === "cash" ? "en efectivo (en poder del chofer)" : "digital (recibido por Explora)"}${item.detail ? ` · ${item.detail}` : ""}`,
-      amount: Number(item.amount || 0) * 0.05,
+      amount: Number(item.amount || 0) * (item.settlementRuleVersion === "net_wallets_cashbox_10_v1" ? 0.10 : 0.05),
       _cashboxGrossAmount: Number(item.amount || 0),
       proofUrl: "",
       proofPath: "",
@@ -1854,11 +1891,11 @@ function buildUnifiedReceipts(order = "newest") {
     .filter(uberImpactsSettlement)
     .flatMap(item => {
       const gross = uberGrossRevenueOf(item);
-      if (uberUsesGrossCashRule(item)) {
+      if (uberUsesGrossCashRule(item) || item.settlementRuleVersion === "net_wallets_cashbox_10_v1") {
         const base = {...item, method:"uber", _receiptGroupKey:"uber:" + item.id, detail:"Semana " + uberWeekLabelForItem(item)};
         return [
           {...base, type:"uber_receipt", service:"Liquidación UBER", amount:gross, _sortPriority:2},
-          {...base, id:item.id + "_cashbox", type:"cashbox_receipt", service:"Caja UBER · 5%", amount:gross * 0.05, _cashboxGrossAmount:gross, _sortPriority:1}
+          {...base, id:item.id + "_cashbox", type:"cashbox_receipt", service:item.settlementRuleVersion === "net_wallets_cashbox_10_v1" ? "Caja UBER · 10%" : "Caja UBER · 5%", amount:gross * (item.settlementRuleVersion === "net_wallets_cashbox_10_v1" ? .10 : .05), _cashboxGrossAmount:gross, _sortPriority:1}
         ];
       }
       const workflow = String(item.settlementWorkflowVersion || "").toLowerCase();
@@ -1888,10 +1925,10 @@ function buildUnifiedReceipts(order = "newest") {
       method: "expense",
       type: "expense_receipt",
       service: `Gasto · ${String(item.expenseLabel || item.detail || item.expenseType || "Varios").slice(0, 60)}`,
-      detail: `${item.detail || "Gasto"} · ${refundRate ? `Reintegro ${refundRate * 100}%: ${money(Number(item.amount || 0) * refundRate)}` : "100% chofer · Sin reintegro"}`,
+      detail: item.settlementRuleVersion === "net_wallets_cashbox_10_v1" ? `${item.detail || "Gasto"} · Pagado desde ${item.expensePaymentMethod === "digital" ? "Digital (Explora)" : "Efectivo (chofer)"}` : `${item.detail || "Gasto"} · ${refundRate ? `Reintegro ${refundRate * 100}%: ${money(Number(item.amount || 0) * refundRate)}` : "100% chofer · Sin reintegro"}`,
       _sortPriority: 2
       };
-      if (!refundRate || !["gross_expense_reimbursement_50_v1","gross_expense_driver_debit_50_v2","gross_expense_policy_v3"].includes(item.receiptFlowVersion)) return [expense];
+      if (item.settlementRuleVersion === "net_wallets_cashbox_10_v1" || !refundRate || !["gross_expense_reimbursement_50_v1","gross_expense_driver_debit_50_v2","gross_expense_policy_v3"].includes(item.receiptFlowVersion)) return [expense];
       return [expense, {
         ...expense,
         id:`${item.id}_reimbursement_${refundRate * 100}`,
@@ -1940,7 +1977,7 @@ function render() {
   syncDriverDebtConfirmationModal();
   syncUberDriverConfirmationModal();
   const model = settlementModel();
-  const receipts = buildUnifiedReceipts(receiptSortOrder);
+  const receipts = buildUnifiedReceipts(receiptSortOrder).filter(item => !isCashboxReceipt(item));
   const visibleReceipts = visibleReceiptRows(receipts, Math.max(RECENT_RECEIPTS_LIMIT, visibleReceiptCount));
 
   setMoney("settlementTotal", Math.abs(model.balance));
@@ -1957,8 +1994,12 @@ function render() {
   renderUberPendingBadge();
   if (!$("uberModal")?.classList.contains("hidden") && uberStep === 2) renderUberAccountPreview();
   renderList("receiptList", visibleReceipts);
+  const periodStartedAt = closures
+    .filter(item => item.closureWorkflowVersion === "period_proof_automatic_v1" && item.status === "completed" && !movementIsDeleted(item))
+    .reduce((latest,item) => Math.max(latest,Number(item.cutoffAtMs || item.completedAtMs || item.createdAtMs || 0)),0);
+  $("recentActivities").innerHTML = recentActivitiesMarkup(buildUnifiedReceipts("newest"), {money, timestamp:recordTimestampMs, periodStartedAt});
+  if (!$("walletView").classList.contains("hidden")) refreshPeriodWallets();
   if (!$("chargeModal").classList.contains("hidden")) renderChargePreview();
-  if (!$("managementModal").classList.contains("hidden")) renderManagementPreview();
   if (!$("expenseModal").classList.contains("hidden")) renderExpensePreview();
   window.setTimeout(maybeShowDriverDebtConfirmation, 0);
   window.setTimeout(maybeShowUberDriverConfirmation, 120);
@@ -2319,6 +2360,14 @@ function receiptBalanceSnapshot(item = {}) {
   const valid = value => (typeof value === "number" || (typeof value === "string" && value.trim() !== "")) && Number.isFinite(Number(value));
   if (!valid(before) || !valid(after)) return null;
   let start = Number(before), finish = Number(after);
+  if (item.settlementRuleVersion === "net_wallets_cashbox_10_v1") {
+    if (!["expense_receipt","expense_reimbursement_receipt"].includes(item.type)) {
+      const principal = Number(item._cashboxGrossAmount ?? item.amount) * (item.method === "digital" ? -0.5 : 0.5);
+      if (item.type === "cashbox_receipt") start += principal;
+      else finish = start + principal;
+    }
+    return {before:start,after:finish,movementImpact:finish-start};
+  }
   const currentFlow = item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1";
   if (uberUsesGrossCashRule(item) && item.method === "uber") {
     const principal = Number(item.type === "cashbox_receipt" ? item._cashboxGrossAmount : item.amount);
@@ -2349,7 +2398,7 @@ function receiptBalanceLabel(value) {
 function renderList(containerId, items) {
   const box = $(containerId);
   if (!items.length) {
-    box.innerHTML = `<div class="driver-empty"><span aria-hidden="true">↗</span><strong>Tu historial empieza acá</strong><p>Registrá un cobro o un gasto para ver tus movimientos.</p></div>`;
+    box.innerHTML = recentActivitiesMarkup([], {money,timestamp:recordTimestampMs});
     return;
   }
 
@@ -2397,38 +2446,10 @@ function renderList(containerId, items) {
           : `<a class="receipt-proof-file" target="_blank" rel="noopener" href="${escapeHtml(proofUrl)}" aria-label="Abrir archivo adjunto">PDF</a>`)
       : `<span class="proof internal-proof">${escapeHtml(proofLabel)}</span>`;
 
-    const icon = cashboxReceipt
-      ? `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="2"/><circle cx="16" cy="16" r="2"/><path d="M7 17 17 7"/></svg>`
-      : expenseReceipt
-        ? `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>`
-        : uberReceipt
-          ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h14M7 16l1-5h8l1 5M8 11l1.2-3h5.6l1.2 3M6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>`
-          : debtCompensation
-            ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 4 4 8-9M5 20h14"/></svg>`
-            : cashAdvance
-              ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M7 7.5h7.2a3 3 0 0 1 0 6H9.8a3 3 0 0 0 0 6H17"/></svg>`
-              : adminDebt
-                ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M12 19h.01M5 21h14L12 3 5 21Z"/></svg>`
-                : digitalReceipt
-                  ? `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>`
-                  : isSettlementAdjustment(item)
-                    ? `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/></svg>`
-                    : `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><ellipse cx="12" cy="12" rx="3" ry="4"/><path d="M5 8h.01M19 16h.01"/></svg>`;
-
-    const receiptToneClass = expenseReimbursement ? "receipt-tone-cash" : expenseReceipt
-      ? "receipt-tone-expense"
-      : uberReceipt
-        ? "receipt-tone-uber"
-        : (cashboxReceipt || regularCashReceipt)
-          ? "receipt-tone-cash"
-          : digitalReceipt
-            ? "receipt-tone-digital"
-            : "receipt-tone-other";
-
     const snapshot = receiptBalanceSnapshot(item);
     const impact = snapshot?.movementImpact || 0;
     const currentRule = item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1";
-    const title = cashboxReceipt && currentRule ? `Caja ${item.method === "cash" ? "efectivo" : "digital"} · 5%` : regularCashReceipt ? "Cobro en efectivo" : digitalReceipt ? "Cobro digital" : item.service || proofLabel;
+
     const strip = snapshot
       ? `<div class="movement-balances" aria-label="Saldo histórico de esta operación">
           <div><span>Antes</span><p>${escapeHtml(receiptBalanceLabel(snapshot.before))}</p></div>
@@ -2436,12 +2457,12 @@ function renderList(containerId, items) {
           <div><span>Después</span><p>${escapeHtml(receiptBalanceLabel(snapshot.after))}</p></div>
         </div>`
       : `<div class="movement-no-snapshot"><span>${cashboxReceipt ? "Incluida en el cobro · a favor de Explora" : cashAdvance ? "Adelanto · cuenta separada" : "Saldo histórico no disponible"}</span><strong>${money(item.amount)}</strong></div>`;
-    return `<article class="movement-card ${receiptToneClass}" data-movement-color="${movementColor(item, {expensePolicy:ExploraExpensePolicy})}">
-      <details class="movement-details">
-        <summary><span class="movement-icon">${icon}</span><span class="movement-copy"><strong>${escapeHtml(title)}</strong></span><span class="movement-date">${receiptFooterLabel(item)}</span><span class="movement-chevron" aria-hidden="true">›</span></summary>
+    return `<details class="activity-entry">
+      <summary class="activity-row">${activityRowContent(item,{money,timestamp:recordTimestampMs})}</summary>
+      <div class="activity-detail">${strip}
         <div class="movement-attachment"><p>${escapeHtml(item.detail || "Operación registrada")}</p>${currentRule && !cashboxIsExcluded(item) && (regularCashReceipt || digitalReceipt) ? `<p>El 100% ${regularCashReceipt ? "del efectivo queda en poder del chofer y suma al saldo" : "del digital lo recibe Explora y resta del saldo"}. La caja chica de 5% se suma una sola vez, en la tarjeta siguiente.</p>` : ""}${proof}${snapshot ? `<small>Saldo positivo: el chofer debe a Explora. Saldo negativo: Explora debe al chofer. Los importes muestran el paso histórico de esta tarjeta.</small>` : ""}</div>
-      </details>${strip}
-    </article>`;
+      </div>
+    </details>`;
   }).join("");
 }
 
@@ -2512,18 +2533,47 @@ const tripCalendar = mountTripCalendar({
   }
 });
 $("adminCalendarBtn")?.addEventListener("click",event => tripCalendar.open(event.currentTarget));
-document.querySelectorAll("[data-driver-nav]").forEach(button => {
-  button.addEventListener("click", () => {
-    const destination = button.dataset.driverNav;
-    if (destination === "calendar") { tripCalendar.open(button); return; }
-    if (destination === "profile") { openDriverProfile(button); return; }
-    document.querySelectorAll("[data-driver-nav]").forEach(item => item.removeAttribute("aria-current"));
-    button.setAttribute("aria-current", "page");
-    const target = destination === "history" ? $("driverHistory") : destination === "charges" ? $("driverQuickActions") : $("app");
-    target.scrollIntoView({ behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block:"start" });
-    if (destination !== "home") target.focus({ preventScroll:true });
+let driverScreen = "home";
+let walletQueryGeneration = 0;
+async function refreshPeriodWallets() {
+  const generation = ++walletQueryGeneration;
+  $("driverWalletValue").textContent = "…";
+  $("exploraWalletValue").textContent = "…";
+  try {
+    const {data} = await httpsCallable(functions,"getPeriodQuote")({});
+    if (generation !== walletQueryGeneration) return;
+    $("driverWalletValue").textContent = money(data.summary.netCash);
+    $("exploraWalletValue").textContent = money(data.summary.netDigital);
+  } catch {
+    if (generation !== walletQueryGeneration) return;
+    $("driverWalletValue").textContent = "No disponible";
+    $("exploraWalletValue").textContent = "No disponible";
+  }
+}
+function showDriverScreen(destination) {
+  driverScreen = destination;
+  for (const [name, id] of Object.entries({home:"principalView",wallet:"walletView",history:"historyView",period:"periodView"})) {
+    $(id).classList.toggle("hidden", name !== destination);
+  }
+  document.querySelectorAll("[data-driver-nav]").forEach(button => {
+    const active = button.dataset.driverNav === (destination === "period" ? "wallet" : "home");
+    if (active) button.setAttribute("aria-current","page");
+    else button.removeAttribute("aria-current");
   });
-});
+  window.scrollTo({top:0,behavior:"instant"});
+  if (destination === "wallet") { refreshPeriodWallets(); monthlyManagement.refresh(); }
+}
+document.querySelectorAll("[data-explora-icon]").forEach(el => el.innerHTML = exploraIcon(el.dataset.exploraIcon));
+document.querySelectorAll("[data-driver-nav]").forEach(button => button.addEventListener("click", () => {
+  if (button.dataset.driverNav === "wallet") periodClose.open();
+  else showDriverScreen(button.dataset.driverNav);
+}));
+$("viewAllActivities").addEventListener("click", () => showDriverScreen("history"));
+$("backFromHistory").addEventListener("click", () => showDriverScreen("home"));
+$("backFromPeriod").addEventListener("click", () => showDriverScreen("home"));
+$("backFromManagement").addEventListener("click", () => showDriverScreen("home"));
+$("walletProfile")?.addEventListener("click", event => openDriverProfile(event.currentTarget));
+$("walletCalendar").addEventListener("click", event => tripCalendar.open(event.currentTarget));
 $("driverProfileModal")?.addEventListener("keydown", event => {
   const close = $("driverProfileModal").querySelector("[data-close]");
   const last = $("logoutBtn");
@@ -2925,11 +2975,11 @@ function adminBillingBalanceForDriver(driver = {}) {
 
   const driverPaid = driverPayments
     .filter(item => isSettlementAdjustment(item) && item.adjustmentDirection === "driver_to_explora")
-    .reduce((sum, item) => sum + Math.max(0, Number(item.amount || 0) - Number(item.advanceRepaymentAmount || 0)), 0);
+    .reduce((sum, item) => sum + (Math.max(0, Number(item.amount || 0) - Number(item.advanceRepaymentAmount || 0)) - Number(item.periodDebtSettlementAmount || 0)), 0);
 
   const exploraPaid = driverPayments
     .filter(item => isSettlementAdjustment(item) && item.adjustmentDirection === "explora_to_driver")
-    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    .reduce((sum, item) => sum + Number(item.amount || 0) + Number(item.periodDebtSettlementAmount || 0), 0);
 
   const activeUber = driverUber.filter(uberImpactsSettlement);
   const uberPrincipalExtra = uberGrossPrincipalDelta(activeUber);
@@ -2937,7 +2987,7 @@ function adminBillingBalanceForDriver(driver = {}) {
   const uberTransferRevenue = activeUber.reduce((sum, item) => sum + uberTransferRevenueOf(item), 0);
 
   const automaticExpenseImpact = automaticExpenseBillingImpactTotal(driverExpenses, baseline);
-  const cashBox = (cashboxEligibleCash + uberCashRevenue) * 0.05 + digitalCashboxAmount(driverPayments);
+  const cashBox = (cashboxEligibleCash + uberCashRevenue) * 0.05 + digitalCashboxAmount(driverPayments) + newCashboxSupplement(driverPayments, activeUber);
   const balance = (cashRevenue * 0.50) + (uberCashRevenue * 0.50 + uberPrincipalExtra) + cashBox + adminDebtTotal
     - (digitalRevenue * 0.50) - (uberTransferRevenue * 0.50)
     - automaticExpenseImpact - driverPaid + exploraPaid + grossFlowPrincipalDelta(driverPayments);
@@ -2978,7 +3028,7 @@ function renderAdminDriverOptions() {
   [
     ["editDriverSelect", activeOptions],
     ["deleteDriverSelect", activeOptions],
-    ["debtDriver", activeOptions],
+    ["debtDriver", activeOptions ? activeOptions+'<option value="__all__">Todos los choferes activos · Deuda 100% grupal</option>' : activeOptions],
     ["adjustmentDriver", activeOptions],
     ["historyDriver", historicalOptions],
     ["movementDriver", historicalOptions]
@@ -4232,6 +4282,7 @@ onAuthStateChanged(auth, async user => {
     else { renderDriverLoadState(); subscribeToday(user); subscribeClosures(user); }
   };
   $("operatorName").textContent = `Hola ${currentProfile.displayName || currentProfile.username || user.email?.split("@")[0] || "Chofer"}`;
+  if ($("homeDriverGreeting")) $("homeDriverGreeting").textContent = `Hola, ${currentProfile.displayName || currentProfile.username || user.email?.split("@")[0] || "Chofer"}`;
   applyRoleUI();
   subscribeOwnProfileDashboard(user);
   subscribeDashboard();
@@ -4246,6 +4297,7 @@ onAuthStateChanged(auth, async user => {
       return;
     }
     $("operatorName").textContent = `Hola ${currentProfile.displayName || currentProfile.username || user.email?.split("@")[0] || "Chofer"}`;
+    if ($("homeDriverGreeting")) $("homeDriverGreeting").textContent = `Hola, ${currentProfile.displayName || currentProfile.username || user.email?.split("@")[0] || "Chofer"}`;
     applyRoleUI();
     if (isAdminProfile() !== initialAdmin) {
       cancelDashboardRender();
@@ -4281,10 +4333,9 @@ document.querySelectorAll("[data-mode]").forEach(btn => {
     delete $("chargeForm").dataset.previewConfirmed;
     $("chargeMode").value = mode;
     $("chargeModal").dataset.tone = mode;
-    $("chargeTitle").textContent = mode === "cash" ? "Cobro en efectivo" : "Cobro digital";
+    $("chargeTitle").textContent = mode === "cash" ? "Cobro en efectivo y Uber" : "Cobro digital";
     $("chargeIntro").textContent = mode === "cash" ? "El dinero queda en tu poder." : "El pago ingresa a Explora. Adjuntá el comprobante.";
-    $("chargeIcon").innerHTML = mode === "cash" ? '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><ellipse cx="12" cy="12" rx="3" ry="4"/></svg>' : '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>';
-    $("chargeDigitalTypeField").classList.toggle("hidden", mode !== "digital");
+    $("chargeIcon").innerHTML = mode === "cash" ? '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><ellipse cx="12" cy="12" rx="3" ry="4"/></svg><img src="./assets/uber-logo.svg" alt="" width="34" height="12">' : '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>';
     $("chargeServiceDate").value = localDayKey();
     $("proofField").classList.toggle("hidden", mode !== "digital");
     $("chargeStatus").textContent = "";
@@ -4321,22 +4372,7 @@ function chargeDraftRequest() {
 
 function renderChargePreview() {
   const amount = parseMoneyInput($("chargeAmount").value) || 0;
-  const cash = $("chargeMode").value === "cash";
-  const principal = cash ? amount : -amount;
-  const fee = amount * 0.05;
-  const impact = normalizedSettlementBalance(principal + fee);
-  const before = previewSettlementBalance("charge");
-  const after = normalizedSettlementBalance(before + impact);
-  const signed = value => `${value > 0 ? "+" : value < 0 ? "−" : ""}${money(Math.abs(value))}`;
   $("chargeInvoiceTotal").textContent = money(amount);
-  const row = (start, delta, end) => `<div><span>Antes</span><small>${escapeHtml(settlementPreviewCopy(start).label)}</small><strong>${money(Math.abs(start))}</strong></div><div><span>Impacto</span><strong class="${delta < 0 ? "negative" : delta > 0 ? "positive" : "neutral"}">${signed(delta)}</strong></div><div><span>Después</span><small>${escapeHtml(settlementPreviewCopy(end).label)}</small><strong>${money(Math.abs(end))}</strong></div>`;
-  const afterPrincipal = normalizedSettlementBalance(before + principal);
-  $("chargeAccountTitle").textContent = cash ? "Cobro en efectivo · 100%" : "Cobro digital · 100%";
-  $("chargeModal").dataset.movementColor = cash ? "red" : "green";
-  $("chargeAccountPreview").dataset.movementColor = cash ? "red" : "green";
-  $("chargeCashboxPreview").dataset.movementColor = "red";
-  $("chargeAccountPreview").innerHTML = row(before, principal, afterPrincipal);
-  $("chargeCashboxPreview").innerHTML = row(afterPrincipal, fee, after);
 }
 $("chargeAmount")?.addEventListener("input", renderChargePreview);
 $("chargeModal")?.addEventListener("keydown", event => {
@@ -4389,39 +4425,39 @@ function previewDefinition(kind, amount, details = {}) {
   const definitions = {
     cash: {
       title: "Confirmar cobro en efectivo",
-      subtitle: "El efectivo suma su importe completo y luego suma 5% de caja chica a favor de Explora.",
+      subtitle: "El efectivo queda en tu billetera. Se reparte el neto y se suma 10% del bruto para Explora.",
       amountLabel: "Cobro en efectivo",
-      impactLabel: "Efectivo 100% + caja chica 5%",
-      delta: value * 1.05,
+      impactLabel: "Reparto 50% + caja chica 10%",
+      delta: value * 0.60,
       notice: "Se guardarán el cobro y su caja chica en el historial. ARCA desactivada: preparación de factura sin validez fiscal.",
       confirmLabel: "Confirmar cobro"
     },
     digital: {
       title: "Confirmar cobro digital",
-      subtitle: "El digital resta su importe completo y luego suma 5% de caja chica a favor de Explora.",
+      subtitle: "El digital queda en Explora. Se reparte el neto y se suma 10% del bruto para Explora.",
       amountLabel: "Cobro digital",
-      impactLabel: "Digital −100% + caja chica 5%",
-      delta: value * -0.95,
+      impactLabel: "Reparto −50% + caja chica 10%",
+      delta: value * -0.40,
       notice: "Se guardarán el cobro y su caja chica en el historial. ARCA desactivada: preparación de factura sin validez fiscal.",
       confirmLabel: "Confirmar cobro"
     },
     expense: {
       title: "Confirmar gasto",
-      subtitle: "El gasto suma el 100% y el reintegro resta el 50%.",
+      subtitle: "El gasto se descuenta de la billetera que pagó.",
       amountLabel: "Gasto total",
-      impactLabel: "Impacto total del gasto y reintegro",
-      delta: value * 0.50,
+      impactLabel: "Compensación según quién pagó y a quién corresponde",
+      delta: value * (details.expenseRate ?? -0.50),
       notice: "Al confirmar el gasto impactará en el saldo y se enviará a Telegram.",
       confirmLabel: "Confirmar gasto"
     },
     uber: {
       title: "Confirmar cierre semanal de Uber",
-      subtitle: "Esto se contabilizará como efectivo a cargo del chofer. El importe completo más el 5% de caja chica se sumará al saldo cuando David lo apruebe.",
+      subtitle: "Uber se contabiliza como efectivo, con reparto del 50% y caja chica del 10% para Explora.",
       amountLabel: "Ganancias semanales",
-      impactLabel: "Importe completo + 5% de caja chica",
-      delta: uberDriverSubmissionDelta(value),
-      notice: "Al enviar se guardará el comprobante y Telegram avisará a David. El saldo no cambiará hasta su aprobación. Cuando David lo confirme, este cierre se contabilizará como efectivo porque el dinero queda a cargo del chofer.",
-      confirmLabel: "Enviar a David"
+      impactLabel: "Reparto 50% + caja chica 10%",
+      delta: value * .60,
+      notice: "Se guarda la liquidación con su captura verificada.",
+      confirmLabel: "Registrar liquidación"
     }
   };
   return definitions[kind] || definitions.expense;
@@ -4457,15 +4493,15 @@ function renderOperationPreview() {
   $("operationPreviewAmount").textContent = money(pendingOperationPreview.amount);
   $("operationPreviewImpactLabel").textContent = definition.impactLabel;
   const isCharge = ["cash","digital"].includes(pendingOperationPreview.kind);
-  const principal = pendingOperationPreview.amount * (pendingOperationPreview.kind === "cash" ? 1 : -1);
+  const principal = pendingOperationPreview.amount * 0.5 * (pendingOperationPreview.kind === "cash" ? 1 : -1);
   if (isCharge) {
-    $("operationPreviewImpact").innerHTML = `<span data-movement-color="${pendingOperationPreview.kind === "cash" ? "red" : "green"}" class="movement-value">${signedMoney(principal)}</span> / caja <span data-movement-color="red" class="movement-value">${signedMoney(pendingOperationPreview.amount * 0.05)}</span>`;
+    $("operationPreviewImpact").innerHTML = `<span data-movement-color="${pendingOperationPreview.kind === "cash" ? "red" : "green"}" class="movement-value">${signedMoney(principal)}</span> / caja <span data-movement-color="red" class="movement-value">${signedMoney(pendingOperationPreview.amount * 0.10)}</span>`;
   } else $("operationPreviewImpact").textContent = signedMoney(definition.delta);
   $("operationPreviewBeforeLabel").textContent = beforeState.label;
   $("operationPreviewBeforeAmount").textContent = money(beforeState.amount);
   $("operationPreviewAfterLabel").textContent = afterState.label;
   $("operationPreviewAfterAmount").textContent = money(afterState.amount);
-  $("operationPreviewImpactText").textContent = isCharge ? "Se registra primero el cobro completo y después la caja chica. El resultado incluye ambos movimientos." : operationImpactMessage(definition.delta, pendingOperationPreview.afterBalance);
+  $("operationPreviewImpactText").textContent = isCharge ? "Se muestra el reparto del neto y la caja chica del 10% del bruto. El resultado incluye ambos movimientos." : operationImpactMessage(definition.delta, pendingOperationPreview.afterBalance);
   $("operationPreviewNotice").textContent = pendingOperationPreview.kind === "uber"
     ? `${definition.notice} Nada se guarda antes de tocar Enviar a David.`
     : `${definition.notice} Nada se guarda antes de confirmar.`;
@@ -4751,7 +4787,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
   let completedSuccessfully = false;
   try {
     const enteredDetail = $("detail").value.trim();
-    const chargeDelta = mode === "cash" ? amount * 1.05 : amount * -0.95;
+    const chargeDelta = ExploraPeriodPolicy.chargeDelta(amount, mode);
     fingerprint = await buildSubmissionFingerprint("charge", {
       mode,
       amount,
@@ -4828,11 +4864,11 @@ $("chargeForm")?.addEventListener("submit", async e => {
         receiptUrl: proofUrl,
         receiptPath: proofPath,
         receiptRequired: mode === "digital",
-        settlementRuleVersion: "gross_cash_digital_cashbox_5_v1",
+        settlementRuleVersion: ExploraPeriodPolicy.VERSION,
         grossAmount: amount,
-        principalMovementAmount: mode === "cash" ? amount : -amount,
-        cashboxRate: 0.05,
-        cashboxAmount: amount * 0.05,
+        principalMovementAmount: (mode === "cash" ? amount : -amount) * 0.5,
+        cashboxRate: 0.10,
+        cashboxAmount: amount * 0.10,
         cashboxBeneficiary: "explora",
         moneyHolder: mode === "cash" ? "driver" : "explora",
         telegramSettlementBeforeBalance: settlementBeforeCharge,
@@ -4923,6 +4959,7 @@ $("addExpenseBtn")?.addEventListener("click", () => {
 
 $("addDebtBtn")?.addEventListener("click", () => {
   if (!isAdminProfile()) return;
+  pendingGroupDebt=null;
   renderAdminDriverOptions();
   $("debtForm").reset();
   $("debtStatus").textContent = "";
@@ -4930,17 +4967,48 @@ $("addDebtBtn")?.addEventListener("click", () => {
   $("debtModal").classList.remove("hidden");
 });
 
+let pendingGroupDebt=null;
+async function registerGroupDriverDebt({admin,amount,detail,file}) {
+  const drivers=adminDrivers.filter(d=>!adminDriverIsAdministrator(d)&&adminDriverIsActive(d));
+  if(!drivers.length||drivers.length>400)throw new Error('Revisá la cantidad de choferes del grupo.');
+  const fingerprint=JSON.stringify([admin.uid,drivers.map(d=>d.id).sort(),amount,detail,file.name,file.size,file.lastModified]);
+  if(!pendingGroupDebt||pendingGroupDebt.fingerprint!==fingerprint){
+    if(!window.confirm(`Deuda 100% grupal\n\n${drivers.map(adminDriverLabel).join(', ')}\n\n${money(amount)} por chofer\nTotal: ${money(amount*drivers.length)}\n\n¿Confirmar esta carga?`))throw new Error('Carga cancelada.');
+    pendingGroupDebt={fingerprint,id:crypto.randomUUID()};
+  }
+  const id=pendingGroupDebt.id,proofPath=`deudas/${drivers[0].id}/grupo_${id}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+  const storageRef=ref(storage,proofPath);
+  await uploadBytes(storageRef,file);
+  const proofUrl=await getDownloadURL(storageRef),auditRef=doc(db,'admin_audit','group_debt_'+id);
+  await runTransaction(db,async tx=>{
+    if((await tx.get(auditRef)).exists())return;
+    const actor=currentProfile?.displayName||currentProfile?.username||'Administrador',now=Date.now();
+    const attachment={proofUrl,proofPath,proofMimeType:file.type,proofFileName:file.name};
+    for(const d of drivers)tx.set(doc(db,ROOT_COLLECTIONS.debts,`group_${id}_${d.id}`),{
+      type:'admin_debt',debtType:'admin_debt',amount,monto:amount,totalAmount:amount,originalAmount:amount,remainingAmount:amount,saldoPendiente:amount,paidAmount:0,amountPaid:0,
+      driverUid:d.id,choferUid:d.id,uid:d.id,ownerUid:d.id,driverId:d.id,operatorUid:d.id,driverName:adminDriverLabel(d),operatorName:adminDriverLabel(d),
+      detail,reason:detail,notes:detail,...attachment,dayKey:localDayKey(),status:'active',debtStatus:'active',
+      acknowledgedByDriver:false,driverConfirmationRequired:true,driverConfirmationVersion:1,
+      createdByRole:'admin',registeredByAdmin:true,registrationOrigin:'admin_debt_menu',businessId:BUSINESS_ID,
+      createdByUid:admin.uid,createdByName:actor,createdAtMs:now,createdAt:serverTimestamp(),groupDebtId:id,suppressTelegram:true
+    });
+    tx.set(auditRef,{action:'admin_group_debt_completed',groupDebtId:id,createdByUid:admin.uid,createdByName:actor,detail,amountPerDriver:amount,
+      drivers:drivers.map(d=>({id:d.id,name:adminDriverLabel(d)})),...attachment,createdAtMs:now,createdAt:serverTimestamp()});
+  });
+}
+
 $("debtForm")?.addEventListener("submit", async event => {
   event.preventDefault();
   const admin = auth.currentUser;
   if (!admin || !isAdminProfile()) return;
 
+  const groupDebt = $("debtDriver").value === "__all__";
   const driver = adminDriverById($("debtDriver").value);
   const amount = parseMoneyInput($("debtAmount").value);
   const detail = $("debtDetail").value.trim();
   const file = $("debtProof").files?.[0];
 
-  if (!driver || !adminDriverIsActive(driver)) {
+  if (!groupDebt && (!driver || !adminDriverIsActive(driver))) {
     $("debtStatus").textContent = "Seleccioná un chofer activo.";
     $("debtStatus").className = "status error";
     return;
@@ -4966,6 +5034,11 @@ $("debtForm")?.addEventListener("submit", async event => {
   $("debtStatus").textContent = "";
 
   try {
+    if(groupDebt){
+      await registerGroupDriverDebt({admin,amount,detail,file});
+      $("debtModal").classList.add("hidden");
+      return;
+    }
     const settlementBeforeDebt = adminBillingBalanceForDriver(driver);
     const debtBalanceBefore = adminDebts
       .filter(item => adminRecordBelongsToDriver(item, driver))
@@ -5044,7 +5117,7 @@ $("debtForm")?.addEventListener("submit", async event => {
     setTimeout(() => $("debtModal").classList.add("hidden"), 900);
   } catch (err) {
     console.error(err);
-    $("debtStatus").textContent = "No se pudo registrar la deuda.";
+    $("debtStatus").textContent = groupDebt ? (err?.message || "No se pudo registrar la deuda grupal.") : "No se pudo registrar la deuda.";
     $("debtStatus").className = "status error";
   } finally {
     $("saveDebtBtn").disabled = false;
@@ -5325,13 +5398,15 @@ $("expenseForm")?.addEventListener("submit", async e => {
   if ($("saveExpenseBtn").disabled) return;
   const step = Number($("expenseForm").dataset.step || 0);
   if (!validateExpenseStep(step)) return;
-  if (step < 3) { showExpenseStep(step + 1); return; }
+  if (step < 2) { showExpenseStep(step + 1); return; }
   for (const requiredStep of [0,1,2]) if (!validateExpenseStep(requiredStep)) return;
   const type = ExploraExpensePolicy.find($("expenseType").value);
   const amount = parseMoneyInput($("expenseAmount").value);
   const detail = $("expenseDetail").value.trim() || type.label;
   const file = selectedPhotoFile("expense");
   const refundRate = type.refundRate;
+  const expensePaymentMethod = "cash";
+  const expenseDelta = amount * ExploraPeriodPolicy.expenseRate({expensePaymentMethod}, type);
   if (!acquireSubmissionLock("expense")) {
     $("expenseStatus").textContent = "Este gasto ya se está procesando.";
     $("expenseStatus").className = "status";
@@ -5356,7 +5431,8 @@ $("expenseForm")?.addEventListener("submit", async e => {
       amount,
       detail,
       expenseType:type.id,
-      receiptFlowVersion:ExploraExpensePolicy.version
+      receiptFlowVersion:ExploraExpensePolicy.version,
+      expensePaymentMethod, settlementRuleVersion:ExploraPeriodPolicy.VERSION
     });
     operation = reservePendingOperation("expense", user.uid, fingerprint);
     expenseRef = doc(db, ROOT_COLLECTIONS.expenses, operation.operationId);
@@ -5392,12 +5468,14 @@ $("expenseForm")?.addEventListener("submit", async e => {
     const recognizedExpense = amount * refundRate;
     expenseBeforeBalance = captureSubmissionBalance("expense");
     renderExpensePreview();
-    const rawAfterBalance = expenseBeforeBalance + amount - recognizedExpense;
+    const rawAfterBalance = expenseBeforeBalance + expenseDelta;
     expenseAfterBalance = Math.abs(rawAfterBalance) > 0.5 ? rawAfterBalance : 0;
 
     // El ID estable evita duplicados; las reglas preservan los datos ya registrados.
     const expensePayload = {
       amount,
+      settlementRuleVersion:ExploraPeriodPolicy.VERSION, expensePaymentMethod,
+      driverDebtAmount:type.group === "driver" && expensePaymentMethod === "digital" ? amount : 0,
       monto: amount,
       detail,
       notes: detail,
@@ -5424,13 +5502,13 @@ $("expenseForm")?.addEventListener("submit", async e => {
       choferId: user.uid,
       driverName: currentDriverName(),
       choferNombre: currentDriverName(),
-      payerRole: "driver",
+      payerRole: expensePaymentMethod === "cash" ? "driver" : "explora",
       sharedRate: 1 - refundRate,
       porcentajeCompartido: (1 - refundRate) * 100,
       autoApplyToBilling: true,
       billingImpactMode: "expense_policy",
       receiptFlowVersion: ExploraExpensePolicy.version,
-      billingImpactAmount: amount - recognizedExpense,
+      billingImpactAmount: expenseDelta,
       telegramExpenseLoadedAmount: amount,
       telegramExpenseRecognizedAmount: recognizedExpense,
       telegramSettlementBeforeBalance: expenseBeforeBalance,
@@ -5521,8 +5599,8 @@ function renderUberAccountPreview() {
   const amount = parseUberAmount($("uberGrossAmount").value) || 0;
   const before = previewSettlementBalance("uber");
   const row = (start, delta, end) => '<div><span>Antes</span><small>' + escapeHtml(settlementPreviewCopy(start).label) + '</small><strong>' + money(Math.abs(start)) + '</strong></div><div><span>Impacto</span><strong class="positive">+' + money(delta) + '</strong></div><div><span>Después</span><small>' + escapeHtml(settlementPreviewCopy(end).label) + '</small><strong>' + money(Math.abs(end)) + '</strong></div>';
-  $("uberPrincipalPreview").innerHTML = row(before, amount, before + amount);
-  $("uberCashboxPreview").innerHTML = row(before + amount, amount * 0.05, before + amount * 1.05);
+  $("uberPrincipalPreview").innerHTML = row(before, amount * .5, before + amount * .5);
+  $("uberCashboxPreview").innerHTML = row(before + amount * .5, amount * .10, before + amount * .60);
 }
 async function uberPhotoAsJpeg(file) {
   const url = URL.createObjectURL(file);
@@ -5678,6 +5756,7 @@ $("uberForm")?.addEventListener("submit", async e => {
 
     $("saveUberBtn").textContent = "Registrando liquidación…";
     const {data:result} = await httpsCallable(functions,"registerUberLiquidation",{timeout:90000})({
+      settlementRuleVersion:ExploraPeriodPolicy.VERSION,
       verifiedProofId:uberProofCheck.id, amount, weekStartDate:week.weekStartDate, weekCloseDate:week.weekCloseDate
     });
     const saved = normalizeUberRecord(result.id,result.record);
@@ -5840,7 +5919,7 @@ function openAdminPayment(closureId) {
 }
 
 $("closeDayBtn")?.addEventListener("click", () => {
-  if (!isAdminProfile()) { openManagement(); return; }
+  if (!isAdminProfile()) { showDriverScreen("wallet"); return; }
   render();
   $("closeModal").classList.remove("hidden");
   if (isAdminProfile()) {
@@ -6212,123 +6291,18 @@ window.addEventListener("pageshow", () => {
   if (isAdminProfile()) setTimeout(maybeShowAdminPendingAction, 120);
 });
 
-let managementDirection = "";
-function openManagement() {
-  managementDirection = "";
-  delete $("managementModal").dataset.movementColor;
-  $("managementForm").classList.add("hidden");
-  $("managementChoices").classList.remove("hidden");
-  $("managementTitle").textContent = "Gestión";
-  $("managementModal").classList.remove("hidden");
-}
-function selectManagement(direction) {
-  managementDirection = direction;
-  $("managementForm").reset();
-  $("managementStatus").textContent = "";
-  $("managementStatus").className = "status";
-  const paying = direction === "driver_to_explora";
-  $("managementTitle").textContent = paying ? "Pagar a Explora" : "Cobrar a Explora";
-  $("managementIntro").textContent = paying ? "Registrá el dinero que entregás a Explora." : "Registrá el dinero que recibís de Explora.";
-  $("managementConfirm").textContent = paying ? "Confirmar pago" : "Confirmar cobro";
-  $("managementConfirm").disabled = false;
-  $("managementModal").dataset.tone = paying ? "digital" : "cash";
-  $("managementModal").dataset.movementColor = paying ? "green" : "red";
-  $("managementChoices").classList.add("hidden");
-  $("managementForm").classList.remove("hidden");
-  renderManagementPreview();
-}
-function renderManagementPreview() {
-  if (!managementDirection) return;
-  const amount = parseMoneyInput($("managementAmount").value) || 0;
-  const before = previewSettlementBalance("management");
-  const delta = amount * (managementDirection === "driver_to_explora" ? -1 : 1);
-  const after = normalizedSettlementBalance(before + delta);
-  $("managementPreview").dataset.movementColor = managementDirection === "driver_to_explora" ? "green" : "red";
-  $("managementPreview").innerHTML = '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(before))+'</small></div><div><span>Impacto</span><strong class="'+(delta < 0 ? 'negative' : 'positive')+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(after))+'</small></div>';
-}
-$("managementPay").addEventListener("click", () => selectManagement("driver_to_explora"));
-$("managementCollect").addEventListener("click", () => selectManagement("explora_to_driver"));
-$("managementBack").addEventListener("click", openManagement);
-$("managementAmount").addEventListener("input", renderManagementPreview);
-$("managementForm").addEventListener("submit", async event => {
-  event.preventDefault();
-  const user = auth.currentUser;
-  const direction = managementDirection;
-  const amount = parseMoneyInput($("managementAmount").value);
-  if (!user || !["driver_to_explora","explora_to_driver"].includes(direction) || !(amount > 0)) return;
-  const proof = selectedPhotoFile("management");
-  if (!proof || proof.size <= 0 || proof.size > 15 * 1024 * 1024 || !proof.type.startsWith("image/")) {
-    $("managementStatus").textContent = "Adjuntá una foto del comprobante de hasta 15 MB.";
-    $("managementStatus").className = "status error";
-    return;
-  }
-  if (!acquireSubmissionLock("management")) return;
-  $("managementConfirm").disabled = true;
-  $("managementBack").disabled = true;
-  setPhotoPickerDisabled("management", true);
-  $("managementStatus").textContent = "Guardando…";
-  let operation, reference, fingerprint;
-  try {
-    const detail = $("managementNote").value.trim();
-    fingerprint = await buildSubmissionFingerprint("management", {direction,amount,detail});
-    operation = reservePendingOperation("management", user.uid, fingerprint);
-    reference = doc(db, ROOT_COLLECTIONS.payments, operation.operationId);
-    const proofPath = "billing_receipts/" + user.uid + "/" + localDayKey() + "/" + operation.operationId + "_" + proof.name.replace(/[^a-zA-Z0-9._-]/g,"_");
-    const storageRef = ref(storage, proofPath);
-    await retryFirebaseOperation(() => uploadBytes(storageRef, proof), 4);
-    const proofUrl = await retryFirebaseOperation(() => getDownloadURL(storageRef), 4);
-    await runTransactionWithRetry(async transaction => {
-      const existing = await transaction.get(reference);
-      if (existing.exists()) return;
-      const before = captureSubmissionBalance("management");
-      const after = normalizedSettlementBalance(before + amount * (direction === "driver_to_explora" ? -1 : 1));
-      renderManagementPreview();
-      transaction.set(reference, {
-        type:"settlement_adjustment", operationType:"settlement_adjustment", internalManagement:true,
-        proofUrl,proofPath,receiptUrl:proofUrl,receiptPath:proofPath,receiptRequired:true,
-        adjustmentDirection:direction, affectsBillingSettlement:true, internalSettlementAdjustment:true,
-        method:direction === "driver_to_explora" ? "digital" : "cash",
-        paymentMethod:direction === "driver_to_explora" ? "digital" : "cash",
-        amount,monto:amount,service:direction === "driver_to_explora" ? "Pago a Explora" : "Cobro a Explora",
-        detail,notes:detail,sourceModule:"gestion",status:"completed",
-        driverUid:user.uid,choferUid:user.uid,uid:user.uid,ownerUid:user.uid,driverId:user.uid,operatorUid:user.uid,
-        operatorName:currentDriverName(),driverName:currentDriverName(),businessId:BUSINESS_ID,
-        dayKey:localDayKey(),weeklyPeriodId:currentWeeklyPeriodId(),
-        telegramSettlementBeforeBalance:before,telegramSettlementAfterBalance:after,
-        idempotencyKey:operation.operationId,clientOperationId:operation.operationId,submissionFingerprint:fingerprint,idempotencyVersion:1,
-        createdAtMs:operation.createdAtMs,createdAt:serverTimestamp()
-      });
-    });
-    clearPendingOperation("management",user.uid,fingerprint,operation.operationId);
-    $("managementStatus").textContent = "Movimiento registrado.";
-    closeModalAndGoTop("managementModal");
-  } catch (error) {
-    const committed = reference && operation && await confirmCommittedOperation(reference,operation.operationId,fingerprint);
-    if (committed) {
-      clearPendingOperation("management",user.uid,fingerprint,operation.operationId);
-      closeModalAndGoTop("managementModal");
-    } else {
-      $("managementStatus").textContent = "No pudimos confirmar el movimiento. Reintentá: no se duplicará.";
-      $("managementStatus").className = "status error";
-      $("managementConfirm").disabled = false;
-    }
-  } finally {
-    releaseSubmissionLock("management");
-    $("managementBack").disabled = false;
-    setPhotoPickerDisabled("management", false);
-  }
-});
-
 function renderExpenseTypes() {
-  $("expenseTypeGroups").innerHTML = ExploraExpensePolicy.groups.map(group => '<section class="charge-panel expense-type-group" data-responsibility="'+group.id+'"><h3>'+escapeHtml(group.label)+'</h3><p>'+escapeHtml(group.description)+'</p><div class="expense-type-options">'+ExploraExpensePolicy.types.filter(type => type.group === group.id).map(type => '<button type="button" class="expense-type-option" data-expense-type="'+type.id+'" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true">'+ExploraExpensePolicy.icons[type.icon]+'</svg><span>'+escapeHtml(type.label)+'</span></button>').join('')+'</div></section>').join('');
+  const types = ExploraExpensePolicy.driverAllowedTypes.map(id => ExploraExpensePolicy.find(id));
+  $("expenseTypeGroups").innerHTML = '<section class="charge-panel expense-type-group"><div class="expense-type-options">'+types.map(type => '<button type="button" class="expense-type-option" data-expense-type="'+type.id+'"><svg viewBox="0 0 24 24" aria-hidden="true">'+ExploraExpensePolicy.icons[type.icon]+'</svg><span>'+escapeHtml(type.label)+'</span></button>').join('')+'</div></section>';
 }
 function showExpenseStep(step) {
   $("expenseForm").dataset.step = String(step);
   document.querySelectorAll("[data-expense-step]").forEach(panel => panel.classList.toggle("hidden", Number(panel.dataset.expenseStep) !== step));
-  const names = ["Tipo de gasto", "Monto y detalle", "Foto del comprobante", "Movimientos en tu cuenta"];
-  $("expenseStepLabel").textContent = "Paso " + (step + 1) + " de 4 · " + names[step];
+  const names = ["Tipo de gasto", "Monto y detalle", "Foto del comprobante"];
+  $("expenseStepLabel").textContent = "Paso " + (step + 1) + " de 3 · " + names[step];
   $("expenseStepTrack").innerHTML = names.map((_,index) => '<span class="'+(index <= step ? 'complete' : '')+'"></span>').join('');
-  $("saveExpenseBtn").textContent = step === 3 ? "Confirmar gasto" : "Continuar";
+  $("saveExpenseBtn").classList.toggle("hidden", step === 0);
+  $("saveExpenseBtn").textContent = step === 2 ? "Confirmar gasto" : "Continuar";
   $("expenseStepBack").textContent = step === 0 ? "Cancelar" : "Atrás";
   $("expenseStatus").textContent = "";
   renderExpensePreview();
@@ -6336,7 +6310,7 @@ function showExpenseStep(step) {
 }
 function validateExpenseStep(step) {
   let message = "";
-  if (step === 0 && !ExploraExpensePolicy.find($("expenseType").value)) message = "Elegí el tipo de gasto.";
+  if (step === 0 && !ExploraExpensePolicy.driverAllowedTypes.includes($("expenseType").value)) message = "Elegí el tipo de gasto.";
   const amount = parseMoneyInput($("expenseAmount").value);
   if (step === 1 && !(Number.isFinite(amount) && amount > 0 && amount <= 100000000)) message = "Ingresá un importe válido de hasta $100.000.000.";
   if (step === 2 && !selectedPhotoFile("expense")) message = "Adjuntá una foto del comprobante para continuar.";
@@ -6351,29 +6325,34 @@ function renderExpensePreview() {
   const amount = parseMoneyInput($("expenseAmount").value) || 0;
   const rate = type?.refundRate || 0;
   const before = previewSettlementBalance("expense");
-  const intermediate = normalizedSettlementBalance(before + amount);
-  const after = normalizedSettlementBalance(before + amount * (1 - rate));
+  const delta = amount * ExploraPeriodPolicy.expenseRate({expensePaymentMethod:$("expensePaymentMethod").value}, type);
+  const intermediate = normalizedSettlementBalance(before + delta);
+  const after = normalizedSettlementBalance(before + delta);
   const row = (start,delta,end) => '<div><span>Antes</span><small>'+escapeHtml(receiptBalanceLabel(start))+'</small></div><div><span>Impacto</span><strong class="'+(delta > 0 ? "negative" : "positive")+'">'+signedMoney(delta)+'</strong></div><div><span>Después</span><small>'+escapeHtml(receiptBalanceLabel(end))+'</small></div>';
   const visualColor = rate === 1 ? "green" : "red";
   $("expenseModal").dataset.movementColor = visualColor;
-  $("expenseGrossPreview").dataset.movementColor = visualColor;
-  $("expenseRefundBlock").dataset.movementColor = "green";
-  $("expenseGrossPreview").innerHTML = row(before,amount,intermediate);
-  $("expenseRefundBlock").classList.toggle("hidden", !rate);
-  $("expenseRefundTitle").textContent = "Reintegro · " + (rate * 100) + "%";
-  $("expenseRefundPreview").innerHTML = rate ? row(intermediate,-amount * rate,after) : "";
-  $("expenseFinalBalance").textContent = receiptBalanceLabel(after);
+  if ($("expenseGrossPreview")) {
+    $("expenseGrossPreview").dataset.movementColor = visualColor;
+    $("expenseRefundBlock").dataset.movementColor = "green";
+    $("expenseGrossPreview").innerHTML = row(before,delta,intermediate);
+    $("expenseRefundBlock").classList.add("hidden");
+    $("expenseRefundTitle").textContent = "Reintegro · " + (rate * 100) + "%";
+    $("expenseRefundPreview").innerHTML = rate ? row(intermediate,-amount * rate,after) : "";
+    $("expenseFinalBalance").textContent = receiptBalanceLabel(after);
+  }
   document.querySelectorAll("[data-expense-selection]").forEach(item => {
-    item.innerHTML = type ? '<svg viewBox="0 0 24 24" aria-hidden="true">'+ExploraExpensePolicy.icons[type.icon]+'</svg><div><strong>'+escapeHtml(type.label)+'</strong><span>'+escapeHtml(type.groupLabel)+(rate ? ' · Reintegro '+rate*100+'%' : ' · Sin reintegro')+'</span></div>' : '';
+    item.innerHTML = type ? '<svg viewBox="0 0 24 24" aria-hidden="true">'+ExploraExpensePolicy.icons[type.icon]+'</svg><div><strong>'+escapeHtml(type.label)+'</strong><span>'+escapeHtml(type.groupLabel)+' · Pagado desde '+($("expensePaymentMethod").value === 'cash' ? 'Efectivo' : 'Digital')+'</span></div>' : '';
   });
 }
 $("expenseTypeGroups").addEventListener("click", event => {
   const button = event.target.closest("[data-expense-type]");
   if (!button || $("saveExpenseBtn").disabled) return;
+  if (!ExploraExpensePolicy.driverAllowedTypes.includes(button.dataset.expenseType)) return;
   $("expenseType").value = button.dataset.expenseType;
   $("expenseTypeGroups").querySelectorAll("[data-expense-type]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
   $("expenseStatus").textContent = "";
-  renderExpensePreview();
+  showExpenseStep(1);
+  $("expenseAmount").focus({preventScroll:true});
 });
 $("expenseStepBack").addEventListener("click", () => {
   if ($("saveExpenseBtn").disabled) return;
@@ -6382,19 +6361,20 @@ $("expenseStepBack").addEventListener("click", () => {
   else showExpenseStep(step - 1);
 });
 $("expenseAmount").addEventListener("input", renderExpensePreview);
+$("expensePaymentMethod").addEventListener("change", renderExpensePreview);
 
 function chargeSteps() {
-  return $("chargeMode").value === "digital" ? [0,1,2,3,4] : [0,1,3,4];
+  return $("chargeMode").value === "digital" ? [0,1,2,3] : [0,1,3];
 }
 function showChargeStep(step) {
   $("chargeForm").dataset.step = String(step);
   document.querySelectorAll("[data-charge-step]").forEach(panel => panel.classList.toggle("hidden", Number(panel.dataset.chargeStep) !== step));
-  const names = ["Monto", "Servicio realizado", "Foto del comprobante", "Factura de Explora", "Movimientos en tu cuenta"];
+  const names = ["Monto", "Servicio realizado", "Foto del comprobante", "Factura de Explora"];
   const steps = chargeSteps();
   const position = steps.indexOf(step);
   $("chargeStepLabel").textContent = "Paso " + (position + 1) + " de " + steps.length + " · " + names[step];
   document.querySelector(".charge-step-track").innerHTML = steps.map((value,index) => index <= position ? '<span class="complete"></span>' : '<span></span>').join("");
-  $("saveChargeBtn").textContent = step === 4 ? "Confirmar cobro" : "Continuar";
+  $("saveChargeBtn").textContent = step === 3 ? "Confirmar cobro" : "Continuar";
   $("chargeStepBack").textContent = step === 0 ? "Cancelar" : "Atrás";
   $("chargeStatus").textContent = "";
   renderChargePreview();
@@ -6408,8 +6388,8 @@ function validateChargeStep(step) {
     $("chargeStatus").textContent = "Por este importe, ARCA exige identificar al pasajero. Completá sus datos.";
     return false;
   }
-  if (step === 1 && !tourismRoute($("tourismOrigin").value,$("tourismDestination").value)) {
-    showChargeStep(1); $("chargeRouteStatus").textContent="Elegí dos lugares diferentes de la lista."; return false;
+  if (step === 1 && !(chargeRouteState.points.Origin && chargeRouteState.points.Destination && Number($("chargeDistance").value)>0)) {
+    showChargeStep(1); $("chargeRouteStatus").textContent="Elegí una salida y una llegada de Google Maps."; return false;
   }
   const panel = document.querySelector('[data-charge-step="' + step + '"]');
   for (const field of panel.querySelectorAll("input,select")) {
@@ -6419,7 +6399,7 @@ function validateChargeStep(step) {
     showChargeStep(0); $("chargeStatus").textContent = "Ingresá un importe válido."; return false;
   }
   if (step === 1 && (!$("chargeOrigin").value.trim() || !$("chargeDestination").value.trim())) {
-    showChargeStep(1); $("chargeStatus").textContent = "Elegí un recorrido de la lista."; return false;
+    showChargeStep(1); $("chargeStatus").textContent = "Elegí un recorrido de Google Maps."; return false;
   }
   if (step === 2 && $("chargeMode").value === "digital" && !selectedPhotoFile("digital")) {
     showChargeStep(2); $("chargeStatus").textContent = "Adjuntá la foto del comprobante digital."; return false;
@@ -6530,72 +6510,77 @@ $("chargeDistance").addEventListener("input", () => {
 });
 
 function renderTourismSelectors() {
+  googleTourismPlaces.clear();
   for (const part of ["Origin","Destination"]) {
     $("tourism"+part).value="";$("tourism"+part+"Search").value="";
     $("tourism"+part+"Matches").replaceChildren();
     $("tourism"+part+"Search").setAttribute("aria-expanded","false");
     $("tourism"+part+"Clear").hidden=true;
   }
+  syncTourismProgress();
+}
+function syncTourismProgress() {
+  const hasOrigin = Boolean($("tourismOrigin").value);
+  $("tourismDestinationField").classList.toggle("hidden", !hasOrigin);
+  $("tourismDestinationSearch").disabled = !hasOrigin;
+  if (!hasOrigin) {
+    $("tourismDestination").value = "";
+    $("tourismDestinationSearch").value = "";
+    $("tourismDestinationMatches").replaceChildren();
+    $("tourismDestinationSearch").setAttribute("aria-expanded","false");
+    $("tourismDestinationClear").hidden = true;
+  }
+  for (const part of ["Origin","Destination"]) {
+    $("tourism"+part+"Search").closest(".tourism-location-field").classList.toggle("route-selected",Boolean($("tourism"+part).value));
+  }
 }
 function selectTourismRoute() {
+  syncTourismProgress();
   chargeRouteState.version++;
   const originId=$("tourismOrigin").value, destinationId=$("tourismDestination").value;
-  const route=tourismRoute(originId,destinationId);
   $("chargeOrigin").value="";$("chargeDestination").value="";$("chargeDistance").value="";
   $("chargeTripScope").value="national";
   chargeRouteState.automatic=false;
   chargeRouteState.points={};
-  if (!route) {
-    $("chargeRouteStatus").textContent=originId && destinationId ? "Elegí dos lugares diferentes con un recorrido disponible." : "";return;
-  }
-  chargeRouteState.points={Origin:route.origin,Destination:route.destination};
-  $("chargeOrigin").value=route.origin.name+" · "+route.origin.city;
-  $("chargeDestination").value=route.destination.name+" · "+route.destination.city;
-  $("chargeDistance").value=String(route.distance);
-  $("chargeTripScope").value=[route.origin.country,route.destination.country].some(c=>["BRA","BR","PRY","PY"].includes(c))?"international":"national";
-  $("chargeRouteStatus").textContent=route.distance>100?"Este recorrido supera los 100 km por carretera.":"";
+  const origin=googleTourismPlaces.get(originId),destination=googleTourismPlaces.get(destinationId);
+  if(!origin||!destination){$("chargeRouteStatus").textContent="";return;}
+  if(originId===destinationId){$("chargeRouteStatus").textContent="Elegí dos lugares diferentes.";return;}
+  chargeRouteState.points={Origin:origin,Destination:destination};
+  $("chargeOrigin").value=origin.label;
+  $("chargeDestination").value=destination.label;
+  calculateChargeRoute();
 }
 
-const tourismUsageKey = "explora-tourism-usage-v1";
-let tourismUsage = {};
-try { const saved = JSON.parse(localStorage.getItem(tourismUsageKey) || "{}"); if(saved && typeof saved === "object" && !Array.isArray(saved)) tourismUsage = saved; } catch {}
+const googleTourismPlaces = new Map();
 function initializeTourismSelector(part) {
   const input=$("tourism"+part+"Search"), matches=$("tourism"+part+"Matches");
   const selected=$("tourism"+part), clear=$("tourism"+part+"Clear");
+  let searchTimer=0, request=0;
   const closeMatches=()=>{
     matches.replaceChildren();
     input.setAttribute("aria-expanded","false");
   };
-  const showMatches=()=>{
-    // Un lugar ya elegido no debe actuar como filtro al buscar su reemplazo.
-    const other=part==="Origin"?"Destination":"Origin";
-    $("tourism"+other+"Matches").replaceChildren();
-    $("tourism"+other+"Search").setAttribute("aria-expanded","false");
-    matches.replaceChildren();
-    const search=selected.value?"":input.value;
-    const places=searchTourismPlaces(search,tourismUsage,true).filter(place=>place.id!==selected.value);
-    for(const place of places){
-      const button=document.createElement("button");
-      button.type="button";button.className="route-result";
-      button.setAttribute("role","option");
-      button.setAttribute("aria-selected","false");
-      button.textContent=place.name+" · "+place.city+" · "+tourismCountryNames[place.country];
-      button.addEventListener("click",()=>{
-        input.value=place.name+" · "+place.city;
-        selected.value=place.id;
-        clear.hidden=false;
-        tourismUsage[place.id]=Math.max(0,Number(tourismUsage[place.id])||0)+1;
-        try { localStorage.setItem(tourismUsageKey,JSON.stringify(tourismUsage)); } catch {}
-        closeMatches();
-        selectTourismRoute();
-      });
-      matches.append(button);
-    }
-    if(search.trim().length>=2&&!places.length)matches.textContent="No hay coincidencias en los lugares cargados.";
-    input.setAttribute("aria-expanded",String(places.length>0));
+  const searchGoogle=()=>{
+    clearTimeout(searchTimer);const query=input.value.trim();
+    if(selected.value||query.length<3){closeMatches();return;}
+    searchTimer=setTimeout(async()=>{
+      const token=++request;matches.textContent="Buscando en Google Maps…";input.setAttribute("aria-expanded","true");
+      try{
+        const {data}=await exploraRouteCallable({action:'search',query});
+        if(token!==request||input.value.trim()!==query||selected.value)return;
+        matches.replaceChildren();
+        for(const place of data.places||[]){
+          const option=document.createElement('button');option.type='button';option.className='route-result';option.setAttribute('role','option');option.textContent=place.label;
+          option.onclick=()=>{const id='google:'+place.id;googleTourismPlaces.set(id,place);selected.value=id;input.value=place.label;clear.hidden=false;closeMatches();selectTourismRoute();if(part==='Destination')$("saveChargeBtn")?.scrollIntoView?.({behavior:'smooth',block:'center'});};matches.append(option);
+        }
+        if(!data.places?.length)matches.textContent='No encontramos ese lugar dentro de los 100 km de Puerto Iguazú.';
+        input.setAttribute('aria-expanded','true');
+      }catch(error){if(token===request&&input.value.trim()===query){matches.textContent=routeFailureMessage(error);input.setAttribute('aria-expanded','true');}}
+    },280);
   };
   const clearSelection=()=>{
     input.value="";
+    googleTourismPlaces.delete(selected.value);
     selected.value="";
     clear.hidden=true;
     selectTourismRoute();
@@ -6603,7 +6588,7 @@ function initializeTourismSelector(part) {
   clear.addEventListener("click",()=>{
     clearSelection();
     input.focus();
-    showMatches();
+    searchGoogle();
   });
   input.addEventListener("beforeinput",()=>{
     // Conserva la nueva tecla, pegado o composición: solo borra la selección previa.
@@ -6613,10 +6598,9 @@ function initializeTourismSelector(part) {
     selected.value="";
     clear.hidden=!input.value;
     selectTourismRoute();
-    showMatches();
+    searchGoogle();
   });
-  input.addEventListener("focus",showMatches);
-  input.addEventListener("click",showMatches);
+  input.addEventListener("focus",searchGoogle);
   const field=input.closest(".tourism-location-field");
   const closeWhenOutside=event=>{if(!field.contains(event.target))closeMatches();};
   // Un desenfoque táctil puede llegar antes del click y sin relatedTarget.

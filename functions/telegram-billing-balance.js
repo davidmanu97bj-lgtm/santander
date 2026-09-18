@@ -1,5 +1,6 @@
 "use strict";
 const expensePolicy = require('./expense-policy');
+const periodPolicy = require('./period-policy');
 
 const AMOUNT_FIELDS = [
   "amount", "monto", "valor", "finalPrice", "total", "importe", "price", "precio",
@@ -54,7 +55,7 @@ function paymentMethodOf(data = {}) {
   if (/qr/.test(raw)) return "qr";
   if (/card|tarjeta|point|posnet/.test(raw)) return "card";
   if (/transfer|alias|transf/.test(raw)) return "transfer";
-  if (/digital|online|electr[oó]nic/.test(raw)) return "digital";
+  if (/digital|online|electr[oÃ³]nic/.test(raw)) return "digital";
   return raw;
 }
 
@@ -105,9 +106,15 @@ function digitalCashboxAmount(records = []) {
     .filter(item => item && !movementIsDeleted(item) && !isSimulated(item))
     .filter(item => !billingSettlementDirection(item) && !teamIsReimbursementCompensation(item))
     .filter(item => ["card", "qr", "transfer", "digital"].includes(paymentMethodOf(item)) && !cashboxIsExcluded(item))
-    .filter(item => item.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1")
-    .reduce((sum, item) => sum + amountOf(item) * 0.05, 0);
+    .filter(item => ["gross_cash_digital_cashbox_5_v1", periodPolicy.VERSION].includes(item.settlementRuleVersion))
+    .reduce((sum, item) => sum + amountOf(item) * periodPolicy.cashboxRate(item), 0);
 }
+function newCashboxSupplement(records = [], uber = []) {
+  const cash = records.filter(item => periodPolicy.isNew(item) && !movementIsDeleted(item) && !isSimulated(item) && !billingSettlementDirection(item) && !teamIsReimbursementCompensation(item) && paymentMethodOf(item) === "cash" && !cashboxIsExcluded(item)).reduce((sum,item)=>sum+amountOf(item),0);
+  const uberCash = uber.filter(item=>periodPolicy.isNew(item) && !movementIsDeleted(item) && !isSimulated(item) && uberImpactsSettlement(item)).reduce((sum,item)=>sum+uberCashAmount(item),0);
+  return (cash + uberCash) * 0.05;
+}
+
 function grossFlowPrincipalDelta(records = []) {
   return records
     .filter(item => item && !movementIsDeleted(item) && !isSimulated(item))
@@ -136,7 +143,7 @@ function billingSettlementDirection(data = {}) {
 
 function activeClosureKind(value = "") {
   const raw = safeText(value).toLowerCase();
-  if (/pendiente|deuda|debt|multa|choque|prestamo|pr[eé]stamo|adelanto|loan|advance/.test(raw)) return "pendientes";
+  if (/pendiente|deuda|debt|multa|choque|prestamo|pr[eÃ©]stamo|adelanto|loan|advance/.test(raw)) return "pendientes";
   if (/caja|chica|cashbox|bruto/.test(raw)) return "caja_chica";
   if (/gasto|expense/.test(raw)) return "gastos";
   if (/factur|billing|cobro/.test(raw)) return "facturacion";
@@ -233,8 +240,8 @@ function billingClosureClosesCashbox(data = {}) {
 }
 
 function latestCashboxResetMs(closures = []) {
-  // Facturación es acumulativa: un cierre de facturación no reinicia caja chica.
-  // Solo un cierre explícito del módulo caja chica puede cortar ese módulo.
+  // FacturaciÃ³n es acumulativa: un cierre de facturaciÃ³n no reinicia caja chica.
+  // Solo un cierre explÃ­cito del mÃ³dulo caja chica puede cortar ese mÃ³dulo.
   return latestCutoffMsFor(closures, "caja_chica");
 }
 
@@ -324,9 +331,9 @@ function debtRemainingAmount(data = {}) {
 }
 
 function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = [], expenses = [], debts = [] } = {}) {
-  // La facturación nunca se corta por un cierre: efectivo y digital son históricos
+  // La facturaciÃ³n nunca se corta por un cierre: efectivo y digital son histÃ³ricos
   // acumulados. Los pagos de cierre quedan como ajustes y son los que llevan el
-  // saldo a cero sin borrar la facturación.
+  // saldo a cero sin borrar la facturaciÃ³n.
   const cutoffMs = 0;
   const cashboxResetMs = latestCashboxResetMs(closures);
   let cash = 0;
@@ -344,8 +351,8 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
       const paidToAdvance = settlementDirection === "driver_to_explora"
         ? moneyNumber(record.advanceRepaymentAmount || 0)
         : 0;
-      const settlementAmount = Math.max(0, amount - paidToAdvance);
-      if (settlementAmount > 0) {
+      const settlementAmount = Math.max(0, amount - paidToAdvance) + moneyNumber(record.periodDebtSettlementAmount || 0) * (settlementDirection === "driver_to_explora" ? -1 : 1);
+      if (settlementAmount !== 0) {
         if (settlementDirection === "driver_to_explora") driverSettlementTotal += settlementAmount;
         else exploraSettlementTotal += settlementAmount;
         settlementPaymentCount += 1;
@@ -367,10 +374,10 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
     if (record.excludeFromBillingSettlement === true || record.internalSettlementAdjustment === true) continue;
     if (cashboxIsExcluded(record)) continue;
     const generates = paymentMethodOf(record) === "cash" ||
-      (record.settlementRuleVersion === "gross_cash_digital_cashbox_5_v1" && ["card", "qr", "transfer", "digital"].includes(paymentMethodOf(record)));
+      (["gross_cash_digital_cashbox_5_v1", periodPolicy.VERSION].includes(record.settlementRuleVersion) && ["card", "qr", "transfer", "digital"].includes(paymentMethodOf(record)));
     if (!generates) continue;
     const amount = amountOf(record);
-    if (amount > 0) regularCashboxGenerated += amount * 0.05;
+    if (amount > 0) regularCashboxGenerated += amount * periodPolicy.cashboxRate(record);
   }
 
   let uberPrincipalExtra = 0;
@@ -387,7 +394,7 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
     uberGrossTotal += grossAmount;
     uberCashTotal += uberCashAmount(week);
     uberTransferTotal += uberTransferAmount(week);
-    uberCashboxGenerated += uberCashboxAmount(week);
+    uberCashboxGenerated += periodPolicy.isNew(week) ? uberCashAmount(week) * 0.10 : uberCashboxAmount(week);
   }
 
   let expenseTotal = 0;
@@ -398,6 +405,10 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
     const amount = amountOf(expense);
     if (amount > 0) {
       expenseTotal += amount;
+      if (periodPolicy.isNew(expense)) {
+        expenseShareTotal -= amount * periodPolicy.expenseRate(expense, expensePolicy.find(expense.expenseType));
+        continue;
+      }
       expenseShareTotal += amount * expensePolicy.refundRate(expense);
       if (["gross_expense_driver_debit_50_v2",expensePolicy.version].includes(expense.receiptFlowVersion)) newExpenseTotal += amount;
     }
@@ -435,7 +446,9 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
   driverSettlementTotal = roundMoney(driverSettlementTotal);
   exploraSettlementTotal = roundMoney(exploraSettlementTotal);
   const settlementPaymentTotal = roundMoney(driverSettlementTotal - exploraSettlementTotal);
-  const netToDriver = roundMoney(netBeforePayments + driverSettlementTotal - exploraSettlementTotal);
+  const netToDriver = records.some(row => row.migrationVersion === 'opening_balance_20260918_v1' && !movementIsDeleted(row))
+    ? -calculateTeamRealtimeSettlementBalance({records,closures,uberWeeks,expenses,debts}).balance || 0
+    : roundMoney(netBeforePayments + driverSettlementTotal - exploraSettlementTotal);
 
   return {
     cutoffMs,
@@ -487,7 +500,7 @@ function teamAutomaticExpenseImpact(expenses = [], cutoffMs = 0) {
     .filter(item => item && !movementIsDeleted(item) && !isSimulated(item))
     .filter(item => rowMs(item) > cutoffMs)
     .filter(teamExpenseUsesAutomaticBilling50)
-    .reduce((sum, item) => sum - amountOf(item) * expensePolicy.netDriverRate(item), 0));
+    .reduce((sum, item) => sum - amountOf(item) * (periodPolicy.isNew(item) ? periodPolicy.expenseRate(item, expensePolicy.find(item.expenseType)) : expensePolicy.netDriverRate(item)), 0));
 }
 
 function latestTeamReimbursementAnchor(records = [], baseline = 0) {
@@ -525,16 +538,16 @@ function teamSettlementDeltaSince(cutoffMs, records = [], uberWeeks = [], expens
     .reduce((sum, item) => sum + amountOf(item), 0);
   const driverPaid = scopedRecords
     .filter(item => billingSettlementDirection(item) === "driver_to_explora")
-    .reduce((sum, item) => sum + Math.max(0, amountOf(item) - moneyNumber(item.advanceRepaymentAmount || 0)), 0);
+    .reduce((sum, item) => sum + (Math.max(0, amountOf(item) - moneyNumber(item.advanceRepaymentAmount || 0)) - moneyNumber(item.periodDebtSettlementAmount || 0)), 0);
   const exploraPaid = scopedRecords
     .filter(item => billingSettlementDirection(item) === "explora_to_driver")
-    .reduce((sum, item) => sum + amountOf(item), 0);
+    .reduce((sum, item) => sum + amountOf(item) + moneyNumber(item.periodDebtSettlementAmount || 0), 0);
   const scopedUber = uberWeeks
     .filter(item => item && !movementIsDeleted(item) && !isSimulated(item) && rowMs(item) > cutoffMs)
     .filter(uberImpactsSettlement);
   const uberCash = scopedUber.reduce((sum, item) => sum + uberCashAmount(item), 0);
   const uberTransfer = scopedUber.reduce((sum, item) => sum + uberTransferAmount(item), 0);
-  const cashbox = (cashboxEligibleCash + uberCash) * 0.05 + digitalCashboxAmount(scopedRecords);
+  const cashbox = (cashboxEligibleCash + uberCash) * 0.05 + digitalCashboxAmount(scopedRecords) + newCashboxSupplement(scopedRecords, scopedUber);
   const automaticExpenseImpact = teamAutomaticExpenseImpact(expenses, cutoffMs);
 
   return roundMoney(
@@ -545,8 +558,8 @@ function teamSettlementDeltaSince(cutoffMs, records = [], uberWeeks = [], expens
 }
 
 // Replica la calculadora central que ve cada chofer en el Main. A diferencia del
-// cálculo histórico de Telegram, respeta la base heredada de Santander y las
-// fotografías de compensación usadas durante la migración.
+// cÃ¡lculo histÃ³rico de Telegram, respeta la base heredada de Santander y las
+// fotografÃ­as de compensaciÃ³n usadas durante la migraciÃ³n.
 function calculateTeamRealtimeSettlementBalance({ records = [], closures = [], uberWeeks = [], expenses = [], debts = [] } = {}) {
   const baseline = latestBillingCutoffMs(closures);
   const openRecords = records
@@ -566,16 +579,16 @@ function calculateTeamRealtimeSettlementBalance({ records = [], closures = [], u
     .reduce((sum, item) => sum + amountOf(item), 0);
   const driverPaid = openRecords
     .filter(item => billingSettlementDirection(item) === "driver_to_explora")
-    .reduce((sum, item) => sum + Math.max(0, amountOf(item) - moneyNumber(item.advanceRepaymentAmount || 0)), 0);
+    .reduce((sum, item) => sum + (Math.max(0, amountOf(item) - moneyNumber(item.advanceRepaymentAmount || 0)) - moneyNumber(item.periodDebtSettlementAmount || 0)), 0);
   const exploraPaid = openRecords
     .filter(item => billingSettlementDirection(item) === "explora_to_driver")
-    .reduce((sum, item) => sum + amountOf(item), 0);
+    .reduce((sum, item) => sum + amountOf(item) + moneyNumber(item.periodDebtSettlementAmount || 0), 0);
   const scopedUber = uberWeeks
     .filter(item => item && !movementIsDeleted(item) && !isSimulated(item) && rowMs(item) > baseline)
     .filter(uberImpactsSettlement);
   const uberCash = scopedUber.reduce((sum, item) => sum + uberCashAmount(item), 0);
   const uberTransfer = scopedUber.reduce((sum, item) => sum + uberTransferAmount(item), 0);
-  const cashbox = (cashboxEligibleCash + uberCash) * 0.05 + digitalCashboxAmount(openRecords);
+  const cashbox = (cashboxEligibleCash + uberCash) * 0.05 + digitalCashboxAmount(openRecords) + newCashboxSupplement(openRecords, scopedUber);
   const automaticExpenseImpact = teamAutomaticExpenseImpact(expenses, baseline);
   const adminDebtTotal = debts
     .filter(item => item && !movementIsDeleted(item) && !isSimulated(item) && debtImpactsSettlement(item))

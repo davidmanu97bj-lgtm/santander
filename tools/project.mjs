@@ -6,9 +6,11 @@ import { createHash } from 'node:crypto';
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const PROJECT_ID = 'explora-control-operativo';
 export const HOSTING_FILES = [
+  'monthly-management.js',
+  'period-ui.js', 'explora-ui.js', 'explora-ui.css', 'assets/explora-home-reference.png',
   'index.html', 'app.js', 'auth-session.js', 'movement-colors.js', 'movement-colors.css', 'tourism-catalog.js', 'calendar-core.js', 'trip-calendar.js', 'styles.css', 'firebase-config.js',
   'service-worker.js', 'manifest.json', 'icon-192.png', 'icon-512.png',
-  'assets/explora-logo.png', 'assets/explora-logo-login.png', 'assets/uber-logo.svg', 'functions/expense-policy.js'
+  'assets/explora-logo.png', 'assets/explora-logo-login.png', 'assets/uber-logo.svg', 'functions/expense-policy.js', 'functions/period-policy.js'
 ];
 
 export function assertNode22(version = process.versions.node) {
@@ -21,7 +23,7 @@ export function validateProject(root = ROOT) {
   for (const file of required) {
     const full = path.join(root, file);
     if (!fs.existsSync(full) || !fs.statSync(full).isFile() || fs.statSync(full).size === 0) {
-      throw new Error(`Archivo obligatorio ausente o vacío: ${file}`);
+      throw new Error(`Archivo obligatorio ausente o vacÃ­o: ${file}`);
     }
   }
   const config = JSON.parse(fs.readFileSync(path.join(root, 'firebase.json'), 'utf8'));
@@ -40,11 +42,11 @@ export function validateProject(root = ROOT) {
     const clean = reference.split(/[?#]/)[0];
     if (!clean) return;
     const file = path.posix.normalize(path.posix.join(path.posix.dirname(parent), clean));
-    if (!HOSTING_FILES.includes(file)) throw new Error(`Recurso fuera del paquete: ${parent} → ${reference}`);
+    if (!HOSTING_FILES.includes(file)) throw new Error(`Recurso fuera del paquete: ${parent} â†’ ${reference}`);
   };
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   for (const match of html.matchAll(/\b(?:src|href)=["']([^"']+)["']/g)) check(match[1], 'index.html');
-  for (const file of ['app.js', 'auth-session.js', 'movement-colors.js', 'firebase-config.js', 'calendar-core.js', 'trip-calendar.js']) {
+  for (const file of ['period-ui.js', 'explora-ui.js', 'app.js', 'auth-session.js', 'movement-colors.js', 'firebase-config.js', 'calendar-core.js', 'trip-calendar.js']) {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
     for (const match of source.matchAll(/\bfrom\s*["']([^"']+)["']/g)) check(match[1], file);
   }
