@@ -1,5 +1,6 @@
 "use strict";
 const {RouteError,validateRouteRequest}=require('./route-service');
+const {summarizeGooglePlace}=require('./address-summary');
 const CENTER={latitude:-25.5972,longitude:-54.5736};
 function withinArea(point){
   if(!Array.isArray(point)||point.length!==2||!point.every(Number.isFinite)||Math.abs(point[0])>180||Math.abs(point[1])>90)return false;
@@ -23,7 +24,7 @@ async function queryGoogleRoute(data,key,fetcher=fetch){
       const point=[place.location?.longitude,place.location?.latitude];
       const country=place.addressComponents?.find(c=>c.types?.includes('country'))?.shortText;
       if(!withinArea(point)||!['AR','BR','PY'].includes(country)||!place.id)return [];
-      const label=[place.displayName?.text,place.formattedAddress].filter(Boolean).join(' · ').slice(0,300);
+      const label=summarizeGooglePlace(place).slice(0,300);
       return label?[{id:place.id,label,coordinates:point,country,source:'google',attributions:place.attributions||[]}]:[];
     }).slice(0,8);
     return {places,source:'google'};

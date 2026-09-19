@@ -130,8 +130,8 @@
       "reason": "Publicación autorizada: Telegram conserva las reglas anteriores y toma el saldo anclado para cuentas migradas, para coincidir con la billetera y el cierre único."
     },
     "functions/telegram-compact.js": {
-      "hash": "315a21502a1e78df3436beba02a41f1e2ba2cd0a5af4338caf3c3f1301fb173d",
-      "reason": "Formatos solicitados: gasto digital, deuda individual 100% y aviso grupal con importe por chofer y total."
+      "hash": "37b338dcc68ed4523034c7c954655681666bc7bafdc68814b7aeaf8fb5d20b15",
+      "reason": "Formatos solicitados: gasto digital, deuda individual 100% y aviso grupal. Direcciones resumidas de salida y destino en los avisos de cobro, sin códigos postales ni datos administrativos repetidos (solicitado el 19/09/2026)."
     },
     "functions/tests/telegram-trip-delivery.test.js": {
       "hash": "0c6561d07d685184a784a09051167cbb554ac841004c8d2ead426dbd252e3043",

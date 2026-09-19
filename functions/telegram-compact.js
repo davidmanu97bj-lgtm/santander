@@ -1,5 +1,6 @@
 "use strict";
 const periodPolicy = require('./period-policy');
+const {summarizeAddress}=require('./address-summary');
 const clean = (value, max = 180) => String(value ?? '').replace(/[\r\n\t]+/g,' ').trim().slice(0,max);
 const money = value => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value) || 0);
 function balanceLine(value) {
@@ -9,7 +10,7 @@ function balanceLine(value) {
 }
 function billingSummary({data,driverName,amount,cash}) {
   const route = data.invoiceRequest?.origin && data.invoiceRequest?.destination
-    ? `${clean(data.invoiceRequest.origin,90)} → ${clean(data.invoiceRequest.destination,90)}`
+    ? `${clean(summarizeAddress(data.invoiceRequest.origin),300)} → ${clean(summarizeAddress(data.invoiceRequest.destination),300)}`
     : clean(data.detail || data.notes || data.serviceDescription);
   return [`${clean(driverName)} cobro ${cash ? 'efectivo' : 'digital'}`,
     `Detalle: ${route || 'Sin ubicación registrada'}`,`Total cargado del cobro: ${money(amount)}`].join('\n');
