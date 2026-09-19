@@ -1,6 +1,6 @@
-import { mountPeriodClose } from "./period-ui.js?v=20260918-activity-colors-1";
-import { mountMonthlyManagement } from "./monthly-management.js?v=20260918-activity-colors-1";
-import { exploraIcon, activityKind, activityRowContent, recentActivitiesMarkup } from "./explora-ui.js?v=20260918-activity-colors-1";
+import { mountPeriodClose } from "./period-ui.js?v=20260919-login-period-1";
+import { mountMonthlyManagement } from "./monthly-management.js?v=20260919-login-period-1";
+import { exploraIcon, activityKind, activityRowContent, recentActivitiesMarkup } from "./explora-ui.js?v=20260919-login-period-1";
 import { app, auth, authReady } from "./auth-session.js?v=20260914-web-only-1";
 import { movementColor } from "./movement-colors.js?v=20260914-web-only-1";
 import { mountTripCalendar } from "./trip-calendar.js?v=20260913-calendario-detalles";
@@ -855,7 +855,7 @@ function finishSplash(targetId) {
   $("splashScreen")?.classList.add("hidden");
 }
 
-startSplash("Abriendo Explora…");
+if (document.documentElement.dataset.exploraLoginVisible !== "true") startSplash("Abriendo Explora…");
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -6857,3 +6857,7 @@ $("invoicesModal").addEventListener("keydown",event=>{
   if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
   else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
 });
+
+// Hand a submit made during startup to the authenticated login handler once.
+document.documentElement.dataset.exploraAppReady = 'true';
+document.dispatchEvent(new Event('explora:app-ready'));

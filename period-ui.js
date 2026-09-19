@@ -1,4 +1,4 @@
-import {exploraIcon,escapeUi} from './explora-ui.js?v=20260918-activity-colors-1';
+import {exploraIcon,escapeUi} from './explora-ui.js?v=20260919-login-period-1';
 const money=value=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value)||0);
 const row=(label,value,total=false,subtitle='')=>`<div class="period-row${total?' period-total':''}"><span>${escapeUi(label)}${subtitle?`<small class="period-row-subtitle">${escapeUi(subtitle)}</small>`:''}</span><strong>${escapeUi(money(value))}</strong></div>`;
 function section(tone,icon,title,description,body){return `<section class="period-section ${tone}"><div class="period-section-label"><span class="period-section-icons">${exploraIcon(icon)}${tone==='cash'?'<img class="period-uber-logo" src="./assets/uber-logo.svg" alt="" width="34" height="12">':''}</span><h2>${title}</h2><p>${description}</p></div><div class="period-section-data">${body}</div></section>`;}
@@ -51,9 +51,12 @@ export function mountPeriodClose({getQuote,uploadProof,confirmClose,showScreen,o
   async function open(){
     const generation=++openGeneration;quote=null;uploadedProofPath='';setBusy(false);showScreen('period');
     $('periodDate').textContent=new Date().toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'numeric'});
-    $('periodSections').innerHTML='';$('periodStatus').textContent='Consultando los movimientos del período…';$('confirmPeriodClose').disabled=true;
+    $('periodSections').innerHTML='';$('periodSections').setAttribute('aria-busy','true');
+    $('periodStatus').innerHTML=`<span class="period-loading"><span class="period-loading-symbol" aria-hidden="true">${exploraIcon('wallet')}</span><span>Cargando tu período…</span></span>`;
+    $('confirmPeriodClose').disabled=true;
     try{const result=await getQuote();if(generation!==openGeneration)return;quote=result;$('periodSections').innerHTML=periodMarkup(quote);$('periodStatus').textContent='';$('confirmPeriodClose').disabled=quote.amount<=.5;}
     catch(error){if(generation===openGeneration)$('periodStatus').textContent=error.message||'No se pudo consultar el cierre. Volvé a intentarlo.';}
+    finally{if(generation===openGeneration)$('periodSections').setAttribute('aria-busy','false');}
   }
   $('openPeriodClose').addEventListener('click',open);
   $('confirmPeriodClose').addEventListener('click',()=>{if(!quote||busy||quote.amount<=.5)return;status('');modal.classList.remove('hidden');modal.querySelector('.receipt-file-label').focus();});
