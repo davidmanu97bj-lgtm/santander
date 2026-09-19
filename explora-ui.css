@@ -206,3 +206,27 @@ body:has(.period-receipt-overlay:not(.hidden)) { overflow:hidden; }
 .monthly-note {font-size:12px;color:#647a86}
 .monthly-upload {display:grid;gap:10px;padding:16px;background:#f1f6f8;border-radius:12px}
 .monthly-upload input {max-width:100%}
+/* Mobile safe areas belong to the screen, not to a stretched form. */
+@media (max-width:600px) {
+  #app.driver-view .main {
+    padding:calc(12px + var(--app-safe-top)) max(12px, var(--app-safe-right)) calc(88px + var(--app-safe-bottom)) max(12px, var(--app-safe-left));
+  }
+  #driverDashboard { min-height:calc(100dvh - 100px - var(--app-safe-top) - var(--app-safe-bottom)); }
+  .explora-nav {
+    position:fixed; left:0; right:0; bottom:0;
+    border-radius:17px 17px 0 0;
+    padding:6px max(12px, var(--app-safe-right)) calc(4px + var(--app-safe-bottom)) max(12px, var(--app-safe-left));
+  }
+  .explora-nav button { min-height:56px; }
+  .explora-nav [aria-current]::after { top:-4px; }
+  :is(#chargeModal, #expenseModal) {
+    padding:calc(12px + var(--app-safe-top)) max(14px, var(--app-safe-right)) calc(20px + var(--app-safe-bottom)) max(14px, var(--app-safe-left));
+    overflow-y:auto; align-items:flex-start;
+  }
+  :is(#chargeModal, #expenseModal) .charge-screen-card {
+    height:auto; min-height:0; max-height:none; padding:0; flex:none;
+  }
+  :is(#chargeForm, #expenseForm) { flex:none; align-content:start; grid-auto-rows:max-content; gap:12px; }
+  :is(#chargeModal, #expenseModal) .charge-step { align-content:start; }
+  :is(#chargeModal, #expenseModal) .modal-actions { margin-top:4px; padding-top:4px; }
+}
