@@ -43,6 +43,8 @@
 .activity-value { display:grid; gap:7px; text-align:right; font-size:clamp(12px,2.95vw,21px); }
 .activity-value strong { white-space:nowrap; font-weight:650; }
 .activity-value strong.income { color:#0a9b41; }
+.activity-value strong.outgoing { color:#c92035; }
+.activity-value strong.closure { color:#171717; }
 .activity-value time { color:var(--explora-muted); font-size:clamp(10px,2.65vw,18px); }
 .activity-empty { display:grid; flex:1; place-content:center; text-align:center; padding:22px; color:#73758d; font-size:14px; line-height:1.5; }
 .explora-nav { position:sticky; z-index:35; bottom:0; display:grid; grid-template-columns:1fr 1fr; flex-shrink:0; background:#fff; border-radius:17px; padding:12px 8px calc(12px + env(safe-area-inset-bottom)); box-shadow:0 -3px 20px #11194c05; }

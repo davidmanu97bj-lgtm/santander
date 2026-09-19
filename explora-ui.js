@@ -33,10 +33,13 @@ export function recentActivitiesMarkup(receipts, {money, timestamp, now = new Da
 export function activityRowContent(item,{money,timestamp,now=new Date()}) {
     const kind = activityKind(item);
     const incoming = kind === 'cash' || kind === 'digital' || item.adjustmentDirection === 'explora_to_driver';
+    const closure = /settlement|closure|cierre/.test(item.type || '') || Boolean(item.periodClosureId);
+    const charge = !closure && ['billing','payment'].includes(item.type) && ['cash','digital'].includes(item.method);
+    const amountTone = closure ? 'closure' : charge ? 'income' : 'outgoing';
     const title = item.service || item.expenseLabel || ({cash:'Cobro en efectivo',digital:'Cobro digital',expense:'Gasto',debt:'Deuda',management:'Gestión'}[kind]);
     const date = new Date(timestamp(item));
     const label = date.toDateString() === now.toDateString()
       ? date.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})
       : date.toLocaleDateString('es-AR',{day:'numeric',month:'short'});
-    return `<span class="activity-icon icon-${kind}">${exploraIcon(kind)}</span><div class="activity-copy"><strong>${escapeUi(title)}</strong><span>${escapeUi(item.detail || ({cash:'Cobro en efectivo',digital:'Cobro digital',expense:'Gasto registrado',debt:'Deuda registrada',management:'Movimiento de cuenta'}[kind]))}</span></div><div class="activity-value"><strong class="${incoming ? 'income' : ''}">${incoming ? '+' : '−'} ${escapeUi(money(item.amount))}</strong><time datetime="${date.toISOString()}">${escapeUi(label)}</time></div>`;
+    return `<span class="activity-icon icon-${kind}">${exploraIcon(kind)}</span><div class="activity-copy"><strong>${escapeUi(title)}</strong><span>${escapeUi(item.detail || ({cash:'Cobro en efectivo',digital:'Cobro digital',expense:'Gasto registrado',debt:'Deuda registrada',management:'Movimiento de cuenta'}[kind]))}</span></div><div class="activity-value"><strong class="${amountTone}">${incoming ? '+' : '−'} ${escapeUi(money(item.amount))}</strong><time datetime="${date.toISOString()}">${escapeUi(label)}</time></div>`;
 }
