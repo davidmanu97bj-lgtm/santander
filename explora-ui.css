@@ -230,3 +230,8 @@ body:has(.period-receipt-overlay:not(.hidden)) { overflow:hidden; }
   :is(#chargeModal, #expenseModal) .charge-step { align-content:start; }
   :is(#chargeModal, #expenseModal) .modal-actions { margin-top:4px; padding-top:4px; }
 }
+/* Keep each activity divider immediately after its content. */
+#recentActivities { flex:none; border-radius:14px; }
+#recentActivities .activity-row { flex:none; padding:12px 10px; align-items:center; }
+.home-logout { position:absolute; z-index:1; top:7px; left:16px; padding:4px 12px; min-height:28px; border:0; border-radius:8px; background:#c92035; color:#fff; font:700 12px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer; }
+.principal-view > .home-driver-greeting { position:static; align-self:flex-start; margin:-12px 0 -8px 4px; padding:4px 9px; font-size:12px; line-height:1.3; max-width:calc(100% - 8px); overflow-wrap:anywhere; }

@@ -26,7 +26,7 @@ export function escapeUi(value) {
 export function recentActivitiesMarkup(receipts, {money, timestamp, now = new Date(), periodStartedAt = 0}) {
   const entries = receipts.filter(item => !['cashbox_receipt','expense_reimbursement_receipt'].includes(item.type))
     .filter(item => item.migrationVersion !== 'opening_balance_20260918_v1')
-    .filter(item => !periodStartedAt || timestamp(item) > periodStartedAt).slice(0,3);
+    .filter(item => !periodStartedAt || timestamp(item) > periodStartedAt).slice(0,5);
   if (!entries.length) return `<div class="activity-empty">${periodStartedAt ? 'PERIODO NUEVO INICIADO, SIN ACTIVIDADES' : 'Todavía no hay movimientos. Tus próximas actividades aparecerán acá.'}</div>`;
   return entries.map(item => `<article class="activity-row">${activityRowContent(item,{money,timestamp,now})}</article>`).join('');
 }

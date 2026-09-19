@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png?v=20260913-identidad-explora" />
   <title>Explora — Control operativo</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
-  <link rel="modulepreload" href="./app.js?v=20260918-produccion-2" />
+  <link rel="modulepreload" href="./app.js?v=20260918-home-five-1" />
   <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
@@ -121,9 +121,9 @@
       .service-option{min-height:80px;padding:13px 11px}.service-option strong{font-size:12px}.service-option span{font-size:16px}
     }
   </style>
-  <link rel="stylesheet" href="./styles.css?v=20260918-produccion-2" />
-  <link rel="stylesheet" href="./movement-colors.css?v=20260918-produccion-2" />
-  <link rel="stylesheet" href="./explora-ui.css?v=20260918-mobile-safe-1" />
+  <link rel="stylesheet" href="./styles.css?v=20260918-home-five-1" />
+  <link rel="stylesheet" href="./movement-colors.css?v=20260918-home-five-1" />
+  <link rel="stylesheet" href="./explora-ui.css?v=20260918-home-five-1" />
 </head>
 <body>
 <section id="splashScreen" class="splash-screen" aria-live="polite" aria-label="Cargando Explora">
@@ -219,10 +219,11 @@
 
     <div id="driverDashboard">
       <section id="principalView" class="principal-view">
-        <div class="institutional-hero" role="img" aria-label="Juntos hacemos que cada viaje cuente. explora. IGUAZÚ | VIAJES Y SERVICIOS. Iguazú te espera.">
+        <div class="institutional-hero" role="group" aria-label="Explora · Iguazú Viajes y Servicios">
           <img src="./assets/explora-home-reference.png" alt="" width="864" height="1536">
-          <p id="homeDriverGreeting" class="home-driver-greeting">Hola, chofer</p>
+          <button id="homeLogoutBtn" class="home-logout" type="button">Salir</button>
         </div>
+        <p id="homeDriverGreeting" class="home-driver-greeting">Hola, chofer</p>
         <section class="collection-tools" aria-labelledby="collectionToolsTitle">
           <h1 id="collectionToolsTitle">Herramientas de cobro <span aria-hidden="true"></span></h1>
           <div id="driverQuickActions" class="collection-grid" tabindex="-1">
@@ -821,8 +822,8 @@
 </div>
 
 
-<script src="./functions/period-policy.js?v=20260918-produccion-2"></script>
-<script src="./functions/expense-policy.js?v=20260918-produccion-2"></script>
-<script type="module" src="./app.js?v=20260918-produccion-2"></script>
+<script src="./functions/period-policy.js?v=20260918-home-five-1"></script>
+<script src="./functions/expense-policy.js?v=20260918-home-five-1"></script>
+<script type="module" src="./app.js?v=20260918-home-five-1"></script>
 </body>
 </html>
