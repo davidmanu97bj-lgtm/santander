@@ -34,6 +34,7 @@ const auth = getAuth();
 const bucket = getStorage().bucket(STORAGE_BUCKET);
 Object.assign(exports, require("./period-closure").createPeriodFunctions({db,bucket,assertViewer:assertTeamRealtimeViewer}));
 Object.assign(exports, require("./monthly-report-functions")({db,bucket,assertViewer:assertTeamRealtimeViewer}));
+Object.assign(exports, require("./admin-monthly-documents")({db,assertAdmin}));
 exports.verifyUberScreenshot = require("./uber-proof").createUberProofFunction({db,bucket,assertViewer:assertTeamRealtimeViewer});
 exports.registerUberLiquidation = require("./uber-submission").createUberSubmissionFunction({
   db, businessId:PROJECT_ID, assertViewer:assertTeamRealtimeViewer,

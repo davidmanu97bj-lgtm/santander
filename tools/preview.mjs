@@ -8,15 +8,17 @@ const require=createRequire(import.meta.url);
 const mapsSecretPath=path.join(ROOT,'.env.maps.local');
 if(fs.existsSync(mapsSecretPath))process.loadEnvFile(mapsSecretPath);
 const port=Number(process.env.PORT || 8080);
-const uid='preview-driver', now=Date.now();
-const profile={uid,driverUid:uid,username:'prueba',displayName:'Chofer de prueba',nombre:'Chofer de prueba',role:'driver',active:true,createdAtMs:now};
+const previewAdmin=process.env.PREVIEW_ROLE==='admin';
+const uid=previewAdmin?'preview-admin':'preview-driver', now=Date.now();
+const profile={uid,driverUid:uid,username:'prueba',displayName:previewAdmin?'Admin de prueba':'Chofer de prueba',nombre:previewAdmin?'Admin de prueba':'Chofer de prueba',role:previewAdmin?'admin':'driver',active:true,createdAtMs:now};
 const seed={['usuarios/'+uid]:profile,['choferes/'+uid]:profile};
+if(previewAdmin)for(const [id,nombre] of [['preview-driver','Javier de prueba'],['preview-marcelo','Marcelo de prueba'],['preview-nicolas','Nicolás de prueba']])for(const col of ['usuarios','choferes'])seed[col+'/'+id]={uid:id,nombre,displayName:nombre,role:'driver',active:true};
 for(const [index,method,amount,detail] of [[1,'cash',136000,'Traslado Aeropuerto → Hotel'],[2,'digital',284000,'Viaje a Cataratas'],[3,'digital',92000,'Traslado de pasajeros']]) {
-  seed['billing_records/demo-'+index]={driverUid:uid,uid,method,paymentMethod:method,amount,service:detail,detail:method==='cash'?'Cobro en efectivo':'Cobro digital',type:method==='cash'?'billing':'payment',status:'completed',settlementRuleVersion:'net_wallets_cashbox_10_v1',createdAtMs:now-(4-index)*3600000};
+  seed['billing_records/demo-'+index]={driverUid:'preview-driver',uid:'preview-driver',method,paymentMethod:method,amount,service:detail,detail:method==='cash'?'Cobro en efectivo':'Cobro digital',type:method==='cash'?'billing':'payment',status:'completed',settlementRuleVersion:'net_wallets_cashbox_10_v1',createdAtMs:now-(4-index)*3600000};
 }
 // Illustrative local-only example requested for reviewing the settlement screen.
-seed['deudas_choferes/demo-multa']={driverUid:uid,uid,type:'admin_debt',amount:50000,remainingAmount:50000,status:'active',detail:'Multa',createdAtMs:now-3600000};
-const statePath=path.resolve(ROOT,'..','preview-state.json');
+seed['deudas_choferes/demo-multa']={driverUid:'preview-driver',uid:'preview-driver',type:'admin_debt',amount:50000,remainingAmount:50000,status:'active',detail:'Multa',createdAtMs:now-3600000};
+const statePath=path.resolve(ROOT,'..',previewAdmin?'preview-admin-state.json':'preview-state.json');
 const saved=fs.existsSync(statePath)?JSON.parse(fs.readFileSync(statePath,'utf8')):null;
 const db=new MemoryStore(saved?.records||seed), uploads=new Map(saved?.uploadEntries||[]);
 function match(data,c) {if(c.type==='or')return c.conditions.some(item=>match(data,item));if(c.type!=='where')return true;const value=data[c.field];return c.op==='=='?value===c.value:c.op==='>='?value>=c.value:c.op==='<='?value<=c.value:c.op==='>'?value>c.value:c.op==='<'?value<c.value:true;}
@@ -30,6 +32,7 @@ async function api(body) {
   if(action==='inspect')return {records:Object.fromEntries(db.data),uploads:[...uploads.keys()]};
   if(action==='reset'){db.data=new Map(Object.entries(structuredClone(seed)));uploads.clear();return {};}
   if(action==='call') {
+    if(body.name==='adminMonthlyDocuments'&&previewAdmin)return require('../functions/admin-monthly-documents')({db,assertAdmin:async()=>uid}).adminMonthlyDocuments.run({data:body.input});
     if(body.name==='exploraRoute') {
       const {queryGoogleRoute}=require('../functions/google-route-service.js');
       return queryGoogleRoute(body.input,process.env.GOOGLE_MAPS_API_KEY);
@@ -89,6 +92,7 @@ export const server=http.createServer(async(req,res)=>{
     let bytes=fs.readFileSync(path.join(ROOT,file==='__preview__/firebase.js'?'tools/preview/firebase.js':file));
     if(/\.(js|html)$/.test(file)) {
       let source=bytes.toString().replace(/https:\/\/www\.gstatic\.com\/firebasejs\/[^"']+\.js/g,'/__preview__/firebase.js');
+      if(previewAdmin&&file==='__preview__/firebase.js')source=source.replaceAll('preview-driver','preview-admin').replaceAll('Chofer de prueba','Admin de prueba');
       if(file==='index.html')source=source.replace(/<link[^>]+rel="preconnect"[^>]*>/g,'').replace('<body>','<body><div style="background:#183758;color:white;text-align:center;font:11px sans-serif;padding:5px" role="note">VISTA LOCAL · Datos de prueba · Sin conexión a producción</div>');
       bytes=source;
     }

@@ -94,8 +94,20 @@
       "reason": "Salida/llegada progresivas en rojo/verde y eliminación del panel de movimientos en cobros."
     },
     "renderAdminDriverOptions": {
-      "hash": "a3e256f1d53af6bf92df648716da0860f29bcb4d8e542533e1fb647f77e1b669",
-      "reason": "Deuda grupal aprobada: permite seleccionar todos los choferes activos, con revisión antes de confirmar."
+      "hash": "dd0b8974c12a3ecac9d65ffb9903d5ee3c8f7320cb9a8de940b733ad27e9b5ae",
+      "reason": "Menú administrativo solicitado: reutiliza la selección de choferes activos en Pago digital."
+    },
+    "unsubscribeAdminDashboard": {
+      "hash": "2fc3c16ff059f654de8a708e3d5a0ff3c989478fe9d1a674d22b540b2d503e41",
+      "reason": "Menú administrativo solicitado: limpia documentos y consultas pendientes al cambiar de sesión."
+    },
+    "renderAdminDashboardUpdates": {
+      "hash": "bcd3727355466ee29c2888a5f3fd6aaa4116ec70e9af358245f3463964ecab45",
+      "reason": "Menú administrativo solicitado: actualiza vistas conjuntas y revisión de deuda grupal con las mismas fuentes financieras."
+    },
+    "subscribeAdminDashboard": {
+      "hash": "b630e8d214bd34e2bb3c86e0b91280e1560f1d383a3a91768c2d1beeda9fc6c3",
+      "reason": "Menú administrativo solicitado: refresca documentos del equipo ante cambios de movimientos o facturas recibidas."
     }
   },
   "handlers": {
@@ -122,8 +134,8 @@
       "reason": "Agrega Peaje y la lista permitida al chofer sin eliminar categorías históricas/admin."
     },
     "functions/index.js": {
-      "hash": "bc00b6487cca1a6f111525bc06aa2f2a5b818fc09a87bc62f8c84747dfcb6afd",
-      "reason": "Publicación autorizada: preserva saldo previo mediante migración auditada; cierres y ajustes financieros solo desde servidor, cobros válidos del titular, sin avisos falsos de migración en Telegram."
+      "hash": "a793d251fcd01c6c0b6dadde26aa8302394206e98b9579d2076de37c1e3b3056",
+      "reason": "Menú administrativo solicitado: expone consulta de documentos mensuales protegida por el control administrativo existente; no cambia cálculos ni emisores de facturas."
     },
     "functions/telegram-billing-balance.js": {
       "hash": "aabb3748111e32c61eae773b2fb75dc15158698ac5d045a32014330838631c66",
@@ -160,6 +172,10 @@
     "firebase.json": {
       "hash": "18394688c9724275f63283dcea3fb6e30685c3250b36b408e6ddcb12687b9480",
       "reason": "Publicación autorizada: exigir revalidación de JavaScript y CSS para evitar mezclar archivos financieros y visuales de versiones distintas en navegadores con caché."
+    },
+    "functions/tests/team-realtime-contract.test.js": {
+      "hash": "3ea7758041322a5055f8c2beaf84b13170b0d65cda6960e0de5d41d4370ad492",
+      "reason": "El usuario pidió rediseñar la administración: cambia el título a Resumen del equipo y conserva las comprobaciones de saldos en tiempo real."
     }
   }
 }

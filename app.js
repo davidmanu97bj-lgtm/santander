@@ -1,3 +1,5 @@
+import { mountAdminWorkspace } from "./admin-workspace.js?v=20260919-admin-1";
+import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20260919-admin-1";
 import { mountPeriodClose } from "./period-ui.js?v=20260919-login-period-1";
 import { mountMonthlyManagement } from "./monthly-management.js?v=20260919-login-period-1";
 import { exploraIcon, activityKind, activityRowContent, recentActivitiesMarkup } from "./explora-ui.js?v=20260919-login-period-1";
@@ -60,6 +62,7 @@ const monthlyManagement=mountMonthlyManagement({
 });
 
 const $ = id => document.getElementById(id);
+let adminWorkspace = null;
 
 function photoPicker(key) {
   return document.querySelector(`[data-photo-picker="${key}"]`);
@@ -3030,6 +3033,7 @@ function renderAdminDriverOptions() {
     ["deleteDriverSelect", activeOptions],
     ["debtDriver", activeOptions ? activeOptions+'<option value="__all__">Todos los choferes activos · Deuda 100% grupal</option>' : activeOptions],
     ["adjustmentDriver", activeOptions],
+    ["adminExpenseDriver", activeOptions],
     ["historyDriver", historicalOptions],
     ["movementDriver", historicalOptions]
   ].forEach(([id, options]) => {
@@ -3188,6 +3192,7 @@ function refreshOpenAdminUberCalculation() {
 }
 
 function unsubscribeAdminDashboard() {
+  adminWorkspace?.reset();
   adminUnsubscribers.forEach(unsubscribe => {
     try { unsubscribe?.(); } catch (_) {}
   });
@@ -3197,11 +3202,13 @@ function unsubscribeAdminDashboard() {
 
 function renderAdminDashboardUpdates() {
   if (!auth.currentUser || !isAdminProfile()) return;
+  adminWorkspace?.refresh();
   if (!dashboardLoad?.complete()) {
     $("adminDriverList").innerHTML = `<div class="admin-driver-empty">${dashboardLoad?.errors.size ? "No se pudieron cargar los saldos. Recargá para volver a intentar." : "Consultando los saldos del equipo…"}</div>`;
     return;
   }
   renderAdminDriverList();
+  renderGroupDebtPreview();
   renderAdminClosures();
   refreshOpenAdminUberCalculation();
   maybeShowAdminPendingAction();
@@ -3227,6 +3234,7 @@ function subscribeAdminDashboard() {
       if (!changed && wasReady === load.complete()) return;
       const rows = snap.docs.map(d => normalize ? normalize(d.id, d.data()) : ({ id: d.id, ...d.data() }));
       assign(rows);
+      adminWorkspace?.invalidateDocuments();
       scheduleDashboardRender(renderAdminDashboardUpdates);
     }, err => {
       if (generation !== authGeneration || load !== dashboardLoad) return;
@@ -3249,6 +3257,9 @@ function subscribeAdminDashboard() {
   listen(ROOT_COLLECTIONS.debts, normalizeDebtRecord, rows => { adminDebts = rows; });
   listen(ROOT_COLLECTIONS.debtPayments, normalizeDebtPaymentRecord, rows => { adminDebtPayments = rows; });
   listen(ROOT_COLLECTIONS.advances, normalizeAdvanceRecord, rows => { adminAdvances = rows; });
+  adminUnsubscribers.push(onSnapshot(collection(db,'driver_monthly_invoices'),()=>{
+    if(generation===authGeneration&&load===dashboardLoad)adminWorkspace?.invalidateDocuments();
+  },()=>{if(generation===authGeneration)adminWorkspace?.invalidateDocuments();}));
 }
 
 
@@ -4137,12 +4148,7 @@ $("driverManagerForm")?.addEventListener("submit", async event => {
 });
 
 $("adminAddDebtBtn")?.addEventListener("click", () => {
-  if (!isAdminProfile()) return;
-  renderAdminDriverOptions();
-  $("debtForm").reset();
-  $("debtStatus").textContent = "";
-  $("debtStatus").className = "status";
-  $("debtModal").classList.remove("hidden");
+  openAdminDebt(false);
 });
 
 $("adminAdjustmentBtn")?.addEventListener("click", () => {
@@ -4228,6 +4234,9 @@ $("adminManageClosuresBtn")?.addEventListener("click", () => {
 
 onAuthStateChanged(auth, async user => {
   tripCalendar.reset();
+  adminWorkspace?.reset();
+  $("adminDigitalExpenseModal")?.classList.add("hidden");
+  $("adminDigitalExpenseForm")?.reset();
   const generation = ++authGeneration;
   const isCurrent = () => generation === authGeneration && auth.currentUser?.uid === user?.uid;
   cancelDashboardRender();
@@ -6857,6 +6866,92 @@ $("invoicesModal").addEventListener("keydown",event=>{
   if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
   else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
 });
+
+
+function adminWorkspaceState() {
+  const authorized=Boolean(auth.currentUser&&isAdminProfile()),ready=authorized&&Boolean(dashboardLoad?.complete());
+  if(!authorized||!ready)return {authorized,ready,error:Boolean(dashboardLoad?.errors.size),accounts:[],movements:[],closures:[]};
+  const drivers=adminDrivers.filter(d=>!adminDriverIsAdministrator(d));
+  const owner=r=>drivers.find(d=>adminRecordBelongsToDriver(r,d));
+  const name=r=>{const d=owner(r);return d?adminDriverLabel(d):r.driverName||r.operatorName||'Chofer sin identificar';};
+  const row=(r,kind,label,method,amount=r.amount)=>({id:r.id,kind,label,method,amount:Number(amount)||0,time:recordTimestampMs(r),driver:name(r),detail:r.invoiceRequest?.origin&&r.invoiceRequest?.destination?r.invoiceRequest.origin+' → '+r.invoiceRequest.destination:r.detail||r.notes||r.reason||r.expenseLabel||label,proof:recordProofUrl(r)});
+  const movements=[];
+  for(const r of adminPayments.filter(r=>!movementIsDeleted(r)&&!r.migrationVersion)){
+    const adjustment=isSettlementAdjustment(r)||isReimbursementCompensation(r);
+    if(adjustment)movements.push(row(r,'payment','Pago / compensación',r.adjustmentDirection==='driver_to_explora'?'Chofer → Explora':r.adjustmentDirection==='explora_to_driver'?'Explora → chofer':'Compensación'));
+    else if(['cash','digital'].includes(r.method))movements.push(row(r,r.method,'Cobro de viaje',r.method==='cash'?'Efectivo':'Digital'));
+  }
+  for(const r of adminExpenses.filter(r=>!movementIsDeleted(r)))movements.push(row(r,'expense',r.expenseLabel||'Gasto',r.expensePaymentMethod==='digital'?'Digital · Explora':'Efectivo · Chofer'));
+  for(const r of adminDebts.filter(r=>!movementIsDeleted(r)))movements.push(row(r,'debt','Deuda 100% chofer','Deuda',r.totalAmount||r.originalAmount||r.amount));
+  for(const r of adminDebtPayments.filter(r=>!movementIsDeleted(r)))movements.push(row(r,'payment','Pago de deuda','Chofer → Explora'));
+  for(const r of adminUberClosures.filter(r=>!movementIsDeleted(r)))movements.push(row(r,'uber','Liquidación Uber','Efectivo y Uber',r.grossAmount??r.amount));
+  const statusNames={completed:'Completado',paid:'Pagado',approved:'Aprobado',pending:'Pendiente',requested:'Solicitado',rejected:'Rechazado',cancelled:'Anulado'};
+  const closureRows=adminAllClosures.filter(r=>!movementIsDeleted(r)).map(r=>{
+    const direction=r.paymentDirection||r.direction;
+    return {...row(r,'closure','Cierre','',r.settlementAmount??r.requestedPaymentAmount??r.requestedAmount??r.amount),
+      status:statusNames[r.status]||r.status||'Pendiente',completed:['completed','paid','approved'].includes(r.status),
+      direction:['driver_to_explora','driver_pays_explora'].includes(direction)?'Chofer → Explora':['explora_to_driver','explora_pays_driver'].includes(direction)?'Explora → chofer':'Sin transferencia'};
+  }).sort((a,b)=>b.time-a.time);
+  return {authorized,ready,accounts:drivers.filter(adminDriverIsActive).map(d=>({name:adminDriverLabel(d),balance:adminBillingBalanceForDriver(d)})),movements,closures:closureRows};
+}
+function renderGroupDebtPreview(){
+  const group=$('debtDriver').value==='__all__';
+  $('debtModalTitle').textContent=group?'Deuda grupal':'Deuda 100% chofer';
+  $('debtAmountLabel').textContent=group?'Importe por chofer':'Importe de la deuda';
+  $('debtModalNote').textContent=group?'El importe se suma completo a cada chofer activo. No se reparte entre el grupo.':'La deuda quedará asociada al chofer seleccionado, con su motivo y comprobante.';
+  const box=$('groupDebtPreview');box.hidden=!group;
+  if(group){const drivers=adminDrivers.filter(d=>!adminDriverIsAdministrator(d)&&adminDriverIsActive(d)),amount=parseMoneyInput($('debtAmount').value)||0;
+    box.innerHTML='<strong>'+drivers.length+' choferes activos</strong><span>'+money(amount)+' por chofer · Total '+money(amount*drivers.length)+'</span><small>'+drivers.map(d=>escapeHtml(adminDriverLabel(d))).join(' · ')+'</small>';
+  }
+}
+function openAdminDebt(group=false){
+  if(!isAdminProfile())return;
+  pendingGroupDebt=null;renderAdminDriverOptions();$('debtForm').reset();
+  if(group)$('debtDriver').value='__all__';
+  $('debtStatus').textContent='';$('debtStatus').className='status';$('saveDebtBtn').disabled=false;
+  renderGroupDebtPreview();$('debtModal').classList.remove('hidden');
+}
+$('debtDriver').addEventListener('change',renderGroupDebtPreview);$('debtAmount').addEventListener('input',renderGroupDebtPreview);
+function openAdminDigitalExpense(){
+  if(!isAdminProfile())return;
+  renderAdminDriverOptions();$('adminDigitalExpenseForm').reset();
+  $('adminExpenseType').innerHTML=ExploraExpensePolicy.groups.map(g=>'<optgroup label="'+escapeHtml(g.groupLabel||g.label)+'">'+ExploraExpensePolicy.types.filter(t=>t.group===g.id).map(t=>'<option value="'+t.id+'">'+escapeHtml(t.label)+'</option>').join('')+'</optgroup>').join('');
+  $('adminDigitalExpenseStatus').textContent='';$('adminDigitalExpenseStatus').className='status';$('saveAdminDigitalExpense').disabled=false;
+  renderAdminExpenseResponsibility();$('adminDigitalExpenseModal').classList.remove('hidden');
+}
+function renderAdminExpenseResponsibility(){
+  const type=ExploraExpensePolicy.find($('adminExpenseType').value);
+  $('adminExpenseResponsibility').textContent=type?.group==='driver'?'100% a cargo del chofer. Se agrega como deuda, una sola vez.':type?.group==='explora'?'100% a cargo de Explora.':'Se descuenta de la billetera digital. Gasto compartido al 50%.';
+}
+$('adminExpenseType').addEventListener('change',renderAdminExpenseResponsibility);
+$('adminDigitalExpenseForm').addEventListener('submit',async event=>{
+  event.preventDefault();const actor=auth.currentUser,button=$('saveAdminDigitalExpense'),status=$('adminDigitalExpenseStatus');
+  if(!actor||!isAdminProfile()||button.disabled)return;
+  const driver=adminDriverById($('adminExpenseDriver').value),amount=parseMoneyInput($('adminExpenseAmount').value),detail=$('adminExpenseDetail').value.trim(),file=$('adminExpenseProof').files?.[0],typeId=$('adminExpenseType').value;
+  if(!driver||!adminDriverIsActive(driver)||!Number.isFinite(amount)||amount<=0||amount>100000000||!detail||!ExploraExpensePolicy.find(typeId)){status.textContent='Completá el chofer, el concepto, el importe y el detalle.';return;}
+  if(!file||file.size<=0||file.size>15*1024*1024||!(/^(image\/|application\/pdf$)/.test(file.type))){status.textContent='Adjuntá una imagen o PDF de hasta 15 MB.';return;}
+  if(!dashboardLoad?.complete()){status.textContent='Esperá a que se sincronicen los datos del equipo.';return;}
+  button.disabled=true;button.textContent='Guardando…';status.textContent='';
+  const controls=[...$('adminDigitalExpenseModal').querySelectorAll('input,select,[data-close]')];controls.forEach(c=>c.disabled=true);
+  let operation,fingerprint;
+  try{
+    fingerprint=await buildSubmissionFingerprint('admin_digital_expense',{driverUid:driver.id,amount,detail,typeId,proof:await sha256Hex(await file.arrayBuffer())});
+    operation=reservePendingOperation('admin_digital_expense',actor.uid,fingerprint);
+    const expenseRef=doc(db,ROOT_COLLECTIONS.expenses,operation.operationId);
+    const existing=await getDocFromServer(expenseRef);
+    if(!assertSameCommittedOperation(existing,operation.operationId,fingerprint)){
+      const proofPath='gastos/'+driver.id+'/'+operation.operationId+'/'+file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const storageRef=ref(storage,proofPath);await uploadBytes(storageRef,file,{contentType:file.type});const proofUrl=await getDownloadURL(storageRef);
+      const payload=buildAdminDigitalExpense({driver:{id:driver.id,name:adminDriverLabel(driver)},actor:{uid:actor.uid,name:currentProfile?.displayName||currentProfile?.username||'Administrador'},amount,detail,typeId,proofUrl,proofPath,file,operation,fingerprint,businessId:BUSINESS_ID,dayKey:localDayKey()},ExploraExpensePolicy,ExploraPeriodPolicy);
+      if(auth.currentUser?.uid!==actor.uid||!isAdminProfile())throw new Error('La sesión cambió. Volvé a ingresar.');
+      await runTransaction(db,async tx=>{const previous=await tx.get(expenseRef);if(assertSameCommittedOperation(previous,operation.operationId,fingerprint))return;tx.set(expenseRef,{...payload,createdAt:serverTimestamp()});});
+    }
+    clearPendingOperation('admin_digital_expense',actor.uid,fingerprint,operation.operationId);
+    $('adminDigitalExpenseModal').classList.add('hidden');
+  }catch(error){status.textContent=error.message||'No se pudo confirmar. Reintentá; la misma operación no se duplicará.';status.className='status error';}
+  finally{button.disabled=false;button.textContent='Confirmar pago digital';controls.forEach(c=>c.disabled=false);}
+});
+adminWorkspace=mountAdminWorkspace({getState:adminWorkspaceState,loadDocuments:async input=>(await httpsCallable(functions,'adminMonthlyDocuments',{timeout:300000})(input)).data,openDebt:openAdminDebt,openDigital:openAdminDigitalExpense});
 
 // Hand a submit made during startup to the authenticated login handler once.
 document.documentElement.dataset.exploraAppReady = 'true';
