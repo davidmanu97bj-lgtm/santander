@@ -64,4 +64,4 @@ export async function uploadBytes(reference,file) {
   return {ref:reference};
 }
 export async function getDownloadURL(reference) { return uploaded.get(reference.path) || '/__preview__/proof.svg'; }
-export const httpsCallable = (_,name) => async input => {const data=await local('call',{name,input});if(name==='confirmPeriodClosure')await notify();return {data};};
+export const httpsCallable = (_,name) => async input => {const data=await local('call',{name,input});if(name==='confirmPeriodClosure'||name.startsWith('availability'))await notify();return {data};};

@@ -1263,6 +1263,17 @@ service cloud.firestore {
     }
     // Settings, access tickets and numbering are server-only (default deny).
 
+    // Availability and contacts are written only by validated server operations.
+    match /driver_availability/{driverUid} {
+      allow read: if isActiveTeamViewer() && resource.data.active == true;
+      allow write: if false;
+    }
+    match /driver_availability_days/{day} {
+      allow read: if isActiveTeamViewer();
+      allow write: if false;
+    }
+    // Phone audit and notification events stay server-only.
+
     // DENEGACIÓN FINAL
     // =========================================================
 

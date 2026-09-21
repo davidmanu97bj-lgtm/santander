@@ -126,16 +126,16 @@
   },
   "protectedFiles": {
     "firestore.rules": {
-      "hash": "1e2c27b8b116fd19bfa16c9e314252cc80b75d238147513e369177271e899cc0",
-      "reason": "Publicación autorizada: los movimientos nuevos requieren la regla de billeteras netas; las versiones anteriores deben actualizarse para evitar registrar operaciones con la fórmula antigua. Los documentos históricos se conservan."
+      "hash": "0026e05252d80bb2bc2dd0e5c728a377d1777820a7d0ec6e22aa84feb2047ec2",
+      "reason": "Disponibilidad autorizada por el usuario: funciones propias de estado, reservas y Telegram; reglas de lectura del equipo activo y escritura exclusiva del servidor. Sin modificar operaciones financieras."
     },
     "functions/expense-policy.js": {
       "hash": "044e01190580912b786c33020c3b663b16eee01da5c6a7600482301a11abffa2",
       "reason": "Agrega Peaje y la lista permitida al chofer sin eliminar categorías históricas/admin."
     },
     "functions/index.js": {
-      "hash": "a793d251fcd01c6c0b6dadde26aa8302394206e98b9579d2076de37c1e3b3056",
-      "reason": "Menú administrativo solicitado: expone consulta de documentos mensuales protegida por el control administrativo existente; no cambia cálculos ni emisores de facturas."
+      "hash": "c47bd97d1b94c4f4fe1b0744982517173c8e0b2e4440f671bca1860d2b8b1843",
+      "reason": "Disponibilidad autorizada por el usuario: funciones propias de estado, reservas y Telegram; reglas de lectura del equipo activo y escritura exclusiva del servidor. Sin modificar operaciones financieras."
     },
     "functions/telegram-billing-balance.js": {
       "hash": "aabb3748111e32c61eae773b2fb75dc15158698ac5d045a32014330838631c66",

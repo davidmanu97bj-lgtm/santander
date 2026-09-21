@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Explora · Disponibilidad · Vista previa</title>
+<link rel="stylesheet" href="/explora-ui.css"><link rel="stylesheet" href="/availability-preview.css">
+<body><div class="preview-label">VISTA PREVIA · Datos de ejemplo</div><main>
+<div class="institutional-hero"><img src="/assets/explora-home-reference.png" alt="Explora Iguazú, viajes y servicios"><button class="logout" type="button">Salir</button></div><p class="greeting">Hola, Javier</p>
+<section id="availability" aria-label="Tu disponibilidad" class="availability free">
+<div class="state-heading"><span class="state-dot"></span><div><h1 id="stateTitle">Estás LIBRE</h1><p id="stateDetail">Disponible para recibir viajes</p></div><button id="change" class="change">↔ Cambiar</button></div>
+<div id="stateEditor" hidden></div>
+<button id="showDrivers" class="availability-counts"><span><i class="green"></i><b id="freeCount">2</b> libres</span><span><i class="red"></i><b id="busyCount">2</b> ocupados</span><span class="arrow">›</span><small>Ver disponibilidad de choferes</small></button>
+</section>
+<section class="collection-tools"><h1>Herramientas de cobro <span></span></h1><div class="collection-grid">
+<button class="collection-tool icon-cash"><span class="tool-icon">▤ <small>Uber</small></span><span>Cobrar<small class="cash-uber-caption">efectivo y Uber</small></span></button><button class="collection-tool icon-digital"><span class="tool-icon">▣</span><span>Cobrar<br>digital</span></button><button class="collection-tool icon-expense"><span class="tool-icon">▧</span><span>Cargar<br>gasto</span></button><button class="collection-tool icon-management"><span class="tool-icon">▥</span><span>Gestión</span></button>
+</div></section>
+<section class="activity"><h2>Últimas actividades <small>Consultar todas →</small></h2><div><span>Cobro en efectivo<small>Viaje a Cataratas · Hoy</small></span><b class="positive">+ $ 32.500</b></div><div><span>Gasto · Combustible<small>Hoy</small></span><b class="negative">− $ 40.000</b></div></section>
+<aside class="demo-controls"><span>Probar diseño</span><button id="role">Vista: chofer</button><button id="reset">Repetir bienvenida</button><p id="notice" role="status">Los cambios de esta vista no se envían a otros choferes ni a Telegram.</p></aside>
+</main><nav class="bottom"><button>⌂<span>Principal</span></button><button>▱<span>Billeteras</span></button></nav>
+<dialog id="phoneDialog"><form id="phoneForm"><div class="sheet-handle"></div><span class="eyebrow">BIENVENIDO A DISPONIBILIDAD</span><h2>Tu WhatsApp</h2><p>Los choferes podrán contactarte cuando estés libre. Te lo pedimos una sola vez.</p><label>País<select id="country"><option value="54">Argentina (+54)</option><option value="55">Brasil (+55)</option><option value="595">Paraguay (+595)</option></select></label><label>Número de WhatsApp<input id="phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="Ej.: 9 3757 123456" required></label><p class="hint">Incluí código de área. Para Argentina: 9 + área + número, sin 0 ni 15.</p><p id="phoneError" role="alert"></p><button class="primary">Guardar y continuar</button><small class="privacy">Después, solo el administrador podrá editarlo.</small><button type="button" class="text-button" id="skipPhone">Ver diseño sin cargar número</button></form></dialog>
+<dialog id="driversDialog"><div class="sheet-handle"></div><header><div><h2>Disponibilidad de choferes</h2><p>Así se verá el estado del equipo</p></div><button class="close" aria-label="Cerrar disponibilidad">×</button></header><div id="driverRows"></div><p class="hint">WhatsApp aparece únicamente para los choferes libres.</p><p class="hint">Datos de ejemplo · Los contactos están desactivados en esta vista.</p></dialog>
+<script src="/availability-preview.js" type="module"></script></body></html>

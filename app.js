@@ -1,3 +1,4 @@
+import { mountDriverAvailability } from "./driver-availability.js?v=20260921-availability-1";
 import { mountAdminWorkspace } from "./admin-workspace.js?v=20260919-admin-1";
 import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20260919-admin-1";
 import { mountPeriodClose } from "./period-ui.js?v=20260919-login-period-1";
@@ -29,6 +30,11 @@ import {
 const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 const storage = getStorage(app);
 const functions = getFunctions(app, "southamerica-east1");
+const driverAvailability = mountDriverAvailability({
+  call:async (name,data)=>(await httpsCallable(functions,name)(data)).data,
+  listenTeam:(next,error)=>onSnapshot(query(collection(db,'driver_availability'),where('active','==',true)),{includeMetadataChanges:true},snapshot=>next(snapshot.docs.map(row=>({...row.data(),uid:row.id})),!snapshot.metadata.fromCache),error),
+  listenDay:(day,next,error)=>onSnapshot(doc(db,'driver_availability_days',day),{includeMetadataChanges:true},snapshot=>next(snapshot.data(),!snapshot.metadata.fromCache),error)
+});
 const exploraRouteCallable = httpsCallable(functions, "exploraRoute");
 const adminCreateDriverCallable = httpsCallable(functions, "adminCreateDriver");
 const adminUpdateDriverCallable = httpsCallable(functions, "adminUpdateDriver");
@@ -4234,6 +4240,7 @@ $("adminManageClosuresBtn")?.addEventListener("click", () => {
 
 onAuthStateChanged(auth, async user => {
   tripCalendar.reset();
+  driverAvailability.reset();
   adminWorkspace?.reset();
   $("adminDigitalExpenseModal")?.classList.add("hidden");
   $("adminDigitalExpenseForm")?.reset();
@@ -4329,6 +4336,7 @@ onAuthStateChanged(auth, async user => {
   await finishSplash("app");
   if (isCurrent()) {
     subscribeTeamRealtimeDashboard();
+    void driverAvailability.start({uid:user.uid,isAdmin:isAdminProfile()});
     refreshArcaBillingStatus();
   }
 });

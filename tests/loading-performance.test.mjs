@@ -80,8 +80,8 @@ function authHarness(profile) {
   const counts={driver:0,closures:0,admin:0,signOut:0,shown:[]};
   const noop=()=>{};
   const ctx=vm.createContext({authGeneration:0,auth:{currentUser:{uid:'a',email:'a@demo.local'}},dashboardLoad:null,
-    tripCalendar:{reset:noop},
-    $:()=>({classList:{add:noop},textContent:'',className:''}),RECENT_RECEIPTS_LIMIT:10,visibleReceiptCount:10,
+    adminWorkspace:{reset:noop},driverAvailability:{reset(){},start:async()=>{}},tripCalendar:{reset:noop},
+    $:()=>({reset:noop,classList:{add:noop},textContent:'',className:''}),RECENT_RECEIPTS_LIMIT:10,visibleReceiptCount:10,
     ROOT_COLLECTIONS:{payments:'payments'},ADMIN_REQUIRED_SNAPSHOT_KEYS:new Set(['drivers']),
     fallbackProfile:()=>({displayName:'A',role:'chofer'}),loadProfile:()=>profile,
     createDashboardLoad:createLoad,

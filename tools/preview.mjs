@@ -32,6 +32,10 @@ async function api(body) {
   if(action==='inspect')return {records:Object.fromEntries(db.data),uploads:[...uploads.keys()]};
   if(action==='reset'){db.data=new Map(Object.entries(structuredClone(seed)));uploads.clear();return {};}
   if(action==='call') {
+    if(['availabilityBootstrap','availabilitySavePhone','availabilityChange'].includes(body.name)) {
+      const service=require('../functions/driver-availability').createAvailabilityService({db,adminUid:'preview-admin'});
+      return service[({availabilityBootstrap:'bootstrap',availabilitySavePhone:'savePhone',availabilityChange:'change'})[body.name]]({auth:{uid},data:body.input});
+    }
     if(body.name==='adminMonthlyDocuments'&&previewAdmin)return require('../functions/admin-monthly-documents')({db,assertAdmin:async()=>uid}).adminMonthlyDocuments.run({data:body.input});
     if(body.name==='exploraRoute') {
       const {queryGoogleRoute}=require('../functions/google-route-service.js');

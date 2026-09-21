@@ -114,6 +114,7 @@ const MAX_SCANNED_DOCUMENTS = 25000;
 // TELEGRAM_BOT_TOKEN ya puede existir; TELEGRAM_CHAT_ID debe contener el ID del chat/grupo.
 const TELEGRAM_BOT_TOKEN = defineSecret("TELEGRAM_BOT_TOKEN");
 const TELEGRAM_CHAT_ID = defineSecret("TELEGRAM_CHAT_ID");
+Object.assign(exports, require("./driver-availability-functions")({db,secrets:[TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID],notify:telegramProcessNotification}));
 const TELEGRAM_NOTIFICATIONS_COLLECTION = "telegram_notifications";
 const TELEGRAM_FUNCTION_REGION = "us-central1";
 const TELEGRAM_PROCESSING_LEASE_MS = 10 * 60 * 1000;

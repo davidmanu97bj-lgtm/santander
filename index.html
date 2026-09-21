@@ -16,7 +16,7 @@
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js" crossorigin />
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js" crossorigin />
   <script type="module" async src="./login-entry.js?v=20260919-admin-1"></script>
-  <link rel="modulepreload" href="./app.js?v=20260919-admin-1" />
+  <link rel="modulepreload" href="./app.js?v=20260921-availability-1" />
   <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
@@ -128,6 +128,7 @@
   <link rel="stylesheet" href="./styles.css?v=20260919-admin-1" />
   <link rel="stylesheet" href="./movement-colors.css?v=20260919-admin-1" />
   <link rel="stylesheet" href="./explora-ui.css?v=20260919-admin-1" />
+  <link rel="stylesheet" href="./driver-availability.css?v=20260921-availability-1" />
   <link rel="stylesheet" href="./admin-workspace.css?v=20260919-admin-1" />
 </head>
 <body>
@@ -199,6 +200,7 @@
             <button id="adminAddDebtBtn" disabled class="admin-quick debt" type="button"><span data-explora-icon="debt"></span><span><strong>Deuda 100% chofer</strong><small>Multa u otro importe a su cargo.</small></span><b aria-hidden="true">↗</b></button>
             <button id="adminGroupDebtBtn" disabled class="admin-quick group" type="button"><span data-explora-icon="management"></span><span><strong>Deuda grupal</strong><small>El mismo importe para cada chofer activo.</small></span><b aria-hidden="true">↗</b></button>
           </div><p id="adminQuickStatus" role="status">Sincronizando el equipo…</p></section>
+          <button type="button" id="adminAvailabilityBtn" disabled>Disponibilidad de choferes</button>
           <p class="admin-mobile-note">Los informes y el control del equipo están disponibles en la versión para notebook.</p>
           <div class="admin-desktop-only">
             <section data-admin-panel="overview">
@@ -232,6 +234,7 @@
           <button id="homeLogoutBtn" class="home-logout" type="button">Salir</button>
         </div>
         <p id="homeDriverGreeting" class="home-driver-greeting">Hola, chofer</p>
+        <section id="driverAvailability" hidden aria-label="Tu disponibilidad"></section>
         <section class="collection-tools" aria-labelledby="collectionToolsTitle">
           <h1 id="collectionToolsTitle">Herramientas de cobro <span aria-hidden="true"></span></h1>
           <div id="driverQuickActions" class="collection-grid" tabindex="-1">
@@ -846,6 +849,6 @@
 
 <script src="./functions/period-policy.js?v=20260919-admin-1"></script>
 <script src="./functions/expense-policy.js?v=20260919-admin-1"></script>
-<script type="module" src="./app.js?v=20260919-admin-1"></script>
+<script type="module" src="./app.js?v=20260921-availability-1"></script>
 </body>
 </html>
