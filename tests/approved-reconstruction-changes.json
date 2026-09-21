@@ -110,8 +110,8 @@
       "reason": "Menú administrativo solicitado: refresca documentos del equipo ante cambios de movimientos o facturas recibidas."
     },
     "startSplash": {
-      "hash": "6282195b0c810889ca0363a2f3d21dd3dc6cc2d9a035150bde4c2bec24078e35",
-      "reason": "Solicitud explicita del usuario: quitar la animacion de inicio y mostrar el login inmediatamente, conservando la autenticacion y la validacion del perfil."
+      "hash": "a57afade6f6a9049bd4d9ae641954779b705be35f50f3f656e95658d7f14d5ad",
+      "reason": "Solicitud explicita del usuario: no mostrar login al restaurar una sesion existente, manteniendo inicio sin animacion y las validaciones de autenticacion y perfil."
     }
   },
   "handlers": {

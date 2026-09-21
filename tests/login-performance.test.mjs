@@ -75,7 +75,7 @@ test('cerrar la carga muestra inmediatamente la pantalla correcta y no reabre un
   const $=id=>{if(!nodes.has(id)){const classes=new Set();nodes.set(id,{textContent:'',classes,classList:{add:x=>classes.add(x),remove:x=>classes.delete(x),toggle:(x,on)=>on?classes.add(x):classes.delete(x)}});}return nodes.get(id);};
   const ctx=vm.createContext({$,window:{setTimeout(){throw Error('No debe esperar');},setInterval(){throw Error('No debe simular porcentajes');}}});
   load(ctx,'startSplash','finishSplash');
-  ctx.startSplash();assert.equal($('loginScreen').classes.has('hidden'),false);assert.equal($('splashScreen').classes.has('hidden'),true);assert.equal($('splashMessage').textContent,'Ingresando…');assert.equal($('app').classes.has('hidden'),true);
+  ctx.startSplash();assert.equal($('loginScreen').classes.has('hidden'),true);assert.equal($('splashScreen').classes.has('hidden'),true);assert.equal($('splashMessage').textContent,'Ingresando…');assert.equal($('app').classes.has('hidden'),true);
   ctx.finishSplash('app');assert.equal($('splashScreen').classes.has('hidden'),true);assert.equal($('app').classes.has('hidden'),false);
   ctx.startSplash('Cerrando sesión…');ctx.finishSplash('loginScreen');assert.equal($('loginScreen').classes.has('hidden'),false);assert.equal($('app').classes.has('hidden'),true);
 });

@@ -854,7 +854,7 @@ function subscribeOwnedRecords(user, { collectionName, normalizer, assign, after
 function startSplash(message = "Ingresando…") {
   $("splashMessage").textContent = message;
   $("splashScreen")?.classList.add("hidden");
-  $("loginScreen")?.classList.remove("hidden");
+  $("loginScreen")?.classList.add("hidden");
   $("app")?.classList.add("hidden");
 }
 
