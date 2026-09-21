@@ -20,10 +20,10 @@ test('dos solicitudes simultáneas no adjudican el mismo número y el reintento 
  assert.equal(db.data.get('driver_availability/ramiro').status,'unknown');
  await assert.rejects(service.change({...a,data:{...a.data,zone:'Brasil',number:null}}),{code:'already-exists'});
 });
-test('cambiar a ocupado oculta WhatsApp sin liberar antes de medianoche el número reservado',async()=>{
+test('un estado ocupado sin adjudicación también suelta el número anterior',async()=>{
  const {db,service}=fixture();await service.change(request('javier',57));await service.change(request('javier',null,{status:'busy',zone:'Brasil',expectedRevision:1}));
  assert.equal(whatsappLink(db.data.get('driver_availability/javier')),null);
- await assert.rejects(service.change(request('ramiro',57)),{code:'already-exists'});
+ assert.equal((await service.change(request('ramiro',57))).number,57);
  assert.equal(db.data.get('driver_availability/javier').number,null);
 });
 test('medianoche argentina abre otro día aunque el scheduler se atrase; repetir el scheduler no borra reservas',async()=>{
@@ -78,4 +78,21 @@ test('la espera sobrevive medianoche y los cambios sin número',async()=>{
 test('dos dispositivos del mismo chofer no adjudican dos números simultáneamente',async()=>{
  const {db,service}=fixture();const results=await Promise.allSettled([service.change(request('javier',28)),service.change(request('javier',57))]);
  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(Object.keys(db.data.get('driver_availability_days/2026-09-21').claims).length,1);
+});
+
+test('quedar libre borra el número, libera el tachado para otro chofer y conserva la espera propia',async()=>{
+ const {db,service}=fixture();await service.change(request('javier',57));
+ const releasedRequest=request('javier',null,{expectedRevision:1});const released=await service.change(releasedRequest);
+ assert.equal(released.status,'free');assert.equal(released.number,null);assert.equal(released.numberDay,'');
+ assert.equal(db.data.get('driver_availability_days/2026-09-21').claims[57],undefined);
+ assert.ok(whatsappLink(db.data.get('driver_availability/javier')));
+ assert.equal((await service.change(request('ramiro',57))).status,'busy');
+ await service.change(releasedRequest);
+ assert.equal(db.data.get('driver_availability_days/2026-09-21').claims[57].uid,'ramiro');
+ await assert.rejects(service.change(request('javier',43,{expectedRevision:2})),{code:'resource-exhausted'});
+});
+test('reemplazar adjudicación tras 30 minutos no deja números anteriores tachados',async()=>{
+ const {db,service,setTime}=fixture();await service.change(request('javier',28));setTime('2026-09-21T15:30:00Z');
+ await service.change(request('javier',57,{expectedRevision:1}));
+ assert.deepEqual(Object.keys(db.data.get('driver_availability_days/2026-09-21').claims),['57']);
 });

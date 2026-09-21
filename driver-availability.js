@@ -13,7 +13,7 @@ export function mountDriverAvailability({call,listenTeam,listenDay}){
  const $=id=>document.getElementById(id),card=host.querySelector('.av-card'),zones=['Ciudad','Aeropuerto','Brasil','Paraguay'];
  let session=null,generation=0,rows=[],claims={},day='',offset=0,stops=[],dayStop=null,timer=null,flashTimer=null,stage='',desired=null,pending=null,message='',ready=false,teamLive=false,dayLive=false,phoneTarget='',phoneAsked=false,phoneBusy=false;
  const own=()=>rows.find(r=>r.uid===session?.uid),live=()=>ready&&teamLive&&dayLive&&navigator.onLine;
- const currentNumber=p=>p.numberDay===day?p.number:null;
+ const currentNumber=p=>p.status==='busy'&&p.numberDay===day?p.number:null;
  function openPhone(uid){phoneTarget=uid;const row=rows.find(r=>r.uid===uid);$('avPhoneForm').reset();$('avPhoneError').textContent='';$('avPhoneTitle').textContent=session.isAdmin?'WhatsApp de '+(row?.name||'chofer'):'Tu WhatsApp';$('avPhoneIntro').textContent=session.isAdmin?'Actualizá el contacto de este chofer.':'Te lo pedimos una sola vez. Los choferes podrán contactarte cuando estés libre.';if(row?.phone){$('avCountry').value=row.phone.startsWith('595')?'595':row.phone.startsWith('55')?'55':'54';$('avPhoneNumber').value='+'+row.phone;}if(!$('avPhone').open)$('avPhone').showModal();}
  function renderPeople(){
   $('avConnection').textContent=teamLive&&navigator.onLine?'Estado en tiempo real':'Sin conexión · Los contactos están deshabilitados';
@@ -41,7 +41,7 @@ export function mountDriverAvailability({call,listenTeam,listenDay}){
  function save(number){desired.number=number;pending={...desired,operationId:crypto.randomUUID(),expectedRevision:own()?.revision||0};submit();}
  async function submit(){
   if(!pending||!session)return;const token=generation;stage='saving';message='';render();
-  try{const result=await call('availabilityChange',pending);if(token!==generation)return;rows=rows.map(r=>r.uid===session.uid?{...r,...result}:r);if(result.number&&result.numberDay===day)claims[result.number]={uid:session.uid};desired={...desired,status:result.status,number:result.number};stage='confirmed';pending=null;render();flashTimer=setTimeout(()=>{if(token!==generation)return;stage='';desired=null;render();},700);}
+  try{const result=await call('availabilityChange',pending);if(token!==generation)return;rows=rows.map(r=>r.uid===session.uid?{...r,...result}:r);for(const [n,claim] of Object.entries(claims)){if(claim.uid===session.uid)delete claims[n];}if(result.number&&result.numberDay===day)claims[result.number]={uid:session.uid};desired={...desired,status:result.status,number:result.number};stage='confirmed';pending=null;render();flashTimer=setTimeout(()=>{if(token!==generation)return;stage='';desired=null;render();},700);}
   catch(error){if(token!==generation)return;const code=String(error.code||'');message=error.message||'No se pudo guardar. Reintentá.';if(/resource-exhausted/.test(code)){if(error.details?.nextClaimAtMs){rows=rows.map(r=>r.uid===session.uid?{...r,lastClaimAtMs:error.details.nextClaimAtMs-30*60*1000}:r);}stage='numbers';pending=null;}else if(/already-exists/.test(code)){stage='numbers';pending=null;}else if(/aborted/.test(code)){stage='';desired=null;pending=null;}else if(/permission-denied|failed-precondition/.test(code)){stage='';desired=null;pending=null;if(/failed-precondition/.test(code))openPhone(session.uid);}else stage='retry';render();}
  }
  function refreshDay(){
