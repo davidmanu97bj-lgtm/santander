@@ -58,3 +58,24 @@ test('ordena libres, vos separado, ocupados; contactos solo libres y enlaces seg
 test('las colecciones de disponibilidad no admiten escrituras desde el navegador',()=>{
  const rules=fs.readFileSync(new URL('../firestore.rules',import.meta.url),'utf8');for(const col of ['driver_availability','driver_availability_days']){const block=rules.split('match /'+col+'/')[1].split('\n    }')[0];assert.match(block,/allow write: if false/);assert.match(block,/isActiveTeamViewer/);}
 });
+
+test('adjudicar deja ocupado, oculta WhatsApp y limita nuevas adjudicaciones durante 30 minutos',async()=>{
+ const {db,service,setTime}=fixture();const first=request('javier',57);const assigned=await service.change(first);
+ assert.equal(assigned.status,'busy');assert.equal(assigned.number,57);assert.equal(whatsappLink(db.data.get('driver_availability/javier')),null);
+ assert.match([...db.data.entries()].find(([k])=>k.startsWith('driver_availability_events/'))[1].text,/OCUPADO EN CIUDAD/);
+ await service.change(request('javier',null,{expectedRevision:1}));assert.equal(db.data.get('driver_availability/javier').status,'free');
+ setTime('2026-09-21T15:29:59Z');await assert.rejects(service.change(request('javier',43,{expectedRevision:2})),{code:'resource-exhausted'});
+ assert.equal(db.data.get('driver_availability/javier').revision,2);assert.equal(db.data.get('driver_availability_days/2026-09-21').claims[43],undefined);
+ assert.deepEqual(await service.change(first),assigned);
+ setTime('2026-09-21T15:30:00Z');const second=await service.change(request('javier',43,{expectedRevision:2}));assert.equal(second.status,'busy');assert.equal(second.number,43);
+});
+test('la espera sobrevive medianoche y los cambios sin número',async()=>{
+ const {service,setTime}=fixture();setTime('2026-09-22T02:50:00Z');await service.change(request('javier',28));
+ setTime('2026-09-22T03:00:00Z');await service.change(request('javier',null,{expectedRevision:1}));
+ await assert.rejects(service.change(request('javier',57,{expectedRevision:2})),{code:'resource-exhausted'});
+ setTime('2026-09-22T03:20:00Z');assert.equal((await service.change(request('javier',57,{expectedRevision:2}))).status,'busy');
+});
+test('dos dispositivos del mismo chofer no adjudican dos números simultáneamente',async()=>{
+ const {db,service}=fixture();const results=await Promise.allSettled([service.change(request('javier',28)),service.change(request('javier',57))]);
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(Object.keys(db.data.get('driver_availability_days/2026-09-21').claims).length,1);
+});

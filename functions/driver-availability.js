@@ -71,12 +71,15 @@ function createAvailabilityService({db,now=Date.now,adminUid=ADMIN_UID}){
    if(!current.phone)throw new HttpsError('failed-precondition','Primero cargá tu WhatsApp.');
    if(data.expectedRevision!==revision)throw new HttpsError('aborted','Tu estado cambió en otro dispositivo. Volvé a seleccionar.');
    const claims={...(d.data()?.claims||{})};
-   if(number!==null){if(claims[number]&&claims[number].uid!==uid)throw new HttpsError('already-exists','Ese número ya fue elegido. Seleccioná otro.');claims[number]={uid,claimedAtMs:claims[number]?.claimedAtMs||stamp};}
-   const result={uid,status,zone,number,numberDay:number!==null?day:'',revision:revision+1,updatedAtMs:stamp};
-   const same=current.status===status&&current.zone===zone&&(current.numberDay===day?current.number:null)===number;
+   const lastClaim=Number(current.lastClaimAtMs)||Math.max(0,...Object.values(claims).filter(c=>c.uid===uid).map(c=>Number(c.claimedAtMs)||0));
+   if(number!==null&&lastClaim&&stamp-lastClaim<30*60*1000)throw new HttpsError('resource-exhausted','Podés adjudicar otro número en '+Math.ceil((lastClaim+30*60*1000-stamp)/60000)+' min.',{nextClaimAtMs:lastClaim+30*60*1000});
+   if(number!==null){if(claims[number])throw new HttpsError('already-exists','Ese número ya fue elegido. Seleccioná otro.');claims[number]={uid,claimedAtMs:claims[number]?.claimedAtMs||stamp};}
+   const effectiveStatus=number!==null?'busy':status;
+   const result={uid,status:effectiveStatus,zone,number,...(number!==null?{lastClaimAtMs:stamp}:{}),numberDay:number!==null?day:'',revision:revision+1,updatedAtMs:stamp};
+   const same=current.status===effectiveStatus&&current.zone===zone&&(current.numberDay===day?current.number:null)===number;
    tx.set(ref,{...result,name:p.name,active:true},{merge:true});
    if(number!==null||!d.exists)tx.set(dayRef,{day,claims,createdAtMs:d.data()?.createdAtMs||stamp});
-   const text=p.name.toLocaleUpperCase('es-AR')+' ESTÁ '+(status==='free'?'LIBRE':'OCUPADO')+' EN '+zone.toLocaleUpperCase('es-AR')+(number!==null?'\n'+p.name.toLocaleUpperCase('es-AR')+' SE ADJUDICÓ '+number:'');
+   const text=p.name.toLocaleUpperCase('es-AR')+' ESTÁ '+(effectiveStatus==='free'?'LIBRE':'OCUPADO')+' EN '+zone.toLocaleUpperCase('es-AR')+(number!==null?'\n'+p.name.toLocaleUpperCase('es-AR')+' SE ADJUDICÓ '+number:'');
    tx.create(eventRef,{uid,day,text,notify:!same,fingerprint,result,createdAtMs:stamp});
    return result;
   });
