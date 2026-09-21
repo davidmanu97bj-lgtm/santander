@@ -1,8 +1,7 @@
-import {auth,authReady} from './auth-session.js?v=20260914-web-only-1';
 
-// Paint the signed-out screen without waiting for the dashboard's SDKs/modules.
+// Paint the login immediately without importing or waiting for Firebase SDKs.
 // Authentication and profile checks still belong to the existing login handler.
-export function mountEarlyLogin({document,auth,authReady,MutationObserver}) {
+export function mountEarlyLogin({document,MutationObserver}) {
   if(document.documentElement.dataset.exploraAppReady==='true')return;
   let form=null,queued=false,ready=false,observer=null;
   function pendingSubmit(event){
@@ -24,13 +23,10 @@ export function mountEarlyLogin({document,auth,authReady,MutationObserver}) {
     form=document.getElementById('loginForm');
     if(!form||!document.getElementById('loginBtn')||!document.getElementById('app'))return false;
     form.addEventListener('submit',pendingSubmit,true);
-    Promise.resolve(authReady).then(()=>{
-      if(ready||auth.currentUser)return;
-      document.getElementById('loginScreen').classList.remove('hidden');
-      document.getElementById('splashScreen').classList.add('hidden');
-      document.getElementById('app').classList.add('hidden');
-      document.documentElement.dataset.exploraLoginVisible='true';
-    }).catch(()=>{});
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('splashScreen').classList.add('hidden');
+    document.getElementById('app').classList.add('hidden');
+    document.documentElement.dataset.exploraLoginVisible='true';
     return true;
   }
   if(!attach()){
@@ -38,4 +34,4 @@ export function mountEarlyLogin({document,auth,authReady,MutationObserver}) {
     observer.observe(document.documentElement,{childList:true,subtree:true});
   }
 }
-mountEarlyLogin({document,auth,authReady,MutationObserver});
+mountEarlyLogin({document,MutationObserver});

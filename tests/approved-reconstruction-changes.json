@@ -108,6 +108,10 @@
     "subscribeAdminDashboard": {
       "hash": "b630e8d214bd34e2bb3c86e0b91280e1560f1d383a3a91768c2d1beeda9fc6c3",
       "reason": "Menú administrativo solicitado: refresca documentos del equipo ante cambios de movimientos o facturas recibidas."
+    },
+    "startSplash": {
+      "hash": "6282195b0c810889ca0363a2f3d21dd3dc6cc2d9a035150bde4c2bec24078e35",
+      "reason": "Solicitud explicita del usuario: quitar la animacion de inicio y mostrar el login inmediatamente, conservando la autenticacion y la validacion del perfil."
     }
   },
   "handlers": {

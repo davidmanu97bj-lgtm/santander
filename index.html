@@ -15,8 +15,8 @@
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js" crossorigin />
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js" crossorigin />
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js" crossorigin />
-  <script type="module" async src="./login-entry.js?v=20260919-admin-1"></script>
-  <link rel="modulepreload" href="./app.js?v=20260921-availability-1" />
+  <script type="module" async src="./login-entry.js?v=20260921-instant-login-1"></script>
+  <link rel="modulepreload" href="./app.js?v=20260921-instant-login-1" />
   <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
@@ -132,21 +132,10 @@
   <link rel="stylesheet" href="./admin-workspace.css?v=20260919-admin-1" />
 </head>
 <body>
-<section id="splashScreen" class="splash-screen" aria-live="polite" aria-label="Cargando Explora">
-  <div class="splash-content">
-    <span class="explora-wordmark splash-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span>
-    <div class="splash-progress" role="progressbar" aria-label="Cargando">
-      <svg viewBox="0 0 120 120" aria-hidden="true">
-        <circle class="splash-progress-track" cx="60" cy="60" r="48" pathLength="100" />
-        <circle id="splashProgressArc" class="splash-progress-arc" cx="60" cy="60" r="48" pathLength="100" />
-      </svg>
-    </div>
-    <p id="splashMessage">Abriendo Explora…</p>
-  </div>
-</section>
+<section id="splashScreen" class="hidden" hidden aria-hidden="true"><p id="splashMessage"></p></section>
 
-<section id="loginScreen" class="login-screen hidden" aria-label="Ingresar a EXPLORA">
-  <form id="loginForm" class="login-card" autocomplete="off">
+<section id="loginScreen" class="login-screen" aria-label="Ingresar a EXPLORA">
+  <form id="loginForm" class="login-card" autocomplete="off" onsubmit="return false">
     <div class="explora-login-brand">
       <span class="explora-wordmark explora-login-brand-image"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span>
     </div>
@@ -849,6 +838,6 @@
 
 <script src="./functions/period-policy.js?v=20260919-admin-1"></script>
 <script src="./functions/expense-policy.js?v=20260919-admin-1"></script>
-<script type="module" src="./app.js?v=20260921-availability-1"></script>
+<script type="module" src="./app.js?v=20260921-instant-login-1"></script>
 </body>
 </html>
