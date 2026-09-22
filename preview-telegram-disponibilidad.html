@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Preview Telegram — disponibilidad</title>
+<style>
+ body{font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;background:#0f1419;color:#e7ecf1}
+ h1{font-size:1.25rem;font-weight:600}
+ p.note{color:#9aa7b5;font-size:.9rem}
+ .msg{background:#1e2730;border:1px solid #2d3a46;border-radius:12px;padding:1rem 1.1rem;margin:1rem 0;font-family:ui-monospace,Menlo,monospace;white-space:pre-wrap;letter-spacing:.02em}
+ .label{color:#7dd3a7;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.4rem;font-family:system-ui,sans-serif}
+ code{background:#1e2730;padding:.1rem .35rem;border-radius:4px}
+</style>
+</head>
+<body>
+<h1>Telegram — textos cortos (sin acentos, sin zona)</h1>
+<p class="note">Ejemplos estáticos con nombre <code>JAVIER</code>. Una sola línea por mensaje. Al adjudicar no se envía también OCUPADO.</p>
+
+<div class="msg"><div class="label">1. Libre</div>JAVIER ESTA LIBRE</div>
+<div class="msg"><div class="label">2. Ocupado (sin adjudicar)</div>JAVIER ESTA OCUPADO</div>
+<div class="msg"><div class="label">3. Adjudicación (number !== null)</div>JAVIER SE ADJUDICO EL 57</div>
+
+<p class="note">Fórmulas:<br>
+<code>{NAME} ESTA LIBRE</code><br>
+<code>{NAME} ESTA OCUPADO</code><br>
+<code>{NAME} SE ADJUDICO EL {number}</code><br>
+NAME = <code>p.name.toLocaleUpperCase('es-AR')</code>
+</p>
+</body>
+</html>

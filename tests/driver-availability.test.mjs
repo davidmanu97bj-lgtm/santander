@@ -59,10 +59,25 @@ test('las colecciones de disponibilidad no admiten escrituras desde el navegador
  const rules=fs.readFileSync(new URL('../firestore.rules',import.meta.url),'utf8');for(const col of ['driver_availability','driver_availability_days']){const block=rules.split('match /'+col+'/')[1].split('\n    }')[0];assert.match(block,/allow write: if false/);assert.match(block,/isActiveTeamViewer/);}
 });
 
+test('Telegram: libre, ocupado y adjudicacion usan texto corto sin zona ni acentos',async()=>{
+ const {db,service}=fixture();
+ const free=await service.change(request('javier',null,{status:'free',zone:'Aeropuerto'}));
+ assert.equal(free.status,'free');
+ const freeText=[...db.data.entries()].find(([k])=>k.startsWith('driver_availability_events/'))[1].text;
+ assert.equal(freeText,'JAVIER ESTA LIBRE');
+ const busyReq=request('javier',null,{status:'busy',zone:'Brasil',expectedRevision:1});
+ await service.change(busyReq);
+ const busyText=[...db.data.entries()].filter(([k])=>k.startsWith('driver_availability_events/')).at(-1)[1].text;
+ assert.equal(busyText,'JAVIER ESTA OCUPADO');
+ await service.change(request('javier',57,{expectedRevision:2}));
+ const claimText=[...db.data.entries()].filter(([k])=>k.startsWith('driver_availability_events/')).at(-1)[1].text;
+ assert.equal(claimText,'JAVIER SE ADJUDICO EL 57');
+ assert.doesNotMatch(claimText,/OCUPADO|EN |ESTÁ|ADJUDICÓ/);
+});
 test('adjudicar deja ocupado, oculta WhatsApp y limita nuevas adjudicaciones durante 30 minutos',async()=>{
  const {db,service,setTime}=fixture();const first=request('javier',57);const assigned=await service.change(first);
  assert.equal(assigned.status,'busy');assert.equal(assigned.number,57);assert.equal(whatsappLink(db.data.get('driver_availability/javier')),null);
- assert.match([...db.data.entries()].find(([k])=>k.startsWith('driver_availability_events/'))[1].text,/OCUPADO EN CIUDAD/);
+ assert.equal([...db.data.entries()].find(([k])=>k.startsWith('driver_availability_events/'))[1].text,'JAVIER SE ADJUDICO EL 57');
  await service.change(request('javier',null,{expectedRevision:1}));assert.equal(db.data.get('driver_availability/javier').status,'free');
  setTime('2026-09-21T15:29:59Z');await assert.rejects(service.change(request('javier',43,{expectedRevision:2})),{code:'resource-exhausted'});
  assert.equal(db.data.get('driver_availability/javier').revision,2);assert.equal(db.data.get('driver_availability_days/2026-09-21').claims[43],undefined);
