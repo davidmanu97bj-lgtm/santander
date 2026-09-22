@@ -29,9 +29,9 @@ export function mountDriverAvailability({call,listenTeam,listenDay}){
   const canAct=live()&&!stage;const isFree=me?.status==='free';
   $('avChange').disabled=!canAct;$('avFree').disabled=!canAct;
   $('avClaim').hidden=!isFree;$('avClaim').disabled=!canAct||!isFree;
-  $('avChange').setAttribute('aria-expanded',String(stage==='zones'&&desired?.status==='busy'));
-  $('avFree').setAttribute('aria-expanded',String(stage==='zones'&&desired?.status==='free'));
-  $('avClaim').setAttribute('aria-expanded',String(stage==='numbers'||(stage==='zones'&&desired?.claim)));
+  $('avChange').setAttribute('aria-expanded','false');
+  $('avFree').setAttribute('aria-expanded','false');
+  $('avClaim').setAttribute('aria-expanded',String(stage==='numbers'));
   const active=rows.filter(r=>r.active);$('avCounts').innerHTML=`<span><i class="av-dot av-green"></i><b>${active.filter(r=>r.status==='free').length}</b> libres</span><span><i class="av-dot av-red"></i><b>${active.filter(r=>r.status==='busy').length}</b> ocupados</span>`;
   $('avStatus').textContent=message;$('avStatus').hidden=!message;$('avEditor').hidden=!stage;
   const editor=$('avEditor');
@@ -59,8 +59,9 @@ export function mountDriverAvailability({call,listenTeam,listenDay}){
    stops.push(listenTeam((next,server)=>{if(token!==generation)return;rows=next.filter(r=>r.active);teamLive=server;render();if(server&&!session.isAdmin&&own()&&!own().phone&&!phoneAsked){phoneAsked=true;openPhone(session.uid);}},()=>{if(token===generation){teamLive=false;message='No se pudo conectar la disponibilidad. Recargá para reintentar.';render();}}));
   }catch{if(token!==generation)return;message='No se pudo conectar la disponibilidad. Recargá para reintentar.';render();}
  }
- function beginStatus(status,{claim=false}={}){if(!live()||stage)return;if(!own()?.phone){openPhone(session.uid);return;}desired={status,zone:'',number:null,claim};stage='zones';message='';render();}
- function beginClaim(){if(!live()||stage)return;const me=own();if(me?.status!=='free')return;if(!me?.phone){openPhone(session.uid);return;}desired={status:'free',zone:me.zone||'',number:null,claim:true};if(['Ciudad','Aeropuerto'].includes(me.zone)){stage='numbers';message='';render();}else{stage='zones';message='';render();}}
+ function defaultZone(me){return zones.includes(me?.zone)?me.zone:'Ciudad';}
+ function beginStatus(status){if(!live()||stage)return;if(!own()?.phone){openPhone(session.uid);return;}desired={status,zone:defaultZone(own()),number:null};save(null);}
+ function beginClaim(){if(!live()||stage)return;const me=own();if(me?.status!=='free')return;if(!me?.phone){openPhone(session.uid);return;}const zone=['Ciudad','Aeropuerto'].includes(me.zone)?me.zone:'Ciudad';desired={status:'free',zone,number:null,claim:true};stage='numbers';message='';render();}
  $('avChange').onclick=()=>beginStatus('busy');
  $('avFree').onclick=()=>beginStatus('free');
  $('avClaim').onclick=()=>beginClaim();
