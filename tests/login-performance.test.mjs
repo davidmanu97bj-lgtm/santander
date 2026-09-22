@@ -72,10 +72,10 @@ test('un perfil inexistente o no legible usa el perfil del chofer sin perder com
 
 test('cerrar la carga muestra inmediatamente la pantalla correcta y no reabre una sesión anterior',()=>{
   const nodes=new Map();
-  const $=id=>{if(!nodes.has(id)){const classes=new Set();nodes.set(id,{textContent:'',classes,classList:{add:x=>classes.add(x),remove:x=>classes.delete(x),toggle:(x,on)=>on?classes.add(x):classes.delete(x)}});}return nodes.get(id);};
-  const ctx=vm.createContext({$,window:{setTimeout(){throw Error('No debe esperar');},setInterval(){throw Error('No debe simular porcentajes');}}});
-  load(ctx,'startSplash','finishSplash');
-  ctx.startSplash();assert.equal($('loginScreen').classes.has('hidden'),true);assert.equal($('splashScreen').classes.has('hidden'),true);assert.equal($('splashMessage').textContent,'Ingresando…');assert.equal($('app').classes.has('hidden'),true);
+  const $=id=>{if(!nodes.has(id)){const classes=new Set();nodes.set(id,{textContent:'',classes,attrs:{},classList:{add:x=>classes.add(x),remove:x=>classes.delete(x),toggle:(x,on)=>on?classes.add(x):classes.delete(x)},removeAttribute:name=>{delete nodes.get(id).attrs[name];},setAttribute:(name,value)=>{nodes.get(id).attrs[name]=value;}});}return nodes.get(id);};
+  const ctx=vm.createContext({$,AUTH_READY_TIMEOUT_MS:2500,auth:{currentUser:null},shellWatchdog:null,setTimeout:(fn,ms)=>0,clearTimeout:()=>{},window:{setTimeout:(fn,ms)=>0,setInterval(){throw Error('No debe simular porcentajes');}}});
+  load(ctx,'clearShellWatchdog','scheduleShellWatchdog','ensureShellVisible','finishSplash','startSplash');
+  ctx.startSplash();assert.equal($('loginScreen').classes.has('hidden'),true);assert.equal($('splashScreen').classes.has('hidden'),false);assert.equal($('splashMessage').textContent,'Ingresando…');assert.equal($('app').classes.has('hidden'),true);
   ctx.finishSplash('app');assert.equal($('splashScreen').classes.has('hidden'),true);assert.equal($('app').classes.has('hidden'),false);
   ctx.startSplash('Cerrando sesión…');ctx.finishSplash('loginScreen');assert.equal($('loginScreen').classes.has('hidden'),false);assert.equal($('app').classes.has('hidden'),true);
 });

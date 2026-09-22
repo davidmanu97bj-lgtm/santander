@@ -788,7 +788,11 @@ function resumeDashboard() {
   flushDashboardRender();
 }
 document.addEventListener("visibilitychange", resumeDashboard);
-window.addEventListener("pageshow", resumeDashboard);
+window.addEventListener("pageshow", event => {
+  if (event.persisted && auth.currentUser) finishSplash("app");
+  else if (!document.hidden) ensureShellVisible();
+  resumeDashboard();
+});
 window.addEventListener("online", resumeDashboard);
 window.addEventListener("offline", resumeDashboard);
 
@@ -853,15 +857,44 @@ function subscribeOwnedRecords(user, { collectionName, normalizer, assign, after
 
 function startSplash(message = "Ingresando…") {
   $("splashMessage").textContent = message;
-  $("splashScreen")?.classList.add("hidden");
+  // Mostrar una carga mínima: ocultar login y app a la vez sin splash
+  // dejaba la PWA en blanco en iPhone al reabrir rápido.
+  const splash = $("splashScreen");
+  splash?.classList.remove("hidden");
+  splash?.removeAttribute("hidden");
+  splash?.setAttribute("aria-hidden", "false");
   $("loginScreen")?.classList.add("hidden");
   $("app")?.classList.add("hidden");
+  scheduleShellWatchdog();
 }
 
 function finishSplash(targetId) {
+  clearShellWatchdog();
   $("loginScreen")?.classList.toggle("hidden", targetId !== "loginScreen");
   $("app")?.classList.toggle("hidden", targetId !== "app");
-  $("splashScreen")?.classList.add("hidden");
+  const splash = $("splashScreen");
+  splash?.classList.add("hidden");
+  splash?.setAttribute("hidden", "");
+  splash?.setAttribute("aria-hidden", "true");
+}
+
+let shellWatchdog = null;
+function clearShellWatchdog() {
+  if (shellWatchdog) { clearTimeout(shellWatchdog); shellWatchdog = null; }
+}
+function scheduleShellWatchdog() {
+  clearShellWatchdog();
+  shellWatchdog = setTimeout(() => {
+    shellWatchdog = null;
+    ensureShellVisible();
+  }, AUTH_READY_TIMEOUT_MS + 1500);
+}
+function ensureShellVisible() {
+  const loginHidden = $("loginScreen")?.classList.contains("hidden") !== false;
+  const appHidden = $("app")?.classList.contains("hidden") !== false;
+  if (!loginHidden || !appHidden) return;
+  if (auth.currentUser) finishSplash("app");
+  else finishSplash("loginScreen");
 }
 
 if (document.documentElement.dataset.exploraLoginVisible !== "true") startSplash("Abriendo Explora…");
