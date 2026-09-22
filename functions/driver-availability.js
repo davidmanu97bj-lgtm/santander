@@ -68,7 +68,6 @@ function createAvailabilityService({db,now=Date.now,adminUid=ADMIN_UID}){
    if(!p.active)throw new HttpsError('permission-denied','Esta cuenta no está activa.');
    if(event.exists){if(event.data().fingerprint!==fingerprint)throw new HttpsError('already-exists','La operación ya fue usada.');return event.data().result;}
    const current=s.data()||{},revision=Number(current.revision)||0;
-   if(!current.phone)throw new HttpsError('failed-precondition','Primero cargá tu WhatsApp.');
    if(data.expectedRevision!==revision)throw new HttpsError('aborted','Tu estado cambió en otro dispositivo. Volvé a seleccionar.');
    const claims={...(d.data()?.claims||{})};
    const lastClaim=Number(current.lastClaimAtMs)||Math.max(0,...Object.values(claims).filter(c=>c.uid===uid).map(c=>Number(c.claimedAtMs)||0));

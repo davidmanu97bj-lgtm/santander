@@ -43,8 +43,8 @@ test('solo el dueño puede cargar WhatsApp inicial y solo admin puede editar; to
 test('rechaza inactivos, revisión vieja, zona falsa, número inválido y adjudicar ocupado o Brasil',async()=>{
  const {service,db}=fixture();await assert.rejects(service.change(request('inactive',28)),{code:'permission-denied'});
  for(const extra of [{status:'busy',number:28},{zone:'Brasil',number:28},{zone:'Foz'},{number:999},{expectedRevision:9}])await assert.rejects(service.change(request('javier',null,extra)));
- db.data.get('driver_availability/javier').phone='';await assert.rejects(service.change(request('javier')),{code:'failed-precondition'});
- assert.equal([...db.data.keys()].filter(k=>k.startsWith('driver_availability_events/')).length,0);
+ db.data.get('driver_availability/javier').phone='';await service.change(request('javier'));assert.equal(db.data.get('driver_availability/javier').status,'free');assert.equal(db.data.get('driver_availability/javier').zone,'Ciudad');
+ assert.equal([...db.data.keys()].filter(k=>k.startsWith('driver_availability_events/')).length,1);
 });
 test('perfil desactivado deja de aparecer sin perder teléfono; no expone campos de perfil privado',async()=>{
  const {service,db}=fixture();db.data.get('usuarios/javier').active=false;await service.syncDriver('javier');assert.equal(db.data.get('driver_availability/javier').active,false);assert.equal(db.data.get('driver_availability/javier').phone,'5493757123456');
