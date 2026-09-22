@@ -4,6 +4,8 @@ const {createHash}=require('node:crypto');
 const NUMBERS=Object.freeze([28,57,104,31,15,154,43,134]);
 const ZONES=Object.freeze(['Ciudad','Aeropuerto','Brasil','Paraguay']);
 const ADMIN_UID='2LziyTTdFcZzSOhK3hLbAKs2U4s2';
+/** Persistent claims doc — not rotated at midnight. Calendar day docs stay unused for claims. */
+const CLAIMS_DOC_ID='active';
 const dayKey=ms=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ms));
 function activeProfile(p){return p&&p.active!==false&&p.activo!==false&&!p.deleted&&!p.isDeleted&&!p.eliminado&&!/inactiv|disabled|eliminad|deleted/.test(String(p.status||p.estado||'').toLowerCase());}
 function nameFor(p){return String(p.displayName||p.nombreCompleto||p.nombre||p.username||'Chofer').replace(/[\r\n]+/g,' ').trim().slice(0,100);}
@@ -42,7 +44,20 @@ function createAvailabilityService({db,now=Date.now,adminUid=ADMIN_UID}){
   const day=dayKey(now());await ensureDay(day);
   return {day,serverTime:now(),isAdmin:uid===adminUid};
  }
- async function ensureDay(day=dayKey(now())){return db.runTransaction(async tx=>{const ref=db.collection('driver_availability_days').doc(day),s=await tx.get(ref);if(!s.exists)tx.create(ref,{day,claims:{},createdAtMs:now()});return day;});}
+ async function ensureDay(day=dayKey(now())){
+  return db.runTransaction(async tx=>{
+   const ref=db.collection('driver_availability_days').doc(CLAIMS_DOC_ID),legacyRef=db.collection('driver_availability_days').doc(day);
+   const [s,legacy]=await Promise.all([tx.get(ref),tx.get(legacyRef)]);
+   if(!s.exists){
+    const seed=legacy.data()?.claims||{};
+    tx.create(ref,{day,claims:seed,createdAtMs:now(),persistent:true});
+   }else if(s.data().day!==day){
+    // Advance the calendar label only — never wipe claims at midnight.
+    tx.set(ref,{day},{merge:true});
+   }
+   return day;
+  });
+ }
  async function savePhone(request){
   const actor=caller(request),uid=String(request.data?.uid||actor);
   if(actor!==uid&&actor!==adminUid)throw new HttpsError('permission-denied','Solo el administrador puede editar otro número.');
@@ -63,8 +78,8 @@ function createAvailabilityService({db,now=Date.now,adminUid=ADMIN_UID}){
   if(!['free','busy'].includes(status)||!ZONES.includes(zone)||number!==null&&(!NUMBERS.includes(number)||status!=='free'||!['Ciudad','Aeropuerto'].includes(zone))||!/^[-a-zA-Z0-9]{16,100}$/.test(id)||!Number.isSafeInteger(data.expectedRevision))throw new HttpsError('invalid-argument','Selección de disponibilidad inválida.');
   const fingerprint=createHash('sha256').update(JSON.stringify({status,zone,number,expectedRevision:data.expectedRevision})).digest('hex');
   return db.runTransaction(async tx=>{
-   const stamp=now(),day=dayKey(stamp),ref=stateRef(uid),dayRef=db.collection('driver_availability_days').doc(day),eventRef=db.collection('driver_availability_events').doc(uid+'_'+id);
-   const [p,s,d,event]=await Promise.all([profile(tx,uid),tx.get(ref),tx.get(dayRef),tx.get(eventRef)]);
+   const stamp=now(),day=dayKey(stamp),ref=stateRef(uid),claimsRef=db.collection('driver_availability_days').doc(CLAIMS_DOC_ID),eventRef=db.collection('driver_availability_events').doc(uid+'_'+id);
+   const [p,s,d,event]=await Promise.all([profile(tx,uid),tx.get(ref),tx.get(claimsRef),tx.get(eventRef)]);
    if(!p.active)throw new HttpsError('permission-denied','Esta cuenta no está activa.');
    if(event.exists){if(event.data().fingerprint!==fingerprint)throw new HttpsError('already-exists','La operación ya fue usada.');return event.data().result;}
    const current=s.data()||{},revision=Number(current.revision)||0;
@@ -73,14 +88,14 @@ function createAvailabilityService({db,now=Date.now,adminUid=ADMIN_UID}){
    const claims={...(d.data()?.claims||{})};
    const lastClaim=Number(current.lastClaimAtMs)||Math.max(0,...Object.values(claims).filter(c=>c.uid===uid).map(c=>Number(c.claimedAtMs)||0));
    if(number!==null&&lastClaim&&stamp-lastClaim<30*60*1000)throw new HttpsError('resource-exhausted','Podés adjudicar otro número en '+Math.ceil((lastClaim+30*60*1000-stamp)/60000)+' min.',{nextClaimAtMs:lastClaim+30*60*1000});
-   // A reservation belongs only to the current occupied assignment.
+   // A reservation belongs only to the current occupied assignment; released when free or busy-without-number.
    for(const [reserved,claim] of Object.entries(claims)){if(claim.uid===uid)delete claims[reserved];}
    if(number!==null){if(claims[number])throw new HttpsError('already-exists','Ese número ya fue elegido. Seleccioná otro.');claims[number]={uid,claimedAtMs:claims[number]?.claimedAtMs||stamp};}
    const effectiveStatus=number!==null?'busy':status;
    const result={uid,status:effectiveStatus,zone,number,...(number!==null?{lastClaimAtMs:stamp}:lastClaim?{lastClaimAtMs:lastClaim}:{}),numberDay:number!==null?day:'',revision:revision+1,updatedAtMs:stamp};
-   const same=current.status===effectiveStatus&&current.zone===zone&&(current.numberDay===day?current.number:null)===number;
+   const same=current.status===effectiveStatus&&current.zone===zone&&(current.number??null)===number;
    tx.set(ref,{...result,name:p.name,active:true},{merge:true});
-   tx.set(dayRef,{day,claims,createdAtMs:d.data()?.createdAtMs||stamp});
+   tx.set(claimsRef,{day,claims,createdAtMs:d.data()?.createdAtMs||stamp,persistent:true});
    const name=p.name.toLocaleUpperCase('es-AR');
    const text=number!==null?name+' SE ADJUDICO EL '+number:effectiveStatus==='free'?name+' ESTA LIBRE':name+' ESTA OCUPADO';
    tx.create(eventRef,{uid,day,text,notify:!same,fingerprint,result,createdAtMs:stamp});
@@ -89,4 +104,4 @@ function createAvailabilityService({db,now=Date.now,adminUid=ADMIN_UID}){
  }
  return {bootstrap,syncDriver,savePhone,change,ensureDay};
 }
-module.exports={createAvailabilityService,dayKey,normalizePhone,activeProfile,NUMBERS,ZONES,ADMIN_UID};
+module.exports={createAvailabilityService,dayKey,normalizePhone,activeProfile,NUMBERS,ZONES,ADMIN_UID,CLAIMS_DOC_ID};
