@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Explora · Números perpetuos + lista · Vista previa</title>
+<link rel="stylesheet" href="./explora-ui.css">
+<link rel="stylesheet" href="./driver-availability.css?v=20260922-perpetuos">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fafafe;color:#10153f;font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.preview-banner{text-align:center;background:#eef0f8;color:#606781;font-size:10px;letter-spacing:1px;padding:7px 10px}
+main{max-width:420px;margin:auto;padding:14px 12px 48px}
+.preview-note{font-size:12px;color:#687487;margin:0 0 14px}
+.preview-label{font-size:11px;font-weight:700;color:#4a5568;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.6px}
+.rule{background:#fff;border:1px solid #e4e7f0;border-radius:12px;padding:12px 14px;margin:0 0 10px;font-size:13px}
+.rule b{color:#111b47}
+.rule code{background:#eef0f8;padding:1px 5px;border-radius:4px;font-size:12px}
+.timeline{display:grid;gap:8px;margin:0 0 12px}
+.step{background:#fff;border-left:3px solid #0f4c81;padding:10px 12px;border-radius:0 10px 10px 0;font-size:13px}
+.step .when{font-size:10px;font-weight:700;color:#0f4c81;letter-spacing:.4px;text-transform:uppercase}
+.av-dialog-preview{background:#fff;border:1px solid #e4e7f0;border-radius:16px;overflow:hidden;box-shadow:0 8px 24px #10153f14}
+.av-dialog-preview header{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 14px 8px;border-bottom:1px solid #eef0f8}
+.av-dialog-preview header h2{margin:0;font-size:16px}
+.av-dialog-preview header p{margin:4px 0 0;font-size:11px;color:#687487}
+.av-dialog-preview .av-close{border:0;background:transparent;font-size:22px;line-height:1;color:#687487}
+.av-dialog-preview #avRowsMock{padding:8px 12px 14px}
+.av-dialog-preview .av-hint{margin:0;padding:0 14px 14px;font-size:11px;color:#687487}
+.av-group{margin:12px 0 6px;font-size:11px;font-weight:700;color:#4a5568;text-transform:uppercase;letter-spacing:.5px}
+.av-person{display:flex;gap:10px;align-items:center;padding:8px 4px;border-bottom:1px solid #f1f3f8}
+.av-avatar{width:36px;height:36px;border-radius:50%;background:#e8ebf5;display:grid;place-items:center;font-weight:700;color:#111b47;flex:none}
+.av-person-info{flex:1;min-width:0}
+.av-person-info strong{font-size:14px}
+.av-person-info p{margin:2px 0 0;font-size:12px;color:#3d4658;display:flex;gap:6px;align-items:center}
+.av-you{margin-left:6px;font-size:10px;background:#e8ebf5;padding:1px 6px;border-radius:999px;color:#4a5568}
+.av-dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:#9aa3b5}
+.av-dot.av-green{background:#1a9f5c}.av-dot.av-red{background:#d64545}.av-dot.av-gray{background:#9aa3b5}
+.av-self{background:#f7f8fd;border-radius:10px;padding-left:6px;padding-right:6px}
+.badge{display:inline-block;background:#0f4c81;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:middle}
+.strike{text-decoration:line-through;opacity:.55}
+.numbers{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.numbers span{min-width:44px;text-align:center;padding:8px 6px;border-radius:10px;border:1px solid #d9dee8;font-weight:700;font-size:13px;background:#fff}
+.numbers span.taken{text-decoration:line-through;opacity:.45;background:#f3f4f8}
+</style>
+<body>
+  <div class="preview-banner">VISTA PREVIA LOCAL · Lista sin zona · Claims perpetuos · No publica nada</div>
+  <main>
+    <p class="preview-note">Cambios de producto: lista de choferes sin zona, orden <b>Tu estado → Libres → Ocupados</b>, texto <code>OCUPADO CON EL N</code>, y números tachados que <b>no se reinician a las 00:00</b>.</p>
+
+    <div class="preview-label">1. Lista «Disponibilidad de choferes»</div>
+    <div class="av-dialog-preview" aria-label="Vista previa del diálogo">
+      <header>
+        <div>
+          <h2>Disponibilidad de choferes</h2>
+          <p>Estado en tiempo real · sin zona</p>
+        </div>
+        <button type="button" class="av-close" aria-hidden="true">×</button>
+      </header>
+      <div id="avRowsMock">
+        <h3 class="av-group">Tu estado</h3>
+        <div class="av-person av-self">
+          <span class="av-avatar">J</span>
+          <div class="av-person-info">
+            <strong>Javier</strong><span class="av-you">Vos</span>
+            <p><i class="av-dot av-red"></i> OCUPADO CON EL 57</p>
+          </div>
+        </div>
+
+        <h3 class="av-group">Libres</h3>
+        <div class="av-person">
+          <span class="av-avatar">R</span>
+          <div class="av-person-info">
+            <strong>Ramiro</strong>
+            <p><i class="av-dot av-green"></i> Libre</p>
+          </div>
+        </div>
+
+        <h3 class="av-group">Ocupados</h3>
+        <div class="av-person">
+          <span class="av-avatar">M</span>
+          <div class="av-person-info">
+            <strong>Marcelo</strong>
+            <p><i class="av-dot av-red"></i> OCUPADO CON EL 104</p>
+          </div>
+        </div>
+        <div class="av-person">
+          <span class="av-avatar">L</span>
+          <div class="av-person-info">
+            <strong>Luis</strong>
+            <p><i class="av-dot av-red"></i> Ocupado</p>
+          </div>
+        </div>
+      </div>
+      <p class="av-hint">WhatsApp disponible únicamente para choferes libres. La zona nunca aparece en esta lista.</p>
+    </div>
+
+    <div class="rule">
+      <b>Reglas de lista</b><br>
+      · Orden de grupos: <code>Tu estado</code>, <code>Libres</code>, <code>Ocupados</code> (<code>Sin estado</code> al final si hay).<br>
+      · Sin zona (ni Ciudad ni Aeropuerto).<br>
+      · Con número adjudicado: <code>OCUPADO CON EL 57</code> (el chofer queda ocupado al adjudicar).<br>
+      · Sin número: solo <code>Libre</code> / <code>Ocupado</code>.
+    </div>
+
+    <div class="preview-label">2. Números perpetuos (sin reset 00:00)</div>
+    <div class="timeline">
+      <div class="step">
+        <div class="when">Lunes 23:50 ART</div>
+        Javier adjudica el <b>57</b> → queda ocupado. El 57 queda tachado.
+        <div class="numbers">
+          <span>28</span><span class="taken">57</span><span>104</span><span>31</span><span>15</span><span>154</span><span>43</span><span>134</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="when">Martes 00:00 ART</div>
+        Medianoche: <b>no</b> se limpian claims. El 57 sigue tachado para Javier.
+        <div class="numbers">
+          <span>28</span><span class="taken">57</span><span>104</span><span>31</span><span>15</span><span>154</span><span>43</span><span>134</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="when">Martes 00:10 ART</div>
+        Ramiro puede adjudicar el <b>104</b> (u otro libre). El 57 sigue de Javier.
+        <div class="numbers">
+          <span>28</span><span class="taken">57</span><span class="taken">104</span><span>31</span><span>15</span><span>154</span><span>43</span><span>134</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="when">Cuando Javier pasa a Libre</div>
+        Se libera el 57 → deja de estar tachado → otro chofer puede tomarlo.
+        <div class="numbers">
+          <span>28</span><span>57</span><span class="taken">104</span><span>31</span><span>15</span><span>154</span><span>43</span><span>134</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="rule">
+      <b>Persistencia técnica</b><br>
+      Claims viven en <code>driver_availability_days/active</code> (doc fijo). El scheduler de medianoche solo actualiza la etiqueta de día; <b>nunca</b> borra tachados. Liberación: status <code>free</code> o ocupado sin número.
+    </div>
+  </main>
+</body>
+</html>

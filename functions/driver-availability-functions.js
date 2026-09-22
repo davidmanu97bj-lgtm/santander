@@ -13,6 +13,7 @@ module.exports=({db,secrets,notify})=>{
   availabilityChange:onCall(options,request=>service.change(request)),
   availabilityDriverSync:onDocumentWritten({region,document:'choferes/{uid}',retry:true},sync),
   availabilityUserSync:onDocumentWritten({region,document:'usuarios/{uid}',retry:true},sync),
+  // Midnight only advances the calendar label on the persistent claims doc; it never clears tachados.
   availabilityMidnight:onSchedule({region,schedule:'0 0 * * *',timeZone:'America/Argentina/Buenos_Aires',retryCount:3},()=>service.ensureDay()),
   availabilityTelegram:onDocumentCreated({region:'us-central1',document:'driver_availability_events/{id}',secrets,retry:true,timeoutSeconds:60},async event=>{
    const data=event.data?.data();if(!data?.notify)return;
