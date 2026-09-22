@@ -81,7 +81,8 @@ function createAvailabilityService({db,now=Date.now,adminUid=ADMIN_UID}){
    const same=current.status===effectiveStatus&&current.zone===zone&&(current.numberDay===day?current.number:null)===number;
    tx.set(ref,{...result,name:p.name,active:true},{merge:true});
    tx.set(dayRef,{day,claims,createdAtMs:d.data()?.createdAtMs||stamp});
-   const text=p.name.toLocaleUpperCase('es-AR')+' ESTÁ '+(effectiveStatus==='free'?'LIBRE':'OCUPADO')+' EN '+zone.toLocaleUpperCase('es-AR')+(number!==null?'\n'+p.name.toLocaleUpperCase('es-AR')+' SE ADJUDICÓ '+number:'');
+   const name=p.name.toLocaleUpperCase('es-AR');
+   const text=number!==null?name+' SE ADJUDICO EL '+number:effectiveStatus==='free'?name+' ESTA LIBRE':name+' ESTA OCUPADO';
    tx.create(eventRef,{uid,day,text,notify:!same,fingerprint,result,createdAtMs:stamp});
    return result;
   });
