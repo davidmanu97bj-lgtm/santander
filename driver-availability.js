@@ -8,7 +8,7 @@ const waIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 export function mountDriverAvailability({call,listenTeam,listenDay}){
  const host=document.getElementById('driverAvailability');
  if(!host)return {start(){},reset(){}};
- host.innerHTML='<div class="av-card"><div class="av-heading"><i class="av-dot"></i><div><h2 id="avTitle">Tu disponibilidad</h2><p id="avDetail">Conectando…</p></div><div id="avActions" class="av-actions"><button id="avChange" type="button" disabled>Cambiar</button><button id="avFree" type="button" disabled>Libre</button><button id="avClaim" type="button" hidden disabled>Adjudicar</button></div></div><div id="avEditor" hidden></div><button type="button" id="avTeam"><span id="avCounts"></span><small>Ver disponibilidad de choferes</small><b aria-hidden="true">›</b></button><p id="avStatus" role="status"></p></div>';
+ host.innerHTML='<div class="av-card"><div class="av-heading"><i class="av-dot"></i><div><h2 id="avTitle">Tu disponibilidad</h2><p id="avDetail">Conectando…</p></div><div id="avActions" class="av-actions"><button id="avChange" type="button" disabled>Cambiar</button><button id="avClaim" type="button" hidden disabled>Adjudicar</button></div></div><div id="avEditor" hidden></div><button type="button" id="avTeam"><span id="avCounts"></span><small>Ver disponibilidad de choferes</small><b aria-hidden="true">›</b></button><p id="avStatus" role="status"></p></div>';
  const dialogs=document.createElement('div');dialogs.id='availabilityDialogs';dialogs.innerHTML=`<dialog id="avPeople" class="av-dialog" aria-labelledby="avPeopleTitle"><header><div><h2 id="avPeopleTitle">Disponibilidad de choferes</h2><p id="avConnection">Estado en tiempo real</p></div><button type="button" class="av-close" id="avClosePeople" aria-label="Cerrar disponibilidad">×</button></header><div id="avRows"></div><p class="av-hint">WhatsApp disponible únicamente para choferes libres.</p></dialog><dialog id="avPhone" class="av-dialog" aria-labelledby="avPhoneTitle"><form id="avPhoneForm"><h2 id="avPhoneTitle">Tu WhatsApp</h2><p id="avPhoneIntro">Te lo pedimos una sola vez. Los choferes podrán contactarte cuando estés libre.</p><label>País<select id="avCountry"><option value="54">Argentina (+54)</option><option value="55">Brasil (+55)</option><option value="595">Paraguay (+595)</option></select></label><label>Número de WhatsApp<input id="avPhoneNumber" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="Ej.: 9 3757 123456" required maxlength="25"></label><p class="av-hint" id="avPhoneHint">Argentina: código de área y número, sin 0 ni 15. El 9 se agrega automáticamente.</p><p id="avPhoneError" role="alert"></p><button type="submit" class="av-primary">Guardar y continuar</button><p class="av-hint">Después, solo el administrador podrá editarlo.</p><button type="button" id="avPhoneLater" class="av-text">Ahora no</button></form></dialog>`;document.body.append(dialogs);
  const $=id=>document.getElementById(id),card=host.querySelector('.av-card'),zones=['Ciudad','Aeropuerto','Brasil','Paraguay'];
  let session=null,generation=0,rows=[],claims={},day='',offset=0,stops=[],dayStop=null,timer=null,flashTimer=null,stage='',desired=null,pending=null,message='',ready=false,teamLive=false,dayLive=false,phoneTarget='',phoneAsked=false,phoneBusy=false;
@@ -27,10 +27,9 @@ export function mountDriverAvailability({call,listenTeam,listenDay}){
   $('avTitle').textContent=me?.status==='free'?'Estás LIBRE':me?.status==='busy'?'Estás OCUPADO':'Elegí tu disponibilidad';
   $('avDetail').textContent=!ready?'Conectando…':!live()?'Reconectando disponibilidad…':me?.zone?'En '+me.zone+(currentNumber(me)?' · POR '+currentNumber(me):''):'Indicá dónde estás';
   const canAct=live()&&!stage;const isFree=me?.status==='free';
-  $('avChange').disabled=!canAct;$('avFree').disabled=!canAct;
+  $('avChange').disabled=!canAct;
   $('avClaim').hidden=!isFree;$('avClaim').disabled=!canAct||!isFree;
-  $('avChange').setAttribute('aria-expanded','false');
-  $('avFree').setAttribute('aria-expanded','false');
+  $('avChange').setAttribute('aria-expanded',String(Boolean(stage)));
   $('avClaim').setAttribute('aria-expanded',String(stage==='numbers'));
   const active=rows.filter(r=>r.active);$('avCounts').innerHTML=`<span><i class="av-dot av-green"></i><b>${active.filter(r=>r.status==='free').length}</b> libres</span><span><i class="av-dot av-red"></i><b>${active.filter(r=>r.status==='busy').length}</b> ocupados</span>`;
   $('avStatus').textContent=message;$('avStatus').hidden=!message;$('avEditor').hidden=!stage;
@@ -60,10 +59,9 @@ export function mountDriverAvailability({call,listenTeam,listenDay}){
   }catch{if(token!==generation)return;message='No se pudo conectar la disponibilidad. Recargá para reintentar.';render();}
  }
  function defaultZone(me){return zones.includes(me?.zone)?me.zone:'Ciudad';}
- function beginStatus(status){if(!live()||stage)return;if(!own()?.phone){openPhone(session.uid);return;}desired={status,zone:defaultZone(own()),number:null};save(null);}
+ function beginToggle(){if(!live()||stage)return;if(!own()?.phone){openPhone(session.uid);return;}const next=own()?.status==='free'?'busy':'free';desired={status:next,zone:defaultZone(own()),number:null};save(null);}
  function beginClaim(){if(!live()||stage)return;const me=own();if(me?.status!=='free')return;if(!me?.phone){openPhone(session.uid);return;}const zone=['Ciudad','Aeropuerto'].includes(me.zone)?me.zone:'Ciudad';desired={status:'free',zone,number:null,claim:true};stage='numbers';message='';render();}
- $('avChange').onclick=()=>beginStatus('busy');
- $('avFree').onclick=()=>beginStatus('free');
+ $('avChange').onclick=()=>beginToggle();
  $('avClaim').onclick=()=>beginClaim();
  const showPeople=()=>{if(!session)return;renderPeople();$('avPeople').showModal();};$('avTeam').onclick=showPeople;document.getElementById('adminAvailabilityBtn')?.addEventListener('click',showPeople);$('avClosePeople').onclick=()=>$('avPeople').close();$('avPhoneLater').onclick=()=>{if(!phoneBusy)$('avPhone').close();};$('avPhone').addEventListener('cancel',e=>{if(phoneBusy)e.preventDefault();});
  $('avCountry').onchange=()=>{$('avPhoneHint').textContent=$('avCountry').value==='54'?'Argentina: código de área y número, sin 0 ni 15. El 9 se agrega automáticamente.':'Ingresá el código de área y número de WhatsApp.';};
