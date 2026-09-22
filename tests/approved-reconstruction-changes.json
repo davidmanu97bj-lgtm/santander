@@ -110,8 +110,12 @@
       "reason": "Menú administrativo solicitado: refresca documentos del equipo ante cambios de movimientos o facturas recibidas."
     },
     "startSplash": {
-      "hash": "a57afade6f6a9049bd4d9ae641954779b705be35f50f3f656e95658d7f14d5ad",
-      "reason": "Solicitud explicita del usuario: no mostrar login al restaurar una sesion existente, manteniendo inicio sin animacion y las validaciones de autenticacion y perfil."
+      "hash": "32da713c180bf09a7e82c6119ce411ecbaec70a9c9a403d12dfd2174fcb6d4ef",
+      "reason": "Solicitud explicita del usuario: pantalla blanca al reabrir rapido en iPhone. startSplash debe mostrar carga minima en vez de ocultar login y app sin UI visible, con watchdog de seguridad."
+    },
+    "finishSplash": {
+      "hash": "dd96e3269fdc2c61f3ce61d2cfb726a6e685ddd43fb766c4ae34a96415019162",
+      "reason": "Acompanamiento del arreglo de pantalla blanca en iPhone: finishSplash limpia el watchdog y restaura atributos hidden del splash minimo."
     }
   },
   "handlers": {
