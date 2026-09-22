@@ -1,4 +1,4 @@
-import { mountDriverAvailability } from "./driver-availability.js?v=20260922-cambiar-libre-adjudicar";
+import { mountDriverAvailability } from "./driver-availability.js?v=20260922-solo-cambiar-adjudicar";
 import { mountAdminWorkspace } from "./admin-workspace.js?v=20260919-admin-1";
 import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20260919-admin-1";
 import { mountPeriodClose } from "./period-ui.js?v=20260919-login-period-1";
