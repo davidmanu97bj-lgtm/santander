@@ -2,8 +2,8 @@
   "context": "Excepciones por ampliación explícita del alcance del usuario: reglas financieras, cierre único y Telegram. El baseline original se conserva. Normalizar CRLF evita diferencias propias de Windows.",
   "functions": {
     "createInvoiceCard": {
-      "hash": "a397901093d91cd8f1aaf211777fa6e7805eab9b348e4628a3a526724a644f64",
-      "reason": "Revisión de facturación: mostrar observaciones de rechazo guardadas, punto de venta y número solicitado sin autorización; no cambia emisión ni importes. Cubierto por invoice-rejection-display.test.mjs."
+      "hash": "457f2fc57bdea4c78b9a6f9343b086dbf6102e1e9f91ca046140e8798325eae2",
+      "reason": "Adaptación fiscal solicitada: presentar tipo B/C guardado en cada comprobante y alcance del régimen general; conserva diagnóstico de rechazos, sin alterar saldos ni activar emisión."
     },
     "initializeTourismSelector": {
       "hash": "a18b9d560e5b607893c23e4b28a1f78df772eca6cb0a37f4c65e25362ff4b9a9",
@@ -120,6 +120,10 @@
     "finishSplash": {
       "hash": "dd96e3269fdc2c61f3ce61d2cfb726a6e685ddd43fb766c4ae34a96415019162",
       "reason": "Acompanamiento del arreglo de pantalla blanca en iPhone: finishSplash limpia el watchdog y restaura atributos hidden del splash minimo."
+    },
+    "refreshArcaBillingStatus": {
+      "hash": "f9de503970542b1dc60674e043aad17daa635bd77300ba24c3d576dd9aa6788a",
+      "reason": "Adaptación fiscal solicitada: presentar tipo B/C guardado en cada comprobante y alcance del régimen general; conserva diagnóstico de rechazos, sin alterar saldos ni activar emisión."
     }
   },
   "handlers": {
@@ -154,8 +158,8 @@
       "reason": "Publicación autorizada: Telegram conserva las reglas anteriores y toma el saldo anclado para cuentas migradas, para coincidir con la billetera y el cierre único."
     },
     "functions/telegram-compact.js": {
-      "hash": "37b338dcc68ed4523034c7c954655681666bc7bafdc68814b7aeaf8fb5d20b15",
-      "reason": "Formatos solicitados: gasto digital, deuda individual 100% y aviso grupal. Direcciones resumidas de salida y destino en los avisos de cobro, sin códigos postales ni datos administrativos repetidos (solicitado el 19/09/2026)."
+      "hash": "0c5c1086db073234e80ce78bc79054b7537fd35acd8fcbc379841f46c3f18e82",
+      "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
     },
     "functions/tests/telegram-trip-delivery.test.js": {
       "hash": "0c6561d07d685184a784a09051167cbb554ac841004c8d2ead426dbd252e3043",
@@ -188,6 +192,26 @@
     "functions/tests/team-realtime-contract.test.js": {
       "hash": "3ea7758041322a5055f8c2beaf84b13170b0d65cda6960e0de5d41d4370ad492",
       "reason": "El usuario pidió rediseñar la administración: cambia el título a Resumen del equipo y conserva las comprobaciones de saldos en tiempo real."
+    },
+    "functions/arca-client.js": {
+      "hash": "d66afb11de165df83d48d47f20e9e1f4ff11f36c89d55a131b8c054ca6ad7b6b",
+      "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
+    },
+    "functions/arca-functions.js": {
+      "hash": "ec414f07ef4a80c7f8324bd92a932a54b23a1f5ff131199ec209b57c99b2dd96",
+      "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
+    },
+    "functions/arca-invoice.js": {
+      "hash": "e16948c7f92e7789f7e2e77ed2d8713840f863e84bf770fde33eddd63b24adbc",
+      "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
+    },
+    "functions/arca-pdf.js": {
+      "hash": "902b4ab744a222941e5357f3a718c0092fe93f121df130f1a44352d4e3d9c3f6",
+      "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
+    },
+    "functions/arca-worker.js": {
+      "hash": "364b0c776ee87c6d11caf762ed00b5961e4f683c8f35f41b7bc8e190a09177d0",
+      "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
     }
   }
 }

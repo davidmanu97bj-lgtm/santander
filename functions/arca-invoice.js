@@ -1,5 +1,6 @@
 "use strict";
 const {createHash} = require('node:crypto');
+const {configuredInvoiceType,generalPolicyReady,internationalBEnabled}=require('./arca-policy');
 function validCuit(value) {
   const s=String(value||'').replace(/\D/g,'');
   if(!/^\d{11}$/.test(s))return false;
@@ -17,13 +18,22 @@ function buildInvoice(payment,config,now=new Date()) {
   const req=payment.invoiceRequest;
   if(req?.version!=='arca_c_v1' || !['cash','digital'].includes(payment.method) || !['billing','payment'].includes(payment.type)) return null;
   const issues=[];
-  if(config.regime!=='monotributo')issues.push('regime_requires_review');
+  const invoiceType=configuredInvoiceType(config),general=config.regime==='general';
+  if(config.regime!=='monotributo'&&!generalPolicyReady(config))issues.push('regime_requires_review');
+  if(general) {
+    const validScope=req.scope==='national'||(req.scope==='international'&&internationalBEnabled(config,now));
+    if(!validScope||!Number.isFinite(Number(req.distanceKm))||Number(req.distanceKm)<=0||(req.scope==='national'&&Number(req.distanceKm)>100))issues.push('service_tax_treatment_requires_review');
+    if(!config.approvedDriverUids?.includes(payment.driverUid))issues.push('driver_not_authorized_for_invoicing');
+    const cutoff=Date.parse(config.activeFrom||'');
+    if(!Number.isFinite(cutoff)||String(req.serviceDate||'')<localDate(new Date(cutoff)))issues.push('service_before_regime_activation');
+  }
   if(!['national','international'].includes(req.scope))issues.push('invalid_service_scope');
   if(req.scope==='international') {
-    if(!internationalCEnabled(config,now))issues.push('international_requires_review');
+    if(!(general?internationalBEnabled(config,now):internationalCEnabled(config,now)))issues.push('international_requires_review');
     else {
       const created=payment.createdAt?.toMillis?.();
       if(!Number.isFinite(created)||created<Date.parse(config.internationalActiveFrom))issues.push('international_before_activation');
+      if(general&&String(req.serviceDate||'')<localDate(new Date(config.internationalActiveFrom)))issues.push('international_before_activation');
     }
   }
   if(payment.deleted||payment.isDeleted||payment.eliminado||payment.status!=='completed')issues.push('payment_not_completed');
@@ -45,23 +55,30 @@ function buildInvoice(payment,config,now=new Date()) {
     if(docType===96&&!/^\d{7,8}$/.test(docNumber))issues.push('invalid_customer_dni');
   }
   if(!vat || ([1,4,6].includes(vat)&&docType!==80))issues.push('customer_vat_requires_review');
+  // A (and its authorization variants) needs a separate, verified issuer setup.
+  if(general&&![4,5].includes(vat))issues.push('invoice_a_requires_review');
   // ARCA consumer-final identification threshold, verified 2026-09-12; config can lower it.
   const limit=Math.min(Number(config.consumerIdentificationLimit)||10000000,10000000);
   if(amount>=limit&&docType===99)issues.push('customer_identification_required');
   const invoiceDate=today.replaceAll('-',''), service=serviceDate.replaceAll('-','');
   const detail={Concepto:2,DocTipo:docType||99,DocNro:docNumber,CbteDesde:0,CbteHasta:0,CbteFch:invoiceDate,ImpTotal:cents/100,ImpTotConc:0,ImpNeto:cents/100,ImpOpEx:0,ImpTrib:0,ImpIVA:0,FchServDesde:service,FchServHasta:service,FchVtoPago:invoiceDate,MonId:'PES',MonCotiz:1,CondicionIVAReceptorId:vat||5};
+  if(general) {detail.ImpNeto=0;detail.ImpOpEx=cents/100;}
   const snapshot={issuer,detail,scope:String(req.scope||''),customer:{name:customer.requested?String(customer.name||'').slice(0,160):'A CONSUMIDOR FINAL'},description:`Traslado de pasajeros con chofer. ${String(req.origin).slice(0,160)} → ${String(req.destination).slice(0,160)}. ${Number(req.distanceKm)} km. Servicio: ${serviceDate}.`,paymentMethod:payment.method,environment:config.environment||'disabled'};
+  snapshot.invoiceType=invoiceType;snapshot.issuerRegime=config.regime||'unknown';
+  snapshot.taxPolicy=general?config.taxPolicy||'unverified':'monotributo';
+  if(general&&req.scope==='international')snapshot.internationalTaxPolicy=config.internationalTaxPolicy||'unverified';
   return {...snapshot,issues,sourceHash:createHash('sha256').update(JSON.stringify({amount,paymentMethod:payment.method,req})).digest('hex')};
 }
-function matchesAuthorized(record,detail,point) {
-  return record?.Resultado==='A' && record.EmisionTipo==='CAE' && Number(record.PtoVta)===Number(point) && Number(record.CbteTipo)===11 &&
+function matchesAuthorized(record,detail,point,type=11) {
+  return record?.Resultado==='A' && record.EmisionTipo==='CAE' && Number(record.PtoVta)===Number(point) && Number(record.CbteTipo)===type &&
+    (type!==6||Number(record.CondicionIVAReceptorId)===Number(detail.CondicionIVAReceptorId)) &&
     ['Concepto','DocTipo','DocNro','CbteDesde','CbteHasta','ImpTotal','ImpNeto','ImpTotConc','ImpOpEx','ImpTrib','ImpIVA','MonCotiz'].every(k=>record[k]!==undefined&&Number(record[k])===Number(detail[k])) &&
     ['CbteFch','FchServDesde','FchServHasta','FchVtoPago','MonId'].every(k=>String(record[k])===String(detail[k])) &&
     /^\d{14}$/.test(String(record.CodAutorizacion)) && /^\d{8}$/.test(String(record.FchVto));
 }
-function authorizationFromResponse(response,detail,point) {
+function authorizationFromResponse(response,detail,point,type=11) {
   const h=response.header,d=response.detail;
-  if(Number(h?.PtoVta)!==Number(point)||Number(h?.CbteTipo)!==11||Number(h?.CantReg)!==1||Number(d?.CbteDesde)!==detail.CbteDesde||Number(d?.CbteHasta)!==detail.CbteHasta)throw new Error('ARCA_RESPONSE_MISMATCH');
+  if(Number(h?.PtoVta)!==Number(point)||Number(h?.CbteTipo)!==type||Number(h?.CantReg)!==1||Number(d?.CbteDesde)!==detail.CbteDesde||Number(d?.CbteHasta)!==detail.CbteHasta)throw new Error('ARCA_RESPONSE_MISMATCH');
   if(h.Resultado==='R'&&d.Resultado==='R'&&!d.CAE)return {status:'rejected',messages:d.Observaciones||response.errors||[]};
   if(h.Resultado!=='A'||d.Resultado!=='A'||!/^\d{14}$/.test(String(d.CAE))||!/^\d{8}$/.test(String(d.CAEFchVto)))throw new Error('ARCA_UNCERTAIN');
   return {status:'authorized',cae:String(d.CAE),caeExpires:String(d.CAEFchVto)};

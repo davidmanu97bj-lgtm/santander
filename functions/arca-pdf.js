@@ -1,25 +1,28 @@
 "use strict";
 const PDFDocument=require('pdfkit');
 const QRCode=require('qrcode');
+const {invoiceTypeOf}=require('./arca-policy');
 const date = s => `${s.slice(6,8)}/${s.slice(4,6)}/${s.slice(0,4)}`;
 function qrUrl(invoice) {
   const d=invoice.detail;
-  const data={ver:1,fecha:`${d.CbteFch.slice(0,4)}-${d.CbteFch.slice(4,6)}-${d.CbteFch.slice(6,8)}`,cuit:Number(invoice.issuer.cuit),ptoVta:invoice.issuer.pointOfSale,tipoCmp:11,nroCmp:invoice.number,importe:d.ImpTotal,moneda:d.MonId,ctz:d.MonCotiz,tipoDocRec:d.DocTipo,nroDocRec:Number(d.DocNro),tipoCodAut:'E',codAut:Number(invoice.cae)};
+  const data={ver:1,fecha:`${d.CbteFch.slice(0,4)}-${d.CbteFch.slice(4,6)}-${d.CbteFch.slice(6,8)}`,cuit:Number(invoice.issuer.cuit),ptoVta:invoice.issuer.pointOfSale,tipoCmp:invoiceTypeOf(invoice),nroCmp:invoice.number,importe:d.ImpTotal,moneda:d.MonId,ctz:d.MonCotiz,tipoDocRec:d.DocTipo,nroDocRec:Number(d.DocNro),tipoCodAut:'E',codAut:Number(invoice.cae)};
   return 'https://www.arca.gob.ar/fe/qr/?p='+encodeURIComponent(Buffer.from(JSON.stringify(data)).toString('base64'));
 }
 async function invoicePdf(invoice) {
   if(invoice.status!=='authorized'||!/^\d{14}$/.test(invoice.cae)||!invoice.number)throw new Error('INVOICE_NOT_AUTHORIZED');
-  const doc=new PDFDocument({size:'A4',margin:45,info:{Title:'Factura C - Explora'}}),buffers=[];
+  const type=invoiceTypeOf(invoice),letter={6:'B',11:'C'}[type];
+  if(!letter||(type===6&&invoice.issuerRegime!=='general'))throw new Error('INVOICE_FISCAL_SNAPSHOT_INVALID');
+  const doc=new PDFDocument({size:'A4',margin:45,info:{Title:`Factura ${letter} - Explora`}}),buffers=[];
   const done=new Promise((resolve,reject)=>{doc.on('data',b=>buffers.push(b));doc.on('end',()=>resolve(Buffer.concat(buffers)));doc.on('error',reject);});
   const i=invoice.issuer,d=invoice.detail;
   const test=invoice.environment!=='production';
   const qr=test?null:await QRCode.toBuffer(qrUrl(invoice),{width:140,margin:1});
   doc.fillColor('#10144a').font('Helvetica-Bold').fontSize(23).text('EXPLORA');
-  doc.fontSize(18).text('FACTURA C',360,45,{width:190,align:'right'});
-  doc.font('Helvetica').fontSize(10).text('Código 011 · ORIGINAL',360,71,{width:190,align:'right'});
+  doc.fontSize(18).text(`FACTURA ${letter}`,360,45,{width:190,align:'right'});
+  doc.font('Helvetica').fontSize(10).text(`Código ${String(type).padStart(3,'0')} · ORIGINAL`,360,71,{width:190,align:'right'});
   doc.text(`${String(i.pointOfSale).padStart(5,'0')}-${String(invoice.number).padStart(8,'0')}`,360,88,{width:190,align:'right'});
   doc.text(`Fecha de emisión: ${date(d.CbteFch)}`,360,105,{width:190,align:'right'});
-  doc.fontSize(11).text(i.legalName,45,87,{width:290}).text(`CUIT: ${i.cuit}`).text('Responsable Monotributo');
+  doc.fontSize(11).text(i.legalName,45,87,{width:290}).text(`CUIT: ${i.cuit}`).text(type===6?'IVA Responsable Inscripto':'Responsable Monotributo');
   doc.text(i.address,{width:300}).text(`Ingresos Brutos: ${i.grossIncomeId}`,{width:300}).text(`Inicio de actividades: ${i.activityStart}`);
   doc.moveTo(45,215).lineTo(550,215).strokeColor('#d8dfed').stroke();
   doc.font('Helvetica-Bold').text('RECEPTOR',45,235);
@@ -33,6 +36,7 @@ async function invoicePdf(invoice) {
   doc.moveDown(2).font('Helvetica-Bold').text('DETALLE DEL SERVICIO');
   doc.font('Helvetica').text(invoice.description.replace('→','a'),{width:500});
   doc.moveDown().text('Cantidad: 1');
+  if(type===6)doc.text(`Importe exento ARS ${d.ImpOpEx.toLocaleString('es-AR',{minimumFractionDigits:2})}`);
   doc.font('Helvetica-Bold').fontSize(18).text(`TOTAL ARS ${d.ImpTotal.toLocaleString('es-AR',{minimumFractionDigits:2})}`,45,520,{align:'right',width:505});
   if(test)doc.fillColor('#a32020').fontSize(14).text('HOMOLOGACIÓN · SIN VALIDEZ FISCAL',45,580,{align:'center',width:505});
   if(qr)doc.image(qr,45,645,{width:105});
