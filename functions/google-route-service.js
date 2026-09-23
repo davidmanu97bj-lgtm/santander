@@ -2,11 +2,39 @@
 const {RouteError,validateRouteRequest}=require('./route-service');
 const {summarizeGooglePlace}=require('./address-summary');
 const CENTER={latitude:-25.5972,longitude:-54.5736};
-function withinArea(point){
-  if(!Array.isArray(point)||point.length!==2||!point.every(Number.isFinite)||Math.abs(point[0])>180||Math.abs(point[1])>90)return false;
+function haversineKm(point){
+  if(!Array.isArray(point)||point.length!==2||!point.every(Number.isFinite)||Math.abs(point[0])>180||Math.abs(point[1])>90)return Infinity;
   const rad=n=>n*Math.PI/180;
   const a=Math.sin(rad(point[1]-CENTER.latitude)/2)**2+Math.cos(rad(CENTER.latitude))*Math.cos(rad(point[1]))*Math.sin(rad(point[0]-CENTER.longitude)/2)**2;
-  return 6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(Math.max(0,1-a)))<=100;
+  return 6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(Math.max(0,1-a)));
+}
+function withinArea(point){return haversineKm(point)<=100;}
+function normalizeRegionText(value){
+  return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+}
+// Region buckets for Salida/Llegada: majority of trips start in Puerto Iguazú.
+// 0 = AR Iguazú, 1 = BR Foz, 2 = Paraguay, 3 = other (Wanda, Libertad, etc.).
+function tourismRegionBucket({country,label,locality,distanceKm}){
+  const text=normalizeRegionText([label,locality].filter(Boolean).join(' '));
+  const code=String(country||'').toUpperCase();
+  const nearIguazu=Number.isFinite(distanceKm)&&distanceKm<=18;
+  if((code==='AR'||code==='ARG')&&(/\biguaz|\bpuerto iguaz/.test(text)||nearIguazu))return 0;
+  if(code==='BR'||code==='BRA'||/\bfoz\b|\biguacu\b/.test(text))return 1;
+  if(code==='PY'||code==='PRY'||/\bparaguay|\bciudad del este|\bhernandarias/.test(text))return 2;
+  return 3;
+}
+function softDistanceScore(distanceKm){
+  if(!Number.isFinite(distanceKm))return 1e6;
+  // Soft demotion past ~45 km so distant AR/BR/PY do not float above nearby matches.
+  return distanceKm+(distanceKm>45?distanceKm-45:0)+(distanceKm>70?(distanceKm-70)*2:0);
+}
+function rankTourismPlaces(places){
+  return [...places].map((place,index)=>{
+    const distanceKm=Number.isFinite(place.distanceKm)?place.distanceKm:haversineKm(place.coordinates);
+    const region=tourismRegionBucket({...place,distanceKm});
+    return {place:{...place,distanceKm:Math.round(distanceKm*10)/10},region,distanceScore:softDistanceScore(distanceKm),index};
+  }).sort((a,b)=>a.region-b.region||a.distanceScore-b.distanceScore||a.index-b.index)
+    .map(item=>item.place);
 }
 async function queryGoogleRoute(data,key,fetcher=fetch){
   const request=validateRouteRequest(data),search=request.action==='search';
@@ -23,14 +51,16 @@ async function queryGoogleRoute(data,key,fetcher=fetch){
     const places=(Array.isArray(result.places)?result.places:[]).flatMap(place=>{
       const point=[place.location?.longitude,place.location?.latitude];
       const country=place.addressComponents?.find(c=>c.types?.includes('country'))?.shortText;
+      const locality=place.addressComponents?.find(c=>c.types?.includes('locality')||c.types?.includes('postal_town')||c.types?.includes('administrative_area_level_2'))?.longText||'';
       if(!withinArea(point)||!['AR','BR','PY'].includes(country)||!place.id)return [];
       const label=summarizeGooglePlace(place).slice(0,300);
-      return label?[{id:place.id,label,coordinates:point,country,source:'google',attributions:place.attributions||[]}]:[];
-    }).slice(0,8);
-    return {places,source:'google'};
+      const distanceKm=haversineKm(point);
+      return label?[{id:place.id,label,coordinates:point,country,locality,distanceKm,source:'google',attributions:place.attributions||[]}]:[];
+    });
+    return {places:rankTourismPlaces(places).slice(0,8),source:'google'};
   }
   const meters=result.routes?.[0]?.distanceMeters;
   if(!Number.isFinite(meters)||meters<=0||meters>20000000)throw new RouteError('not-found','No encontramos un recorrido entre esos lugares.');
   return {distanceKm:Math.max(.1,Math.round(meters/100)/10),source:'google',calculatedAt:new Date().toISOString()};
 }
-module.exports={queryGoogleRoute,withinArea};
+module.exports={queryGoogleRoute,withinArea,haversineKm,tourismRegionBucket,softDistanceScore,rankTourismPlaces};

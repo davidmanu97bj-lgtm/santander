@@ -51,3 +51,16 @@ test('sugerencias priorizan habituales y aprenden sin ignorar país ni coinciden
  assert.ok(searchTourismPlaces('brasil',{'place-2':100},true).every(p=>p.country==='BRA'));
  assert.equal(searchTourismPlaces('picafloerz',{'place-2':100},true)[0].name,'Jardín de los Picaflores');
 });
+
+test('búsqueda prioriza Iguazú, luego Foz, luego Paraguay, con sesgo cercano',()=>{
+ const hotels=searchTourismPlaces('hotel');
+ assert.ok(hotels.length>=3);
+ const cities=hotels.map(p=>p.city);
+ const firstFoz=cities.findIndex(c=>c==='Foz do Iguaçu');
+ const lastIguazu=[...cities].map((c,i)=>c==='Iguazú'?i:-1).filter(i=>i>=0).at(-1);
+ if(firstFoz>=0&&lastIguazu!=null)assert.ok(lastIguazu<firstFoz,'Iguazú debe aparecer antes que Foz');
+ const airports=searchTourismPlaces('aeropuerto');
+ assert.equal(airports[0].city,'Iguazú');
+ assert.ok(airports.some(p=>p.city==='Foz do Iguaçu'));
+ assert.ok(airports.findIndex(p=>p.city==='Iguazú')<airports.findIndex(p=>p.city==='Foz do Iguaçu'));
+});

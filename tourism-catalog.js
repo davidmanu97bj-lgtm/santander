@@ -2662,6 +2662,31 @@ function tourismEditDistance(a,b) {
 }
 export const tourismCountryNames = { ARG: "Argentina", BRA: "Brasil", PRY: "Paraguay" };
 const tourismCountryAliases = { ARG: ["argentina", "argentino", "arg"], BRA: ["brasil", "brazil", "brasileiro", "brasileno"], PRY: ["paraguay", "paraguai", "paraguayo"] };
+const TOURISM_CENTER = { latitude: -25.5972, longitude: -54.5736 };
+function tourismHaversineKm(coordinates) {
+  if (!Array.isArray(coordinates) || coordinates.length !== 2 || !coordinates.every(Number.isFinite)) return 1e6;
+  const rad = n => n * Math.PI / 180;
+  const [lon, lat] = coordinates;
+  const a = Math.sin(rad(lat - TOURISM_CENTER.latitude) / 2) ** 2
+    + Math.cos(rad(TOURISM_CENTER.latitude)) * Math.cos(rad(lat)) * Math.sin(rad(lon - TOURISM_CENTER.longitude) / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+}
+// Salida/Llegada bias: Iguazú (AR) > Foz (BR) > Paraguay > other, then nearby.
+export function tourismRegionBucket(place) {
+  const country = String(place?.country || "").toUpperCase();
+  const city = normalizeTourism(place?.city || "");
+  const name = normalizeTourism(place?.name || place?.label || "");
+  const text = `${city} ${name}`;
+  const distanceKm = Number.isFinite(place?.distanceKm) ? place.distanceKm : tourismHaversineKm(place?.coordinates);
+  if ((country === "ARG" || country === "AR") && (city.includes("iguaz") || text.includes("puerto iguaz") || distanceKm <= 18)) return 0;
+  if (country === "BRA" || country === "BR" || city.includes("foz") || text.includes("iguacu")) return 1;
+  if (country === "PRY" || country === "PY") return 2;
+  return 3;
+}
+function tourismSoftDistance(distanceKm) {
+  if (!Number.isFinite(distanceKm)) return 1e6;
+  return distanceKm + (distanceKm > 45 ? distanceKm - 45 : 0) + (distanceKm > 70 ? (distanceKm - 70) * 2 : 0);
+}
 // Initial suggestions; local selections progressively personalize their order.
 function tourismPriority(place) {
   if(place.id === 'cataratas-argentina') return 100;
@@ -2689,6 +2714,7 @@ export function searchTourismPlaces(query, usage = {}, suggest = false) {
       const costs=words.map(word=>word===token?0:word.startsWith(token)?.2:token.length>=3&&tourismEditDistance(token,word)<=(token.length>=6?2:1)?1:Infinity);
       const cost=Math.min(...costs);if(!Number.isFinite(cost))return null;score+=cost;
     }
-    return {place,score};
-  }).filter(Boolean).sort((a,b)=>a.score-b.score||(Number(usage[b.place.id])||0)-(Number(usage[a.place.id])||0)||tourismPriority(b.place)-tourismPriority(a.place)||a.place.name.localeCompare(b.place.name,"es")).slice(0,7).map(item=>item.place);
+    const distanceKm = tourismHaversineKm(place.coordinates);
+    return {place,score,region:tourismRegionBucket({...place,distanceKm}),distanceScore:tourismSoftDistance(distanceKm)};
+  }).filter(Boolean).sort((a,b)=>a.score-b.score||(Number(usage[b.place.id])||0)-(Number(usage[a.place.id])||0)||a.region-b.region||tourismPriority(b.place)-tourismPriority(a.place)||a.distanceScore-b.distanceScore||a.place.name.localeCompare(b.place.name,"es")).slice(0,7).map(item=>item.place);
 }
