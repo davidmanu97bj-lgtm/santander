@@ -14,6 +14,7 @@ import { mountMonthlyManagement } from "./monthly-management.js?v=20260919-login
 import { exploraIcon, activityKind, activityRowContent, recentActivitiesMarkup } from "./explora-ui.js?v=20260919-login-period-1";
 import { app, auth, authReady } from "./auth-session.js?v=20260914-web-only-1";
 import { movementColor } from "./movement-colors.js?v=20260914-web-only-1";
+import { searchTourismPlaces, tourismRoute } from "./tourism-catalog.js?v=20260922-maps-faster-iguazu";
 import { mountTripCalendar } from "./trip-calendar.js?v=20260913-calendario-detalles";
 import { monthRange, normalizeTripDraft, canManageTrip } from "./calendar-core.js?v=20260913-calendario-detalles";
 import * as firebaseSettings from "./firebase-config.js?v=20260824-15";
@@ -6631,10 +6632,31 @@ function selectTourismRoute() {
   chargeRouteState.points={Origin:origin,Destination:destination};
   $("chargeOrigin").value=origin.label;
   $("chargeDestination").value=destination.label;
+  // Catálogo local: km precalculados al instante; Google solo si hace falta.
+  if(origin.source==="catalog"&&destination.source==="catalog"){
+    const local=tourismRoute(origin.id,destination.id);
+    if(local&&Number.isFinite(local.distance)&&local.distance>0){
+      $("chargeDistance").value=String(local.distance);
+      chargeRouteState.automatic=true;
+      $("chargeTripScope").value=[origin.country,destination.country].some(country=>["BRA","BR","PRY","PY"].includes(country))?"international":"national";
+      $("chargeRouteStatus").textContent=local.distance>100?"El recorrido del catálogo supera los 100 km. Revisá el servicio.":"Kilómetros del catálogo local. Revisá que correspondan al servicio; podés corregirlos.";
+      return;
+    }
+  }
   calculateChargeRoute();
 }
 
 const googleTourismPlaces = new Map();
+const googlePlaceSearchCache = new Map();
+const TOURISM_GOOGLE_DEBOUNCE_MS = 150;
+function tourismPlaceLabel(place) {
+  if (!place) return "";
+  if (place.name) return place.city ? `${place.name} · ${place.city}` : String(place.name);
+  return String(place.label || "");
+}
+function normalizePlaceKey(value) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
 function initializeTourismSelector(part) {
   const input=$("tourism"+part+"Search"), matches=$("tourism"+part+"Matches");
   const selected=$("tourism"+part), clear=$("tourism"+part+"Clear");
@@ -6643,23 +6665,69 @@ function initializeTourismSelector(part) {
     matches.replaceChildren();
     input.setAttribute("aria-expanded","false");
   };
-  const searchGoogle=()=>{
+  const renderOption=(place,source)=>{
+    const option=document.createElement('button');option.type='button';option.className='route-result';option.setAttribute('role','option');
+    option.textContent=tourismPlaceLabel(place)+(source==="catalog"?" · catálogo":"");
+    option.onclick=()=>{
+      const id=source==="catalog"?place.id:('google:'+place.id);
+      const stored=source==="catalog"
+        ?{id:place.id,label:tourismPlaceLabel(place),coordinates:place.coordinates,country:place.country,source:"catalog"}
+        :{...place,source:"google"};
+      googleTourismPlaces.set(id,stored);selected.value=id;input.value=stored.label;clear.hidden=false;closeMatches();selectTourismRoute();
+      if(part==='Destination')$("saveChargeBtn")?.scrollIntoView?.({behavior:'smooth',block:'center'});
+    };
+    return option;
+  };
+  const paintMatches=(catalogPlaces,googlePlaces,statusText)=>{
+    matches.replaceChildren();
+    const seen=new Set();
+    for(const place of catalogPlaces||[]){
+      const key=normalizePlaceKey(place.name||place.label);
+      if(key)seen.add(key);
+      matches.append(renderOption(place,"catalog"));
+    }
+    for(const place of googlePlaces||[]){
+      const key=normalizePlaceKey(place.label);
+      if(key&&seen.has(key))continue;
+      if(key)seen.add(key);
+      matches.append(renderOption(place,"google"));
+    }
+    if(!matches.children.length){
+      matches.textContent=statusText||'No encontramos ese lugar dentro de los 100 km de Puerto Iguazú.';
+    }
+    input.setAttribute('aria-expanded','true');
+  };
+  const searchPlaces=()=>{
     clearTimeout(searchTimer);const query=input.value.trim();
-    if(selected.value||query.length<3){closeMatches();return;}
+    if(selected.value){closeMatches();return;}
+    if(query.length<2){closeMatches();return;}
+    const catalog=searchTourismPlaces(query);
+    if(catalog.length)paintMatches(catalog,[],null);
+    else if(query.length<3){matches.textContent="Seguí escribiendo para buscar en Google Maps…";input.setAttribute("aria-expanded","true");}
+    else {matches.textContent="Buscando en Google Maps…";input.setAttribute("aria-expanded","true");}
+    if(query.length<3)return;
+    const cacheKey=normalizePlaceKey(query);
+    if(googlePlaceSearchCache.has(cacheKey)){
+      paintMatches(catalog,googlePlaceSearchCache.get(cacheKey),null);
+      return;
+    }
     searchTimer=setTimeout(async()=>{
-      const token=++request;matches.textContent="Buscando en Google Maps…";input.setAttribute("aria-expanded","true");
+      const token=++request;
+      if(!catalog.length){matches.textContent="Buscando en Google Maps…";input.setAttribute("aria-expanded","true");}
       try{
         const {data}=await exploraRouteCallable({action:'search',query});
         if(token!==request||input.value.trim()!==query||selected.value)return;
-        matches.replaceChildren();
-        for(const place of data.places||[]){
-          const option=document.createElement('button');option.type='button';option.className='route-result';option.setAttribute('role','option');option.textContent=place.label;
-          option.onclick=()=>{const id='google:'+place.id;googleTourismPlaces.set(id,place);selected.value=id;input.value=place.label;clear.hidden=false;closeMatches();selectTourismRoute();if(part==='Destination')$("saveChargeBtn")?.scrollIntoView?.({behavior:'smooth',block:'center'});};matches.append(option);
+        const places=data.places||[];
+        googlePlaceSearchCache.set(cacheKey,places);
+        if(googlePlaceSearchCache.size>40)googlePlaceSearchCache.delete(googlePlaceSearchCache.keys().next().value);
+        paintMatches(searchTourismPlaces(query),places,places.length?null:'No encontramos ese lugar dentro de los 100 km de Puerto Iguazú.');
+      }catch(error){
+        if(token===request&&input.value.trim()===query){
+          if(catalog.length)paintMatches(catalog,[],null);
+          else{matches.textContent=routeFailureMessage(error);input.setAttribute('aria-expanded','true');}
         }
-        if(!data.places?.length)matches.textContent='No encontramos ese lugar dentro de los 100 km de Puerto Iguazú.';
-        input.setAttribute('aria-expanded','true');
-      }catch(error){if(token===request&&input.value.trim()===query){matches.textContent=routeFailureMessage(error);input.setAttribute('aria-expanded','true');}}
-    },280);
+      }
+    },TOURISM_GOOGLE_DEBOUNCE_MS);
   };
   const clearSelection=()=>{
     input.value="";
@@ -6671,7 +6739,7 @@ function initializeTourismSelector(part) {
   clear.addEventListener("click",()=>{
     clearSelection();
     input.focus();
-    searchGoogle();
+    searchPlaces();
   });
   input.addEventListener("beforeinput",()=>{
     // Conserva la nueva tecla, pegado o composición: solo borra la selección previa.
@@ -6681,9 +6749,9 @@ function initializeTourismSelector(part) {
     selected.value="";
     clear.hidden=!input.value;
     selectTourismRoute();
-    searchGoogle();
+    searchPlaces();
   });
-  input.addEventListener("focus",searchGoogle);
+  input.addEventListener("focus",searchPlaces);
   const field=input.closest(".tourism-location-field");
   const closeWhenOutside=event=>{if(!field.contains(event.target))closeMatches();};
   // Un desenfoque táctil puede llegar antes del click y sin relatedTarget.
