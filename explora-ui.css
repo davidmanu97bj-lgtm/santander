@@ -243,3 +243,79 @@ body:has(.period-receipt-overlay:not(.hidden)) { overflow:hidden; }
 .period-loading-symbol svg { width:29px; height:29px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
 @keyframes period-loading-turn { to { transform:rotate(360deg); } }
 @media(prefers-reduced-motion:reduce) { .period-loading-symbol { animation:none; } }
+
+/* Recorrido limpio (cobro step): menos títulos anidados, chrome liviano, campos calmos.
+   Reversible: borrar este bloque + restaurar h3/h4 en index.html. */
+#chargeModal .charge-trip--clean {
+  padding: 16px 14px 12px;
+  border: 1px solid #e8eef6;
+  border-radius: 16px;
+  box-shadow: none;
+  background: #fff;
+}
+#chargeModal .charge-trip--clean .charge-route-fields { gap: 20px; }
+#chargeModal .charge-trip--clean .route-required-field > label {
+  color: #10164c;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -.2px;
+  margin: 0 0 8px;
+}
+#chargeModal .charge-trip--clean .route-required-field .tourism-search-control {
+  border: 1px solid #d5deeb;
+  border-radius: 12px;
+  background: #f9fbff;
+}
+#chargeModal .charge-trip--clean .route-required-field input[role="combobox"] {
+  background: #f9fbff;
+  border-color: #d5deeb;
+  color: #10164c;
+}
+#chargeModal .charge-trip--clean .route-required-field input[role="combobox"]:focus {
+  border-color: #7a8aa8;
+  box-shadow: 0 0 0 3px #7a8aa814;
+}
+#chargeModal .charge-trip--clean .route-required-field.route-selected > label { color: #0d7a4c; }
+#chargeModal .charge-trip--clean .route-required-field.route-selected .tourism-search-control,
+#chargeModal .charge-trip--clean .route-required-field.route-selected input[role="combobox"] {
+  background: #f3faf6;
+  border-color: #b7dfc9;
+  color: #166344;
+}
+#chargeModal .charge-trip--clean .route-required-field.route-selected input[role="combobox"]:focus {
+  border-color: #16805a;
+  box-shadow: 0 0 0 3px #16805a14;
+}
+#chargeModal .charge-trip--clean > .charge-two-columns {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid #eef2f8;
+  gap: 10px;
+}
+#chargeModal .charge-trip--clean > .charge-two-columns label {
+  font-size: 11px;
+  color: #8a97b0;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .35px;
+}
+#chargeModal .charge-trip--clean > .charge-two-columns input,
+#chargeModal .charge-trip--clean > .charge-two-columns select {
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  color: #64779f;
+  font-size: 14px;
+  font-weight: 600;
+}
+#chargeModal .charge-trip--clean > #chargeRouteStatus.file-note:empty { display: none; }
+#chargeModal .charge-trip--clean > #chargeRouteStatus.file-note {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #8a97b0;
+}
+#chargeModal .charge-trip--clean .charge-extra summary {
+  padding: 10px 0 2px;
+  font-size: 13px;
+  color: #64779f;
+}

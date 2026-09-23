@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Explora · Recorrido limpio · Vista previa</title>
+<link rel="stylesheet" href="./styles.css">
+<link rel="stylesheet" href="./explora-ui.css">
+<style>
+/* Layout de la página de preview — el cobro reutiliza clases reales */
+body:has(:is(#chargeModalBefore,#chargeModalAfter).preview-static){overflow:auto!important;margin:0;background:#eef1f7;color:#10164c;font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+
+.preview-banner{text-align:center;background:#111b47;color:#fff;font-size:11px;font-weight:700;letter-spacing:1.2px;padding:9px 12px}
+.preview-banner span{opacity:.75;font-weight:500;letter-spacing:.4px}
+.preview-page{max-width:980px;margin:auto;padding:16px 14px 64px}
+.preview-note{font-size:13px;color:#4a5568;margin:0 0 18px;background:#fff;border:1px solid #e4e7f0;border-left:3px solid #009b61;border-radius:10px;padding:12px 14px}
+.preview-note b{color:#111b47}
+.preview-note ul{margin:8px 0 0;padding-left:18px}
+.preview-note li{margin:4px 0}
+.preview-screens{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:860px){.preview-screens{grid-template-columns:1fr}}
+.preview-col-label{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:#4a5568;margin:0 0 8px;text-transform:uppercase;letter-spacing:.6px}
+.preview-badge{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 8px;border-radius:999px;text-transform:uppercase}
+.preview-badge.before{background:#fde8ec;color:#b9233d}
+.preview-badge.after{background:#e3f7ef;color:#0d7a4c}
+
+:is(#chargeModalBefore,#chargeModalAfter).preview-static{
+  position:static!important;inset:auto!important;z-index:auto!important;
+  display:block!important;place-items:unset!important;
+  width:100%;max-width:420px;margin:0;
+  padding:12px 14px 18px!important;
+  background:#f5faff!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  overflow:visible!important;border-radius:16px;border:1px solid #e3eaf4;
+  box-shadow:0 8px 24px #10153f14;
+  --charge-accent:#009b61;--charge-tint:#e3f7ef;--charge-ink:#10164c;--charge-muted:#64779f;
+}
+:is(#chargeModalBefore,#chargeModalAfter).preview-static .charge-screen-card{
+  min-height:0!important;height:auto!important;max-height:none!important;
+  padding:0!important;width:100%;margin:0;box-shadow:none;background:transparent;border:0;
+}
+:is(#chargeModalBefore,#chargeModalAfter).preview-static .charge-brand{display:none}
+:is(#chargeModalBefore,#chargeModalAfter).preview-static .charge-step.hidden{display:block!important}
+:is(#chargeModalBefore,#chargeModalAfter).preview-static .tourism-matches{display:none}
+:is(#chargeModalBefore,#chargeModalAfter).preview-static .modal-actions{pointer-events:none}
+:is(#chargeModalBefore,#chargeModalAfter).preview-static input{pointer-events:none}
+
+/* AFTER: forzar el look limpio aunque el CSS de app aún no se haya mergeado */
+#chargeModalAfter.preview-clean.preview-static .charge-step-track{opacity:.35;margin-bottom:2px}
+#chargeModalAfter.preview-clean.preview-static .charge-trip > h3,
+#chargeModalAfter.preview-clean.preview-static .charge-trip > h4{display:none}
+#chargeModalAfter.preview-clean.preview-static .charge-trip{
+  padding:18px 16px 14px;border:1px solid #e8eef6;box-shadow:none;border-radius:16px;background:#fff;
+}
+#chargeModalAfter.preview-clean.preview-static .charge-route-fields{gap:22px}
+#chargeModalAfter.preview-clean.preview-static .route-required-field > label{
+  color:#10164c;font-size:14px;font-weight:700;letter-spacing:-.2px;margin-bottom:8px;
+}
+#chargeModalAfter.preview-clean.preview-static .route-required-field .tourism-search-control{
+  border:1px solid #d5deeb;border-radius:12px;background:#f9fbff;
+}
+#chargeModalAfter.preview-clean.preview-static .route-required-field input[role="combobox"]{
+  background:#f9fbff;border-color:#d5deeb;color:#10164c;
+}
+#chargeModalAfter.preview-clean.preview-static .route-required-field.route-selected > label{color:#0d7a4c}
+#chargeModalAfter.preview-clean.preview-static .route-required-field.route-selected .tourism-search-control,
+#chargeModalAfter.preview-clean.preview-static .route-required-field.route-selected input[role="combobox"]{
+  background:#f3faf6;border-color:#b7dfc9;color:#166344;
+}
+#chargeModalAfter.preview-clean.preview-static .charge-trip-meta{
+  display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;padding-top:14px;border-top:1px solid #eef2f8;
+}
+#chargeModalAfter.preview-clean.preview-static .charge-trip-meta label{font-size:11px;color:#8a97b0;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+#chargeModalAfter.preview-clean.preview-static .charge-trip-meta input,
+#chargeModalAfter.preview-clean.preview-static .charge-trip-meta select{
+  border:0;background:transparent;padding:2px 0;color:#64779f;font-size:14px;font-weight:600;
+}
+#chargeModalAfter.preview-clean.preview-static .charge-extra summary{padding:10px 0 2px;font-size:13px;color:#64779f}
+#chargeModalAfter.preview-clean.preview-static .modal-actions{grid-template-columns:1fr;gap:8px;margin-top:8px}
+#chargeModalAfter.preview-clean.preview-static .modal-actions .secondary{display:none}
+#chargeModalAfter.preview-clean.preview-static #saveChargeBtnAfter{
+  min-height:52px;font-size:17px;border-radius:14px;box-shadow:0 6px 16px #009b6128;
+}
+</style>
+<body>
+  <div class="preview-banner">VISTA PREVIA LOCAL · Recorrido limpio · <span>No publica ni despliega nada</span></div>
+  <div class="preview-page">
+    <div class="preview-note">
+      <b>Qué molestaba</b>
+      <ul>
+        <li>Doble título anidado: <b>Servicio realizado</b> + <b>Recorrido</b> (el paso ya dice lo mismo).</li>
+        <li>Panel con sombra/borde pesado + campos en rosa “obligatorio” muy chillones.</li>
+        <li>Km / Trayecto al mismo nivel visual que Salida/Llegada; track de pasos ruidoso.</li>
+        <li>Dos botones abajo cuando el flujo solo pide Continuar.</li>
+      </ul>
+      <b>Propuesta</b>: un solo stack Salida → Llegada, más aire, chrome liviano, meta km/trayecto secundario, un botón primario.
+    </div>
+
+    <div class="preview-screens">
+      <!-- ===================== BEFORE ===================== -->
+      <div>
+        <div class="preview-col-label"><span class="preview-badge before">Antes</span> Actual en app</div>
+        <div id="chargeModalBefore" class="modal charge-screen preview-static" role="dialog" aria-modal="true" aria-labelledby="chargeTitleBefore" style="--charge-accent:#009b61;--charge-tint:#e3f7ef;">
+          <div class="modal-card charge-screen-card">
+            <div class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="" width="1942" height="809" decoding="async"></span></div>
+            <button class="charge-back" type="button">‹ Cobros</button>
+            <div class="charge-heading">
+              <span class="charge-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16v10H4z"/><path d="M8 7V5h8v2"/></svg></span>
+              <div><h2 id="chargeTitleBefore">Cobro digital</h2><p>Transferencia o QR</p></div>
+            </div>
+            <form novalidate>
+              <div class="charge-step-label" role="status">Paso 2 de 5 · Servicio realizado</div>
+              <div class="charge-step-track" aria-hidden="true"><span class="complete"></span><span class="complete"></span><span></span><span></span><span></span></div>
+              <section class="charge-step">
+                <div class="charge-panel charge-trip">
+                  <h3>Servicio realizado</h3>
+                  <h4>Recorrido</h4>
+                  <div class="charge-route-fields">
+                    <div class="field tourism-location-field route-required-field">
+                      <label>Salida</label>
+                      <div class="tourism-search-control">
+                        <input role="combobox" autocomplete="off" placeholder="Lugar o país…" value="" readonly>
+                      </div>
+                    </div>
+                    <div class="field tourism-location-field route-required-field">
+                      <label>Llegada</label>
+                      <div class="tourism-search-control">
+                        <input role="combobox" autocomplete="off" placeholder="Lugar o país…" value="" readonly>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="file-note" role="status">Elegí salida y llegada para calcular el recorrido.</div>
+                  <div class="charge-two-columns">
+                    <div class="field"><label>Recorrido del pasajero (km)</label><input readonly type="number" placeholder="0" value=""></div>
+                    <div class="field"><label>Trayecto</label><select disabled><option>Nacional</option></select></div>
+                  </div>
+                  <details class="charge-extra"><summary>Agregar una nota (opcional)</summary></details>
+                </div>
+              </section>
+              <div class="modal-actions">
+                <button type="button" class="secondary">Atrás</button>
+                <button type="button" class="save" id="saveChargeBtnBefore">Continuar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================== AFTER ===================== -->
+      <div>
+        <div class="preview-col-label"><span class="preview-badge after">Después</span> Propuesta limpia</div>
+        <div id="chargeModalAfter" class="modal charge-screen preview-static preview-clean" role="dialog" aria-modal="true" aria-labelledby="chargeTitleAfter" style="--charge-accent:#009b61;--charge-tint:#e3f7ef;">
+          <div class="modal-card charge-screen-card">
+            <div class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="" width="1942" height="809" decoding="async"></span></div>
+            <button class="charge-back" type="button">‹ Cobros</button>
+            <div class="charge-heading">
+              <span class="charge-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16v10H4z"/><path d="M8 7V5h8v2"/></svg></span>
+              <div><h2 id="chargeTitleAfter">Cobro digital</h2><p>Transferencia o QR</p></div>
+            </div>
+            <form novalidate>
+              <div class="charge-step-label" role="status">Paso 2 de 5 · Recorrido</div>
+              <div class="charge-step-track" aria-hidden="true"><span class="complete"></span><span class="complete"></span><span></span><span></span><span></span></div>
+              <section class="charge-step">
+                <div class="charge-panel charge-trip charge-trip--clean">
+                  <!-- sin h3/h4: el step-label ya nombra el paso -->
+                  <div class="charge-route-fields">
+                    <div class="field tourism-location-field route-required-field route-selected">
+                      <label>Salida</label>
+                      <div class="tourism-search-control">
+                        <input role="combobox" autocomplete="off" placeholder="Lugar o país…" value="Puerto Iguazú · Cataratas" readonly>
+                      </div>
+                    </div>
+                    <div class="field tourism-location-field route-required-field">
+                      <label>Llegada</label>
+                      <div class="tourism-search-control">
+                        <input role="combobox" autocomplete="off" placeholder="Hotel, aeropuerto o ciudad…" value="" readonly>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="charge-trip-meta" aria-label="Detalle del recorrido">
+                    <div class="field"><label>Km</label><input readonly value="28,4"></div>
+                    <div class="field"><label>Trayecto</label><input readonly value="Nacional"></div>
+                  </div>
+                  <details class="charge-extra"><summary>Nota opcional</summary></details>
+                </div>
+              </section>
+              <div class="modal-actions">
+                <button type="button" class="secondary">Atrás</button>
+                <button type="button" class="save" id="saveChargeBtnAfter">Continuar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
