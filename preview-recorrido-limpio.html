@@ -3,6 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Explora · Recorrido limpio · Vista previa</title>
+<meta name="preview-version" content="2" data-preview-version="2">
 <link rel="stylesheet" href="./styles.css">
 <link rel="stylesheet" href="./explora-ui.css">
 <style>
@@ -65,15 +66,20 @@ body:has(:is(#chargeModalBefore,#chargeModalAfter).preview-static){overflow:auto
 #chargeModalAfter.preview-clean.preview-static .route-required-field.route-selected input[role="combobox"]{
   background:#f3faf6;border-color:#b7dfc9;color:#166344;
 }
-#chargeModalAfter.preview-clean.preview-static .charge-trip-meta{
-  display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;padding-top:14px;border-top:1px solid #eef2f8;
+#chargeModalAfter.preview-clean.preview-static .charge-trip-km{
+  margin-top:8px;padding:14px 16px;border-top:1px solid #eef2f8;
+  display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  background:#f3faf6;border:1px solid #b7dfc9;border-radius:14px;
 }
-#chargeModalAfter.preview-clean.preview-static .charge-trip-meta label{font-size:11px;color:#8a97b0;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
-#chargeModalAfter.preview-clean.preview-static .charge-trip-meta input,
-#chargeModalAfter.preview-clean.preview-static .charge-trip-meta select{
-  border:0;background:transparent;padding:2px 0;color:#64779f;font-size:14px;font-weight:600;
+#chargeModalAfter.preview-clean.preview-static .charge-trip-km-label{
+  font-size:12px;font-weight:700;color:#0d7a4c;text-transform:uppercase;letter-spacing:.5px;
 }
-#chargeModalAfter.preview-clean.preview-static .charge-extra summary{padding:10px 0 2px;font-size:13px;color:#64779f}
+#chargeModalAfter.preview-clean.preview-static .charge-trip-km-value{
+  font-size:28px;font-weight:800;color:#10164c;letter-spacing:-.6px;line-height:1;
+}
+#chargeModalAfter.preview-clean.preview-static .charge-trip-km-value small{
+  font-size:14px;font-weight:700;color:#64779f;margin-left:2px;
+}
 #chargeModalAfter.preview-clean.preview-static .modal-actions{grid-template-columns:1fr;gap:8px;margin-top:8px}
 #chargeModalAfter.preview-clean.preview-static .modal-actions .secondary{display:none}
 #chargeModalAfter.preview-clean.preview-static #saveChargeBtnAfter{
@@ -88,10 +94,10 @@ body:has(:is(#chargeModalBefore,#chargeModalAfter).preview-static){overflow:auto
       <ul>
         <li>Doble título anidado: <b>Servicio realizado</b> + <b>Recorrido</b> (el paso ya dice lo mismo).</li>
         <li>Panel con sombra/borde pesado + campos en rosa “obligatorio” muy chillones.</li>
-        <li>Km / Trayecto al mismo nivel visual que Salida/Llegada; track de pasos ruidoso.</li>
+        <li>Km / Trayecto / nota al mismo nivel visual que Salida/Llegada; track de pasos ruidoso.</li>
         <li>Dos botones abajo cuando el flujo solo pide Continuar.</li>
       </ul>
-      <b>Propuesta</b>: un solo stack Salida → Llegada, más aire, chrome liviano, meta km/trayecto secundario, un botón primario.
+      <b>Propuesta</b>: Salida → Llegada, <b>km</b> claro y prominente, chrome liviano, un botón Continuar. Sin nota ni nacional/internacional (solo importan los km).
     </div>
 
     <div class="preview-screens">
@@ -175,11 +181,10 @@ body:has(:is(#chargeModalBefore,#chargeModalAfter).preview-static){overflow:auto
                       </div>
                     </div>
                   </div>
-                  <div class="charge-trip-meta" aria-label="Detalle del recorrido">
-                    <div class="field"><label>Km</label><input readonly value="28,4"></div>
-                    <div class="field"><label>Trayecto</label><input readonly value="Nacional"></div>
+                  <div class="charge-trip-km" aria-label="Kilómetros del recorrido">
+                    <span class="charge-trip-km-label">Kilómetros</span>
+                    <strong class="charge-trip-km-value">28,4 <small>km</small></strong>
                   </div>
-                  <details class="charge-extra"><summary>Nota opcional</summary></details>
                 </div>
               </section>
               <div class="modal-actions">
