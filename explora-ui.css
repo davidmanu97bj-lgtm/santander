@@ -295,6 +295,9 @@ body:has(.period-receipt-overlay:not(.hidden)) { overflow:hidden; }
   border-color: #16805a;
   box-shadow: 0 0 0 3px #16805a14;
 }
+#chargeModal .charge-trip--clean .charge-route-connector.hidden {
+  display: none !important;
+}
 #chargeModal .charge-trip--clean .charge-route-connector {
   display: flex;
   align-items: center;

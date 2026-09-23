@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Explora · Recorrido limpio · Vista previa</title>
-<meta name="preview-version" content="3" data-preview-version="3">
+<meta name="preview-version" content="4" data-preview-version="4">
 <link rel="stylesheet" href="./styles.css">
 <link rel="stylesheet" href="./explora-ui.css">
 <style>
@@ -44,66 +44,79 @@ body:has(:is(#chargeModalBefore,#chargeModalAfter).preview-static){overflow:auto
 :is(#chargeModalBefore,#chargeModalAfter).preview-static .modal-actions{pointer-events:none}
 :is(#chargeModalBefore,#chargeModalAfter).preview-static input{pointer-events:none}
 
-/* AFTER: campos Salida/Llegada armonizados — mismo chrome vacío y lleno */
-#chargeModalAfter.preview-clean.preview-static .charge-step-track{opacity:.35;margin-bottom:2px}
-#chargeModalAfter.preview-clean.preview-static .charge-trip > h3,
-#chargeModalAfter.preview-clean.preview-static .charge-trip > h4{display:none}
-#chargeModalAfter.preview-clean.preview-static .charge-trip{
+/* AFTER column: two progressive mini-states */
+.preview-after-stack{display:flex;flex-direction:column;gap:14px;max-width:420px}
+.preview-mini-label{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:#0d7a4c;margin:0}
+.preview-mini-num{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;background:#009b61;color:#fff;font-size:11px;font-weight:800}
+.preview-flow-hint{margin:0;font-size:12px;color:#4a5568;background:#e3f7ef;border:1px dashed #b7dfc9;border-radius:10px;padding:8px 10px}
+
+/* AFTER phone chrome (shared by both mini states) */
+.preview-clean.preview-static .charge-step-track{opacity:.35;margin-bottom:2px}
+.preview-clean.preview-static .charge-trip > h3,
+.preview-clean.preview-static .charge-trip > h4{display:none}
+.preview-clean.preview-static .charge-trip{
   padding:18px 16px 14px;border:1px solid #e8eef6;box-shadow:none;border-radius:16px;background:#fff;
 }
-#chargeModalAfter.preview-clean.preview-static .charge-route-fields{
+.preview-clean.preview-static .charge-route-fields{
   display:flex;flex-direction:column;gap:10px;
 }
-#chargeModalAfter.preview-clean.preview-static .route-required-field > label{
+.preview-clean.preview-static .route-required-field > label{
   color:#10164c;font-size:14px;font-weight:700;letter-spacing:-.2px;margin-bottom:8px;
 }
-#chargeModalAfter.preview-clean.preview-static .route-required-field .tourism-search-control{
+.preview-clean.preview-static .route-required-field .tourism-search-control{
   border:1px solid #d5deeb;border-radius:12px;background:#f9fbff;padding:0;
   min-height:48px;
 }
-#chargeModalAfter.preview-clean.preview-static .route-required-field input[role="combobox"]{
+.preview-clean.preview-static .route-required-field input[role="combobox"]{
   background:#f9fbff;border-color:#d5deeb;color:#10164c;
   border-radius:12px;padding:12px 14px;min-height:48px;box-sizing:border-box;
 }
-#chargeModalAfter.preview-clean.preview-static .route-required-field.route-selected > label{color:#0d7a4c}
-#chargeModalAfter.preview-clean.preview-static .route-required-field.route-selected .tourism-search-control,
-#chargeModalAfter.preview-clean.preview-static .route-required-field.route-selected input[role="combobox"]{
+.preview-clean.preview-static .route-required-field.route-selected > label{color:#0d7a4c}
+.preview-clean.preview-static .route-required-field.route-selected .tourism-search-control,
+.preview-clean.preview-static .route-required-field.route-selected input[role="combobox"]{
   background:#f3faf6;border-color:#b7dfc9;color:#166344;
 }
-#chargeModalAfter.preview-clean.preview-static .charge-route-connector{
+.preview-clean.preview-static .charge-route-connector{
   display:flex;align-items:center;justify-content:center;gap:6px;
   height:18px;margin:2px 0 4px;color:#b7c2d6;font-size:11px;font-weight:600;
   letter-spacing:.2px;user-select:none;
 }
-#chargeModalAfter.preview-clean.preview-static .charge-route-connector::before,
-#chargeModalAfter.preview-clean.preview-static .charge-route-connector::after{
+.preview-clean.preview-static .charge-route-connector.hidden{display:none!important}
+.preview-clean.preview-static .route-required-field.hidden{display:none!important}
+.preview-clean.preview-static .charge-route-connector::before,
+.preview-clean.preview-static .charge-route-connector::after{
   content:"";flex:1;max-width:28px;height:1px;background:#d9e1ef;
 }
-#chargeModalAfter.preview-clean.preview-static .charge-route-connector span{
+.preview-clean.preview-static .charge-route-connector span{
   opacity:.7;font-size:12px;line-height:1;
 }
-#chargeModalAfter.preview-clean.preview-static .charge-trip-km{
+.preview-clean.preview-static .charge-trip-km{
   margin-top:14px;padding:14px 16px;border-top:1px solid #eef2f8;
   display:flex;align-items:baseline;justify-content:space-between;gap:12px;
   background:#f3faf6;border:1px solid #b7dfc9;border-radius:14px;
 }
-#chargeModalAfter.preview-clean.preview-static .charge-trip-km-label{
+.preview-clean.preview-static .charge-trip-km.pending{
+  background:#f9fbff;border-color:#d5deeb;
+}
+.preview-clean.preview-static .charge-trip-km.pending .charge-trip-km-label{color:#64779f}
+.preview-clean.preview-static .charge-trip-km.pending .charge-trip-km-value{color:#b7c2d6;font-size:22px}
+.preview-clean.preview-static .charge-trip-km-label{
   font-size:12px;font-weight:700;color:#0d7a4c;text-transform:uppercase;letter-spacing:.5px;
 }
-#chargeModalAfter.preview-clean.preview-static .charge-trip-km-value{
+.preview-clean.preview-static .charge-trip-km-value{
   font-size:28px;font-weight:800;color:#10164c;letter-spacing:-.6px;line-height:1;
 }
-#chargeModalAfter.preview-clean.preview-static .charge-trip-km-value small{
+.preview-clean.preview-static .charge-trip-km-value small{
   font-size:14px;font-weight:700;color:#64779f;margin-left:2px;
 }
-#chargeModalAfter.preview-clean.preview-static .modal-actions{grid-template-columns:1fr;gap:8px;margin-top:8px}
-#chargeModalAfter.preview-clean.preview-static .modal-actions .secondary{display:none}
-#chargeModalAfter.preview-clean.preview-static #saveChargeBtnAfter{
+.preview-clean.preview-static .modal-actions{grid-template-columns:1fr;gap:8px;margin-top:8px}
+.preview-clean.preview-static .modal-actions .secondary{display:none}
+.preview-clean.preview-static .save{
   min-height:52px;font-size:17px;border-radius:14px;box-shadow:0 6px 16px #009b6128;
 }
 </style>
 <body>
-  <div class="preview-banner">VISTA PREVIA LOCAL · Recorrido limpio · <span>No publica ni despliega nada</span></div>
+  <div class="preview-banner">VISTA PREVIA LOCAL · Recorrido limpio v4 · <span>No publica ni despliega nada</span></div>
   <div class="preview-page">
     <div class="preview-note">
       <b>Qué molestaba</b>
@@ -114,7 +127,7 @@ body:has(:is(#chargeModalBefore,#chargeModalAfter).preview-static){overflow:auto
         <li>Dos botones abajo cuando el flujo solo pide Continuar.</li>
         <li>Salida y Llegada se veían como piezas distintas (chip vs input vacío).</li>
       </ul>
-      <b>Propuesta</b>: campos <b>Salida/Llegada armonizados</b> (mismo marco, mismo vacío y mismo lleno verde suave), conector sutil Salida → Llegada, <b>km</b> claro y prominente, chrome liviano, un botón Continuar. Sin nota ni nacional/internacional (solo importan los km).
+      <b>Propuesta</b>: chrome limpio y armonizado (verde suave al llenar), <b>km</b> prominente, sin nota ni nacional/internacional — y <b>divulgación progresiva</b>: primero solo <b>Salida</b>; <b>Llegada</b> (y el conector) aparecen recién cuando hay valor en Salida.
     </div>
 
     <div class="preview-screens">
@@ -167,50 +180,105 @@ body:has(:is(#chargeModalBefore,#chargeModalAfter).preview-static){overflow:auto
         </div>
       </div>
 
-      <!-- ===================== AFTER ===================== -->
+      <!-- ===================== AFTER (progressive) ===================== -->
       <div>
-        <div class="preview-col-label"><span class="preview-badge after">Después</span> Propuesta limpia</div>
-        <div id="chargeModalAfter" class="modal charge-screen preview-static preview-clean" role="dialog" aria-modal="true" aria-labelledby="chargeTitleAfter" style="--charge-accent:#009b61;--charge-tint:#e3f7ef;">
-          <div class="modal-card charge-screen-card">
-            <div class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="" width="1942" height="809" decoding="async"></span></div>
-            <button class="charge-back" type="button">‹ Cobros</button>
-            <div class="charge-heading">
-              <span class="charge-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16v10H4z"/><path d="M8 7V5h8v2"/></svg></span>
-              <div><h2 id="chargeTitleAfter">Cobro digital</h2><p>Transferencia o QR</p></div>
-            </div>
-            <form novalidate>
-              <div class="charge-step-label" role="status">Paso 2 de 5 · Recorrido</div>
-              <div class="charge-step-track" aria-hidden="true"><span class="complete"></span><span class="complete"></span><span></span><span></span><span></span></div>
-              <section class="charge-step">
-                <div class="charge-panel charge-trip charge-trip--clean">
-                  <!-- sin h3/h4: el step-label ya nombra el paso -->
-                  <div class="charge-route-fields">
-                    <div class="field tourism-location-field route-required-field route-selected">
-                      <label>Salida</label>
-                      <div class="tourism-search-control">
-                        <input role="combobox" autocomplete="off" placeholder="Lugar o país…" value="Puerto Iguazú · Cataratas" readonly>
-                      </div>
-                    </div>
-                    <div class="charge-route-connector" aria-hidden="true"><span>↓</span></div>
-                    <div class="field tourism-location-field route-required-field route-selected">
-                      <label>Llegada</label>
-                      <div class="tourism-search-control">
-                        <input role="combobox" autocomplete="off" placeholder="Hotel, aeropuerto o ciudad…" value="Hotel das Cataratas" readonly>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="charge-trip-km" aria-label="Kilómetros del recorrido">
-                    <span class="charge-trip-km-label">Kilómetros</span>
-                    <strong class="charge-trip-km-value">28,4 <small>km</small></strong>
-                  </div>
+        <div class="preview-col-label"><span class="preview-badge after">Después</span> Propuesta limpia · progresiva</div>
+        <div class="preview-after-stack">
+
+          <!-- State 1: Solo Salida -->
+          <div>
+            <p class="preview-mini-label"><span class="preview-mini-num">1</span> Solo Salida</p>
+            <div id="chargeModalAfter" class="modal charge-screen preview-static preview-clean" role="dialog" aria-modal="true" aria-labelledby="chargeTitleAfter" style="--charge-accent:#009b61;--charge-tint:#e3f7ef;">
+              <div class="modal-card charge-screen-card">
+                <div class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="" width="1942" height="809" decoding="async"></span></div>
+                <button class="charge-back" type="button">‹ Cobros</button>
+                <div class="charge-heading">
+                  <span class="charge-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16v10H4z"/><path d="M8 7V5h8v2"/></svg></span>
+                  <div><h2 id="chargeTitleAfter">Cobro digital</h2><p>Transferencia o QR</p></div>
                 </div>
-              </section>
-              <div class="modal-actions">
-                <button type="button" class="secondary">Atrás</button>
-                <button type="button" class="save" id="saveChargeBtnAfter">Continuar</button>
+                <form novalidate>
+                  <div class="charge-step-label" role="status">Paso 2 de 5 · Recorrido</div>
+                  <div class="charge-step-track" aria-hidden="true"><span class="complete"></span><span class="complete"></span><span></span><span></span><span></span></div>
+                  <section class="charge-step">
+                    <div class="charge-panel charge-trip charge-trip--clean">
+                      <div class="charge-route-fields">
+                        <div class="field tourism-location-field route-required-field route-selected">
+                          <label>Salida</label>
+                          <div class="tourism-search-control">
+                            <input role="combobox" autocomplete="off" placeholder="Lugar o país…" value="Puerto Iguazú · Cataratas" readonly>
+                          </div>
+                        </div>
+                        <!-- Llegada + conector ocultos hasta cargar Salida -->
+                        <div class="charge-route-connector hidden" aria-hidden="true"><span>↓</span></div>
+                        <div class="field tourism-location-field route-required-field hidden">
+                          <label>Llegada</label>
+                          <div class="tourism-search-control">
+                            <input role="combobox" autocomplete="off" placeholder="Hotel, aeropuerto o ciudad…" value="" readonly>
+                          </div>
+                        </div>
+                      </div>
+                      <p class="preview-flow-hint">Llegada aparece al cargar Salida</p>
+                      <div class="charge-trip-km pending" aria-label="Kilómetros pendientes">
+                        <span class="charge-trip-km-label">Kilómetros</span>
+                        <strong class="charge-trip-km-value">— <small>km</small></strong>
+                      </div>
+                    </div>
+                  </section>
+                  <div class="modal-actions">
+                    <button type="button" class="secondary">Atrás</button>
+                    <button type="button" class="save">Continuar</button>
+                  </div>
+                </form>
               </div>
-            </form>
+            </div>
           </div>
+
+          <!-- State 2: Salida + Llegada -->
+          <div>
+            <p class="preview-mini-label"><span class="preview-mini-num">2</span> Salida + Llegada</p>
+            <div id="chargeModalAfter2" class="modal charge-screen preview-static preview-clean" role="dialog" aria-modal="true" aria-labelledby="chargeTitleAfter2" style="--charge-accent:#009b61;--charge-tint:#e3f7ef;">
+              <div class="modal-card charge-screen-card">
+                <div class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="" width="1942" height="809" decoding="async"></span></div>
+                <button class="charge-back" type="button">‹ Cobros</button>
+                <div class="charge-heading">
+                  <span class="charge-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16v10H4z"/><path d="M8 7V5h8v2"/></svg></span>
+                  <div><h2 id="chargeTitleAfter2">Cobro digital</h2><p>Transferencia o QR</p></div>
+                </div>
+                <form novalidate>
+                  <div class="charge-step-label" role="status">Paso 2 de 5 · Recorrido</div>
+                  <div class="charge-step-track" aria-hidden="true"><span class="complete"></span><span class="complete"></span><span></span><span></span><span></span></div>
+                  <section class="charge-step">
+                    <div class="charge-panel charge-trip charge-trip--clean">
+                      <div class="charge-route-fields">
+                        <div class="field tourism-location-field route-required-field route-selected">
+                          <label>Salida</label>
+                          <div class="tourism-search-control">
+                            <input role="combobox" autocomplete="off" placeholder="Lugar o país…" value="Puerto Iguazú · Cataratas" readonly>
+                          </div>
+                        </div>
+                        <div class="charge-route-connector" aria-hidden="true"><span>↓</span></div>
+                        <div class="field tourism-location-field route-required-field route-selected">
+                          <label>Llegada</label>
+                          <div class="tourism-search-control">
+                            <input role="combobox" autocomplete="off" placeholder="Hotel, aeropuerto o ciudad…" value="Hotel das Cataratas" readonly>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="charge-trip-km" aria-label="Kilómetros del recorrido">
+                        <span class="charge-trip-km-label">Kilómetros</span>
+                        <strong class="charge-trip-km-value">28,4 <small>km</small></strong>
+                      </div>
+                    </div>
+                  </section>
+                  <div class="modal-actions">
+                    <button type="button" class="secondary">Atrás</button>
+                    <button type="button" class="save" id="saveChargeBtnAfter">Continuar</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
