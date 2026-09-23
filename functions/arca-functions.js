@@ -33,7 +33,7 @@ module.exports=function registerArca({db,assertAdmin}) {
     }),
     arcaBillingStatus:onCall({region},async request=>{
       if(!request.auth)throw new HttpsError('unauthenticated','Iniciá sesión.');
-      const c=await config();return {enabled:enabled(c),environment:c.environment||'disabled',regime:c.regime||'monotributo',internationalEnabled:enabled(c)&&internationalCEnabled(c)};
+      const c=await config();return {enabled:enabled(c),environment:c.environment||'disabled',regime:c.regime||'monotributo',invoiceType:require('./arca-policy').configuredInvoiceType(c),internationalEnabled:enabled(c)&&internationalCEnabled(c)};
     }),
     arcaInvoicePdf:onCall({region,timeoutSeconds:45,memory:'256MiB'},async request=>{
       if(!request.auth)throw new HttpsError('unauthenticated','Iniciá sesión.');

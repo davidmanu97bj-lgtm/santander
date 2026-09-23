@@ -65,7 +65,9 @@ function richMessage(text,{photo,document} = {}) {
   return {blocks};
 }
 function invoiceFilename(invoice) {
-  const prefix = invoice.environment === 'production' ? 'FC' : 'PRUEBA-FC';
+  const letter = {6:'B',11:'C'}[require('./arca-policy').invoiceTypeOf(invoice)];
+  if(!letter)throw new Error('INVOICE_UNSUPPORTED_TYPE');
+  const prefix = invoice.environment === 'production' ? `F${letter}` : `PRUEBA-F${letter}`;
   return `${prefix}-${Number(invoice.issuer.pointOfSale)}-${Number(invoice.number)}.pdf`;
 }
 const calendarDate = value => /^20\d{2}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('/') : 'Fecha no disponible';
