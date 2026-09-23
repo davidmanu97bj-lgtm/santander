@@ -6438,7 +6438,7 @@ function chargeSteps() {
 function showChargeStep(step) {
   $("chargeForm").dataset.step = String(step);
   document.querySelectorAll("[data-charge-step]").forEach(panel => panel.classList.toggle("hidden", Number(panel.dataset.chargeStep) !== step));
-  const names = ["Monto", "Servicio realizado", "Foto del comprobante", "Factura de Explora", "Número remis"];
+  const names = ["Monto", "Recorrido", "Foto del comprobante", "Factura de Explora", "Número remis"];
   const steps = chargeSteps();
   const position = steps.indexOf(step);
   $("chargeStepLabel").textContent = "Paso " + (position + 1) + " de " + steps.length + " · " + names[step];
@@ -6603,6 +6603,8 @@ function renderTourismSelectors() {
 function syncTourismProgress() {
   const hasOrigin = Boolean($("tourismOrigin").value);
   $("tourismDestinationField").classList.toggle("hidden", !hasOrigin);
+  const connector = $("tourismRouteConnector");
+  if (connector) connector.classList.toggle("hidden", !hasOrigin);
   $("tourismDestinationSearch").disabled = !hasOrigin;
   if (!hasOrigin) {
     $("tourismDestination").value = "";

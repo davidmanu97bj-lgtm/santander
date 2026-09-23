@@ -351,8 +351,7 @@
         <div class="money-entry"><span aria-hidden="true">$</span><input id="chargeAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div>
       </div>
 </section><section data-charge-step="1" class="charge-step hidden">
-      <div class="charge-panel charge-trip"><h3>Servicio realizado</h3>
-        <h4>Recorrido</h4><div class="charge-route-fields">
+      <div class="charge-panel charge-trip charge-trip--clean"><div class="charge-route-fields">
           <div class="field tourism-location-field route-required-field">
             <label for="tourismOriginSearch">Salida</label>
             <div class="tourism-search-control">
@@ -362,20 +361,24 @@
             <input id="tourismOrigin" type="hidden">
             <div id="tourismOriginMatches" class="route-results tourism-matches" role="listbox" aria-label="Opciones de salida"></div>
           </div>
+          <div id="tourismRouteConnector" class="charge-route-connector hidden" aria-hidden="true"><span>↓</span></div>
           <div id="tourismDestinationField" class="field tourism-location-field route-required-field hidden">
             <label for="tourismDestinationSearch">Llegada</label>
             <div class="tourism-search-control">
-              <input id="tourismDestinationSearch" autocomplete="off" maxlength="120" placeholder="Lugar o país…" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tourismDestinationMatches" required>
+              <input id="tourismDestinationSearch" autocomplete="off" maxlength="120" placeholder="Hotel, aeropuerto o ciudad…" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tourismDestinationMatches" required>
               <button type="button" class="tourism-clear" id="tourismDestinationClear" aria-label="Corregir llegada" title="Borrar y elegir otra dirección" hidden><span aria-hidden="true">×</span></button>
             </div>
             <input id="tourismDestination" type="hidden">
             <div id="tourismDestinationMatches" class="route-results tourism-matches" role="listbox" aria-label="Opciones de llegada"></div>
           </div>
         </div><div class="hidden" aria-hidden="true"><div class="charge-two-columns"><div class="field"><label for="chargeOrigin">Salida</label><div class="route-search-row"><input id="chargeOrigin" placeholder="Hotel, dirección o lugar" maxlength="160" autocomplete="off" required><button type="button" class="secondary route-search-button" data-route-search="Origin">Buscar</button></div><div id="routeOriginResults" class="route-results"></div></div><div class="field"><label for="chargeDestination">Llegada</label><div class="route-search-row"><input id="chargeDestination" placeholder="Hotel, dirección o lugar" maxlength="160" autocomplete="off" required><button type="button" class="secondary route-search-button" data-route-search="Destination">Buscar</button></div><div id="routeDestinationResults" class="route-results"></div></div></div></div><div id="chargeRouteStatus" class="file-note" role="status" aria-live="polite"></div>
-        <div class="charge-two-columns"><div class="field"><label for="chargeDistance">Recorrido del pasajero (km)</label><input id="chargeDistance" readonly type="number" inputmode="decimal" min="0.1" max="20000" step="0.1" placeholder="0" required></div><div class="field"><label for="chargeTripScope">Trayecto</label><select id="chargeTripScope" disabled><option value="national">Nacional</option><option value="international">Internacional</option></select></div></div>
+        <div class="charge-trip-km" aria-label="Kilómetros del recorrido">
+          <label for="chargeDistance">Kilómetros</label>
+          <input id="chargeDistance" readonly type="number" inputmode="decimal" min="0.1" max="20000" step="0.1" placeholder="0" required>
+        </div>
+        <select id="chargeTripScope" class="hidden" aria-hidden="true" tabindex="-1" disabled><option value="national">Nacional</option><option value="international">Internacional</option></select>
         <input id="chargeServiceDate" type="hidden">
-
-        <details class="charge-extra"><summary>Agregar una nota (opcional)</summary><div class="field"><label for="detail">Detalle adicional</label><input id="detail" placeholder="Opcional" maxlength="300"></div></details>
+        <input id="detail" type="hidden" maxlength="300" value="">
       </div>
 </section><section data-charge-step="4" class="charge-step hidden">
       <div id="chargeRemisStep" class="charge-remis-host" aria-live="polite"></div>
