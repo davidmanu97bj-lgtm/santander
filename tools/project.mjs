@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const PROJECT_ID = 'explora-control-operativo';
 export const HOSTING_FILES = [
-  'driver-availability.js', 'driver-availability.css', 'monthly-management.js', 'login-entry.js', 'admin-workspace.js', 'admin-workspace.css', 'admin-digital-expense.js',
+  'driver-availability.js', 'driver-availability.css', 'ops-salidas.js', 'ops-salidas.css', 'monthly-management.js', 'login-entry.js', 'admin-workspace.js', 'admin-workspace.css', 'admin-digital-expense.js',
   'period-ui.js', 'explora-ui.js', 'explora-ui.css', 'assets/explora-home-reference.png',
   'index.html', 'app.js', 'auth-session.js', 'movement-colors.js', 'movement-colors.css', 'tourism-catalog.js', 'calendar-core.js', 'trip-calendar.js', 'styles.css', 'firebase-config.js',
   'service-worker.js', 'manifest.json', 'icon-192.png', 'icon-512.png',
@@ -46,7 +46,7 @@ export function validateProject(root = ROOT) {
   };
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   for (const match of html.matchAll(/\b(?:src|href)=["']([^"']+)["']/g)) check(match[1], 'index.html');
-  for (const file of ['driver-availability.js', 'admin-workspace.js', 'admin-digital-expense.js', 'login-entry.js', 'period-ui.js', 'explora-ui.js', 'app.js', 'auth-session.js', 'movement-colors.js', 'firebase-config.js', 'calendar-core.js', 'trip-calendar.js']) {
+  for (const file of ['driver-availability.js', 'ops-salidas.js', 'admin-workspace.js', 'admin-digital-expense.js', 'login-entry.js', 'period-ui.js', 'explora-ui.js', 'app.js', 'auth-session.js', 'movement-colors.js', 'firebase-config.js', 'calendar-core.js', 'trip-calendar.js']) {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
     for (const match of source.matchAll(/\bfrom\s*["']([^"']+)["']/g)) check(match[1], file);
   }

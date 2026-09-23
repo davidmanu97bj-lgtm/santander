@@ -6,8 +6,8 @@
       "reason": "Búsqueda solicitada en Google Maps directamente desde Salida y Llegada, sin catálogo local ni botón intermedio; al elegir Llegada lleva a Continuar."
     },
     "validateChargeStep": {
-      "hash": "5fc723672c893079faa75f41577ca0b0afda0add0950a69c391cb725b47c04e8",
-      "reason": "Solicitud de Google Maps: admite lugares elegidos en Google cuando ambos puntos y la distancia calculada están disponibles."
+      "hash": "8510a84e9a4d77d63483a4f5997cbbd8736d91f4ceabcbd2289711bf732cf835",
+      "reason": "Salió vs cobro: paso remis/viaje privado tras salida-llegada; persiste remisNumber/viajePrivado en billing_records; panel Ops marca salida y cruza por número (sin adjudicación)."
     },
     "uberDriverSubmissionDelta": {
       "hash": "3ab9789a20a12e8c082f8cfa06c151f47014fabc3c01f3c48ff52be734dd59d3",
@@ -78,12 +78,12 @@
       "reason": "Chofer: seis categorías autorizadas, solo efectivo y avance inmediato al elegir categoría."
     },
     "chargeSteps": {
-      "hash": "3cba5c37309b3c0e6dd3966060cb0bc0deae05c25d68a878028fdc8aa286f2e3",
-      "reason": "Salida/llegada progresivas en rojo/verde y eliminación del panel de movimientos en cobros."
+      "hash": "3ed78b4885bd66ceb68883792f8b755bc5b4caaf6b7d76edf47525b4785d0099",
+      "reason": "Salió vs cobro: paso remis/viaje privado tras salida-llegada; persiste remisNumber/viajePrivado en billing_records; panel Ops marca salida y cruza por número (sin adjudicación)."
     },
     "showChargeStep": {
-      "hash": "a5c2eb4f43f9eb76f698f097cec4bd289c82e3eb408e6222432b33a3023ad863",
-      "reason": "Salida/llegada progresivas en rojo/verde y eliminación del panel de movimientos en cobros."
+      "hash": "a32a610a240777e78a6ce93e0a5bc4f6f9ea728c84e36f26bdef2eec56fc3b6d",
+      "reason": "Salió vs cobro: paso remis/viaje privado tras salida-llegada; persiste remisNumber/viajePrivado en billing_records; panel Ops marca salida y cruza por número (sin adjudicación)."
     },
     "renderTourismSelectors": {
       "hash": "b9d99196fb3b3d687bc4b9ccb8cfa51d14fa534523c1587b2a53f8d2fa4967ca",
@@ -102,8 +102,8 @@
       "reason": "Menú administrativo solicitado: limpia documentos y consultas pendientes al cambiar de sesión."
     },
     "renderAdminDashboardUpdates": {
-      "hash": "bcd3727355466ee29c2888a5f3fd6aaa4116ec70e9af358245f3463964ecab45",
-      "reason": "Menú administrativo solicitado: actualiza vistas conjuntas y revisión de deuda grupal con las mismas fuentes financieras."
+      "hash": "c6b2f22dac702d165d6884266ffc906042a95fef6b88fb34b73bf330bbc8b217",
+      "reason": "Ops salidas: refresh del tablero al actualizar dashboard admin; cruza salió vs cobro por número sin adjudicación."
     },
     "subscribeAdminDashboard": {
       "hash": "b630e8d214bd34e2bb3c86e0b91280e1560f1d383a3a91768c2d1beeda9fc6c3",
@@ -120,8 +120,8 @@
   },
   "handlers": {
     "chargeForm": {
-      "hash": "27b646192bc7cede195823c3f2ad1edeb899354c10f6789a7a788aece3d348fc",
-      "reason": "Cobros nuevos aplican 50%+10% por versión, conservan los datos de factura AFIP."
+      "hash": "a146d32d8268f3776e53e2a89f63ff90078449d75b437dab8182205921b18668",
+      "reason": "Salió vs cobro: paso remis/viaje privado tras salida-llegada; persiste remisNumber/viajePrivado en billing_records; panel Ops marca salida y cruza por número (sin adjudicación)."
     },
     "expenseForm": {
       "hash": "13ce7fe6b3c7965ee24907afd5ae745cf93df8afba529e512505ca342a41b94a",
@@ -134,8 +134,8 @@
   },
   "protectedFiles": {
     "firestore.rules": {
-      "hash": "0026e05252d80bb2bc2dd0e5c728a377d1777820a7d0ec6e22aa84feb2047ec2",
-      "reason": "Disponibilidad autorizada por el usuario: funciones propias de estado, reservas y Telegram; reglas de lectura del equipo activo y escritura exclusiva del servidor. Sin modificar operaciones financieras."
+      "hash": "300a2fe3c942c7a255435a32e3aa702e2a0e80aab60f964a461127c73e48fcc8",
+      "reason": "Permite a admin crear/leer/actualizar ops_number_exits para marcar salidas por número remis (sin adjudicación)."
     },
     "functions/expense-policy.js": {
       "hash": "044e01190580912b786c33020c3b663b16eee01da5c6a7600482301a11abffa2",

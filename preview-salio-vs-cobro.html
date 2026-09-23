@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Explora · Salida vs cobro · Vista previa</title>
+<link rel="stylesheet" href="./styles.css">
+<link rel="stylesheet" href="./explora-ui.css">
+<link rel="stylesheet" href="./driver-availability.css?v=20260922-perpetuos">
+<style>
+/* Solo layout de la página de preview — el cobro usa clases reales de la app */
+body:has(#chargeModal.preview-static),
+body:has(#managementModal.preview-static){overflow:auto!important}
+
+.preview-banner{text-align:center;background:#111b47;color:#fff;font-size:11px;font-weight:700;letter-spacing:1.2px;padding:9px 12px}
+.preview-banner span{opacity:.75;font-weight:500;letter-spacing:.4px}
+.preview-page{max-width:1040px;margin:auto;padding:16px 14px 64px}
+.preview-note{font-size:13px;color:#4a5568;margin:0 0 16px;background:#fff;border:1px solid #e4e7f0;border-left:3px solid #0f4c81;border-radius:10px;padding:12px 14px}
+.preview-note b{color:#111b47}
+.preview-screens{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:900px){.preview-screens{grid-template-columns:1fr}}
+.preview-label{font-size:11px;font-weight:700;color:#4a5568;margin:0 0 8px;text-transform:uppercase;letter-spacing:.6px}
+.preview-label + .preview-label{margin-top:18px}
+
+/* Cobro: embeber #chargeModal / #managementModal sin overlay fullscreen */
+#chargeModal.preview-static,
+#managementModal.preview-static{
+  position:static!important;inset:auto!important;z-index:auto!important;
+  display:block!important;place-items:unset!important;
+  width:100%;max-width:420px;margin:0;
+  padding:12px 14px 20px!important;
+  background:#f5faff!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  overflow:visible!important;border-radius:16px;border:1px solid #e3eaf4;
+  box-shadow:0 8px 24px #10153f14;
+  --charge-accent:#009b61;--charge-tint:#e3f7ef;--charge-ink:#10164c;--charge-muted:#64779f;
+}
+#chargeModal.preview-static .charge-screen-card,
+#managementModal.preview-static .charge-screen-card{
+  min-height:0!important;height:auto!important;max-height:none!important;
+  padding:0!important;width:100%;margin:0;box-shadow:none;background:transparent;border:0;
+}
+#chargeModal.preview-static .charge-brand,
+#managementModal.preview-static .charge-brand{display:flex;margin:0 0 10px}
+#chargeModal.preview-static .charge-brand-logo,
+#managementModal.preview-static .charge-brand-logo{width:160px}
+
+/* Chips remis: misma grilla que disponibilidad; estado elegido visible */
+#managementModal .av-numbers{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 14px}
+#managementModal .av-numbers button{
+  min-height:52px;font-size:20px;font-weight:800;border-radius:12px;cursor:default;
+  border:1.5px solid #cbd3db;background:#fff;color:#10164c;
+}
+#managementModal .av-numbers button[aria-pressed="true"]{
+  background:#10164c;border-color:#10164c;color:#fff;box-shadow:0 4px 12px #10164c33;
+}
+#managementModal .preview-private-btn{
+  display:block;width:100%;margin:4px 0 0;border:0;border-radius:15px;
+  background:var(--charge-accent);color:#fff;font-size:17px;font-weight:800;
+  letter-spacing:.04em;min-height:60px;padding:14px 12px;text-transform:uppercase;
+  box-shadow:0 8px 18px #009b6133;cursor:default;
+}
+#managementModal .preview-or{
+  display:flex;align-items:center;gap:10px;margin:14px 0 10px;color:#64779f;font-size:12px;font-weight:700;
+}
+#managementModal .preview-or::before,#managementModal .preview-or::after{
+  content:"";flex:1;height:1px;background:#e3eaf4;
+}
+#managementModal .preview-hint{margin:10px 0 0;font-size:12px;color:#64779f;line-height:1.4}
+
+/* Panel Operaciones (más simple, no es el cobro) */
+.ops-panel{background:#fff;border:1px solid #e4e7f0;border-radius:16px;overflow:hidden;box-shadow:0 8px 24px #10153f14;max-width:420px}
+.ops-panel header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:14px 14px 10px;border-bottom:1px solid #eef0f8}
+.ops-panel header h1{margin:0;font-size:17px;color:#10164c}
+.ops-panel header p{margin:4px 0 0;font-size:12px;color:#687487}
+.ops-live{font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#1a9f5c;background:#e8f7ef;padding:4px 8px;border-radius:999px;white-space:nowrap}
+.ops-marcar{padding:12px 14px;border-bottom:1px solid #eef0f8;background:#f7f8fd}
+.ops-marcar .title{font-size:12px;font-weight:700;color:#4a5568;margin:0 0 8px}
+.ops-chips{display:flex;flex-wrap:wrap;gap:8px}
+.ops-chip{min-width:48px;text-align:center;padding:10px 8px;border-radius:12px;border:1.5px solid #d9dee8;background:#fff;font-weight:800;font-size:14px;color:#111b47;user-select:none}
+.ops-chip.out{background:#e8f7ef;border-color:#1a9f5c;color:#147a48}
+.ops-summary{display:flex;gap:8px;padding:10px 12px;border-bottom:1px solid #eef0f8;background:#f7f8fd}
+.ops-summary span{flex:1;text-align:center;font-size:11px;color:#4a5568;background:#fff;border:1px solid #e4e7f0;border-radius:10px;padding:8px 4px}
+.ops-summary b{display:block;font-size:16px;color:#111b47;margin-top:2px}
+.ops-table-wrap{overflow-x:auto}
+.ops-panel table{width:100%;border-collapse:collapse;font-size:13px}
+.ops-panel th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#687487;padding:10px 12px;border-bottom:1px solid #eef0f8;background:#fafafe;white-space:nowrap}
+.ops-panel td{padding:12px;border-bottom:1px solid #f1f3f8;vertical-align:middle}
+.ops-panel tr:last-child td{border-bottom:0}
+.ops-num{display:inline-grid;place-items:center;min-width:44px;height:32px;padding:0 8px;border-radius:8px;background:#111b47;color:#fff;font-weight:800;font-size:14px}
+.ops-num.free{background:#e8ebf5;color:#687487}
+.ops-badge{font-size:11px;font-weight:700;padding:5px 9px;border-radius:999px;white-space:nowrap;display:inline-block}
+.ops-badge.yes{background:#e8f7ef;color:#147a48}
+.ops-badge.no{background:#fdecec;color:#b42318}
+.ops-badge.libre{background:#eef0f8;color:#606781}
+.ops-action{font-size:11px;color:#b42318;font-weight:600}
+.ops-action.ok{color:#147a48}
+.ops-action.muted{color:#9aa3b5;font-weight:500}
+
+.preview-flow{margin-top:22px;background:#fff;border:1px solid #e4e7f0;border-radius:12px;padding:14px 16px;font-size:13px;color:#4a5568}
+.preview-flow b{color:#111b47}
+.preview-flow ol{margin:8px 0 0;padding-left:18px}
+.preview-flow li{margin:4px 0}
+.preview-rejected{margin-top:12px;font-size:12px;color:#687487;background:#fff8f0;border:1px dashed #e8c98a;border-radius:10px;padding:10px 12px}
+</style>
+<body>
+  <div class="preview-banner">VISTA PREVIA · sin publicar <span>· mock estático · estilos reales de cobro · no toca la app</span></div>
+  <main class="preview-page">
+    <p class="preview-note">
+      Señal de <b>«salió»</b> = marca manual en Operaciones / WhatsApp.
+      <b>No usa adjudicación</b> (adjudicado ≠ salió).
+      En el cobro, <b>después</b> de salida/llegada, el chofer elige el número remis <b>o</b> marca viaje privado.
+      Ops cruza: «salió el N» → ¿hay cobro de hoy con ese N?
+    </p>
+
+    <div class="preview-screens">
+      <!-- A) Cobro del chofer — look nativo Explora -->
+      <section>
+        <div class="preview-label">A · Cobro del chofer · Paso 1 de 2 · Ruta</div>
+        <div id="chargeModal" class="modal charge-screen preview-static" data-tone="cash" aria-label="Nuevo cobro paso 1">
+          <div class="modal-card charge-screen-card">
+            <div class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span></div>
+            <button class="charge-back" type="button">‹ Cobros</button>
+            <div class="charge-heading">
+              <span class="charge-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M8 15h3"/></svg>
+              </span>
+              <div>
+                <h2>Nuevo cobro</h2>
+                <p>Efectivo · hoy 22/09/2026</p>
+              </div>
+            </div>
+            <form id="chargeForm" onsubmit="return false">
+              <div class="charge-step-label" role="status">Paso 1 de 2 · Servicio realizado</div>
+              <div class="charge-step-track" aria-hidden="true"><span class="complete"></span><span></span></div>
+              <section class="charge-step">
+                <div class="charge-panel charge-trip">
+                  <h3>Servicio realizado</h3>
+                  <h4>Recorrido</h4>
+                  <div class="charge-route-fields">
+                    <div class="field tourism-location-field route-required-field route-selected">
+                      <label for="previewOrigin">Salida</label>
+                      <div class="tourism-search-control">
+                        <input id="previewOrigin" value="Aeropuerto Ezeiza" readonly role="combobox" aria-expanded="false">
+                      </div>
+                    </div>
+                    <div class="field tourism-location-field route-required-field route-selected">
+                      <label for="previewDest">Llegada</label>
+                      <div class="tourism-search-control">
+                        <input id="previewDest" value="Palermo · Stub" readonly role="combobox" aria-expanded="false">
+                      </div>
+                    </div>
+                  </div>
+                  <div class="file-note" role="status">Mock: salida y llegada ya elegidas (mismo control que la app).</div>
+                </div>
+              </section>
+              <div class="modal-actions">
+                <button type="button" class="secondary">Cancelar</button>
+                <button type="button" class="save" id="saveChargeBtn">Continuar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="preview-label">A · Cobro del chofer · Paso 2 de 2 · Número o viaje privado</div>
+        <div id="managementModal" class="modal charge-screen preview-static" data-tone="cash" aria-label="Nuevo cobro paso 2">
+          <div class="modal-card charge-screen-card">
+            <div class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="" width="1942" height="809" decoding="async"></span></div>
+            <button class="charge-back" type="button">‹ Cobros</button>
+            <div class="charge-heading">
+              <span class="charge-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M8 15h3"/></svg>
+              </span>
+              <div>
+                <h2>Nuevo cobro</h2>
+                <p>Efectivo · hoy 22/09/2026</p>
+              </div>
+            </div>
+            <form id="managementForm" onsubmit="return false">
+              <div class="charge-step-label" role="status">Paso 2 de 2 · Número remis</div>
+              <div class="charge-step-track" aria-hidden="true"><span class="complete"></span><span class="complete"></span></div>
+              <section class="charge-step">
+                <div class="charge-panel">
+                  <h3>Número remis</h3>
+                  <p class="preview-hint" style="margin:0 0 10px">Elegí el número del viaje (mismo selector de chips que disponibilidad).</p>
+                  <div class="av-numbers" role="group" aria-label="Selector de número remis">
+                    <button type="button" aria-pressed="false">28</button>
+                    <button type="button" aria-pressed="true">57</button>
+                    <button type="button" aria-pressed="false">104</button>
+                    <button type="button" aria-pressed="false">31</button>
+                    <button type="button" aria-pressed="false">43</button>
+                    <button type="button" aria-pressed="false">154</button>
+                    <button type="button" aria-pressed="false">15</button>
+                    <button type="button" aria-pressed="false">134</button>
+                  </div>
+                  <div class="preview-or">o</div>
+                  <button type="button" class="preview-private-btn">ES UN VIAJE PRIVADO</button>
+                  <p class="preview-hint">Sin número remis: marcá viaje privado y seguí. Ops no cruza por número.</p>
+                </div>
+              </section>
+              <div class="modal-actions">
+                <button type="button" class="secondary">Atrás</button>
+                <button type="button" class="save" id="managementConfirm">Continuar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- B) Panel Operaciones (sin cambio de producto) -->
+      <section>
+        <div class="preview-label">B · Panel Operaciones</div>
+        <div class="ops-panel" aria-label="Panel Operaciones salidas">
+          <header>
+            <div>
+              <h1>Salidas de hoy</h1>
+              <p>Marcar salida · cruzar vs cobro</p>
+            </div>
+            <span class="ops-live">Mock</span>
+          </header>
+          <div class="ops-marcar">
+            <p class="title">Marcar salida</p>
+            <div class="ops-chips" role="group" aria-label="Marcar salida por número">
+              <span class="ops-chip out" title="Ya marcado">104</span>
+              <span class="ops-chip out" title="Ya marcado">57</span>
+              <span class="ops-chip">28</span>
+              <span class="ops-chip">31</span>
+              <span class="ops-chip">43</span>
+              <span class="ops-chip">154</span>
+              <span class="ops-chip">15</span>
+              <span class="ops-chip">134</span>
+            </div>
+          </div>
+          <div class="ops-summary">
+            <span>Salieron<b>2</b></span>
+            <span>Sin cobro<b>1</b></span>
+            <span>Libres<b>6</b></span>
+          </div>
+          <div class="ops-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Número</th>
+                  <th>Marcado a las</th>
+                  <th>Cobro</th>
+                  <th>Hora cobro</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="ops-num">104</span></td>
+                  <td>18:40</td>
+                  <td><span class="ops-badge no">NO</span></td>
+                  <td>—</td>
+                  <td><span class="ops-action">Avisar Telegram</span></td>
+                </tr>
+                <tr>
+                  <td><span class="ops-num">57</span></td>
+                  <td>19:05</td>
+                  <td><span class="ops-badge yes">SÍ</span></td>
+                  <td>19:12</td>
+                  <td><span class="ops-action ok">OK</span></td>
+                </tr>
+                <tr>
+                  <td><span class="ops-num free">28</span></td>
+                  <td>—</td>
+                  <td><span class="ops-badge libre">Libre</span></td>
+                  <td>—</td>
+                  <td><span class="ops-action muted">Sin salida</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="preview-flow">
+      <b>Flujo aprobado (preview)</b>
+      <ol>
+        <li>Operaciones marca «salió el N» (o lo ve en WhatsApp y lo marca acá).</li>
+        <li>El chofer carga el cobro: <b>Paso 1</b> salida + llegada (como hoy).</li>
+        <li><b>Paso 2 extra:</b> elige número remis (chips) <b>o</b> «ES UN VIAJE PRIVADO».</li>
+        <li>Ops mira la tabla: ¿hay cobro de hoy con ese N? Si no → avisar Telegram.</li>
+      </ol>
+    </div>
+    <p class="preview-rejected"><b>Descartado:</b> cruzar por adjudicación. Adjudicado ≠ salió en WhatsApp.</p>
+  </main>
+</body>
+</html>
