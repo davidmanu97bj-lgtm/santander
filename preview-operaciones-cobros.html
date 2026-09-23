@@ -2,132 +2,25 @@
 <html lang="es">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Explora · Operaciones · Cobros por número · Vista previa</title>
+<meta http-equiv="refresh" content="3;url=preview-salio-vs-cobro.html">
+<title>Explora · Cobros por número · Deprecado</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#fafafe;color:#10153f;font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.preview-banner{text-align:center;background:#eef0f8;color:#606781;font-size:10px;letter-spacing:1px;padding:7px 10px}
-main{max-width:440px;margin:auto;padding:14px 12px 56px}
-.preview-note{font-size:12px;color:#687487;margin:0 0 14px}
-.preview-label{font-size:11px;font-weight:700;color:#4a5568;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.6px}
-.panel{background:#fff;border:1px solid #e4e7f0;border-radius:16px;overflow:hidden;box-shadow:0 8px 24px #10153f14}
-.panel header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:14px 14px 10px;border-bottom:1px solid #eef0f8}
-.panel header h1{margin:0;font-size:17px}
-.panel header p{margin:4px 0 0;font-size:12px;color:#687487}
-.live{font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#1a9f5c;background:#e8f7ef;padding:4px 8px;border-radius:999px;white-space:nowrap}
-.summary{display:flex;gap:8px;padding:10px 12px;border-bottom:1px solid #eef0f8;background:#f7f8fd}
-.summary span{flex:1;text-align:center;font-size:12px;color:#4a5568;background:#fff;border:1px solid #e4e7f0;border-radius:10px;padding:8px 6px}
-.summary b{display:block;font-size:18px;color:#111b47;margin-top:2px}
-.list{padding:4px 0}
-.row{display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:center;padding:11px 14px;border-bottom:1px solid #f1f3f8}
-.row:last-child{border-bottom:0}
-.num{width:56px;height:40px;border-radius:10px;background:#111b47;color:#fff;display:grid;place-items:center;font-weight:800;font-size:15px}
-.num.free{background:#e8ebf5;color:#687487}
-.meta strong{display:block;font-size:14px}
-.meta small{display:block;margin-top:2px;font-size:11px;color:#687487}
-.badge{font-size:11px;font-weight:700;padding:5px 9px;border-radius:999px;white-space:nowrap}
-.badge.yes{background:#e8f7ef;color:#147a48}
-.badge.no{background:#fdecec;color:#b42318}
-.badge.wait{background:#fff4df;color:#9a6700}
-.hint{margin:12px 0 0;font-size:12px;color:#687487;padding:0 2px}
-.rule{background:#fff;border:1px solid #e4e7f0;border-radius:12px;padding:12px 14px;margin:0 0 8px;font-size:13px}
-.rule b{color:#111b47}
-.rank{background:#fff;border:1px solid #e4e7f0;border-radius:12px;padding:12px 14px;margin:0 0 8px;font-size:13px}
-.rank .n{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#111b47;color:#fff;font-size:11px;font-weight:700;margin-right:8px}
-.rank .muted{color:#687487;font-size:12px;margin-top:4px}
-.cross{font-size:12px;color:#4a5568;background:#fff;border:1px dashed #cfd5e4;border-radius:12px;padding:12px;margin-top:10px}
-.cross ol{margin:8px 0 0;padding-left:18px}
+body{margin:0;background:#fafafe;color:#10153f;font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:grid;place-items:center;min-height:100vh;padding:24px}
+.card{max-width:420px;background:#fff;border:1px solid #e4e7f0;border-radius:16px;padding:24px;box-shadow:0 8px 24px #10153f14;text-align:center}
+.badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#9a6700;background:#fff4df;padding:4px 10px;border-radius:999px;margin-bottom:12px}
+h1{margin:0 0 10px;font-size:18px}
+p{margin:0 0 12px;font-size:13px;color:#4a5568}
+a{color:#0f4c81;font-weight:700}
+.muted{font-size:12px;color:#687487}
 </style>
 <body>
-  <div class="preview-banner">VISTA PREVIA LOCAL · Operaciones · Número + cobro sí/no de hoy · No publica nada</div>
-  <main>
-    <p class="preview-note">Propuesta v1 para Operaciones: al ver un número en WhatsApp Aeropuerto (ej. <b>104</b>), abrir Explora admin y cruzar contra esta lista. Sin alertas automáticas en v1.</p>
-
-    <div class="preview-label">1. Pantalla recomendada · Admin / Operaciones</div>
-    <div class="panel" aria-label="Vista previa cobros por número">
-      <header>
-        <div>
-          <h1>Cobros por número</h1>
-          <p>Hoy · 22/09/2026 · zona Argentina</p>
-        </div>
-        <span class="live">En vivo</span>
-      </header>
-      <div class="summary">
-        <span>Con cobro<b>5</b></span>
-        <span>Sin cobro<b>2</b></span>
-        <span>Libres<b>1</b></span>
-      </div>
-      <div class="list">
-        <div class="row">
-          <div class="num">28</div>
-          <div class="meta"><strong>Ramiro</strong><small>Adjudicado 08:12 · efectivo</small></div>
-          <span class="badge yes">Cobro sí · 08:41</span>
-        </div>
-        <div class="row">
-          <div class="num">57</div>
-          <div class="meta"><strong>Javier</strong><small>Adjudicado 09:05</small></div>
-          <span class="badge no">Cobro no</span>
-        </div>
-        <div class="row">
-          <div class="num">104</div>
-          <div class="meta"><strong>Martín</strong><small>Adjudicado 10:18 · digital</small></div>
-          <span class="badge yes">Cobro sí · 10:47</span>
-        </div>
-        <div class="row">
-          <div class="num">31</div>
-          <div class="meta"><strong>Lucas</strong><small>Adjudicado 11:02</small></div>
-          <span class="badge wait">Pendiente</span>
-        </div>
-        <div class="row">
-          <div class="num">43</div>
-          <div class="meta"><strong>Diego</strong><small>Adjudicado 12:20 · efectivo</small></div>
-          <span class="badge yes">Cobro sí · 12:51</span>
-        </div>
-        <div class="row">
-          <div class="num">154</div>
-          <div class="meta"><strong>Pablo</strong><small>Adjudicado 13:10 · digital</small></div>
-          <span class="badge yes">Cobro sí · 13:33</span>
-        </div>
-        <div class="row">
-          <div class="num">15</div>
-          <div class="meta"><strong>Sin adjudicación</strong><small>Número libre ahora</small></div>
-          <span class="badge wait">Libre</span>
-        </div>
-        <div class="row">
-          <div class="num">134</div>
-          <div class="meta"><strong>Gustavo</strong><small>Adjudicado 14:02 · efectivo</small></div>
-          <span class="badge yes">Cobro sí · 14:28</span>
-        </div>
-      </div>
-    </div>
-    <p class="hint">Columnas v1: <b>número · chofer · cobro sí/no · hora</b>. Operaciones solo necesita cruzar el número del WhatsApp Aeropuerto contra esta lista.</p>
-
-    <div class="cross">
-      <b>Flujo de Operaciones (v1)</b>
-      <ol>
-        <li>Aparece el 104 en WhatsApp Aeropuerto 2026.</li>
-        <li>Abren Explora → Admin → Cobros por número.</li>
-        <li>Ven si 104 tiene cobro de hoy: sí/no (+ chofer y hora).</li>
-        <li>Si falta, escriben a Telegram Explora como hoy.</li>
-      </ol>
-    </div>
-
-    <div class="preview-label">2. Ranking de opciones (más simple primero)</div>
-    <div class="rank"><span class="n">1</span><b>Lista admin «Cobros por número» (esta preview)</b>
-      <div class="muted">Pros: mínima, sin alertas, usa datos que ya existen (adjudicación + cobros del día). Cons: Operaciones sigue mirando a mano; el cobro no guarda el número remis (se cruza por chofer).</div>
-    </div>
-    <div class="rank"><span class="n">2</span><b>Filtro extra en Actividad (mes / tipo / buscar)</b>
-      <div class="muted">Pros: reusa la pantalla actual. Cons: hoy solo filtra chofer/detalle, no número; no responde «¿el 104 cargó?»</div>
-    </div>
-    <div class="rank"><span class="n">3</span><b>Alerta automática (Telegram) si salió y no hay cobro</b>
-      <div class="muted">Pros: menos mirada manual. Cons: v1 prematura — no hay señal fuerte número↔cobro; riesgo de falsos positivos/negativos.</div>
-    </div>
-
-    <div class="preview-label">3. Qué hay hoy en la app</div>
-    <div class="rule"><b>Admin → Movimientos:</b> filtra mes, tipo (efectivo/digital/gastos…) y busca «Chofer o detalle». No filtra por número remis ni por aeropuerto.</div>
-    <div class="rule"><b>Cobros (<code>billing_records</code>):</b> guardan chofer, monto, método, origen/destino, fecha. <b>No guardan el número adjudicado</b> (28/57/104…).</div>
-    <div class="rule"><b>Disponibilidad:</b> numbers perpetuos en <code>driver_availability_days/active</code> + estado del chofer en <code>driver_availability</code> (quién tiene el 104).</div>
-    <div class="rule"><b>Señal auto-alerta:</b> débil. Solo se puede inferir «chofer que tiene el número X ¿tiene algún cobro hoy?». No hay link directo adjudicación→cobro ni flag aeropuerto en el cobro.</div>
-  </main>
+  <div class="card">
+    <div class="badge">Deprecado</div>
+    <h1>Vista previa v1 reemplazada</h1>
+    <p>David rechazó cruzar por <b>adjudicación</b> (adjudicado ≠ salió). La preview vigente es <b>salida manual / WhatsApp vs cobro por número</b>.</p>
+    <p><a href="preview-salio-vs-cobro.html">Ir a preview-salio-vs-cobro.html</a></p>
+    <p class="muted">Redirección automática en 3 s · VISTA PREVIA · sin publicar</p>
+  </div>
 </body>
 </html>
