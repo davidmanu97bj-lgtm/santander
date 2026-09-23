@@ -1,6 +1,10 @@
 {
   "context": "Excepciones por ampliación explícita del alcance del usuario: reglas financieras, cierre único y Telegram. El baseline original se conserva. Normalizar CRLF evita diferencias propias de Windows.",
   "functions": {
+    "createInvoiceCard": {
+      "hash": "a397901093d91cd8f1aaf211777fa6e7805eab9b348e4628a3a526724a644f64",
+      "reason": "Revisión de facturación: mostrar observaciones de rechazo guardadas, punto de venta y número solicitado sin autorización; no cambia emisión ni importes. Cubierto por invoice-rejection-display.test.mjs."
+    },
     "initializeTourismSelector": {
       "hash": "a18b9d560e5b607893c23e4b28a1f78df772eca6cb0a37f4c65e25362ff4b9a9",
       "reason": "Cobro más ágil: catálogo local al instante, debounce Google 150ms, caché de búsquedas y km precalculados del catálogo sin hop a Cloud Function."
