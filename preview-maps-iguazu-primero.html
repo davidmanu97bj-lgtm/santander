@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Explora · Maps Iguazú primero · Vista previa</title>
+<meta name="preview-version" content="1" data-preview-version="1">
+<style>
+body{margin:0;background:#eef1f7;color:#10164c;font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.preview-banner{text-align:center;background:#111b47;color:#fff;font-size:11px;font-weight:700;letter-spacing:1.2px;padding:9px 12px}
+.preview-banner span{opacity:.75;font-weight:500;letter-spacing:.4px}
+.preview-page{max-width:980px;margin:auto;padding:16px 14px 64px}
+.preview-note{font-size:13px;color:#4a5568;margin:0 0 18px;background:#fff;border:1px solid #e4e7f0;border-left:3px solid #009b61;border-radius:10px;padding:12px 14px}
+.preview-note b{color:#111b47}
+.preview-note ul{margin:8px 0 0;padding-left:18px}
+.preview-note li{margin:4px 0}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+.tab{border:1px solid #d5deeb;background:#fff;border-radius:999px;padding:8px 14px;font:inherit;font-weight:700;font-size:13px;color:#4a5568;cursor:pointer}
+.tab.active{background:#111b47;border-color:#111b47;color:#fff}
+.preview-screens{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:860px){.preview-screens{grid-template-columns:1fr}}
+.preview-col-label{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:#4a5568;margin:0 0 8px;text-transform:uppercase;letter-spacing:.6px}
+.preview-badge{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 8px;border-radius:999px;text-transform:uppercase}
+.preview-badge.before{background:#fde8ec;color:#b9233d}
+.preview-badge.after{background:#e3f7ef;color:#0d7a4c}
+.phone{max-width:420px;background:#fff;border:1px solid #e3eaf4;border-radius:16px;box-shadow:0 8px 24px #10153f14;padding:14px 14px 18px}
+.query-box{border:1px solid #d5deeb;border-radius:12px;background:#f9fbff;padding:12px 14px;font-weight:600;margin:0 0 12px;color:#10164c}
+.list{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.item{border:1px solid #e8eef6;border-radius:12px;padding:10px 12px;background:#fbfcff}
+.item .rank{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;background:#eef2f8;color:#4a5568;font-size:11px;font-weight:800;margin-right:8px}
+.item .name{font-weight:700;font-size:14px}
+.item .meta{display:block;margin-top:3px;font-size:12px;color:#64779f}
+.tag{display:inline-block;margin-top:6px;font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;padding:2px 7px;border-radius:999px}
+.tag.ar{background:#e8f1ff;color:#1d4f91}
+.tag.br{background:#fff4e5;color:#9a5b00}
+.tag.py{background:#f3e8ff;color:#6b21a8}
+.tag.other{background:#f1f5f9;color:#475569}
+.legend{margin-top:18px;font-size:12px;color:#64779f}
+</style>
+<body>
+<div class="preview-banner">VISTA PREVIA · Maps Iguazú primero <span>· no publicado · branch fix/maps-iguazu-first</span></div>
+<main class="preview-page">
+  <div class="preview-note">
+    <b>Pedido del Gerente:</b> en Salida/Llegada, priorizar destinos de Iguazú (Argentina), después Foz do Iguaçu (Brasil), después Paraguay.
+    La mayoría de los viajes salen de Puerto Iguazú, así que ver Foz primero se siente mal. También hay un sesgo suave por cercanía (~−25.597, −54.579) para que lugares lejanos no floten arriba.
+    <ul>
+      <li>Antes = orden típico de Google (a menudo Foz / lejanos primero).</li>
+      <li>Después = ranking Explora: región Iguazú → Foz → Paraguay → otros, más distancia suave.</li>
+    </ul>
+  </div>
+  <div class="tabs" id="tabs"></div>
+  <div class="preview-screens">
+    <section>
+      <div class="preview-col-label"><span class="preview-badge before">Antes</span> orden del proveedor</div>
+      <div class="phone">
+        <div class="query-box" id="queryBefore"></div>
+        <ol class="list" id="beforeList"></ol>
+      </div>
+    </section>
+    <section>
+      <div class="preview-col-label"><span class="preview-badge after">Después</span> Iguazú primero</div>
+      <div class="phone">
+        <div class="query-box" id="queryAfter"></div>
+        <ol class="list" id="afterList"></ol>
+      </div>
+    </section>
+  </div>
+  <p class="legend">Centro de sesgo: Puerto Iguazú (−25.5972, −54.5736). Soft demote &gt;45 km y &gt;70 km. Hard filter 100 km sin cambios. Catálogo local usa el mismo orden de región.</p>
+</main>
+<script>
+const CENTER={lat:-25.5972,lon:-54.5736};
+function haversineKm(lon,lat){
+  const rad=n=>n*Math.PI/180;
+  const a=Math.sin(rad(lat-CENTER.lat)/2)**2+Math.cos(rad(CENTER.lat))*Math.cos(rad(lat))*Math.sin(rad(lon-CENTER.lon)/2)**2;
+  return 6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(Math.max(0,1-a)));
+}
+function normalize(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
+function regionBucket(p){
+  const text=normalize([p.label,p.locality].filter(Boolean).join(' '));
+  const code=String(p.country||'').toUpperCase();
+  const d=p.distanceKm;
+  if((code==='AR'||code==='ARG')&&(/\biguaz|\bpuerto iguaz/.test(text)||d<=18))return 0;
+  if(code==='BR'||code==='BRA'||/\bfoz\b|\biguacu\b/.test(text))return 1;
+  if(code==='PY'||code==='PRY')return 2;
+  return 3;
+}
+function softDistance(d){return d+(d>45?d-45:0)+(d>70?(d-70)*2:0);}
+function enrich(list){
+  return list.map(p=>{
+    const distanceKm=Math.round(haversineKm(p.coordinates[0],p.coordinates[1])*10)/10;
+    return {...p,distanceKm,region:regionBucket({...p,distanceKm})};
+  });
+}
+function rank(list){
+  return enrich(list).map((p,i)=>({p,i}))
+    .sort((a,b)=>a.p.region-b.p.region||softDistance(a.p.distanceKm)-softDistance(b.p.distanceKm)||a.i-b.i)
+    .map(x=>x.p);
+}
+const SAMPLES={
+  hotel:{
+    label:'hotel',
+    before:[
+      {id:'1',label:'Hotel Bourbon Cataratas',locality:'Foz do Iguaçu',country:'BR',coordinates:[-54.487,-25.613]},
+      {id:'2',label:'Hotel Viale Cataratas',locality:'Foz do Iguaçu',country:'BR',coordinates:[-54.508,-25.598]},
+      {id:'3',label:'Hotel Casino Acaray',locality:'Ciudad del Este',country:'PY',coordinates:[-54.616,-25.509]},
+      {id:'4',label:'Loi Suites Iguazú',locality:'Puerto Iguazú',country:'AR',coordinates:[-54.5456,-25.5967]},
+      {id:'5',label:'Iguazú Grand Hotel',locality:'Puerto Iguazú',country:'AR',coordinates:[-54.5652,-25.6034]},
+      {id:'6',label:'Hostería Wanda',locality:'Wanda',country:'AR',coordinates:[-54.560,-25.970]},
+    ]
+  },
+  aeropuerto:{
+    label:'aeropuerto',
+    before:[
+      {id:'1',label:'Aeroporto Internacional das Cataratas',locality:'Foz do Iguaçu',country:'BR',coordinates:[-54.489,-25.600]},
+      {id:'2',label:'Aeropuerto Internacional de Puerto Iguazú',locality:'Puerto Iguazú',country:'AR',coordinates:[-54.476,-25.731]},
+      {id:'3',label:'Helipuerto Este',locality:'Ciudad del Este',country:'PY',coordinates:[-54.620,-25.520]},
+    ]
+  },
+  cataratas:{
+    label:'cataratas',
+    before:[
+      {id:'1',label:'Parque Nacional do Iguaçu',locality:'Foz do Iguaçu',country:'BR',coordinates:[-54.438,-25.695]},
+      {id:'2',label:'Hotel Viale Cataratas',locality:'Foz do Iguaçu',country:'BR',coordinates:[-54.508,-25.598]},
+      {id:'3',label:'Cataratas Argentina · acceso vial',locality:'Puerto Iguazú',country:'AR',coordinates:[-54.475,-25.690]},
+      {id:'4',label:'Parque das Aves',locality:'Foz do Iguaçu',country:'BR',coordinates:[-54.486,-25.613]},
+      {id:'5',label:'Duty Free Cataratas',locality:'Ciudad del Este',country:'PY',coordinates:[-54.611,-25.512]},
+    ]
+  }
+};
+const REGION_LABEL=['Iguazú AR','Foz BR','Paraguay','Otro'];
+const TAG=['ar','br','py','other'];
+function renderList(el,items){
+  el.innerHTML=items.map((p,idx)=>`<li class="item"><span class="rank">${idx+1}</span><span class="name">${p.label}</span><span class="meta">${p.locality||'—'} · ${p.distanceKm} km</span><span class="tag ${TAG[p.region]}">${REGION_LABEL[p.region]}</span></li>`).join('');
+}
+function show(key){
+  const sample=SAMPLES[key];
+  document.querySelectorAll('.tab').forEach(btn=>btn.classList.toggle('active',btn.dataset.key===key));
+  document.getElementById('queryBefore').textContent='Salida / Llegada · “'+sample.label+'”';
+  document.getElementById('queryAfter').textContent='Salida / Llegada · “'+sample.label+'”';
+  renderList(document.getElementById('beforeList'),enrich(sample.before));
+  renderList(document.getElementById('afterList'),rank(sample.before));
+}
+const tabs=document.getElementById('tabs');
+for(const key of Object.keys(SAMPLES)){
+  const btn=document.createElement('button');
+  btn.type='button';btn.className='tab';btn.dataset.key=key;btn.textContent=key;
+  btn.onclick=()=>show(key);
+  tabs.append(btn);
+}
+show('hotel');
+</script>
+</body>
+</html>
