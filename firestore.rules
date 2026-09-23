@@ -1274,6 +1274,16 @@ service cloud.firestore {
     }
     // Phone audit and notification events stay server-only.
 
+    // Operaciones: marcas de salida por número (salió vs cobro). No usa adjudicación.
+    match /ops_number_exits/{exitId} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.dayKey is string
+        && request.resource.data.remisNumber is number
+        && request.resource.data.active is bool;
+      allow delete: if isAdmin();
+    }
+
     // DENEGACIÓN FINAL
     // =========================================================
 

@@ -1,4 +1,12 @@
 import { mountDriverAvailability } from "./driver-availability.js?v=20260922-perpetuos";
+import {
+  REMIS_NUMBERS,
+  OPS_EXITS_COLLECTION,
+  exitDocId,
+  renderChargeRemisStep,
+  readChargeRemisSelection,
+  mountOpsSalidasBoard
+} from "./ops-salidas.js?v=20260922-salio-cobro";
 import { mountAdminWorkspace } from "./admin-workspace.js?v=20260919-admin-1";
 import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20260919-admin-1";
 import { mountPeriodClose } from "./period-ui.js?v=20260919-login-period-1";
@@ -3241,6 +3249,7 @@ function unsubscribeAdminDashboard() {
 
 function renderAdminDashboardUpdates() {
   if (!auth.currentUser || !isAdminProfile()) return;
+  if (typeof opsSalidasBoard !== "undefined") opsSalidasBoard?.refresh();
   adminWorkspace?.refresh();
   if (!dashboardLoad?.complete()) {
     $("adminDriverList").innerHTML = `<div class="admin-driver-empty">${dashboardLoad?.errors.size ? "No se pudieron cargar los saldos. Recargá para volver a intentar." : "Consultando los saldos del equipo…"}</div>`;
@@ -4370,6 +4379,7 @@ onAuthStateChanged(auth, async user => {
   if (isCurrent()) {
     subscribeTeamRealtimeDashboard();
     void driverAvailability.start({uid:user.uid,isAdmin:isAdminProfile()});
+    if (isAdminProfile() && typeof ensureOpsSalidasBoard === "function") ensureOpsSalidasBoard()?.start();
     refreshArcaBillingStatus();
   }
 });
@@ -4383,6 +4393,7 @@ document.querySelectorAll("[data-mode]").forEach(btn => {
     syncChargeCustomerFields();
     clearPhotoPicker("digital");
     delete $("chargeForm").dataset.previewConfirmed;
+    if ($("chargeRemisStep")) renderChargeRemisStep($("chargeRemisStep"), { numbers: REMIS_NUMBERS, selection: null });
     $("chargeMode").value = mode;
     $("chargeModal").dataset.tone = mode;
     $("chargeTitle").textContent = mode === "cash" ? "Cobro en efectivo y Uber" : "Cobro digital";
@@ -4840,11 +4851,14 @@ $("chargeForm")?.addEventListener("submit", async e => {
   try {
     const enteredDetail = $("detail").value.trim();
     const chargeDelta = ExploraPeriodPolicy.chargeDelta(amount, mode);
+    const remisSelection = readChargeRemisSelection($("chargeRemisStep") || document);
     fingerprint = await buildSubmissionFingerprint("charge", {
       mode,
       amount,
       detail:enteredDetail,
-      invoiceRequest
+      invoiceRequest,
+      remisNumber: remisSelection.viajePrivado ? null : remisSelection.remisNumber,
+      viajePrivado: remisSelection.viajePrivado === true
     });
     operation = reservePendingOperation("payment", user.uid, fingerprint);
     paymentRef = doc(db, ROOT_COLLECTIONS.payments, operation.operationId);
@@ -4927,6 +4941,9 @@ $("chargeForm")?.addEventListener("submit", async e => {
         telegramSettlementAfterBalance: settlementAfterCharge,
         telegramSettlementPayer: settlementAfterCharge > 0.5 ? "driver" : settlementAfterCharge < -0.5 ? "explora" : "balanced",
         dayKey: localDayKey(),
+        remisNumber: remisSelection.viajePrivado ? null : Number(remisSelection.remisNumber) || null,
+        viajePrivado: remisSelection.viajePrivado === true,
+        isPrivateTrip: remisSelection.viajePrivado === true,
         weeklyPeriodId: currentWeeklyPeriodId(),
         operatorUid: user.uid,
         operatorName: currentDriverName(),
@@ -6416,12 +6433,12 @@ $("expenseAmount").addEventListener("input", renderExpensePreview);
 $("expensePaymentMethod").addEventListener("change", renderExpensePreview);
 
 function chargeSteps() {
-  return $("chargeMode").value === "digital" ? [0,1,2,3] : [0,1,3];
+  return $("chargeMode").value === "digital" ? [0,1,4,2,3] : [0,1,4,3];
 }
 function showChargeStep(step) {
   $("chargeForm").dataset.step = String(step);
   document.querySelectorAll("[data-charge-step]").forEach(panel => panel.classList.toggle("hidden", Number(panel.dataset.chargeStep) !== step));
-  const names = ["Monto", "Servicio realizado", "Foto del comprobante", "Factura de Explora"];
+  const names = ["Monto", "Servicio realizado", "Foto del comprobante", "Factura de Explora", "Número remis"];
   const steps = chargeSteps();
   const position = steps.indexOf(step);
   $("chargeStepLabel").textContent = "Paso " + (position + 1) + " de " + steps.length + " · " + names[step];
@@ -6429,6 +6446,10 @@ function showChargeStep(step) {
   $("saveChargeBtn").textContent = step === 3 ? "Confirmar cobro" : "Continuar";
   $("chargeStepBack").textContent = step === 0 ? "Cancelar" : "Atrás";
   $("chargeStatus").textContent = "";
+  if (step === 4) {
+    const selected = readChargeRemisSelection($("chargeRemisStep") || document);
+    renderChargeRemisStep($("chargeRemisStep"), { numbers: REMIS_NUMBERS, selection: (selected.remisNumber || selected.viajePrivado) ? selected : null });
+  }
   renderChargePreview();
   $("chargeModal").scrollTop = 0;
 }
@@ -6455,6 +6476,14 @@ function validateChargeStep(step) {
   }
   if (step === 2 && $("chargeMode").value === "digital" && !selectedPhotoFile("digital")) {
     showChargeStep(2); $("chargeStatus").textContent = "Adjuntá la foto del comprobante digital."; return false;
+  }
+  if (step === 4) {
+    const remis = readChargeRemisSelection($("chargeRemisStep") || document);
+    if (!remis.viajePrivado && !(Number(remis.remisNumber) > 0)) {
+      showChargeStep(4);
+      $("chargeStatus").textContent = "Elegí un número remis o marcá que es un viaje privado.";
+      return false;
+    }
   }
   return true;
 }
@@ -6992,6 +7021,52 @@ $('adminDigitalExpenseForm').addEventListener('submit',async event=>{
   }catch(error){status.textContent=error.message||'No se pudo confirmar. Reintentá; la misma operación no se duplicará.';status.className='status error';}
   finally{button.disabled=false;button.textContent='Confirmar pago digital';controls.forEach(c=>c.disabled=false);}
 });
+
+let opsSalidasBoard = null;
+function ensureOpsSalidasBoard() {
+  if (opsSalidasBoard || !$("opsSalidasBoard")) return opsSalidasBoard;
+  opsSalidasBoard = mountOpsSalidasBoard($("opsSalidasBoard"), {
+    numbers: REMIS_NUMBERS,
+    getDayKey: () => localDayKey(),
+    getPayments: () => (adminPayments || []).filter(item => !movementIsDeleted?.(item)),
+    listenExits: (onRows, onError) => {
+      if (!isAdminProfile()) return () => {};
+      const dayKey = localDayKey();
+      return onSnapshot(
+        query(collection(db, OPS_EXITS_COLLECTION), where("dayKey", "==", dayKey), where("active", "==", true)),
+        snap => onRows(snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))),
+        onError
+      );
+    },
+    markExit: async ({ dayKey, remisNumber }) => {
+      const user = auth.currentUser;
+      if (!user || !isAdminProfile()) throw new Error("Solo administración puede marcar salidas.");
+      const ref = doc(db, OPS_EXITS_COLLECTION, exitDocId(dayKey, remisNumber));
+      await setDoc(ref, {
+        dayKey,
+        remisNumber: Number(remisNumber),
+        active: true,
+        markedAtMs: Date.now(),
+        markedByUid: user.uid,
+        markedByName: currentDriverName(),
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp()
+      }, { merge: true });
+    },
+    unmarkExit: async ({ dayKey, remisNumber }) => {
+      const user = auth.currentUser;
+      if (!user || !isAdminProfile()) throw new Error("Solo administración puede quitar salidas.");
+      const ref = doc(db, OPS_EXITS_COLLECTION, exitDocId(dayKey, remisNumber));
+      await setDoc(ref, {
+        active: false,
+        unmarkedAtMs: Date.now(),
+        unmarkedByUid: user.uid,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    }
+  });
+  return opsSalidasBoard;
+}
 adminWorkspace=mountAdminWorkspace({getState:adminWorkspaceState,loadDocuments:async input=>(await httpsCallable(functions,'adminMonthlyDocuments',{timeout:300000})(input)).data,openDebt:openAdminDebt,openDigital:openAdminDigitalExpense});
 
 // Hand a submit made during startup to the authenticated login handler once.

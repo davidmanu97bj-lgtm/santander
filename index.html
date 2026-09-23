@@ -129,6 +129,7 @@
   <link rel="stylesheet" href="./movement-colors.css?v=20260919-admin-1" />
   <link rel="stylesheet" href="./explora-ui.css?v=20260919-admin-1" />
   <link rel="stylesheet" href="./driver-availability.css?v=20260922-perpetuos" />
+  <link rel="stylesheet" href="./ops-salidas.css?v=20260922-salio-cobro" />
   <link rel="stylesheet" href="./admin-workspace.css?v=20260919-admin-1" />
 </head>
 <body>
@@ -191,6 +192,7 @@
             <button id="adminGroupDebtBtn" disabled class="admin-quick group" type="button"><span data-explora-icon="management"></span><span><strong>Deuda grupal</strong><small>El mismo importe para cada chofer activo.</small></span><b aria-hidden="true">↗</b></button>
           </div><p id="adminQuickStatus" role="status">Sincronizando el equipo…</p></section>
           <button type="button" id="adminAvailabilityBtn" disabled>Disponibilidad de choferes</button>
+          <div id="opsSalidasBoard" class="ops-salidas-host"></div>
           <p class="admin-mobile-note">Los informes y el control del equipo están disponibles en la versión para notebook.</p>
           <div class="admin-desktop-only">
             <section data-admin-panel="overview">
@@ -341,7 +343,7 @@
     <div class="charge-brand"><span class="explora-wordmark charge-brand-logo"><img src="./assets/explora-logo.png?v=20260913-identidad-explora" alt="Explora · Iguazú Viajes y Servicios" width="1942" height="809" decoding="async"></span></div>
     <button class="charge-back" type="button" data-close="chargeModal">‹ Cobros</button>
     <div class="charge-heading"><span id="chargeIcon" class="charge-icon" aria-hidden="true"></span><div><h2 id="chargeTitle">Nuevo cobro</h2><p id="chargeIntro"></p></div></div>
-    <form id="chargeForm" novalidate><div id="chargeStepLabel" class="charge-step-label" role="status" aria-live="polite"></div><div class="charge-step-track" aria-hidden="true"><span></span><span></span><span></span><span></span></div><section data-charge-step="0" class="charge-step">
+    <form id="chargeForm" novalidate><div id="chargeStepLabel" class="charge-step-label" role="status" aria-live="polite"></div><div class="charge-step-track" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div><section data-charge-step="0" class="charge-step">
       <input type="hidden" id="chargeMode">
       <input id="chargeDigitalType" type="hidden" value="transfer">
       <div class="field charge-panel charge-amount-panel">
@@ -375,6 +377,8 @@
 
         <details class="charge-extra"><summary>Agregar una nota (opcional)</summary><div class="field"><label for="detail">Detalle adicional</label><input id="detail" placeholder="Opcional" maxlength="300"></div></details>
       </div>
+</section><section data-charge-step="4" class="charge-step hidden">
+      <div id="chargeRemisStep" class="charge-remis-host" aria-live="polite"></div>
 </section><section data-charge-step="2" class="charge-step hidden">
       <div id="proofField" class="field charge-panel hidden">
         <label>Comprobante digital</label>
