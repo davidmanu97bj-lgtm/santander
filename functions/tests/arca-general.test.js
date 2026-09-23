@@ -3,12 +3,13 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {buildInvoice,matchesAuthorized,authorizationFromResponse}=require('../arca-invoice');
 const {enqueueInvoice,processInvoice,seriesKey,enabled}=require('../arca-worker');
-const {DOMESTIC_EXEMPT_POLICY}=require('../arca-policy');
+const {DOMESTIC_EXEMPT_POLICY,INTERNATIONAL_EXEMPT_POLICY,internationalBEnabled}=require('../arca-policy');
 const {createArcaClient}=require('../arca-client');
 const {invoicePdf,qrUrl}=require('../arca-pdf');
 const {invoiceFilename}=require('../telegram-compact');
 const NOW=Date.parse('2026-09-23T18:00:00Z');
 const config={enabled:true,environment:'homologation',regime:'general',invoiceType:6,
+  approvedDriverUids:['test-driver'],
   taxPolicy:DOMESTIC_EXEMPT_POLICY,domesticTaxiExemptionVerified:true,exclusivePointOfSale:true,
   pointEmissionType:'CAE - Ri Iva',pointOfSale:3,cuit:'20123456786',legalName:'EMISOR DE PRUEBA',
   address:'Domicilio de prueba',grossIncomeId:'Dato de prueba',activityStart:'2024-01-01',activeFrom:'2026-09-23T00:00:00-03:00'};
@@ -64,6 +65,38 @@ test('configuración heredada o sin homologación B no activa producción',()=>{
   assert.equal(enabled({...c,generalHomologationPassed:true,domesticTaxiExemptionVerified:false}),false);
   assert.equal(enabled({...c,generalHomologationPassed:true,invoiceType:11}),false);
   assert.equal(enabled({...config,taxPolicy:'unverified'}),false);
+  assert.equal(enabled({...config,approvedDriverUids:[]}),false);
+});
+test('perfiles de prueba no emiten B ni entran en la cola automática',async()=>{
+  const db=memoryDb(),p=payment(),client=api();p.driverUid='test-profile-not-approved';
+  db.data.set('billing_records/test',p);await enqueueInvoice(db,'test',config,NOW);
+  const j=db.data.get('arca_invoices/test');assert.equal(j.status,'review');assert.ok(j.issues.includes('driver_not_authorized_for_invoicing'));
+  await processInvoice({db,id:'test',config,client,now:()=>NOW});assert.equal(client.calls,0);
+});
+test('B internacional necesita política/corte propios y conserva exención, bruto e idempotencia',async()=>{
+  const c={...config,internationalTaxPolicy:INTERNATIONAL_EXEMPT_POLICY,internationalInvoiceType:6,
+    internationalTransportExemptionVerified:true,internationalActiveFrom:'2026-09-23T00:00:00-03:00'};
+  assert.equal(internationalBEnabled(c,new Date(NOW)),true);
+  const db=memoryDb(),client=api();
+  for(const method of ['cash','digital']){
+    const p=payment();p.method=method;p.invoiceRequest.scope='international';p.invoiceRequest.distanceKm=150;
+    p.invoiceRequest.origin='Puerto Iguazú - Argentina';p.invoiceRequest.destination='Destino de prueba - Brasil';
+    db.data.set('billing_records/'+method,p);await enqueueInvoice(db,method,c,NOW);await enqueueInvoice(db,method,c,NOW);
+    const run=()=>processInvoice({db,id:method,config:c,client,now:()=>NOW});await run();await run();
+    const j=db.data.get('arca_invoices/'+method);assert.equal(j.status,'authorized');assert.equal(j.invoiceType,6);
+    assert.equal(j.internationalTaxPolicy,INTERNATIONAL_EXEMPT_POLICY);assert.equal(j.detail.ImpOpEx,100000);assert.equal(j.detail.ImpNeto,0);
+  }
+  assert.equal(client.calls,2);
+  for(const change of [{internationalInvoiceType:11},{internationalTransportExemptionVerified:false},
+    {internationalTaxPolicy:'unverified'},{internationalActiveFrom:'2026-09-24T00:00:00-03:00'}]){
+    assert.equal(internationalBEnabled({...c,...change},new Date(NOW)),false);
+    const p=payment();p.invoiceRequest.scope='international';
+    assert.ok(buildInvoice(p,{...c,...change},new Date(NOW)).issues.includes('international_requires_review'));
+  }
+  const old=payment();old.invoiceRequest.scope='international';old.invoiceRequest.serviceDate='2026-09-22';
+  assert.ok(buildInvoice(old,c,new Date(NOW)).issues.includes('international_before_activation'));
+  old.invoiceRequest.serviceDate='2026-09-23';old.createdAt={toMillis:()=>Date.parse(c.internationalActiveFrom)-1};
+  assert.ok(buildInvoice(old,c,new Date(NOW)).issues.includes('international_before_activation'));
 });
 test('evento repetido B, numeración propia y pagos/saldos intactos',async()=>{
   const db=memoryDb(),client=api(),p=payment();db.data.set('billing_records/a',p);

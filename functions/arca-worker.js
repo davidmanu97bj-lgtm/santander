@@ -1,7 +1,7 @@
 "use strict";
 const {randomUUID}=require('node:crypto');
 const {buildInvoice,matchesAuthorized,authorizationFromResponse}=require('./arca-invoice');
-const {configuredInvoiceType,generalPolicyReady,invoiceTypeOf,pointMatches}=require('./arca-policy');
+const {configuredInvoiceType,generalPolicyReady,internationalBEnabled,invoiceTypeOf,pointMatches}=require('./arca-policy');
 const LEASE_MS=180000;
 const JOBS='arca_invoices',SERIES='arca_series';
 function enabled(config) {
@@ -34,6 +34,8 @@ async function processInvoice({db,id,config,client,now=()=>Date.now()}) {
     if(!['queued','reserved','sent','uncertain'].includes(j.status)||j.seriesKey!==series.id||j.environment!==config.environment||j.leaseUntil>now())return null;
     if(invoiceTypeOf(j)!==configuredInvoiceType(config)||Number(j.issuer?.pointOfSale)!==Number(config.pointOfSale)||String(j.issuer?.cuit)!==String(config.cuit))return null;
     if(config.regime==='general'&&(j.issuerRegime!=='general'||j.taxPolicy!==config.taxPolicy||j.issues?.length))return null;
+    if(config.regime==='general'&&!config.approvedDriverUids.includes(j.driverUid))return null;
+    if(config.regime==='general'&&j.scope==='international'&&(!internationalBEnabled(config,new Date(now()))||j.internationalTaxPolicy!==config.internationalTaxPolicy))return null;
     // An uncertain request blocks this entire point/type series until reconciled.
     if(lock.activeId&&lock.activeId!==id)return null;
     tx.set(series,{activeId:id},{merge:true});

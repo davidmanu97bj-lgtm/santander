@@ -6841,7 +6841,7 @@ async function refreshArcaBillingStatus() {
     const data = await cachedArcaStatus(uid);
     if (generation !== authGeneration || uid !== auth.currentUser?.uid) return;
     $("arcaModeLabel").textContent=data.enabled ? (data.environment === "production" ? "Automática" : "Pruebas") : "Sin activar";
-    $("arcaModeNote").textContent=data.enabled ? (data.environment === "production" ? (data.regime === "general" ? "Se solicitará factura B para los viajes nacionales exentos a consumidor final o sujeto exento. Los demás casos quedan para revisión." : data.internationalEnabled ? "Al confirmar se solicitará la Factura C del viaje." : "Al confirmar se solicitará la factura. Los viajes internacionales quedan para revisión.") : "Homologación: las facturas de prueba no tienen validez fiscal.") : "El viaje se guarda. La emisión fiscal todavía no está activada.";
+    $("arcaModeNote").textContent=data.enabled ? (data.environment === "production" ? (data.regime === "general" ? (data.internationalEnabled ? "Se solicitará factura B para los traslados exentos a consumidor final o sujeto exento. Los casos fuera de ese alcance quedan para revisión." : "Se solicitará factura B para los viajes nacionales exentos a consumidor final o sujeto exento. Los demás casos quedan para revisión.") : data.internationalEnabled ? "Al confirmar se solicitará la Factura C del viaje." : "Al confirmar se solicitará la factura. Los viajes internacionales quedan para revisión.") : "Homologación: las facturas de prueba no tienen validez fiscal.") : "El viaje se guarda. La emisión fiscal todavía no está activada.";
   } catch {
     if (generation !== authGeneration || uid !== auth.currentUser?.uid) return;
     $("arcaModeLabel").textContent="Por verificar";
@@ -6934,6 +6934,7 @@ function createInvoiceCard(invoice) {
       international_requires_review: "El traslado internacional requiere revisar el tipo de comprobante y su tratamiento fiscal.",
       service_tax_treatment_requires_review: "El recorrido no reúne los datos o condiciones de la exención nacional configurada.",
       invoice_a_requires_review: "La condición fiscal del cliente requiere revisar la emisión de factura A.",
+      driver_not_authorized_for_invoicing: "Este perfil todavía no está habilitado para emitir facturas reales.",
       service_before_regime_activation: "El servicio es anterior a la activación y debe conciliarse con las facturas anteriores.",
       point_of_sale_unavailable: "El punto de venta requiere verificación en ARCA."
     };

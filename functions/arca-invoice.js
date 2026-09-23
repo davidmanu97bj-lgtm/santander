@@ -1,6 +1,6 @@
 "use strict";
 const {createHash} = require('node:crypto');
-const {configuredInvoiceType,generalPolicyReady}=require('./arca-policy');
+const {configuredInvoiceType,generalPolicyReady,internationalBEnabled}=require('./arca-policy');
 function validCuit(value) {
   const s=String(value||'').replace(/\D/g,'');
   if(!/^\d{11}$/.test(s))return false;
@@ -21,16 +21,19 @@ function buildInvoice(payment,config,now=new Date()) {
   const invoiceType=configuredInvoiceType(config),general=config.regime==='general';
   if(config.regime!=='monotributo'&&!generalPolicyReady(config))issues.push('regime_requires_review');
   if(general) {
-    if(req.scope!=='national'||!Number.isFinite(Number(req.distanceKm))||Number(req.distanceKm)<=0||Number(req.distanceKm)>100)issues.push('service_tax_treatment_requires_review');
+    const validScope=req.scope==='national'||(req.scope==='international'&&internationalBEnabled(config,now));
+    if(!validScope||!Number.isFinite(Number(req.distanceKm))||Number(req.distanceKm)<=0||(req.scope==='national'&&Number(req.distanceKm)>100))issues.push('service_tax_treatment_requires_review');
+    if(!config.approvedDriverUids?.includes(payment.driverUid))issues.push('driver_not_authorized_for_invoicing');
     const cutoff=Date.parse(config.activeFrom||'');
     if(!Number.isFinite(cutoff)||String(req.serviceDate||'')<localDate(new Date(cutoff)))issues.push('service_before_regime_activation');
   }
   if(!['national','international'].includes(req.scope))issues.push('invalid_service_scope');
   if(req.scope==='international') {
-    if(!internationalCEnabled(config,now))issues.push('international_requires_review');
+    if(!(general?internationalBEnabled(config,now):internationalCEnabled(config,now)))issues.push('international_requires_review');
     else {
       const created=payment.createdAt?.toMillis?.();
       if(!Number.isFinite(created)||created<Date.parse(config.internationalActiveFrom))issues.push('international_before_activation');
+      if(general&&String(req.serviceDate||'')<localDate(new Date(config.internationalActiveFrom)))issues.push('international_before_activation');
     }
   }
   if(payment.deleted||payment.isDeleted||payment.eliminado||payment.status!=='completed')issues.push('payment_not_completed');
@@ -63,6 +66,7 @@ function buildInvoice(payment,config,now=new Date()) {
   const snapshot={issuer,detail,scope:String(req.scope||''),customer:{name:customer.requested?String(customer.name||'').slice(0,160):'A CONSUMIDOR FINAL'},description:`Traslado de pasajeros con chofer. ${String(req.origin).slice(0,160)} → ${String(req.destination).slice(0,160)}. ${Number(req.distanceKm)} km. Servicio: ${serviceDate}.`,paymentMethod:payment.method,environment:config.environment||'disabled'};
   snapshot.invoiceType=invoiceType;snapshot.issuerRegime=config.regime||'unknown';
   snapshot.taxPolicy=general?config.taxPolicy||'unverified':'monotributo';
+  if(general&&req.scope==='international')snapshot.internationalTaxPolicy=config.internationalTaxPolicy||'unverified';
   return {...snapshot,issues,sourceHash:createHash('sha256').update(JSON.stringify({amount,paymentMethod:payment.method,req})).digest('hex')};
 }
 function matchesAuthorized(record,detail,point,type=11) {
