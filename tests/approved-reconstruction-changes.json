@@ -82,8 +82,8 @@
       "reason": "Salió vs cobro: paso remis/viaje privado tras salida-llegada; persiste remisNumber/viajePrivado en billing_records; panel Ops marca salida y cruza por número (sin adjudicación)."
     },
     "showChargeStep": {
-      "hash": "a32a610a240777e78a6ce93e0a5bc4f6f9ea728c84e36f26bdef2eec56fc3b6d",
-      "reason": "Salió vs cobro: paso remis/viaje privado tras salida-llegada; persiste remisNumber/viajePrivado en billing_records; panel Ops marca salida y cruza por número (sin adjudicación)."
+      "hash": "f2b8077d2df79a1691dc2414e7d528b8fdf1aba37cb691819259c41708459898",
+      "reason": "Recorrido limpio: divulgación progresiva Salida→Llegada, chrome armonizado, sin nota ni nacional/internacional; km prominente. Scope/detail siguen ocultos para draft/save. Aprobado por David Gomez para publicar a producción."
     },
     "renderTourismSelectors": {
       "hash": "b9d99196fb3b3d687bc4b9ccb8cfa51d14fa534523c1587b2a53f8d2fa4967ca",
