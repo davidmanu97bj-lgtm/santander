@@ -6601,16 +6601,9 @@ function renderTourismSelectors() {
   syncTourismProgress();
 }
 function syncTourismProgress() {
-  const hasOrigin = Boolean($("tourismOrigin").value);
-  $("tourismDestinationField").classList.toggle("hidden", !hasOrigin);
-  $("tourismDestinationSearch").disabled = !hasOrigin;
-  if (!hasOrigin) {
-    $("tourismDestination").value = "";
-    $("tourismDestinationSearch").value = "";
-    $("tourismDestinationMatches").replaceChildren();
-    $("tourismDestinationSearch").setAttribute("aria-expanded","false");
-    $("tourismDestinationClear").hidden = true;
-  }
+  // Salida y Llegada siempre visibles con el mismo chrome (vacío / lleno).
+  $("tourismDestinationField").classList.remove("hidden");
+  $("tourismDestinationSearch").disabled = false;
   for (const part of ["Origin","Destination"]) {
     $("tourism"+part+"Search").closest(".tourism-location-field").classList.toggle("route-selected",Boolean($("tourism"+part).value));
   }

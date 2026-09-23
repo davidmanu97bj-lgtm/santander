@@ -244,8 +244,8 @@ body:has(.period-receipt-overlay:not(.hidden)) { overflow:hidden; }
 @keyframes period-loading-turn { to { transform:rotate(360deg); } }
 @media(prefers-reduced-motion:reduce) { .period-loading-symbol { animation:none; } }
 
-/* Recorrido limpio (cobro step): menos títulos anidados, chrome liviano, campos calmos.
-   Reversible: borrar este bloque + restaurar h3/h4 en index.html. */
+/* Recorrido limpio (cobro step): menos títulos anidados, chrome liviano,
+   Salida/Llegada armonizados (mismo marco vacío y lleno). */
 #chargeModal .charge-trip--clean {
   padding: 16px 14px 12px;
   border: 1px solid #e8eef6;
@@ -253,7 +253,11 @@ body:has(.period-receipt-overlay:not(.hidden)) { overflow:hidden; }
   box-shadow: none;
   background: #fff;
 }
-#chargeModal .charge-trip--clean .charge-route-fields { gap: 20px; }
+#chargeModal .charge-trip--clean .charge-route-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 #chargeModal .charge-trip--clean .route-required-field > label {
   color: #10164c;
   font-size: 14px;
@@ -265,11 +269,16 @@ body:has(.period-receipt-overlay:not(.hidden)) { overflow:hidden; }
   border: 1px solid #d5deeb;
   border-radius: 12px;
   background: #f9fbff;
+  min-height: 48px;
 }
 #chargeModal .charge-trip--clean .route-required-field input[role="combobox"] {
   background: #f9fbff;
   border-color: #d5deeb;
   color: #10164c;
+  border-radius: 12px;
+  padding: 12px 14px;
+  min-height: 48px;
+  box-sizing: border-box;
 }
 #chargeModal .charge-trip--clean .route-required-field input[role="combobox"]:focus {
   border-color: #7a8aa8;
@@ -286,8 +295,35 @@ body:has(.period-receipt-overlay:not(.hidden)) { overflow:hidden; }
   border-color: #16805a;
   box-shadow: 0 0 0 3px #16805a14;
 }
+#chargeModal .charge-trip--clean .charge-route-connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 18px;
+  margin: 2px 0 4px;
+  color: #b7c2d6;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .2px;
+  user-select: none;
+  pointer-events: none;
+}
+#chargeModal .charge-trip--clean .charge-route-connector::before,
+#chargeModal .charge-trip--clean .charge-route-connector::after {
+  content: "";
+  flex: 1;
+  max-width: 28px;
+  height: 1px;
+  background: #d9e1ef;
+}
+#chargeModal .charge-trip--clean .charge-route-connector span {
+  opacity: .7;
+  font-size: 12px;
+  line-height: 1;
+}
 #chargeModal .charge-trip--clean > .charge-trip-km {
-  margin-top: 8px;
+  margin-top: 14px;
   padding: 12px 14px;
   border: 1px solid #b7dfc9;
   border-radius: 14px;
