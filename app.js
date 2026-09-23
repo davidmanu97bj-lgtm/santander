@@ -6882,6 +6882,20 @@ function invoiceDisplayDate(invoice) {
     : new Date(Number(invoice.createdAtMs));
   return Number.isNaN(date.getTime()) ? null : date;
 }
+function invoiceRejectionMessages(invoice) {
+  if (invoice.status !== "rejected") return [];
+  // WSFE returns Observaciones.Obs; request-level errors use code/message.
+  const source = invoice.messages?.Obs ?? invoice.messages;
+  const rows = Array.isArray(source) ? source : source && typeof source === "object" ? [source] : [];
+  const clean = value => typeof value === "string" || typeof value === "number"
+    ? String(value).replace(/[\u0000-\u001f\u007f]/g, " ").trim() : "";
+  return [...new Set(rows.slice(0, 10).map(row => {
+    if (!row || typeof row !== "object") return "";
+    const code = clean(row.Code ?? row.code).slice(0, 20);
+    const message = clean(row.Msg ?? row.message).slice(0, 400);
+    return message ? `${code ? `Código ${code}: ` : ""}${message}` : code ? `Código ${code}` : "";
+  }).filter(Boolean))];
+}
 function createInvoiceCard(invoice) {
   const card = invoiceElement("article", "invoice-card");
   const authorized = invoice.status === "authorized";
@@ -6908,6 +6922,12 @@ function createInvoiceCard(invoice) {
   const reasons = {international_requires_review:"Viaje internacional: revisar el tipo de factura.",international_before_activation:"Cobro anterior a la activación internacional: requiere revisión.",invalid_service_scope:"Revisar el trayecto del servicio.",issuer_print_data_missing:"Faltan datos fiscales del emisor.",customer_identification_required:"Falta identificar al pasajero.",point_of_sale_unavailable:"Revisar el punto de venta.",number_conflict:"El número corresponde a otros datos. Requiere revisión.",awaiting_reconciliation:"Esperando confirmar la autorización en ARCA."};
   const notices = [...new Set([...(invoice.issues || []),invoice.issue].filter(Boolean).map(code => reasons[code] || "Revisar los datos de la solicitud."))];
   if (notices.length) card.append(invoiceElement("p", "invoice-notice", notices.join(" ")));
+  if (invoice.status === "rejected") {
+    const messages = invoiceRejectionMessages(invoice);
+    card.append(invoiceElement("p", "invoice-notice", messages.length
+      ? `ARCA rechazó esta solicitud. ${messages.join(" ")}`
+      : "ARCA rechazó esta solicitud. No hay un motivo detallado guardado; requiere revisión antes de volver a emitir."));
+  }
   if (invoice.environment === "homologation") card.append(invoiceElement("p", "invoice-notice", "PRUEBA · Sin validez fiscal"));
   const details = invoiceElement("details", "invoice-details");
   details.append(invoiceElement("summary", "", "Ver detalles"));
@@ -6916,6 +6936,11 @@ function createInvoiceCard(invoice) {
   addData("Pasajero", invoice.customer?.name || "Consumidor final");
   addData("Emisor", invoice.issuer?.legalName);
   addData("CUIT", invoice.issuer?.cuit);
+  const point = Number(invoice.issuer?.pointOfSale);
+  if (Number.isInteger(point) && point > 0 && point < 99999) addData("Punto de venta", String(point).padStart(5, "0"));
+  if (!authorized && Number.isSafeInteger(invoice.number) && invoice.number > 0) {
+    addData("Número solicitado (sin autorización confirmada)", String(invoice.number).padStart(8, "0"));
+  }
   if (authorized) {
     addData("CAE", invoice.cae);
     const expires = String(invoice.caeExpires || "");
