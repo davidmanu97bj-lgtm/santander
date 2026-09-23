@@ -2,8 +2,8 @@
   "context": "Excepciones por ampliación explícita del alcance del usuario: reglas financieras, cierre único y Telegram. El baseline original se conserva. Normalizar CRLF evita diferencias propias de Windows.",
   "functions": {
     "initializeTourismSelector": {
-      "hash": "b8991dbed518d9339569bcd99f72ac610789fe8a3acbd4ade7e65a176ae47284",
-      "reason": "Búsqueda solicitada en Google Maps directamente desde Salida y Llegada, sin catálogo local ni botón intermedio; al elegir Llegada lleva a Continuar."
+      "hash": "a18b9d560e5b607893c23e4b28a1f78df772eca6cb0a37f4c65e25362ff4b9a9",
+      "reason": "Cobro más ágil: catálogo local al instante, debounce Google 150ms, caché de búsquedas y km precalculados del catálogo sin hop a Cloud Function."
     },
     "validateChargeStep": {
       "hash": "5fc723672c893079faa75f41577ca0b0afda0add0950a69c391cb725b47c04e8",
@@ -90,8 +90,8 @@
       "reason": "Salida/llegada progresivas en rojo/verde y eliminación del panel de movimientos en cobros."
     },
     "selectTourismRoute": {
-      "hash": "d70074c150bc431c13b021d3005575c6450b8206d8827f154d94a217fc152fd2",
-      "reason": "Salida/llegada progresivas en rojo/verde y eliminación del panel de movimientos en cobros."
+      "hash": "e564638c9999356a4e4864e2eb4a4c44841c3f04e7af29beb27dc108124f191f",
+      "reason": "Si salida y llegada son del catálogo local, aplica kilómetros precalculados al instante y solo llama a Google Routes cuando hace falta."
     },
     "renderAdminDriverOptions": {
       "hash": "dd0b8974c12a3ecac9d65ffb9903d5ee3c8f7320cb9a8de940b733ad27e9b5ae",
