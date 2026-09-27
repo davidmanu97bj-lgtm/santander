@@ -1,6 +1,6 @@
 'use strict';
 const {createHash}=require('node:crypto');
-const PDFDocument=require('pdfkit');
+
 const periodPolicy=require('./period-policy');
 const collections={cobros:'billing_records',gastos:'gastos',cierres:'cierres_semanales',deudas:'deudas_choferes',pagosDeuda:'deuda_pagos',adelantos:'prestamos_operativos',uber:'uber_weekly_closures'};
 const owners=['driverUid','choferUid','uid','ownerUid','driverId','choferId','userUid','operatorUid'];
@@ -63,44 +63,5 @@ async function loadMonthlyReport(db,uid,month,now=Date.now()) {
   return buildMonthlyReport({uid,profile,month,input,now,explora:{legalName:fiscal.legalName||process.env.ARCA_ISSUER_LEGAL_NAME,address:fiscal.address||process.env.ARCA_ISSUER_ADDRESS,cuit:fiscal.cuit||process.env.ARCA_ISSUER_CUIT}});
   });
 }
-async function monthlyPdf(report) {
-  const doc=new PDFDocument({size:'A4',margin:45,bufferPages:true,info:{Title:`Resumen para contadora - ${report.driverName} - ${report.month}`}}),chunks=[];
-  const done=new Promise((resolve,reject)=>{doc.on('data',b=>chunks.push(b));doc.on('end',()=>resolve(Buffer.concat(chunks)));doc.on('error',reject);});
-  const money=n=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2}).format(n);
-  function heading(text){if(doc.y>680)doc.addPage();doc.moveDown(.7).font('Helvetica-Bold').fontSize(15).fillColor('#143c50').text(text);doc.moveDown(.4);}
-  function text(value){doc.font('Helvetica').fontSize(10).fillColor('#263d49').text(clean(value).replace(/[→➜]/g,'a').replace(/[–—]/g,'-'),{lineGap:3});}
-  doc.font('Helvetica-Bold').fontSize(23).fillColor('#143c50').text('EXPLORA');heading('Informe mensual para la contadora');
-  text(`Chofer: ${report.driverName}${report.driverCuit?' - CUIT: '+report.driverCuit:''}`);text(`Mes: ${report.month} | ${report.closedMonth?'Mes finalizado':'Acumulado provisional'}`);
-  text(`Emitido: ${new Date(report.generatedAtMs).toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires'})} | Revisión: ${report.revision.slice(0,12)}`);
-  heading('Datos para emitir la factura del chofer');
-  text(`Cliente / receptor: ${report.recipient.legalName}`);text(`CUIT del receptor: ${report.recipient.cuit||'Confirmar con Explora antes de emitir.'}`);if(report.recipient.address)text(`Domicilio fiscal informado: ${report.recipient.address}`);
-  text('Comprobante a emitir: Factura C, si corresponde a la condición fiscal del chofer. La contadora debe confirmar el tipo de comprobante y los datos fiscales antes de emitir.');
-  text(`Detalle sugerido: ${report.invoiceDetail}`);
-  heading('1. Base de la participación');
-  text(`Cobros en efectivo (incluye Uber aceptado): ${money(report.totals.cash)}`);text(`Cobros digitales: ${money(report.totals.digital)}`);text(`Facturación bruta: ${money(report.totals.gross)}`);text(`Participación acordada: 40% = ${money(report.totals.participation)}`);
-  text(`Caja chica generada por estos cobros: ${money(report.totals.cashbox)}. Se informa aparte; no se descuenta del 40%.`);
-  heading('2. Criterios y observaciones');text(report.criteria);for(const issue of report.issues)text('REVISAR: '+issue);
-  const groups=['Cobros de viajes','Liquidaciones Uber','Gastos','Deudas','Adelantos y préstamos','Cierres','Pagos y compensaciones'];
-  groups.forEach((group,index)=>{
-    heading(`${index+3}. ${group}`);const rows=report.rows.filter(r=>r.group===group);if(!rows.length)text('Sin movimientos en el mes.');
-    for(const r of rows){if(doc.y>610)doc.addPage();
-      if(group==='Cobros de viajes'){doc.font('Helvetica-Bold').fontSize(11).fillColor('#143c50').text(`${r.date} | ${money(r.amount)} | ${r.method||'Sin método indicado'}`,{lineGap:3});doc.font('Helvetica').fontSize(9).fillColor('#637784').text(`Ubicación: ${r.detail}`,{lineGap:2});doc.moveDown(.6);continue;}
-      const title=r.includedInClosure?'Ajuste técnico incluido en el cierre':group==='Cierres'?'Cierre del período':group==='Pagos y compensaciones'?'Pago o compensación':group.slice(0,-1);
-      doc.font('Helvetica-Bold').fontSize(11).fillColor('#143c50').text(`${r.date} | ${money(r.amount)} | ${title}`,{lineGap:3});
-      text(r.detail);text(`Estado: ${{completed:'Completado',paid:'Pagado',active:'Activo',pending:'Pendiente',approved:'Aprobado',rejected:'Rechazado'}[r.status]||r.status}${r.method?' | '+r.method:''}${r.direction?' | '+({'driver_to_explora':'Chofer paga a Explora','explora_to_driver':'Explora paga al chofer','driver_pays_explora':'Chofer paga a Explora','explora_pays_driver':'Explora paga al chofer'}[r.direction]||r.direction):''}`);
-      if(r.cashbox!==undefined)text(`Caja chica de este cobro: ${money(r.cashbox)} (no reduce la base del 40%).`);
-      if(r.responsibility)text(`Responsabilidad del gasto: ${{driver:'Chofer 100%',explora:'Explora 100%',shared:'Compartido'}[r.responsibility]||r.responsibility}`);
-      if(r.included!==undefined)text(r.included?'Incluido en la base del 40%.':'Excluido de la base del 40%.');if(r.dateBasis)text(r.dateBasis);
-      if(r.remaining!==undefined)text(`Saldo pendiente al emitir este informe: ${money(r.remaining)}`);
-      if(r.includedInClosure)text('Este registro es la contrapartida técnica del cierre ya informado. No representa un pago adicional, no modifica la base del 40% y no requiere un comprobante propio.');
-      if(r.summary)for(const [key,label] of Object.entries({gross:'Bruto del período cerrado',cashExpense:'Gastos efectivo',digitalExpense:'Gastos digital',netCash:'Neto efectivo',netDigital:'Neto digital',cashbox:'Caja chica',externalDebt:'Deudas incluidas',previousBalance:'Saldo anterior'}))if(r.summary[key]!=null)text(`${label}: ${money(r.summary[key])}`);
-      if(r.proof)doc.fontSize(10).fillColor('#166380').text('Abrir comprobante',{link:r.proof,underline:true});else if(!r.includedInClosure)text('Sin comprobante enlazado.');doc.moveDown(.6);
-    }
-  });
-  heading('10. Por qué corresponde facturar este importe');text(report.explanation);
-  doc.moveDown().font('Helvetica-Bold').fontSize(15).text(`${money(report.totals.gross)} x 40% = ${money(report.totals.participation)}`);
-  text(report.issues.length?'Importe sujeto a revisar las observaciones indicadas.':report.closedMonth?'Importe de participación calculado para el mes finalizado.':'Importe provisional: el mes todavía está en curso.');
-  text(`La contadora recibe este respaldo para emitir o revisar la factura del chofer a ${report.recipient.legalName}. El importe facturable surge únicamente de ${money(report.totals.gross)} de facturación bruta x 40%. Adjuntar la factura emitida por separado.`);
-  const pages=doc.bufferedPageRange();for(let p=0;p<pages.count;p++){doc.switchToPage(p);doc.fontSize(8).fillColor('#637784').text(`Explora | ${report.month} | Resumen no fiscal | ${p+1} / ${pages.count}`,45,800,{lineBreak:false});}doc.end();return done;
-}
+const monthlyPdf=require('./monthly-summary-pdf');
 module.exports={buildMonthlyReport,loadMonthlyReport,monthlyPdf};

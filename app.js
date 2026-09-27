@@ -66,6 +66,7 @@ const periodClose = mountPeriodClose({
 });
 const AUTH_READY_TIMEOUT_MS = 2500;
 const monthlyManagement=mountMonthlyManagement({
+  openWallet:()=>periodClose.open(),
   loadReport:async(month,pdf)=>(await httpsCallable(functions,"driverMonthlyReport",{timeout:300000})({month,pdf})).data,
   uploadInvoice:async(month,file)=>{
     if(file.type!=="application/pdf"||file.size>15*1024*1024||file.size===0)throw new Error("Elegí un PDF de hasta 15 MB.");

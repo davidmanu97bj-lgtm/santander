@@ -18,10 +18,22 @@ test('deduplica alias del chofer y nunca incorpora los cobros de otro',async()=>
   const db=memory();db.data.set('billing_records/a',{...charge('a','cash',100),uid:'javier'});db.data.set('billing_records/b',{...charge('b','cash',900),driverUid:'otro'});
   const r=await loadMonthlyReport(db,'javier','2026-09',now);assert.equal(r.totals.gross,100);assert.equal(r.rows.length,1);
 });
-test('revisión estable por contenido, cambia al corregir importe; PDF multipágina válido',async()=>{
+test('revisión estable por contenido; resumen de 40 viajes en una página sin modificar importes',async()=>{
   const input={cobros:Array.from({length:40},(_,i)=>charge('viaje-'+i,'cash',1000))};
   const r=buildMonthlyReport({uid:'javier',month:'2026-09',now,input});
   assert.equal(r.revision,buildMonthlyReport({uid:'javier',month:'2026-09',now:now+1000,input}).revision);
-  const pdf=await monthlyPdf(r);assert.equal(pdf.subarray(0,4).toString(),'%PDF');assert.ok(pdf.length>4000);
+  const before=JSON.stringify(r);
+  const pdf=await monthlyPdf(r);assert.equal(pdf.subarray(0,4).toString(),'%PDF');
+  assert.equal((pdf.toString('latin1').match(/\/Type \/Page\b/g)||[]).length,1);
+  assert.equal(JSON.stringify(r),before);
   input.cobros[0].amount=2000;assert.notEqual(r.revision,buildMonthlyReport({uid:'javier',month:'2026-09',now,input}).revision);
+});
+
+test('el resumen conserva todas las observaciones aunque requiera páginas adicionales',async()=>{
+  const r=buildMonthlyReport({uid:'javier',month:'2026-09',now,input:{}});
+  r.issues=Array.from({length:50},(_,i)=>`Revisar movimiento ${i+1}: pendiente de validación antes de emitir la factura.`);
+  const before=JSON.stringify(r);
+  const pdf=await monthlyPdf(r);
+  assert.ok((pdf.toString('latin1').match(/\/Type \/Page\b/g)||[]).length>1);
+  assert.equal(JSON.stringify(r),before);
 });
