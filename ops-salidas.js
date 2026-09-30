@@ -2,8 +2,43 @@
 export const REMIS_NUMBERS = Object.freeze([28, 57, 104, 31, 43, 154, 15, 134]);
 export const OPS_EXITS_COLLECTION = "ops_number_exits";
 
-export function exitDocId(dayKey, remisNumber) {
-  return `${dayKey}_${Number(remisNumber)}`;
+export function exitDocId(dayKey, remisNumber, eventId = crypto.randomUUID()) {
+  return `${dayKey}_${Number(remisNumber)}_${eventId}`;
+}
+
+export function opsDayKey(ms = Date.now()) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(new Date(ms));
+  const value = type => parts.find(p => p.type === type).value;
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+export function newExit(remisNumber, now = Date.now()) {
+  const dayKey = opsDayKey(now);
+  return { id: exitDocId(dayKey, remisNumber), dayKey, remisNumber: Number(remisNumber), markedAtMs: now };
+}
+
+export function formatOpsDate(ms) {
+  if (!(Number(ms) > 0)) return 'Sin fecha registrada';
+  return new Intl.DateTimeFormat('es-AR', { timeZone:'America/Argentina/Buenos_Aires', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }).format(new Date(Number(ms)));
+}
+
+export function paymentTime(row) {
+  return Number(row.createdAtMs || row.createdAt?.toMillis?.() || 0);
+}
+
+export function isOpsPayment(row) {
+  const status = String(row.status || row.estado || row.state || row.deletionStatus || '').toLowerCase();
+  return Boolean(row.id) && Number(row.remisNumber) > 0 && paymentTime(row) > 0
+    && !row.viajePrivado && !row.isPrivateTrip && !row.deleted && !row.isDeleted && !row.eliminado
+    && !row.isSimulated && !row.createdBySimulation && !row.adjustmentDirection && !row.affectsBillingSettlement
+    && !/deleted|eliminado|borrado|anulado|cancel|void|reject/.test(status)
+    && (!row.type || ['billing', 'payment'].includes(row.type));
+}
+
+export function paymentFitsExit(payment, exit) {
+  return isOpsPayment(payment) && exit.active !== false && Number(exit.markedAtMs) > 0
+    && Number(payment.remisNumber) === Number(exit.remisNumber)
+    && paymentTime(payment) >= Number(exit.markedAtMs);
 }
 
 export function formatClock(ms, timeZone = "America/Argentina/Buenos_Aires") {
@@ -32,60 +67,33 @@ export function chargesByRemisToday(payments, dayKey) {
 }
 
 export function buildOpsBoard({ numbers = REMIS_NUMBERS, exits = [], payments = [], dayKey }) {
-  const exitByNumber = new Map();
-  for (const exit of exits || []) {
-    if (!exit || exit.active === false) continue;
-    if (String(exit.dayKey || "") !== String(dayKey)) continue;
-    const n = Number(exit.remisNumber);
-    if (!Number.isFinite(n)) continue;
-    exitByNumber.set(n, exit);
-  }
-  const charges = chargesByRemisToday(payments, dayKey);
-  let exited = 0;
-  let withoutCharge = 0;
-  let free = 0;
-  const rows = numbers.map(n => {
-    const exit = exitByNumber.get(n);
-    const charge = charges.get(n);
-    if (!exit) {
-      free += 1;
-      return {
-        remisNumber: n,
-        status: "free",
-        markedAtMs: null,
-        markedLabel: "—",
-        chargeLabel: "Libre",
-        chargeAtLabel: "—",
-        action: "Sin salida",
-        actionKind: "muted"
-      };
-    }
-    exited += 1;
-    if (charge) {
-      return {
-        remisNumber: n,
-        status: "matched",
-        markedAtMs: Number(exit.markedAtMs) || null,
-        markedLabel: formatClock(exit.markedAtMs),
-        chargeLabel: "SÍ",
-        chargeAtLabel: formatClock(charge.atMs),
-        action: "OK",
-        actionKind: "ok"
-      };
-    }
-    withoutCharge += 1;
-    return {
-      remisNumber: n,
-      status: "missing_charge",
-      markedAtMs: Number(exit.markedAtMs) || null,
-      markedLabel: formatClock(exit.markedAtMs),
-      chargeLabel: "NO",
-      chargeAtLabel: "—",
-      action: "Avisar Telegram",
-      actionKind: "warn"
-    };
-  });
-  return { rows, summary: { exited, withoutCharge, free } };
+  // Reserve historical links too: a payment must never be recycled at midnight.
+  const used = new Set(exits.filter(e => e.paymentId).map(e => e.paymentId));
+  const byId = new Map(payments.map(p => [p.id, p]));
+  const available = [...byId.values()].filter(p => isOpsPayment(p) && !used.has(p.id))
+    .sort((a,b) => paymentTime(a)-paymentTime(b) || a.id.localeCompare(b.id));
+  const active = exits.filter(e => e.active !== false);
+  const pending = active.filter(e => !e.paymentId);
+  const automaticLinks = [];
+  const rows = active.filter(e => !e.paymentId || e.dayKey === dayKey || (e.linkedAtMs && opsDayKey(e.linkedAtMs) === dayKey))
+    .sort((a,b) => Number(a.markedAtMs)-Number(b.markedAtMs) || a.id.localeCompare(b.id))
+    .map(exit => {
+      const payment = byId.get(exit.paymentId);
+      const candidates = exit.paymentId ? [] : available.filter(p => paymentFitsExit(p, exit));
+      // Ambiguous histories require an explicit choice, not an arbitrary FIFO guess.
+      if (candidates.length === 1 && pending.filter(e => paymentFitsExit(candidates[0], e)).length === 1) {
+        automaticLinks.push({exitId:exit.id, paymentId:candidates[0].id});
+      }
+      return { ...exit, candidates, status:exit.paymentId ? 'matched' : 'missing_charge',
+        markedLabel:formatOpsDate(exit.markedAtMs),
+        chargeLabel:exit.paymentId ? (isOpsPayment(payment || {}) ? 'Vinculado' : 'Revisar cobro') : 'Pendiente',
+        chargeAtLabel:exit.paymentId ? formatOpsDate(payment ? paymentTime(payment) : exit.paymentAtMs) : '—' };
+    });
+  return { rows, automaticLinks, summary: {
+    exited:active.filter(e => e.dayKey === dayKey).length,
+    withoutCharge:pending.length,
+    free:numbers.filter(n => !pending.some(e => Number(e.remisNumber) === n)).length
+  }};
 }
 
 export function readChargeRemisSelection(root = document) {
@@ -131,9 +139,13 @@ export function mountOpsSalidasBoard(host, {
   numbers = REMIS_NUMBERS,
   getDayKey,
   getPayments,
+  paymentsReady = () => true,
   listenExits,
   markExit,
-  unmarkExit
+  linkPayment,
+  now = Date.now,
+  setIntervalFn = setInterval,
+  clearIntervalFn = clearInterval
 }) {
   if (!host) return { start() {}, stop() {}, refresh() {} };
   host.innerHTML = `
@@ -141,12 +153,12 @@ export function mountOpsSalidasBoard(host, {
       <header class="ops-salidas-head">
         <div>
           <h2>Salidas de hoy</h2>
-          <p>Marcar salida · cruzar vs cobro por número</p>
+          <p>Las pendientes siguen aquí hasta vincular su cobro, aunque cambie el día.</p>
         </div>
         <span class="ops-salidas-live">En vivo</span>
       </header>
       <div class="ops-salidas-marcar">
-        <p class="ops-salidas-title">Marcar salida</p>
+        <p class="ops-salidas-title">Nueva salida · cada toque registra un viaje distinto</p>
         <div class="ops-salidas-chips" role="group" aria-label="Marcar salida por número"></div>
       </div>
       <div class="ops-salidas-summary" aria-live="polite"></div>
@@ -155,9 +167,9 @@ export function mountOpsSalidasBoard(host, {
           <thead>
             <tr>
               <th>Número</th>
-              <th>Marcado a las</th>
+              <th>Fecha y hora de salida</th>
               <th>Cobro</th>
-              <th>Hora cobro</th>
+              <th>Cobro cargado</th>
               <th>Acción</th>
             </tr>
           </thead>
@@ -174,64 +186,141 @@ export function mountOpsSalidasBoard(host, {
   let exits = [];
   let stopListen = null;
   let busy = false;
+  let running = false;
+  let exitsReady = false;
+  let timer = null;
+  let generation = 0;
+  let pendingDraft = null;
+  const selections = new Map();
+  const attempted = new Set();
+  const escape = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+  async function link(pair) {
+    const epoch = generation;
+    busy = true;
+    statusEl.textContent = 'Vinculando cobro…';
+    paint();
+    try {
+      await linkPayment(pair);
+      if (epoch === generation) statusEl.textContent = 'Cobro vinculado a una sola salida.';
+    } catch (error) {
+      if (epoch === generation) statusEl.textContent = error?.message || 'No se pudo vincular el cobro.';
+    } finally {
+      if (epoch === generation) { busy = false; if (running) paint(); }
+    }
+  }
 
   function paint() {
     const dayKey = getDayKey();
     const board = buildOpsBoard({ numbers, exits, payments: getPayments(), dayKey });
     chips.innerHTML = numbers.map(n => {
-      const row = board.rows.find(r => r.remisNumber === n);
-      const out = row && row.status !== "free";
-      return `<button type="button" class="ops-salidas-chip${out ? " out" : ""}" data-ops-number="${n}" aria-pressed="${out ? "true" : "false"}">${n}</button>`;
+      const out = board.rows.some(r => Number(r.remisNumber) === n && r.status === 'missing_charge');
+      return `<button type="button" class="ops-salidas-chip${out ? " out" : ""}" data-ops-number="${n}" aria-label="Registrar nueva salida del ${n}" ${busy || !exitsReady ? 'disabled' : ''}>${n} +</button>`;
     }).join("");
     summary.innerHTML = `
-      <span>Salieron<b>${board.summary.exited}</b></span>
-      <span>Sin cobro<b>${board.summary.withoutCharge}</b></span>
-      <span>Libres<b>${board.summary.free}</b></span>`;
-    tbody.innerHTML = board.rows.map(row => `
+      <span>Salidas hoy<b>${board.summary.exited}</b></span>
+      <span>Pendientes de todos los días<b>${board.summary.withoutCharge}</b></span>
+      <span>Números sin pendientes<b>${board.summary.free}</b></span>`;
+    tbody.innerHTML = board.rows.map((row, index) => `
       <tr>
-        <td><span class="ops-salidas-num${row.status === "free" ? " free" : ""}">${row.remisNumber}</span></td>
+        <td><span class="ops-salidas-num">${Number(row.remisNumber)}</span></td>
         <td>${row.markedLabel}</td>
         <td><span class="ops-salidas-badge ${row.status === "matched" ? "yes" : row.status === "missing_charge" ? "no" : "libre"}">${row.chargeLabel}</span></td>
         <td>${row.chargeAtLabel}</td>
-        <td><span class="ops-salidas-action ${row.actionKind}">${row.action}</span></td>
-      </tr>`).join("");
+        <td>${row.status === 'matched' ? '<span class="ops-salidas-action ok">Vinculado</span>' : row.candidates.length ? `
+          <select data-ops-select="${index}" aria-label="Cobro para salida ${Number(row.remisNumber)} del ${escape(row.markedLabel)}" ${busy || !paymentsReady() ? 'disabled' : ''}>
+            <option value="">Elegir cobro…</option>
+            ${row.candidates.map(p => `<option value="${escape(p.id)}" ${selections.get(row.id) === p.id ? 'selected' : ''}>${escape(formatOpsDate(paymentTime(p)))} · ${escape(p.operatorName || p.driverName || '')} · $${Number(p.amount || p.monto || 0).toLocaleString('es-AR')} · ${escape(p.id.slice(-6))}</option>`).join('')}
+          </select><button type="button" data-ops-link="${index}" ${busy || !paymentsReady() ? 'disabled' : ''}>Vincular cobro</button>` : '<span class="ops-salidas-action">Esperando cobro</span>'}</td>
+      </tr>`).join("") || '<tr><td colspan="5">No hay salidas de hoy ni pendientes anteriores.</td></tr>';
+    // Do not guess among several possible departures/payments. Unique cases retain
+    // the automatic workflow, but only after both complete server snapshots arrive.
+    if (running && exitsReady && paymentsReady() && !busy && linkPayment) {
+      const pair = board.automaticLinks.find(p => !attempted.has(`${p.exitId}/${p.paymentId}`));
+      if (pair) {
+        attempted.add(`${pair.exitId}/${pair.paymentId}`);
+        void link(pair);
+      }
+    }
   }
+
+  tbody.addEventListener('change', event => {
+    const select = event.target.closest('[data-ops-select]');
+    if (!select) return;
+    const board = buildOpsBoard({numbers, exits, payments:getPayments(), dayKey:getDayKey()});
+    const row = board.rows[Number(select.dataset.opsSelect)];
+    if (row) selections.set(row.id, select.value);
+  });
+  tbody.addEventListener('click', event => {
+    const button = event.target.closest('[data-ops-link]');
+    if (!button || busy || !exitsReady || !paymentsReady()) return;
+    const board = buildOpsBoard({numbers, exits, payments:getPayments(), dayKey:getDayKey()});
+    const row = board.rows[Number(button.dataset.opsLink)];
+    const paymentId = row && selections.get(row.id);
+    if (!row?.candidates.some(p => p.id === paymentId)) { statusEl.textContent = 'Elegí el cobro que corresponde a esta salida.'; return; }
+    attempted.add(`${row.id}/${paymentId}`);
+    void link({exitId:row.id, paymentId});
+  });
 
   chips.addEventListener("click", async event => {
     const btn = event.target.closest("[data-ops-number]");
-    if (!btn || busy) return;
+    if (!btn || busy || !exitsReady) return;
     const remisNumber = Number(btn.dataset.opsNumber);
-    const dayKey = getDayKey();
-    const existing = exits.find(e => Number(e.remisNumber) === remisNumber && e.active !== false && String(e.dayKey) === String(dayKey));
+    if (pendingDraft && pendingDraft.remisNumber !== remisNumber) {
+      statusEl.textContent = `Reintentá primero la salida del ${pendingDraft.remisNumber}.`;
+      return;
+    }
+    const epoch = generation;
+    pendingDraft ||= newExit(remisNumber, now());
     busy = true;
-    statusEl.textContent = existing ? "Quitando marca…" : "Marcando salida…";
+    statusEl.textContent = "Registrando salida…";
+    paint();
     try {
-      if (existing) await unmarkExit({ dayKey, remisNumber });
-      else await markExit({ dayKey, remisNumber });
-      statusEl.textContent = "";
+      await markExit(pendingDraft);
+      pendingDraft = null;
+      statusEl.textContent = 'Salida registrada.';
     } catch (error) {
       console.error(error);
-      statusEl.textContent = error?.message || "No se pudo actualizar la salida.";
+      if (epoch === generation) statusEl.textContent = error?.message || "No se pudo actualizar la salida.";
     } finally {
       busy = false;
+      if (running) paint();
     }
   });
 
   return {
     start() {
       this.stop();
-      stopListen = listenExits(rows => {
+      running = true;
+      const epoch = generation;
+      stopListen = listenExits((rows, ready = true) => {
+        if (!running || epoch !== generation) return;
         exits = rows || [];
+        exitsReady = ready;
         paint();
       }, error => {
+        if (!running || epoch !== generation) return;
+        exitsReady = false;
         console.error(error);
         statusEl.textContent = "Sin conexión al panel de salidas.";
+        paint();
       });
+      timer = setIntervalFn(() => { if (running) paint(); }, 30000);
       paint();
     },
     stop() {
+      generation += 1;
+      running = false;
+      busy = false;
+      pendingDraft = null;
       if (typeof stopListen === "function") stopListen();
       stopListen = null;
+      if (timer !== null) clearIntervalFn(timer);
+      timer = null;
+      exits = [];
+      exitsReady = false;
+      selections.clear();
+      attempted.clear();
     },
     refresh: paint
   };

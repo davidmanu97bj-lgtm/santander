@@ -51,3 +51,8 @@
 .ops-salidas-action.ok{color:#147a48}
 .ops-salidas-action.muted{color:#9aa3b5;font-weight:500}
 .ops-salidas-status{margin:0;padding:8px 14px 12px;font-size:12px;color:#687487;min-height:1.2em}
+.ops-salidas-chip:disabled{opacity:.5;cursor:wait}
+.ops-salidas-table select{display:block;max-width:240px;min-height:40px;margin-bottom:6px;border:1px solid #cbd3db;border-radius:8px;padding:5px;font:inherit}
+.ops-salidas-table button{min-height:40px;padding:8px 12px;border:0;border-radius:8px;background:#111b47;color:#fff;font-weight:700;cursor:pointer}
+.ops-salidas-table button:disabled{opacity:.5;cursor:wait}
+.ops-salidas-table td:nth-child(2),.ops-salidas-table td:nth-child(4){min-width:120px}
