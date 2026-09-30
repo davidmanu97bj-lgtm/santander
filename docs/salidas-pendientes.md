@@ -13,7 +13,7 @@ Se vincula automáticamente sólo cuando hay una única coincidencia en ambas di
 - Las marcas antiguas activas que todavía existan se conservan con su fecha original. Los documentos que antes se sobrescribieron no se pueden reconstruir con este cambio.
 - No hay migración ni borrado de movimientos financieros.
 - Deben publicarse las reglas nuevas y el Hosting de la misma revisión. Las reglas anteriores no permiten crear las reservas exclusivas. Las nuevas reglas impiden que una pestaña antigua sobrescriba una salida: recargar las sesiones de administración después de publicar.
-- No se ha probado una operación real contra producción. Las pruebas de transacciones usan el almacén en memoria; la sintaxis y permisos de reglas deben validarse con Firebase antes de publicar.
+- No se ha probado una operación real contra producción. Las pruebas de transacciones usan el almacén en memoria. Firebase compiló las reglas correctamente mediante `deploy --only firestore:rules --dry-run`; esto no publica reglas ni prueba permisos con usuarios reales.
 - Para volver atrás, conservar los documentos nuevos y restaurar el código/reglas de la revisión previa; no borrar vínculos ni registros financieros. La pantalla antigua no representa las salidas múltiples, por lo que una reversión pierde esa funcionalidad visual.
 
 ## Validación
