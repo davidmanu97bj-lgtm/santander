@@ -1,0 +1,2 @@
+Trip UUID,Driver UUID,Trip DropOff Time,Trip Status,Payment Type,Trip Pickup Address,Trip Drop Off Address,Trip Distance (km),Gross fare,Uber service fee,Net earnings,Currency,Service scope,Payment received
+11111111-1111-4111-8111-111111111111,22222222-2222-4222-8222-222222222222,2026-09-28T12:00:00-03:00,completed,cash,Origen sintético,Destino sintético,12.5,10000.00,0.00,10000.00,ARS,national,true

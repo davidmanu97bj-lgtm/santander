@@ -8,6 +8,7 @@ import {
   mountOpsSalidasBoard
 } from "./ops-salidas.js?v=20260922-salio-cobro";
 import { mountAdminWorkspace } from "./admin-workspace.js?v=20260919-admin-1";
+import { mountUberFleet } from "./uber-fleet-ui.js?v=20260929-fleet-shadow";
 import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20260919-admin-1";
 import { mountPeriodClose } from "./period-ui.js?v=20260919-login-period-1";
 import { mountMonthlyManagement } from "./monthly-management.js?v=20260919-login-period-1";
@@ -79,6 +80,7 @@ const monthlyManagement=mountMonthlyManagement({
 
 const $ = id => document.getElementById(id);
 let adminWorkspace = null;
+let uberFleetWorkspace = null;
 
 function photoPicker(key) {
   return document.querySelector(`[data-photo-picker="${key}"]`);
@@ -3242,6 +3244,7 @@ function refreshOpenAdminUberCalculation() {
 
 function unsubscribeAdminDashboard() {
   adminWorkspace?.reset();
+  uberFleetWorkspace?.reset();
   adminUnsubscribers.forEach(unsubscribe => {
     try { unsubscribe?.(); } catch (_) {}
   });
@@ -4286,6 +4289,7 @@ onAuthStateChanged(auth, async user => {
   tripCalendar.reset();
   driverAvailability.reset();
   adminWorkspace?.reset();
+  uberFleetWorkspace?.reset();
   $("adminDigitalExpenseModal")?.classList.add("hidden");
   $("adminDigitalExpenseForm")?.reset();
   const generation = ++authGeneration;
@@ -7177,6 +7181,7 @@ function ensureOpsSalidasBoard() {
   return opsSalidasBoard;
 }
 adminWorkspace=mountAdminWorkspace({getState:adminWorkspaceState,loadDocuments:async input=>(await httpsCallable(functions,'adminMonthlyDocuments',{timeout:300000})(input)).data,openDebt:openAdminDebt,openDigital:openAdminDigitalExpense});
+uberFleetWorkspace=mountUberFleet({isAuthorized:()=>Boolean(auth.currentUser&&isAdminProfile()),call:async(name,input)=>(await httpsCallable(functions,name,{timeout:120000})(input)).data});
 
 // Hand a submit made during startup to the authenticated login handler once.
 document.documentElement.dataset.exploraAppReady = 'true';

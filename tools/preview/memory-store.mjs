@@ -7,6 +7,7 @@ export class MemoryStore {
     return {path,id:path.split('/').at(-1),conditions,
       doc(id=crypto.randomUUID()){return store.reference(path+'/'+id);},
       where(field,op,value){return store.reference(path,[...conditions,{field,op,value}]);},
+      orderBy(field,direction='asc'){return store.reference(path,[...conditions,{order:field,direction}]);},
       limit(count){return store.reference(path,[...conditions,{count}]);},
       async get(){return store.read(this);}};
   }
@@ -15,7 +16,8 @@ export class MemoryStore {
     if(target.path.split('/').length%2===0) return this.snapshot(target.path);
     let docs=[...this.data.keys()].filter(path=>path.startsWith(target.path+'/')&&path.split('/').length===target.path.split('/').length+1).map(path=>this.snapshot(path));
     for(const condition of target.conditions||[]) {
-      if(condition.count) docs=docs.slice(0,condition.count);
+      if(condition.order) docs.sort((a,b)=>{const av=a.data()[condition.order],bv=b.data()[condition.order];return (av<bv?-1:av>bv?1:0)*(condition.direction==='desc'?-1:1);});
+      else if(condition.count) docs=docs.slice(0,condition.count);
       else docs=docs.filter(snap=>snap.data()[condition.field]===condition.value);
     }
     return {docs,empty:!docs.length,size:docs.length};

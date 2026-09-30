@@ -1,6 +1,6 @@
 "use strict";
 const {randomUUID}=require('node:crypto');
-const {buildInvoice,matchesAuthorized,authorizationFromResponse}=require('./arca-invoice');
+const {buildInvoice,isSimulatedFiscalSource,matchesAuthorized,authorizationFromResponse}=require('./arca-invoice');
 const {configuredInvoiceType,generalPolicyReady,internationalBEnabled,invoiceTypeOf,pointMatches}=require('./arca-policy');
 const LEASE_MS=180000;
 const JOBS='arca_invoices',SERIES='arca_series';
@@ -16,7 +16,8 @@ async function enqueueInvoice(db,id,config,now=Date.now()) {
   await db.runTransaction(async tx=>{
     const [existing,source]=await Promise.all([tx.get(jobRef),tx.get(paymentRef)]);
     if(existing.exists||!source.exists)return;
-    const payment=source.data(),invoice=buildInvoice(payment,config,new Date(now));if(!invoice)return;
+    const payment=source.data();if(isSimulatedFiscalSource(payment))return;
+    const invoice=buildInvoice(payment,config,new Date(now));if(!invoice)return;
     const created=payment.createdAt?.toMillis?.();
     const cutoff=Date.parse(config.activeFrom||'');
     const active=enabled(config)&&Number.isFinite(created)&&Number.isFinite(cutoff)&&created>=cutoff;
@@ -26,11 +27,14 @@ async function enqueueInvoice(db,id,config,now=Date.now()) {
 }
 async function processInvoice({db,id,config,client,now=()=>Date.now()}) {
   if(!enabled(config))return;
-  const ref=db.collection(JOBS).doc(id),series=db.collection(SERIES).doc(seriesKey(config));
+  const ref=db.collection(JOBS).doc(id),series=db.collection(SERIES).doc(seriesKey(config)),paymentRef=db.collection('billing_records').doc(id);
   const owner=randomUUID();
   const job=await db.runTransaction(async tx=>{
-    const [snap,s]=await Promise.all([tx.get(ref),tx.get(series)]);
+    const [snap,s,source]=await Promise.all([tx.get(ref),tx.get(series),tx.get(paymentRef)]);
     if(!snap.exists)return null;const j=snap.data(),lock=s.data()||{};
+    // Legacy jobs may predate simulation guards. Check their original payment too,
+    // before any ARCA call; preserve an occupied series if its outcome is uncertain.
+    if(isSimulatedFiscalSource(j)||(source.exists&&isSimulatedFiscalSource(source.data())))return null;
     if(!['queued','reserved','sent','uncertain'].includes(j.status)||j.seriesKey!==series.id||j.environment!==config.environment||j.leaseUntil>now())return null;
     if(invoiceTypeOf(j)!==configuredInvoiceType(config)||Number(j.issuer?.pointOfSale)!==Number(config.pointOfSale)||String(j.issuer?.cuit)!==String(config.cuit))return null;
     if(config.regime==='general'&&(j.issuerRegime!=='general'||j.taxPolicy!==config.taxPolicy||j.issues?.length))return null;

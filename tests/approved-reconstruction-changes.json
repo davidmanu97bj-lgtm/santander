@@ -102,8 +102,8 @@
       "reason": "Menú administrativo solicitado: reutiliza la selección de choferes activos en Pago digital."
     },
     "unsubscribeAdminDashboard": {
-      "hash": "2fc3c16ff059f654de8a708e3d5a0ff3c989478fe9d1a674d22b540b2d503e41",
-      "reason": "Menú administrativo solicitado: limpia documentos y consultas pendientes al cambiar de sesión."
+      "hash": "58e0e2663f0079248b2fabeedca4b42aa72deb14e734bd58a3d5d659acf0445e",
+      "reason": "Menú administrativo solicitado: limpia documentos y consultas pendientes al cambiar de sesión. Integración Uber Fleet y pruebas paralelas autorizadas: también reinicia su panel al salir para no conservar datos de otra sesión; no altera cálculos ni registros financieros."
     },
     "renderAdminDashboardUpdates": {
       "hash": "c6b2f22dac702d165d6884266ffc906042a95fef6b88fb34b73bf330bbc8b217",
@@ -142,16 +142,16 @@
   },
   "protectedFiles": {
     "firestore.rules": {
-      "hash": "300a2fe3c942c7a255435a32e3aa702e2a0e80aab60f964a461127c73e48fcc8",
-      "reason": "Permite a admin crear/leer/actualizar ops_number_exits para marcar salidas por número remis (sin adjudicación)."
+      "hash": "650edd9a8ea0e83948fd2f17604051dfa7bcc46fd25d9d48c59aa575b5bad35b",
+      "reason": "Conserva permisos de ops_number_exits. Integración Uber Fleet y pruebas paralelas autorizadas: colecciones shadow sin acceso directo y marcas de simulación reservadas al servidor, para que un chofer no evite la factura de un cobro real. Sin exigir nuevos campos a clientes existentes."
     },
     "functions/expense-policy.js": {
       "hash": "044e01190580912b786c33020c3b663b16eee01da5c6a7600482301a11abffa2",
       "reason": "Agrega Peaje y la lista permitida al chofer sin eliminar categorías históricas/admin."
     },
     "functions/index.js": {
-      "hash": "c47bd97d1b94c4f4fe1b0744982517173c8e0b2e4440f671bca1860d2b8b1843",
-      "reason": "Disponibilidad autorizada por el usuario: funciones propias de estado, reservas y Telegram; reglas de lectura del equipo activo y escritura exclusiva del servidor. Sin modificar operaciones financieras."
+      "hash": "9d83fd836aaaed48ea78e7fc759d21cd6f088a38ecf458d737162915222489e8",
+      "reason": "Conserva funciones de disponibilidad, reservas y Telegram. Integración Uber Fleet y pruebas paralelas autorizadas: registra únicamente las funciones administrativas de comparación shadow; no modifica disparadores de cobros, facturas, billeteras ni liquidación semanal."
     },
     "functions/telegram-billing-balance.js": {
       "hash": "aabb3748111e32c61eae773b2fb75dc15158698ac5d045a32014330838631c66",
@@ -202,16 +202,16 @@
       "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
     },
     "functions/arca-invoice.js": {
-      "hash": "e16948c7f92e7789f7e2e77ed2d8713840f863e84bf770fde33eddd63b24adbc",
-      "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
+      "hash": "6da5b616950683b08d63f285a7286dcebf0c3fad2a29f50be397a70bc7be1b07",
+      "reason": "Conserva políticas fiscales B/C y revisión de datos. Pruebas paralelas Uber Fleet autorizadas: rechaza marcas de simulación o fuente shadow antes de construir la solicitud; suppressTelegram por sí solo sigue permitiendo facturar cobros reales. Verificado con clientes falsos y Firestore en memoria."
     },
     "functions/arca-pdf.js": {
       "hash": "902b4ab744a222941e5357f3a718c0092fe93f121df130f1a44352d4e3d9c3f6",
       "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
     },
     "functions/arca-worker.js": {
-      "hash": "364b0c776ee87c6d11caf762ed00b5961e4f683c8f35f41b7bc8e190a09177d0",
-      "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
+      "hash": "9eda7a6314466207553a64c355d10cbd98ab779cc161429e614015f8f54a823b",
+      "reason": "Conserva activación, series B/C y conciliación de respuestas inciertas. Pruebas paralelas Uber Fleet autorizadas: impide encolar simulaciones y vuelve a comprobar solicitud y cobro original antes de contactar ARCA, incluso en solicitudes históricas. Mantiene bloqueos existentes y no altera pagos reales."
     }
   }
 }

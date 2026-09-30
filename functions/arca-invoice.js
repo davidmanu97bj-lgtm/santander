@@ -14,7 +14,13 @@ function internationalCEnabled(config,now=new Date()) {
   const cutoff=Date.parse(config.internationalActiveFrom||'');
   return config.regime==='monotributo' && config.internationalInvoiceType===11 && Number.isFinite(cutoff) && cutoff<=Number(now);
 }
+function isSimulatedFiscalSource(record = {}) {
+  const mode=String(record.verificationMode||'').trim().toLowerCase();
+  return record.isSimulated===true || record.createdBySimulation===true ||
+    ['shadow','simulation'].includes(mode) || String(record.source||'').trim().toLowerCase()==='uber_fleet_shadow';
+}
 function buildInvoice(payment,config,now=new Date()) {
+  if(isSimulatedFiscalSource(payment))return null;
   const req=payment.invoiceRequest;
   if(req?.version!=='arca_c_v1' || !['cash','digital'].includes(payment.method) || !['billing','payment'].includes(payment.type)) return null;
   const issues=[];
@@ -83,4 +89,4 @@ function authorizationFromResponse(response,detail,point,type=11) {
   if(h.Resultado!=='A'||d.Resultado!=='A'||!/^\d{14}$/.test(String(d.CAE))||!/^\d{8}$/.test(String(d.CAEFchVto)))throw new Error('ARCA_UNCERTAIN');
   return {status:'authorized',cae:String(d.CAE),caeExpires:String(d.CAEFchVto)};
 }
-module.exports={validCuit,validDate,localDate,internationalCEnabled,buildInvoice,matchesAuthorized,authorizationFromResponse};
+module.exports={validCuit,validDate,localDate,internationalCEnabled,isSimulatedFiscalSource,buildInvoice,matchesAuthorized,authorizationFromResponse};

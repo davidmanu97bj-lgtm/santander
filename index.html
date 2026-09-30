@@ -131,6 +131,7 @@
   <link rel="stylesheet" href="./driver-availability.css?v=20260922-perpetuos" />
   <link rel="stylesheet" href="./ops-salidas.css?v=20260922-salio-cobro" />
   <link rel="stylesheet" href="./admin-workspace.css?v=20260919-admin-1" />
+  <link rel="stylesheet" href="./uber-fleet-ui.css?v=20260929-fleet-shadow" />
 </head>
 <body>
 <style id="explora-boot-splash">#splashScreen{min-height:100dvh;display:grid;place-items:center;padding:24px;background:var(--bg,#f3f5f7);color:var(--ink,#0e1116);font:650 15px/1.4 Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#splashScreen.hidden,#splashScreen[hidden]{display:none!important}#splashMessage{margin:0;text-align:center}</style>
@@ -192,6 +193,7 @@
             <button id="adminGroupDebtBtn" disabled class="admin-quick group" type="button"><span data-explora-icon="management"></span><span><strong>Deuda grupal</strong><small>El mismo importe para cada chofer activo.</small></span><b aria-hidden="true">↗</b></button>
           </div><p id="adminQuickStatus" role="status">Sincronizando el equipo…</p></section>
           <button type="button" id="adminAvailabilityBtn" disabled>Disponibilidad de choferes</button>
+          <button type="button" id="adminUberFleetBtn" class="uber-fleet-entry">Uber Fleet <small>Comparar viajes sin alterar saldos</small></button>
           <div id="opsSalidasBoard" class="ops-salidas-host"></div>
           <p class="admin-mobile-note">Los informes y el control del equipo están disponibles en la versión para notebook.</p>
           <div class="admin-desktop-only">
