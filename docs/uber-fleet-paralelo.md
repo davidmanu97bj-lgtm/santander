@@ -8,6 +8,11 @@ El botón **Uber Fleet** aparece en Administración, también en móvil. El admi
 
 La autorización se comprueba en el servidor con el administrador oficial existente. Los CSV sólo se envían a ese servidor; no se reenvían a Uber, ARCA ni Telegram. No se guardan contraseñas ni tokens en el navegador. Las vistas previas de factura no tienen validez fiscal.
 
+## Confirmaciones del titular
+
+- El 29/09/2026, el titular confirmó que Uber deposita los cobros digitales en su cuenta/de Explora. Al asociar los UUID reales de esta flota, corresponde seleccionar `digitalRecipient: explora`; no se deduce una asociación de choferes a partir de esta respuesta.
+- Sigue pendiente definir quién absorbe la comisión de Uber. Recibir el depósito no implica asumir la comisión ni acredita que un viaje particular ya esté pagado. Se mantienen los controles de conciliación y revisión, sin movimientos financieros reales.
+
 ## Datos, conciliación y límites
 
 - Acepta CSV UTF-8 con coma, punto y coma o tabulación, encabezados reconocidos en español o inglés, comillas y saltos de línea dentro de campos. Los dos archivos juntos admiten hasta 2 MB y 2000 filas; el servicio limita cada comparación a 100 viajes únicos.
