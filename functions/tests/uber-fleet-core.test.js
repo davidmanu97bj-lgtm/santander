@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {analyzeFleetImport, fleetTripId, CSV_TEMPLATES} = require('../uber-fleet-core');
+const {analyzeFleetImport, fleetTripId, CSV_TEMPLATES, FLEET_NET_POLICY} = require('../uber-fleet-core');
 const {parseFleetCsv} = require('../uber-fleet-csv');
 const DRIVER = '22222222-2222-4222-8222-222222222222';
 const TRIP = '11111111-1111-4111-8111-111111111111';
@@ -18,16 +18,54 @@ function tripsCsv(changes = {}, more = []) {
 const analyze = (changes = {}, options = {}) => analyzeFleetImport({fleetId: 'fleet-demo', tripsCsv: tripsCsv(changes), driverMappings: mapping, nowMs: NOW, ...options});
 const codes = result => result.trips[0].issues.map(issue => issue.code);
 
-test('proyección sobre bruto conserva 60% efectivo y -40% digital, sin efectos externos', () => {
+test('sin comisión el neto coincide con el bruto: conserva 60% efectivo y -40% digital sin efectos externos', () => {
   const cash = analyze();
   assert.equal(cash.trips[0].status, 'planned'); assert.equal(cash.trips[0].walletDeltaCents, 600000);
   const digital = analyze({'Payment Type': 'digital'});
   assert.equal(digital.trips[0].status, 'planned'); assert.equal(digital.trips[0].walletDeltaCents, -400000);
   for (const result of [cash, digital]) {
     assert.equal(result.summary.mode, 'shadow'); assert.equal(result.summary.planned, 1);
+    assert.equal(result.summary.policyVersion, FLEET_NET_POLICY);
+    assert.equal(result.trips[0].settlementBaseCents, 1000000);
     assert.equal(result.trips[0].invoicePreview.isSimulated, true); assert.equal(result.trips[0].invoicePreview.emissionEnabled, false);
     assert.equal(result.trips[0].telegramPreview.isSimulated, true); assert.equal(result.trips[0].telegramPreview.sendEnabled, false);
     assert.equal(result.trips[0].invoiceRequest, undefined);
+  }
+});
+
+test('digital recibido por Explora reparte el neto tras comisión y conserva bruto para factura', () => {
+  for (const fee of ['2000.00', '-2000.00']) {
+    const result = analyze({'Payment Type': 'digital', 'Uber service fee': fee, 'Net earnings': '8000.00'});
+    const trip = result.trips[0];
+    assert.equal(trip.status, 'planned'); assert.deepEqual(trip.issues, []);
+    assert.equal(trip.amountCents, 1000000); assert.equal(trip.commissionCents, 200000);
+    assert.equal(trip.netCents, 800000); assert.equal(trip.settlementBaseCents, 800000);
+    assert.equal(trip.walletDeltaCents, -320000);
+    assert.equal(trip.invoicePreview.amountCents, 1000000);
+    assert.equal(trip.invoicePreview.emissionEnabled, false); assert.equal(trip.telegramPreview.sendEnabled, false);
+    assert.equal(trip.grossWalletDeltaCents, undefined);
+    assert.equal(result.summary.grossCents, 1000000); assert.equal(result.summary.netCents, 800000);
+    assert.equal(result.summary.commissionCents, 200000); assert.equal(result.summary.walletDeltaCents, -320000);
+  }
+});
+
+test('política neta redondea centavos y admite neto cero sin reducir el bruto fiscal', () => {
+  const rounded = analyze({'Payment Type': 'digital', 'Gross fare': '100.03', 'Uber service fee': '20.02', 'Net earnings': '80.01'}).trips[0];
+  assert.equal(rounded.status, 'planned'); assert.equal(rounded.settlementBaseCents, 8001);
+  assert.equal(rounded.walletDeltaCents, -3200); assert.equal(rounded.invoicePreview.amountCents, 10003);
+  const zero = analyze({'Payment Type': 'digital', 'Uber service fee': '10000.00', 'Net earnings': '0.00'}).trips[0];
+  assert.equal(zero.status, 'planned'); assert.equal(zero.walletDeltaCents, 0);
+  assert.equal(zero.invoicePreview.amountCents, 1000000);
+});
+
+test('no deriva neto faltante ni acepta comisión incompatible o cobro digital pendiente', () => {
+  for (const change of [
+    {'Net earnings': ''}, {'Uber service fee': ''}, {'Net earnings': '7999.99'},
+    {'Uber service fee': '12000', 'Net earnings': '-2000'}, {'Payment received': ''}
+  ]) {
+    const result = analyze({'Payment Type': 'digital', 'Uber service fee': '2000', 'Net earnings': '8000', ...change});
+    assert.equal(result.trips[0].status, 'review'); assert.equal(result.trips[0].walletDeltaCents, null);
+    assert.equal(result.summary.walletDeltaCents, 0); assert.equal(result.summary.netCents, 0);
   }
 });
 
@@ -47,6 +85,19 @@ test('mapeo y fecha de análisis no cambian sourceHash; corregir mapeo reevalúa
   assert.equal(corrected.sourceHash, missing.sourceHash); assert.equal(corrected.status, 'planned');
   const remapped = analyze({}, {existingTrips: [corrected], driverMappings: {[DRIVER]: {driverUid: 'driver-b', digitalRecipient: 'explora'}}}).trips[0];
   assert.equal(remapped.sourceHash, corrected.sourceHash); assert.equal(remapped.driverUid, 'driver-b'); assert.equal(remapped.status, 'planned');
+});
+
+test('la política neta reevalúa proyecciones históricas y no muta importaciones ni cobros propios', () => {
+  const old = {...analyze().trips[0], policyVersion: 'net_wallets_cashbox_10_v1'};
+  const before = structuredClone(old);
+  const result = analyze({}, {existingTrips: [old]});
+  assert.equal(result.trips[0].status, 'planned'); assert.deepEqual(old, before);
+  const digital = analyze({'Payment Type': 'digital', 'Uber service fee': '2000', 'Net earnings': '8000'}).trips[0];
+  const repeated = analyze({'Payment Type': 'digital', 'Uber service fee': '2000', 'Net earnings': '8000'}, {existingTrips: [digital]});
+  assert.equal(repeated.trips[0].status, 'unchanged'); assert.equal(repeated.summary.netCents, 0);
+  const ownPolicy = require('../period-policy');
+  assert.equal(ownPolicy.chargeDelta(10000, 'cash'), 6000);
+  assert.equal(ownPolicy.chargeDelta(10000, 'digital'), -4000);
 });
 
 test('filas repetidas idénticas cuentan una vez; filas contradictorias quedan en revisión', () => {
@@ -94,10 +145,12 @@ test('faltantes y datos ambiguos permanecen pendientes, sin default monetario o 
   }
 });
 
-test('comisiones, neto incongruente y cobros no confirmados requieren revisión', () => {
+test('efectivo con comisión no presupone quién pagó a Uber; incongruencias y cobros pendientes siguen en revisión', () => {
   const commission = analyze({'Uber service fee': '-2000', 'Net earnings': '8000'});
-  assert.ok(codes(commission).includes('commission_policy_required')); assert.equal(commission.trips[0].commissionCents, 200000); assert.equal(commission.trips[0].walletDeltaCents, null);
-  assert.equal(commission.trips[0].grossWalletDeltaCents, 600000);
+  assert.ok(codes(commission).includes('cash_commission_settlement_requires_review')); assert.equal(commission.trips[0].commissionCents, 200000); assert.equal(commission.trips[0].walletDeltaCents, null);
+  assert.equal(commission.trips[0].settlementBaseCents, 800000);
+  assert.equal(commission.trips[0].grossWalletDeltaCents, undefined);
+  assert.equal(commission.trips[0].invoicePreview.amountCents, 1000000);
   assert.ok(codes(analyze({'Net earnings': '8000'})).includes('gross_net_mismatch'));
   assert.ok(codes(analyze({'Payment received': ''})).includes('payment_receipt_unconfirmed'));
   for (const recipient of ['unknown', 'driver']) assert.ok(codes(analyze({'Payment Type': 'digital'}, {driverMappings: {[DRIVER]: {driverUid: 'driver-a', digitalRecipient: recipient}}})).includes('digital_recipient_requires_review'));
@@ -120,6 +173,20 @@ test('solapamiento semanal y cobro real bloquean segunda contabilización', () =
   assert.ok(codes(analyze({}, {weeklyClosures: [row]})).includes('weekly_closure_overlap'));
   assert.equal(analyze({}, {weeklyClosures: [{...row, deleted: true}]}).trips[0].status, 'planned');
   assert.ok(codes(analyze({}, {existingPayments: [{id: 'manual-id', source: {provider: 'uber_fleet', fleetId: 'fleet-demo', tripId: TRIP}}]})).includes('already_posted'));
+});
+
+test('el cambio a neto no evade una liquidación semanal ni un viaje ya contabilizado', () => {
+  const changes = {'Payment Type': 'digital', 'Uber service fee': '2000', 'Net earnings': '8000'};
+  for (const context of [
+    {weeklyClosures: [{driverUid: 'driver-a', weekStartDate: '2026-09-28', weekCloseDate: '2026-10-05', status: 'completed'}]},
+    {weeklyClosures: [{driverUid: 'driver-a', dayKey: '2026-09-28', status: 'completed'}]},
+    {existingPayments: [{id: fleetTripId('fleet-demo', TRIP), amount: 8000}]},
+    {existingPayments: [{id: 'other-id', amount: 8000, source: {provider: 'uber_fleet', fleetId: 'fleet-demo', tripId: TRIP}}]}
+  ]) {
+    const result = analyze(changes, context);
+    assert.equal(result.trips[0].status, 'review'); assert.equal(result.trips[0].walletDeltaCents, null);
+    assert.equal(result.summary.walletDeltaCents, 0); assert.equal(result.summary.netCents, 0);
+  }
 });
 
 test('coincidencia con cobro manual es revisión, nunca deduplicación automática por importe', () => {

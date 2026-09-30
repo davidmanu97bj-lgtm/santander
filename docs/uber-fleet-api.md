@@ -1,6 +1,6 @@
 # Adaptador oficial Uber Supplier: lectura en paralelo
 
-Revisado contra documentación pública oficial el 29 de septiembre de 2026. El módulo no está conectado a una función desplegada, tarea programada, billetera, factura ni Telegram. Importarlo o construir un cliente no hace solicitudes. No se buscaron credenciales ni se hicieron llamadas autenticadas a Uber. Las pruebas usan únicamente un transporte inyectado y datos ficticios.
+Revisado contra documentación pública oficial el 29 de septiembre de 2026. Importarlo o construir un cliente no hace solicitudes. El proceso automático de observación puede utilizar este cliente cuando estén habilitados la configuración y los permisos de Uber; no lo conecta a cobros, billeteras, facturas ni Telegram. Las pruebas del adaptador usan únicamente un transporte inyectado y datos ficticios, sin llamadas autenticadas a Uber.
 
 ## Contrato local
 
@@ -54,6 +54,8 @@ La cuenta debe tener una organización Supplier habilitada y los dos scopes auto
 Uber Argentina permite empezar en el portal con un vehículo; ello no garantiza habilitación de APIs para esa cuenta o mercado. No se verificó acceso de esta cuenta. [Portal y flotas de Argentina](https://www.uber.com/ar/es/earn/fleet-management/).
 
 Las transacciones en tiempo real y el webhook de estado indican expresamente que **no tienen sandbox**. El sandbox general Supplier tiene cobertura parcial; no sirve para afirmar que esta integración financiera fue ensayada contra Uber. [Limitaciones generales del sandbox](https://developer.uber.com/docs/vehicles/guides/sandbox-experience).
+
+El planificador usa `createFleetShadowSync(...).run()` para continuar sin interfaz. Mantiene un bloqueo global, ventanas temporales completas y observaciones idempotentes; un hueco fuera de la retención se conserva como pendiente de recuperar mediante reportes oficiales. La bandera de despliegue queda desactivada por defecto y se combina con la configuración del servidor. El formato y los estados están documentados en [Sincronización automática en observación](uber-fleet-sync.md). La regla de reparto sobre el neto, después de la comisión, debe aplicarse en la conciliación financiera sólo cuando el desglose y las unidades de origen hayan sido verificados; este transporte no los adivina.
 
 Mientras no exista acceso confirmado, el camino es descargar los reportes oficiales e importarlos en el proceso local de revisión. La API de reportes es una futura alternativa con scope `solutions.suppliers.reports`: generar, consultar estado y pedir enlace temporal. Los reportes de viajes anuncian actualización cada 30 minutos y los de pagos cada cuatro horas. No se implementaron sus solicitudes en este módulo. [Reportes](https://developer.uber.com/docs/vehicles/references/api/v1/vehicle-suppliers/suppliers/generate-report), [campos de viajes](https://developer.uber.com/docs/vehicles/references/api/v1/vehicle-suppliers/suppliers/performance-based-reports-fleet), [campos de pagos](https://developer.uber.com/docs/vehicles/references/api/v1/vehicle-suppliers/suppliers/payment-based-reports-fleet).
 

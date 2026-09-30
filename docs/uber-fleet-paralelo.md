@@ -2,7 +2,7 @@
 
 ## Estado de esta entrega
 
-Esta versión incorpora una pantalla administrativa, importación CSV y conciliación en paralelo. **No está sincronizando una cuenta real de Uber, no registra cobros ni emite facturas ni envía Telegram.** No modifica el cierre semanal existente. El adaptador oficial de lectura está implementado y probado con respuestas ficticias; aún no está conectado a una función programada ni a credenciales de la cuenta.
+Esta versión incorpora una pantalla administrativa, importación CSV, conciliación en paralelo y un proceso programado en el servidor cada cinco minutos. **No está sincronizando una cuenta real de Uber, no registra cobros ni emite facturas ni envía Telegram.** No modifica el cierre semanal existente. La función programada está deshabilitada por defecto y aún no tiene credenciales ni permisos de la cuenta verificados.
 
 El botón **Uber Fleet** aparece en Administración, también en móvil. El administrador carga un reporte de viajes y, cuando existe, su reporte de pagos; asocia el UUID de Uber con un chofer activo de Explora y confirma quién recibe el dinero digital. Primero compara y luego puede guardar el resultado. Un viaje sin asociación permanece en revisión.
 
@@ -11,7 +11,8 @@ La autorización se comprueba en el servidor con el administrador oficial existe
 ## Confirmaciones del titular
 
 - El 29/09/2026, el titular confirmó que Uber deposita los cobros digitales en su cuenta/de Explora. Al asociar los UUID reales de esta flota, corresponde seleccionar `digitalRecipient: explora`; no se deduce una asociación de choferes a partir de esta respuesta.
-- Sigue pendiente definir quién absorbe la comisión de Uber. Recibir el depósito no implica asumir la comisión ni acredita que un viaje particular ya esté pagado. Se mantienen los controles de conciliación y revisión, sin movimientos financieros reales.
+- También el 29/09/2026 confirmó que el reparto para las billeteras se calcula sobre el **neto después de comisión de Uber**, no sobre el bruto. La política específica es `uber_net_after_commission_cashbox_10_v1`: en el depósito digital confirmado a Explora, la parte del chofer es el 40% del neto. La tarifa bruta se conserva por separado para revisar la factura. Recibir el depósito no acredita que un viaje particular ya esté pagado.
+- Si el chofer cobra efectivo, además del neto hay que comprobar dónde Uber descontó la comisión: el efectivo bruto en manos del chofer no desaparece por calcular el reparto sobre el neto. Esos casos quedan en revisión hasta contrastar la liquidación real.
 
 ## Datos, conciliación y límites
 
@@ -21,11 +22,19 @@ La autorización se comprueba en el servidor con el administrador oficial existe
 - El identificador estable usa proveedor, flota y UUID del viaje. La reimportación idéntica no crea otro viaje. Si la fuente cambia, se muestra una diferencia y se conserva la versión anterior; resolver/reemplazar formalmente esa evidencia es trabajo pendiente, no existe un botón para ignorar el conflicto.
 - Se detectan transacciones reutilizadas, cobros reales ya vinculados, posibles cobros manuales del mismo conductor/fecha/importe y semanas Uber ya liquidadas. Las coincidencias aproximadas sólo generan observaciones.
 - `planned` significa proyección preparada, nunca autorización fiscal ni cobro realizado. `review` necesita revisión y `unchanged` conserva la comparación ya guardada.
-- Se reutiliza la política vigente del cobro individual: efectivo +60% y digital −40% sobre el bruto. Las comisiones distintas de cero, destinatario digital desconocido o pago no acreditado dejan el viaje en revisión. No se usa la liquidación OCR semanal para inventar un cobro individual.
+- Para Uber se proyecta sobre el neto conciliado: digital −40%, efectivo sin comisión +60%. El efectivo con comisión, destinatario digital desconocido, pago no acreditado o diferencias entre bruto/comisión/neto quedan en revisión. No se usa la liquidación OCR semanal para inventar un cobro individual. Los cobros propios de Explora y las liquidaciones históricas conservan sus reglas.
 - Origen, destino, kilómetros, fecha y alcance fiscal deben corroborarse. No se inventa «Viaje al centro». La alternativa descriptiva es «Servicio de traslado de pasajeros», manteniendo la emisión pendiente si faltan datos fiscales. Los nacionales mayores de 100 km e internacionales quedan en revisión.
 - La primera versión consulta hasta 1000 registros históricos por chofer/colección y por flota. Al excederlos se detiene explícitamente; no anuncia una conciliación completa con datos truncados. Ampliar la consulta histórica requiere una mejora posterior.
 
-Sólo hay escrituras en `uber_fleet_shadow_trips`, `uber_fleet_shadow_imports` y `uber_fleet_shadow_settings`. Las reglas bloquean acceso directo del cliente; se usan las funciones administrativas. No hay disparadores financieros en esas colecciones. Los reportes y rutas son privados y quedan dentro de la infraestructura existente de Explora.
+La comparación sólo escribe en `uber_fleet_shadow_trips`, `uber_fleet_shadow_imports` y `uber_fleet_shadow_settings`. El proceso automático sólo escribe observaciones, estado y brechas en `uber_fleet_shadow_observations`, `uber_fleet_shadow_sync` y `uber_fleet_shadow_sync_gaps`. Las reglas bloquean acceso directo del cliente; no hay disparadores financieros en esas colecciones. Los reportes y rutas son privados y quedan dentro de la infraestructura existente de Explora.
+
+## Ejecución automática y detención
+
+`uberFleetObserveAutomatically` se ejecuta cada cinco minutos en Cloud Scheduler, sin depender de abrir la app ni de pulsar un botón. Necesita **ambas** habilitaciones: `UBER_FLEET_SYNC_ENABLED=true` en el despliegue y `enabled=true` en `uber_fleet_shadow_settings/automatic`, donde se indican `organizationId` y `startTimeMs` verificados. Sin la primera no se enlazan secretos; sin cualquiera de las dos no consulta Uber. Las credenciales se enlazan sólo mediante los secretos `UBER_FLEET_CLIENT_ID` y `UBER_FLEET_CLIENT_SECRET` al habilitar el despliegue.
+
+Para detener consultas sin afectar cobros existentes, un operador autorizado puede poner `enabled=false` en ese documento. El apagado se aplica al siguiente ciclo; una lectura ya iniciada puede terminar de guardar observaciones sin efectos financieros. El proceso verifica el acceso de la organización, respeta ventanas y límites del proveedor, conserva el progreso y detecta brechas históricas. No convierte las unidades monetarias ambiguas de la API en cobros. Los fallos se registran únicamente con códigos saneados.
+
+**Este proceso es de observación automática, no la automatización financiera terminada.** La conexión a `billing_records`, facturas y Telegram exige validar una respuesta real, identidad de Ramiro, pago, política y fecha de corte; no se habilita por instalar el proceso programado. Los avisos de inicio de viaje requieren además el acceso a eventos Fleet.
 
 ## Protección fiscal adicional
 

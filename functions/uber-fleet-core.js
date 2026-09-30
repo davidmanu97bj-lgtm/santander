@@ -5,7 +5,8 @@ const {createHash} = require('node:crypto');
 const policy = require('./period-policy');
 const csv = require('./uber-fleet-csv');
 const PROVIDER = 'uber_fleet';
-const VERSION = 'uber_fleet_shadow_v1';
+const VERSION = 'uber_fleet_shadow_net_v2';
+const FLEET_NET_POLICY = 'uber_net_after_commission_cashbox_10_v1';
 const CSV_TEMPLATES = Object.freeze({trips: csv.MINIMUM_TRIPS_CSV, payments: csv.MINIMUM_PAYMENTS_CSV});
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const clean = value => String(value ?? '').trim();
@@ -72,7 +73,7 @@ function canonicalRow(data) {
 
 function analyzeFleetImport({fleetId, tripsCsv, paymentsCsv = '', driverMappings = {}, existingTrips = [], existingPayments = [], weeklyClosures = [], nowMs = Date.now()} = {}) {
   const issues = [];
-  const summary = {mode: 'shadow', version: VERSION, policyVersion: policy.VERSION, total: 0, planned: 0, review: 0, unchanged: 0, grossCents: 0, observedGrossCents: 0, cashCents: 0, digitalCents: 0, walletDeltaCents: 0, duplicateRows: 0, paymentRows: 0, unlinkedPayments: 0, inputRejected: false};
+  const summary = {mode: 'shadow', version: VERSION, policyVersion: FLEET_NET_POLICY, basePolicyVersion: policy.VERSION, total: 0, planned: 0, review: 0, unchanged: 0, grossCents: 0, netCents: 0, commissionCents: 0, observedGrossCents: 0, cashCents: 0, digitalCents: 0, walletDeltaCents: 0, duplicateRows: 0, paymentRows: 0, unlinkedPayments: 0, inputRejected: false};
   const rejected = (code, message) => {issues.push({code, message, fatal: true}); summary.inputRejected = true; return {trips: [], summary, issues};};
   fleetId = clean(fleetId);
   if (!validId(fleetId)) return rejected('invalid_fleet_id', 'Ingresá el identificador de la flota de Uber, sin espacios ni rutas.');
@@ -167,7 +168,6 @@ function analyzeFleetImport({fleetId, tripsCsv, paymentsCsv = '', driverMappings
     if (currency && currency !== 'ARS') addIssue(tripIssues, 'unsupported_currency', 'Sólo se analiza ARS; no se convierten otras monedas.');
     if (amountCents !== null && (amountCents <= 0 || amountCents > 10000000000)) addIssue(tripIssues, 'gross_out_of_range', 'El bruto debe ser positivo y no superar $100.000.000.');
     if (netCents !== null && netCents < 0) addIssue(tripIssues, 'negative_net', 'Un neto negativo requiere conciliar el ajuste.');
-    if (commissionCents !== null && commissionCents !== 0) addIssue(tripIssues, 'commission_policy_required', 'La comisión de Uber requiere definir su tratamiento antes de proyectar un cobro definitivo.');
     if (amountCents !== null && commissionCents !== null && netCents !== null && amountCents - commissionCents !== netCents) addIssue(tripIssues, 'gross_net_mismatch', 'Bruto menos comisión no coincide con el neto; conciliá propinas, impuestos y ajustes.');
 
     const completed = csv.parseTimestamp(data.completedAt), completedAt = completed.value;
@@ -177,6 +177,10 @@ function analyzeFleetImport({fleetId, tripsCsv, paymentsCsv = '', driverMappings
     if (!tripStatus) addIssue(tripIssues, 'missing_status', 'Falta el estado explícito del viaje.');
     else if (tripStatus !== 'completed') addIssue(tripIssues, 'trip_not_completed', 'El viaje no está completado; se conserva pendiente sin proyectar un cobro.');
     const method = mergeField('method', raw => ({value: methodOf(raw), issue: methodOf(raw) ? null : 'unknown_method'}), 'missing_method', 'Método de pago');
+    // Cash held by the driver can still be gross even though Uber reports net
+    // earnings. A fee charged to the fleet and a fee paid by the driver create
+    // different debts; the current reports do not establish which occurred.
+    if (method === 'cash' && commissionCents > 0) addIssue(tripIssues, 'cash_commission_settlement_requires_review', 'El chofer recibe efectivo bruto. Falta corroborar si la comisión la pagó el chofer o se descontó de la cuenta de Explora; no se convierte el efectivo retenido en neto automáticamente.');
     const digitalRecipient = ['explora', 'driver', 'unknown'].includes(mapping?.digitalRecipient) ? mapping.digitalRecipient : 'unknown';
     if (method === 'digital' && digitalRecipient !== 'explora') addIssue(tripIssues, 'digital_recipient_requires_review', digitalRecipient === 'driver' ? 'El dinero digital lo recibe el chofer; la billetera digital actual representa dinero recibido por Explora.' : 'Falta confirmar quién recibe el dinero digital.');
     const confirmation = mergeField('paymentReceived', raw => ({value: receivedOf(raw), issue: receivedOf(raw) === null ? 'unknown_confirmation' : null}), null, 'Confirmación del cobro');
@@ -243,25 +247,31 @@ function analyzeFleetImport({fleetId, tripsCsv, paymentsCsv = '', driverMappings
       }
     }
 
-    // The preview is explicitly gross-only. Nonzero commissions or an unknown
-    // recipient leave the row in review; no real balances are created here.
-    const grossWalletDeltaCents = amountCents > 0 && amountCents <= 10000000000 && method && currency === 'ARS' && (method === 'cash' || digitalRecipient === 'explora')
-      ? Math.round(policy.chargeDelta(amountCents / 100, method) * 100) : null;
+    // Only Uber's reconciled net is the settlement base. Passenger fare and the
+    // fiscal preview remain gross. This module never writes a real balance.
+    const reconciledNet = Number.isSafeInteger(amountCents) && amountCents > 0 && amountCents <= 10000000000 &&
+      Number.isSafeInteger(commissionCents) && Number.isSafeInteger(netCents) && netCents >= 0 && amountCents - commissionCents === netCents;
+    const settlementBaseCents = reconciledNet ? netCents : null;
+    const projectedDeltaCents = reconciledNet && currency === 'ARS' &&
+      ((method === 'cash' && commissionCents === 0) || (method === 'digital' && digitalRecipient === 'explora'))
+      ? Math.round(policy.chargeDelta(netCents / 100, method) * 100) : null;
     let status = tripIssues.length ? 'review' : 'planned';
-    if (!tripIssues.length && previous?.sourceHash === sourceHash && ['planned', 'unchanged'].includes(previous.status) && previous.driverUid === driverUid && previous.walletDeltaCents === grossWalletDeltaCents) status = 'unchanged';
-    const walletDeltaCents = status === 'review' ? null : grossWalletDeltaCents;
+    if (!tripIssues.length && previous?.sourceHash === sourceHash && previous.policyVersion === FLEET_NET_POLICY && ['planned', 'unchanged'].includes(previous.status) && previous.driverUid === driverUid && previous.walletDeltaCents === projectedDeltaCents) status = 'unchanged';
+    const walletDeltaCents = status === 'review' ? null : projectedDeltaCents;
     const invoicePreview = {isSimulated: true, fiscalValidity: false, emissionEnabled: false, status: 'preparation_only', currency, amountCents, scope, serviceDate: completedAt ? localDay(completedAt) : null, route, customer: null, missingIssuerAndCustomerVerification: true};
     const amountLabel = amountCents === null ? 'pendiente' : `$ ${(amountCents / 100).toFixed(2)} ${currency || '(moneda pendiente)'}`;
-    const telegramPreview = {isSimulated: true, sendEnabled: false, text: `PRUEBA PARALELA · Viaje Uber ${tripId || '(sin UUID)'}\nBruto: ${amountLabel}\n${route.origin || 'Origen pendiente'} → ${route.destination || 'Destino pendiente'}\nEstado: ${status === 'review' ? 'requiere revisión' : status === 'unchanged' ? 'sin cambios' : 'proyección disponible'}\nNo se registró un cobro ni se emitió una factura.`};
-    const trip = {id, tripId: tripId || null, uberDriverId: uberDriverId || null, driverUid, status, issues: tripIssues, sourceHash, completedAt, amountCents, commissionCents, netCents, method, currency, walletDeltaCents, grossWalletDeltaCents, invoicePreview, telegramPreview, route,
+    const netLabel = settlementBaseCents === null ? 'pendiente de conciliación' : `$ ${(settlementBaseCents / 100).toFixed(2)} ${currency || '(moneda pendiente)'}`;
+    const telegramPreview = {isSimulated: true, sendEnabled: false, text: `PRUEBA PARALELA · Viaje Uber ${tripId || '(sin UUID)'}\nBruto: ${amountLabel}\nNeto tras comisión: ${netLabel}\n${route.origin || 'Origen pendiente'} → ${route.destination || 'Destino pendiente'}\nEstado: ${status === 'review' ? 'requiere revisión' : status === 'unchanged' ? 'sin cambios' : 'proyección disponible'}\nNo se registró un cobro ni se emitió una factura.`};
+    const trip = {id, tripId: tripId || null, uberDriverId: uberDriverId || null, driverUid, status, issues: tripIssues, sourceHash, completedAt, amountCents, commissionCents, netCents, method, currency, settlementBaseCents, policyVersion: FLEET_NET_POLICY, walletDeltaCents, invoicePreview, telegramPreview, route,
       source: {provider: PROVIDER, fleetId, tripId: tripId || null, tripRow: group.row.rowNumber, tripRows: [...group.rows], paymentRows: payments.map(row => row.rowNumber), transactionIds: payments.map(row => row.data.transactionId).filter(Boolean).sort(), tripStatus, digitalRecipient, paymentReceived: received, version: VERSION}};
     trips.push(trip);
     summary.total++; summary[status]++;
     if (amountCents > 0 && Number.isSafeInteger(amountCents)) summary.observedGrossCents += amountCents;
     if (status === 'planned') {
-      summary.grossCents += amountCents; summary[method === 'cash' ? 'cashCents' : 'digitalCents'] += amountCents; summary.walletDeltaCents += walletDeltaCents;
+      summary.grossCents += amountCents; summary.netCents += netCents; summary.commissionCents += commissionCents;
+      summary[method === 'cash' ? 'cashCents' : 'digitalCents'] += amountCents; summary.walletDeltaCents += walletDeltaCents;
     }
   }
   return {trips, summary, issues};
 }
-module.exports = {analyzeFleetImport, fleetTripId, CSV_TEMPLATES, VERSION};
+module.exports = {analyzeFleetImport, fleetTripId, CSV_TEMPLATES, VERSION, FLEET_NET_POLICY};

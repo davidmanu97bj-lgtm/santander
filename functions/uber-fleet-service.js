@@ -1,6 +1,7 @@
 "use strict";
 const {createHash}=require('node:crypto');
 const {analyzeFleetImport,CSV_TEMPLATES}=require('./uber-fleet-core');
+const {syncStateId}=require('./uber-fleet-sync');
 
 const COLLECTIONS=Object.freeze({trips:'uber_fleet_shadow_trips',imports:'uber_fleet_shadow_imports',settings:'uber_fleet_shadow_settings'});
 const MAX_CONTEXT=1000, MAX_IMPORT=100;
@@ -37,9 +38,12 @@ function createFleetShadowService({db,assertAdmin,now=()=>Date.now()}){
   }
   async function status(request){
     await assertAdmin(request);
-    const [team,settings,saved]=await Promise.all([drivers(),db.collection(COLLECTIONS.settings).doc('current').get(),db.collection(COLLECTIONS.imports).orderBy('updatedAtMs','desc').limit(10).get()]);
+    const [team,settings,saved,automatic]=await Promise.all([drivers(),db.collection(COLLECTIONS.settings).doc('current').get(),db.collection(COLLECTIONS.imports).orderBy('updatedAtMs','desc').limit(10).get(),db.collection(COLLECTIONS.settings).doc('automatic').get()]);
     const configuration=settings.data()||{};
-    return {mode:'shadow',liveEnabled:false,apiConnected:false,apiMessage:'Uber debe habilitar la aplicación y sus permisos de flota. Mientras tanto podés comparar reportes CSV.',drivers:team,fleetId:configuration.fleetId||'',driverMappings:configuration.driverMappings||{},history:rows(saved).sort((a,b)=>b.updatedAtMs-a.updatedAtMs).slice(0,10)};
+    const autoConfig=automatic.data()||{}, enabled=process.env.UBER_FLEET_SYNC_ENABLED==='true'&&autoConfig.enabled===true;
+    const state=typeof autoConfig.organizationId==='string'?(await db.collection('uber_fleet_shadow_sync').doc(syncStateId(autoConfig.organizationId)).get()).data()||{}:{};
+    const automation={enabled,mode:'shadow',financialEnabled:false,intervalMinutes:5,status:enabled?(state.status||'awaiting_first_read'):'disabled',lastSuccessAtMs:Number.isSafeInteger(state.lastSuccessAtMs)?state.lastSuccessAtMs:null,captureThroughMs:Number.isSafeInteger(state.captureThroughMs)?state.captureThroughMs:null,recoveryRequired:state.recoveryRequired===true};
+    return {mode:'shadow',liveEnabled:false,apiConnected:enabled&&!state.lastErrorCode&&Number.isSafeInteger(state.lastSuccessAtMs)&&now()-state.lastSuccessAtMs>=0&&now()-state.lastSuccessAtMs<15*60*1000,apiMessage:'Uber debe habilitar la aplicación y sus permisos de flota. Mientras tanto podés comparar reportes CSV.',automation,drivers:team,fleetId:configuration.fleetId||'',driverMappings:configuration.driverMappings||{},history:rows(saved).sort((a,b)=>b.updatedAtMs-a.updatedAtMs).slice(0,10)};
   }
   async function analyze(request){
     const uid=await assertAdmin(request);

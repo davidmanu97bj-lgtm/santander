@@ -150,8 +150,8 @@
       "reason": "Agrega Peaje y la lista permitida al chofer sin eliminar categorías históricas/admin."
     },
     "functions/index.js": {
-      "hash": "9d83fd836aaaed48ea78e7fc759d21cd6f088a38ecf458d737162915222489e8",
-      "reason": "Conserva funciones de disponibilidad, reservas y Telegram. Integración Uber Fleet y pruebas paralelas autorizadas: registra únicamente las funciones administrativas de comparación shadow; no modifica disparadores de cobros, facturas, billeteras ni liquidación semanal."
+      "hash": "c2e5d2f4ac383c273fc28d72c24b1b23e3efe93fb72c85ab3bb015bfbed475ed",
+      "reason": "Integración Uber Fleet autorizada: callables de comparación y observación programada cada cinco minutos, deshabilitada por defecto y sin escrituras financieras. Conserva disparadores de cobros propios y cierres históricos."
     },
     "functions/telegram-billing-balance.js": {
       "hash": "aabb3748111e32c61eae773b2fb75dc15158698ac5d045a32014330838631c66",

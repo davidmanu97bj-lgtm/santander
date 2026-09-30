@@ -7181,7 +7181,7 @@ function ensureOpsSalidasBoard() {
   return opsSalidasBoard;
 }
 adminWorkspace=mountAdminWorkspace({getState:adminWorkspaceState,loadDocuments:async input=>(await httpsCallable(functions,'adminMonthlyDocuments',{timeout:300000})(input)).data,openDebt:openAdminDebt,openDigital:openAdminDigitalExpense});
-uberFleetWorkspace=mountUberFleet({isAuthorized:()=>Boolean(auth.currentUser&&isAdminProfile()),call:async(name,input)=>(await httpsCallable(functions,name,{timeout:120000})(input)).data});
+uberFleetWorkspace=mountUberFleet({defaultDigitalRecipient:'explora',isAuthorized:()=>Boolean(auth.currentUser&&isAdminProfile()),call:async(name,input)=>(await httpsCallable(functions,name,{timeout:120000})(input)).data});
 
 // Hand a submit made during startup to the authenticated login handler once.
 document.documentElement.dataset.exploraAppReady = 'true';
