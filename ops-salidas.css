@@ -61,3 +61,8 @@
 .ops-salidas-table button{min-height:40px;padding:8px 12px;border:0;border-radius:8px;background:#111b47;color:#fff;font-weight:700;cursor:pointer}
 .ops-salidas-table button:disabled{opacity:.5;cursor:wait}
 .ops-salidas-table td:nth-child(2),.ops-salidas-table td:nth-child(4){min-width:120px}
+
+.ops-salidas-field{display:grid;gap:5px;margin:10px 0;font-size:12px;color:#334155;font-weight:700;max-width:700px}
+.ops-salidas-field input,.ops-salidas-field select,.ops-salidas-toolbar select{box-sizing:border-box;max-width:100%;min-width:0;min-height:44px;padding:8px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;color:#10164c;font-size:16px}
+.ops-salidas-chip.selected{background:#10164c;color:white;border-color:#10164c}.ops-primary,.ops-salidas-toolbar button{min-height:44px;border:0;border-radius:9px;padding:10px 16px;background:#10164c;color:white;font-weight:700;cursor:pointer}
+.ops-salidas-toolbar{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;padding:12px}.ops-salidas-toolbar label{display:grid;gap:5px;font-size:12px}.ops-salidas-table td small{display:block;max-width:240px;overflow-wrap:anywhere;font-size:11px;color:#5f6b7b;margin-top:5px}.ops-salidas-badge.review{color:#815400;background:#fff2cd}.ops-salidas-badge.excluded{color:#475569;background:#e9eef4}.ops-salidas-guide{padding:12px;font-size:12px;line-height:1.6}.ops-salidas-guide summary,.ops-salidas-table summary{cursor:pointer;font-weight:700}.ops-salidas-table details{margin-top:8px;min-width:180px}.ops-salidas-table details label{display:grid;gap:4px;margin:6px 0}.ops-salidas-table input{box-sizing:border-box;max-width:240px;width:100%;min-height:40px}.ops-salidas-summary{flex-wrap:wrap}

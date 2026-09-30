@@ -6,8 +6,8 @@ import {
   renderChargeRemisStep,
   readChargeRemisSelection,
   mountOpsSalidasBoard
-} from "./ops-salidas.js?v=20260930-hora-real";
-import { createOpsExitStore } from "./ops-salidas-store.js?v=20260930-hora-real";
+} from "./ops-salidas.js?v=20260930-operaciones-v3";
+import { createOpsExitStore } from "./ops-salidas-store.js?v=20260930-operaciones-v3";
 import { mountAdminWorkspace } from "./admin-workspace.js?v=20260919-admin-1";
 import { mountUberFleet } from "./uber-fleet-ui.js?v=20260929-fleet-shadow";
 import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20260919-admin-1";
@@ -7156,7 +7156,8 @@ function ensureOpsSalidasBoard() {
       );
     },
     markExit: exitStore.markExit,
-    linkPayment: exitStore.linkPayment
+    linkPayment: exitStore.linkPayment,
+    reviewExit: exitStore.reviewExit
   });
   return opsSalidasBoard;
 }

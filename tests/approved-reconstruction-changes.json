@@ -142,8 +142,8 @@
   },
   "protectedFiles": {
     "firestore.rules": {
-      "hash": "c2b08049ae2a9db361ccc186602d5fa24ed2b12ed340565d9d656e24e04ee4fb",
-      "reason": "Salidas pendientes solicitado: restringe escrituras operativas a administración, conserva fecha y número y exige un vínculo atómico exclusivo entre salida y cobro. Las reglas de cobros, billeteras y cierres no cambian."
+      "hash": "4a45bdc6b81bce727f685731402440bc15f14e3a3a5a7ad66f863eec4aca3f29",
+      "reason": "OPERACIONES solicitado: altas idempotentes por referencia de WhatsApp, fecha real no futura y clasificación por evento con revisión concurrente. Mantiene vínculo exclusivo, inmutabilidad de fecha/número y reglas financieras sin cambios."
     },
     "functions/expense-policy.js": {
       "hash": "044e01190580912b786c33020c3b663b16eee01da5c6a7600482301a11abffa2",

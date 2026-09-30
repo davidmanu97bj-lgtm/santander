@@ -1281,24 +1281,39 @@ service cloud.firestore {
     match /ops_number_exits/{exitId} {
       allow read: if isAdmin();
       allow create: if isAdmin()
-        && request.resource.data.keys().hasOnly(['version','dayKey','remisNumber','markedAtMs','active','markedByUid','markedByName','createdAt'])
-        && request.resource.data.version == 2
+        && request.resource.data.keys().hasOnly(['version','dayKey','remisNumber','markedAtMs','active','markedByUid','markedByName','createdAt','sourceRef','disposition','reviewNote','reviewRevision'])
+        && request.resource.data.version == 3
+        && exitId.matches('wa_[a-f0-9]{64}')
+        && request.resource.data.sourceRef is string && request.resource.data.sourceRef.size() > 0 && request.resource.data.sourceRef.size() <= 240
+        && request.resource.data.disposition in ['own','internal_cover','uber','external_cover','review']
+        && request.resource.data.reviewNote is string && request.resource.data.reviewNote.size() <= 500
+        && (!(request.resource.data.disposition in ['external_cover','review']) || request.resource.data.reviewNote.size() > 0)
+        && request.resource.data.reviewRevision == 0
         && request.resource.data.dayKey is string
         && request.resource.data.remisNumber in [28,57,104,31,43,154,15,134]
         && request.resource.data.markedAtMs is number
         && request.resource.data.markedAtMs > 0
+        && request.resource.data.markedAtMs <= request.time.toMillis()
         && request.resource.data.active == true
         && request.resource.data.markedByUid == uid()
         && request.resource.data.createdAt == request.time;
       allow update: if isAdmin()
         && resource.data.active == true
         && resource.data.get('paymentId', '') == ''
+        && !(resource.data.get('disposition', 'own') in ['uber','external_cover','review'])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paymentId','paymentAtMs','linkedAtMs','linkedByUid','linkedAt'])
         && request.resource.data.paymentId is string
         && request.resource.data.linkedByUid == uid()
         && request.resource.data.linkedAt == request.time
         && getAfter(/databases/$(database)/documents/ops_exit_payment_links/$(request.resource.data.paymentId)).data.exitId == exitId
         && get(/databases/$(database)/documents/billing_records/$(request.resource.data.paymentId)).data.remisNumber == resource.data.remisNumber;
+      allow update: if isAdmin() && resource.data.active == true
+        && resource.data.get('paymentId', '') == ''
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['disposition','reviewNote','reviewRevision','reviewedAt','reviewedByUid'])
+        && request.resource.data.disposition in ['own','internal_cover','uber','external_cover','review']
+        && request.resource.data.reviewNote is string && request.resource.data.reviewNote.size() > 0 && request.resource.data.reviewNote.size() <= 500
+        && request.resource.data.reviewRevision == resource.data.get('reviewRevision', 0) + 1
+        && request.resource.data.reviewedByUid == uid() && request.resource.data.reviewedAt == request.time;
       allow delete: if false;
     }
 
