@@ -102,8 +102,8 @@
       "reason": "Menú administrativo solicitado: reutiliza la selección de choferes activos en Pago digital."
     },
     "unsubscribeAdminDashboard": {
-      "hash": "58e0e2663f0079248b2fabeedca4b42aa72deb14e734bd58a3d5d659acf0445e",
-      "reason": "Menú administrativo solicitado: limpia documentos y consultas pendientes al cambiar de sesión. Integración Uber Fleet y pruebas paralelas autorizadas: también reinicia su panel al salir para no conservar datos de otra sesión; no altera cálculos ni registros financieros."
+      "hash": "393a75cd88a0bb808cd26f2514ef632be5ca37e810a791a298cbae8da8074311",
+      "reason": "Salidas pendientes solicitado: detiene listener y temporizador de operaciones al cerrar sesión para evitar vínculos con datos de otra sesión. No altera cálculos de saldos ni cierres."
     },
     "renderAdminDashboardUpdates": {
       "hash": "c6b2f22dac702d165d6884266ffc906042a95fef6b88fb34b73bf330bbc8b217",
@@ -142,8 +142,8 @@
   },
   "protectedFiles": {
     "firestore.rules": {
-      "hash": "650edd9a8ea0e83948fd2f17604051dfa7bcc46fd25d9d48c59aa575b5bad35b",
-      "reason": "Conserva permisos de ops_number_exits. Integración Uber Fleet y pruebas paralelas autorizadas: colecciones shadow sin acceso directo y marcas de simulación reservadas al servidor, para que un chofer no evite la factura de un cobro real. Sin exigir nuevos campos a clientes existentes."
+      "hash": "c2b08049ae2a9db361ccc186602d5fa24ed2b12ed340565d9d656e24e04ee4fb",
+      "reason": "Salidas pendientes solicitado: restringe escrituras operativas a administración, conserva fecha y número y exige un vínculo atómico exclusivo entre salida y cobro. Las reglas de cobros, billeteras y cierres no cambian."
     },
     "functions/expense-policy.js": {
       "hash": "044e01190580912b786c33020c3b663b16eee01da5c6a7600482301a11abffa2",

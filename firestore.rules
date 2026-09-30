@@ -1280,11 +1280,39 @@ service cloud.firestore {
     // Operaciones: marcas de salida por número (salió vs cobro). No usa adjudicación.
     match /ops_number_exits/{exitId} {
       allow read: if isAdmin();
-      allow create, update: if isAdmin()
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['version','dayKey','remisNumber','markedAtMs','active','markedByUid','markedByName','createdAt'])
+        && request.resource.data.version == 2
         && request.resource.data.dayKey is string
-        && request.resource.data.remisNumber is number
-        && request.resource.data.active is bool;
-      allow delete: if isAdmin();
+        && request.resource.data.remisNumber in [28,57,104,31,43,154,15,134]
+        && request.resource.data.markedAtMs is number
+        && request.resource.data.markedAtMs > 0
+        && request.resource.data.active == true
+        && request.resource.data.markedByUid == uid()
+        && request.resource.data.createdAt == request.time;
+      allow update: if isAdmin()
+        && resource.data.active == true
+        && resource.data.get('paymentId', '') == ''
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paymentId','paymentAtMs','linkedAtMs','linkedByUid','linkedAt'])
+        && request.resource.data.paymentId is string
+        && request.resource.data.linkedByUid == uid()
+        && request.resource.data.linkedAt == request.time
+        && getAfter(/databases/$(database)/documents/ops_exit_payment_links/$(request.resource.data.paymentId)).data.exitId == exitId
+        && get(/databases/$(database)/documents/billing_records/$(request.resource.data.paymentId)).data.remisNumber == resource.data.remisNumber;
+      allow delete: if false;
+    }
+
+    // Atomic one-payment/one-departure reservation. Operational metadata only.
+    match /ops_exit_payment_links/{paymentId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['exitId','paymentId','linkedByUid','linkedAt'])
+        && request.resource.data.paymentId == paymentId
+        && request.resource.data.exitId is string
+        && request.resource.data.linkedByUid == uid()
+        && request.resource.data.linkedAt == request.time
+        && getAfter(/databases/$(database)/documents/ops_number_exits/$(request.resource.data.exitId)).data.paymentId == paymentId;
+      allow update, delete: if false;
     }
 
     // DENEGACIÓN FINAL

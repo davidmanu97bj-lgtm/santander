@@ -2,11 +2,12 @@ import { mountDriverAvailability } from "./driver-availability.js?v=20260922-per
 import {
   REMIS_NUMBERS,
   OPS_EXITS_COLLECTION,
-  exitDocId,
+  opsDayKey,
   renderChargeRemisStep,
   readChargeRemisSelection,
   mountOpsSalidasBoard
-} from "./ops-salidas.js?v=20260922-salio-cobro";
+} from "./ops-salidas.js?v=20260930-pendientes";
+import { createOpsExitStore } from "./ops-salidas-store.js?v=20260930-pendientes";
 import { mountAdminWorkspace } from "./admin-workspace.js?v=20260919-admin-1";
 import { mountUberFleet } from "./uber-fleet-ui.js?v=20260929-fleet-shadow";
 import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20260919-admin-1";
@@ -3243,6 +3244,7 @@ function refreshOpenAdminUberCalculation() {
 }
 
 function unsubscribeAdminDashboard() {
+  if (typeof opsSalidasBoard !== "undefined") opsSalidasBoard?.stop();
   adminWorkspace?.reset();
   uberFleetWorkspace?.reset();
   adminUnsubscribers.forEach(unsubscribe => {
@@ -7138,45 +7140,23 @@ $('adminDigitalExpenseForm').addEventListener('submit',async event=>{
 let opsSalidasBoard = null;
 function ensureOpsSalidasBoard() {
   if (opsSalidasBoard || !$("opsSalidasBoard")) return opsSalidasBoard;
+  const exitStore = createOpsExitStore({db, doc, runTransaction, serverTimestamp,
+    getActor: () => auth.currentUser && isAdminProfile() ? {uid:auth.currentUser.uid, name:currentDriverName()} : null});
   opsSalidasBoard = mountOpsSalidasBoard($("opsSalidasBoard"), {
     numbers: REMIS_NUMBERS,
-    getDayKey: () => localDayKey(),
+    getDayKey: () => opsDayKey(),
     getPayments: () => (adminPayments || []).filter(item => !movementIsDeleted?.(item)),
+    paymentsReady: () => isAdminProfile() && adminSnapshotReady.has(ROOT_COLLECTIONS.payments),
     listenExits: (onRows, onError) => {
       if (!isAdminProfile()) return () => {};
-      const dayKey = localDayKey();
       return onSnapshot(
-        query(collection(db, OPS_EXITS_COLLECTION), where("dayKey", "==", dayKey), where("active", "==", true)),
-        snap => onRows(snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))),
+        collection(db, OPS_EXITS_COLLECTION), {includeMetadataChanges:true},
+        snap => onRows(snap.docs.map(docSnap => ({ ...docSnap.data(), id: docSnap.id })), !snap.metadata.fromCache && !snap.metadata.hasPendingWrites),
         onError
       );
     },
-    markExit: async ({ dayKey, remisNumber }) => {
-      const user = auth.currentUser;
-      if (!user || !isAdminProfile()) throw new Error("Solo administración puede marcar salidas.");
-      const ref = doc(db, OPS_EXITS_COLLECTION, exitDocId(dayKey, remisNumber));
-      await setDoc(ref, {
-        dayKey,
-        remisNumber: Number(remisNumber),
-        active: true,
-        markedAtMs: Date.now(),
-        markedByUid: user.uid,
-        markedByName: currentDriverName(),
-        updatedAt: serverTimestamp(),
-        createdAt: serverTimestamp()
-      }, { merge: true });
-    },
-    unmarkExit: async ({ dayKey, remisNumber }) => {
-      const user = auth.currentUser;
-      if (!user || !isAdminProfile()) throw new Error("Solo administración puede quitar salidas.");
-      const ref = doc(db, OPS_EXITS_COLLECTION, exitDocId(dayKey, remisNumber));
-      await setDoc(ref, {
-        active: false,
-        unmarkedAtMs: Date.now(),
-        unmarkedByUid: user.uid,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-    }
+    markExit: exitStore.markExit,
+    linkPayment: exitStore.linkPayment
   });
   return opsSalidasBoard;
 }

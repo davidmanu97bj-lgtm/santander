@@ -11,8 +11,9 @@ test('REMIS_NUMBERS coincide con el set operativo aprobado', () => {
   assert.deepEqual([...REMIS_NUMBERS], [28, 57, 104, 31, 43, 154, 15, 134]);
 });
 
-test('exitDocId es estable por día y número', () => {
-  assert.equal(exitDocId('2026-09-22', 57), '2026-09-22_57');
+test('exitDocId identifica cada salida y admite un ID de reintento', () => {
+  assert.notEqual(exitDocId('2026-09-22', 57), exitDocId('2026-09-22', 57));
+  assert.equal(exitDocId('2026-09-22', 57, 'retry'), '2026-09-22_57_retry');
 });
 
 test('chargesByRemisToday ignora viaje privado y cruza solo por remisNumber', () => {
@@ -31,8 +32,8 @@ test('buildOpsBoard no usa adjudicación: libre / salió sin cobro / matched', (
   const board = buildOpsBoard({
     dayKey: '2026-09-22',
     exits: [
-      { dayKey: '2026-09-22', remisNumber: 104, active: true, markedAtMs: Date.parse('2026-09-22T21:40:00-03:00') },
-      { dayKey: '2026-09-22', remisNumber: 57, active: true, markedAtMs: Date.parse('2026-09-22T22:05:00-03:00') }
+      { id:'e1', dayKey: '2026-09-22', remisNumber: 104, active: true, markedAtMs: Date.parse('2026-09-22T21:40:00-03:00') },
+      { id:'e2', paymentId:'p1', dayKey: '2026-09-22', remisNumber: 57, active: true, markedAtMs: Date.parse('2026-09-22T22:05:00-03:00') }
     ],
     payments: [
       { id: 'p1', dayKey: '2026-09-22', remisNumber: 57, createdAtMs: Date.parse('2026-09-22T22:12:00-03:00') }
@@ -40,11 +41,11 @@ test('buildOpsBoard no usa adjudicación: libre / salió sin cobro / matched', (
   });
   const by = Object.fromEntries(board.rows.map(r => [r.remisNumber, r]));
   assert.equal(by[104].status, 'missing_charge');
-  assert.equal(by[104].chargeLabel, 'NO');
+  assert.equal(by[104].chargeLabel, 'Pendiente');
   assert.equal(by[57].status, 'matched');
-  assert.equal(by[57].chargeLabel, 'SÍ');
-  assert.equal(by[28].status, 'free');
+  assert.equal(by[57].chargeLabel, 'Vinculado');
+  assert.equal(by[28], undefined);
   assert.equal(board.summary.exited, 2);
   assert.equal(board.summary.withoutCharge, 1);
-  assert.equal(board.summary.free, 6);
+  assert.equal(board.summary.free, 7);
 });
