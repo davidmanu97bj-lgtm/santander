@@ -299,6 +299,9 @@ service cloud.firestore {
           && d.monto == d.amount && d.grossAmount == d.amount
           && d.createdAt == request.time
           && d.get('invoiceRequest', {}).get('version', '') == 'arca_c_v1'
+          // Simulation metadata is server-only; drivers cannot suppress fiscal issuance.
+          && !d.keys().hasAny(['isSimulated','createdBySimulation','verificationMode'])
+          && d.get('source', '') is string && !d.get('source', '').matches('(?is).*uber_fleet_shadow.*')
           && !d.keys().hasAny(['settlementAfter','migrationVersion','periodDebtSettlementAmount','adjustmentDirection','internalSettlementAdjustment','affectsBillingSettlement','excludeFromCashbox','cashboxExcluded','cajaChicaEliminada','ignoreCashbox','noCashbox'])
           && (d.method == 'cash' || (d.proofPath is string && d.proofPath.matches('billing_receipts/' + uid() + '/[^/]+/[^/]+') && d.proofUrl is string && d.proofUrl.size() > 0));
       }
@@ -1285,6 +1288,16 @@ service cloud.firestore {
     }
 
     // DENEGACIÓN FINAL
+    // Fleet comparison uses admin callables only. Never a payment source.
+    match /uber_fleet_shadow_trips/{id} {
+      allow read, write: if false;
+    }
+    match /uber_fleet_shadow_imports/{id} {
+      allow read, write: if false;
+    }
+    match /uber_fleet_shadow_settings/{id} {
+      allow read, write: if false;
+    }
     // =========================================================
 
     match /{document=**} {

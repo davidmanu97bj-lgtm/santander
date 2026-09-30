@@ -32,6 +32,10 @@ async function api(body) {
   if(action==='inspect')return {records:Object.fromEntries(db.data),uploads:[...uploads.keys()]};
   if(action==='reset'){db.data=new Map(Object.entries(structuredClone(seed)));uploads.clear();return {};}
   if(action==='call') {
+    if(['uberFleetStatus','uberFleetAnalyze','uberFleetTemplates'].includes(body.name)&&previewAdmin){
+      const service=require('../functions/uber-fleet-service').createFleetShadowService({db,assertAdmin:async()=>uid});
+      return service[({uberFleetStatus:'status',uberFleetAnalyze:'analyze',uberFleetTemplates:'templates'})[body.name]]({auth:{uid},data:body.input});
+    }
     if(['availabilityBootstrap','availabilitySavePhone','availabilityChange'].includes(body.name)) {
       const service=require('../functions/driver-availability').createAvailabilityService({db,adminUid:'preview-admin'});
       return service[({availabilityBootstrap:'bootstrap',availabilitySavePhone:'savePhone',availabilityChange:'change'})[body.name]]({auth:{uid},data:body.input});
