@@ -1,6 +1,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {parseFleetCsv, parseMoneyCents, parseTimestamp, parseDistanceKm, MINIMUM_TRIPS_CSV, MINIMUM_PAYMENTS_CSV} = require('../uber-fleet-csv');
 
 test('CSV mínimos explícitos: columnas de viajes y pagos permanecen separadas', () => {
@@ -63,4 +65,42 @@ test('fecha inequívoca con zona y calendario válido; no inventa año, zona ni 
 test('distancia explícita: no interpreta miles ni unidades escritas como kilómetros', () => {
   assert.equal(parseDistanceKm('12,5').value, 12.5);
   for (const raw of ['1.000', '1,000', '12 miles', '-1', '0', '1e3', '']) assert.equal(parseDistanceKm(raw).value, null, raw);
+});
+
+test('exportación oficial en español reconoce identidad y estado sin inventar datos que el reporte omite', () => {
+  // Exact observed header names; every row value identifying a person, vehicle,
+  // place or actual trip has been replaced with synthetic test data.
+  const text = fs.readFileSync(path.join(__dirname, '../../tests/fixtures/uber-fleet-trip-activity-es-sanitized.csv'), 'utf8');
+  const parsed = parseFleetCsv(text, {kind: 'trips'});
+  assert.deepEqual(parsed.issues, []); assert.equal(parsed.rows.length, 1);
+  const data = parsed.rows[0].data;
+  assert.equal(data.tripId, '11111111-1111-4111-8111-111111111111');
+  assert.equal(data.uberDriverId, '22222222-2222-4222-8222-222222222222');
+  assert.equal(data.status, 'completed');
+  assert.equal(data.completedAt, '2026-09-28 10:20:00');
+  assert.equal(data.origin, 'Origen de prueba, Ciudad ficticia, AR');
+  assert.equal(data.destination, 'Destino de prueba, Ciudad ficticia, AR');
+  assert.equal(data.distanceKm, '12.34'); assert.equal(data.distanceUnit, '');
+  assert.equal(data.method, 'braintree');
+  for (const field of ['gross', 'commission', 'net', 'currency', 'paymentReceived']) assert.equal(data[field], '');
+  assert.deepEqual(parseTimestamp(data.completedAt), {value: null, issue: 'ambiguous_date'});
+
+  const {analyzeFleetImport} = require('../uber-fleet-core');
+  const result = analyzeFleetImport({fleetId: 'fleet-synthetic', tripsCsv: text,
+    driverMappings: {[data.uberDriverId]: {driverUid: 'driver-synthetic', digitalRecipient: 'explora'}},
+    nowMs: Date.parse('2026-09-29T15:00:00Z')});
+  assert.equal(result.summary.inputRejected, false); assert.equal(result.trips.length, 1);
+  const trip = result.trips[0], codes = trip.issues.map(item => item.code);
+  assert.equal(trip.status, 'review'); assert.equal(trip.source.tripStatus, 'completed');
+  for (const code of ['ambiguous_date', 'distance_unit_requires_review', 'missing_gross', 'missing_commission',
+    'missing_net', 'missing_currency', 'method_unknown_method', 'payment_receipt_unconfirmed']) assert.ok(codes.includes(code), code);
+  assert.equal(trip.completedAt, null); assert.equal(trip.method, null);
+  assert.equal(trip.amountCents, null); assert.equal(trip.netCents, null); assert.equal(trip.walletDeltaCents, null);
+  assert.equal(trip.invoicePreview.emissionEnabled, false); assert.equal(trip.telegramPreview.sendEnabled, false);
+});
+
+test('encabezado oficial largo y alias de UUID simultáneos se rechazan como ambiguos', () => {
+  const result = parseFleetCsv('Identificador único universal (UUID) del viaje,Trip UUID\nsynthetic-a,synthetic-b');
+  assert.equal(result.rows.length, 0);
+  assert.ok(result.issues.some(item => item.code === 'csv_ambiguous_headers'));
 });

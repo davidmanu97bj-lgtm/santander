@@ -6,14 +6,14 @@ const MAX_BYTES = 2 * 1024 * 1024;
 const MAX_ROWS = 2000;
 const normalizeHeader = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const fields = {
-  tripId: ['Trip UUID', 'Trip ID', 'UUID del viaje', 'UUID de viaje', 'ID del viaje', 'tripId'],
-  uberDriverId: ['Driver UUID', 'Driver ID', 'UUID del conductor', 'UUID de conductor', 'ID del conductor', 'UUID del socio conductor', 'uberDriverId'],
+  tripId: ['Trip UUID', 'Trip ID', 'UUID del viaje', 'UUID de viaje', 'ID del viaje', 'Identificador único universal (UUID) del viaje', 'tripId'],
+  uberDriverId: ['Driver UUID', 'Driver ID', 'UUID del conductor', 'UUID de conductor', 'ID del conductor', 'UUID del socio conductor', 'Identificador único universal (UUID) del conductor', 'uberDriverId'],
   transactionId: ['Transaction UUID', 'Transaction ID', 'UUID de transacción', 'UUID de la transacción', 'ID de transacción', 'transactionId'],
-  completedAt: ['Trip DropOff Time', 'Trip Drop Off Time', 'Dropoff time', 'Completed at', 'Fecha de finalización', 'Hora de finalización del viaje', 'Fecha y hora de finalización', 'completedAt'],
+  completedAt: ['Trip DropOff Time', 'Trip Drop Off Time', 'Dropoff time', 'Completed at', 'Fecha de finalización', 'Hora de finalización del viaje', 'Fecha y hora de finalización', 'Hora en la que se dejó al usuario', 'completedAt'],
   status: ['Trip status', 'Estado del viaje', 'Estado', 'Status'],
   method: ['Payment type', 'Payment method', 'Método de pago', 'Tipo de pago', 'Forma de pago', 'method'],
-  origin: ['Trip Pickup Address', 'Pickup address', 'Dirección de origen', 'Dirección de recogida', 'Origen', 'origin'],
-  destination: ['Trip Drop Off Address', 'Trip Dropoff Address', 'Dropoff address', 'Dirección de destino', 'Destino', 'destination'],
+  origin: ['Trip Pickup Address', 'Pickup address', 'Dirección de origen', 'Dirección de recogida', 'Dirección del punto de partida', 'Origen', 'origin'],
+  destination: ['Trip Drop Off Address', 'Trip Dropoff Address', 'Dropoff address', 'Dirección de destino', 'Dirección del destino', 'Destino', 'destination'],
   distanceKm: ['Trip distance', 'Trip distance (km)', 'Distance (km)', 'Distancia del viaje', 'Distancia del viaje (km)', 'Distancia (km)', 'distanceKm'],
   distanceUnit: ['Distance unit', 'Trip distance unit', 'Unidad de distancia', 'distanceUnit'],
   gross: ['Gross fare', 'Gross amount', 'Gross trip fare', 'Importe bruto', 'Tarifa bruta', 'Bruto del viaje', 'gross'],
