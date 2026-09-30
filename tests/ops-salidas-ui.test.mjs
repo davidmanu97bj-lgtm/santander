@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mountOpsSalidasBoard, opsDayKey} from '../ops-salidas.js';
+import {mountOpsSalidasBoard, opsDayKey, parseOpsDateTime, opsDateTimeInput} from '../ops-salidas.js';
 
 function fixture() {
   const elements = new Map();
@@ -58,4 +58,35 @@ test('panel ambiguo exige elegir un cobro y vincula solamente la fila elegida',a
   tbody.handlers.change({target:{closest:()=>({dataset:{opsSelect:'1'},value:'late'})}});
   tbody.handlers.click({target:{closest:()=>({dataset:{opsLink:'1'}})}});
   await Promise.resolve();assert.deepEqual(f.links,[{exitId:'other',paymentId:'late'}]);f.controller.stop();
+});
+
+test('revisión tardía: registra la hora real anterior al cobro, no la hora del clic',async()=>{
+  const f=fixture();f.ready();f.receive([],true);
+  f.advance('2026-10-01T12:00:00-03:00');
+  f.payments([{...payment,createdAtMs:Date.parse('2026-10-01T10:30:00-03:00')}]);
+  f.e('[data-ops-departed-at]').value='2026-10-01T10:00';
+  await f.e('.ops-salidas-chips').handlers.click({target:{closest:()=>({dataset:{opsNumber:'57'}})}});
+  assert.equal(f.marks[0].markedAtMs,Date.parse('2026-10-01T10:00:00-03:00'));
+  assert.equal(f.e('[data-ops-departed-at]').value,'');
+  f.receive(f.marks,true);await Promise.resolve();
+  assert.deepEqual(f.links,[{exitId:f.marks[0].id,paymentId:'late'}]);f.controller.stop();
+});
+
+test('hora argentina explícita, medianoche anterior, fechas inválidas y futuras',()=>{
+  const now=Date.parse('2026-10-01T06:00:00-03:00');
+  assert.equal(parseOpsDateTime('',now),now);
+  assert.equal(parseOpsDateTime('2026-09-30T23:59:30',now),Date.parse('2026-10-01T02:59:30Z'));
+  assert.equal(opsDateTimeInput(Date.parse('2026-10-01T03:00:00Z')),'2026-10-01T00:00:00');
+  for(const value of ['2026-02-30T10:00','2026-09-31T10:00','2026-10-01T06:01','garbage','2026-10-01T25:00']) assert.throws(()=>parseOpsDateTime(value,now));
+});
+
+test('el panel rechaza una salida futura y permite volver a la hora actual',async()=>{
+  const f=fixture();f.receive([],true);
+  f.e('[data-ops-departed-at]').value='2026-10-02T12:00';
+  const event={target:{closest:()=>({dataset:{opsNumber:'57'}})}};
+  await f.e('.ops-salidas-chips').handlers.click(event);
+  assert.equal(f.marks.length,0);assert.match(f.e('.ops-salidas-status').textContent,/futura/);
+  f.e('[data-ops-now]').handlers.click();
+  await f.e('.ops-salidas-chips').handlers.click(event);
+  assert.equal(f.marks[0].markedAtMs,Date.parse('2026-09-30T23:59:00-03:00'));f.controller.stop();
 });

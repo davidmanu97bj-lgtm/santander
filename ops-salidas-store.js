@@ -17,7 +17,7 @@ export function createOpsExitStore({ db, doc, runTransaction, serverTimestamp, g
   return {
     async markExit(draft) {
       const user = actor();
-      if (!REMIS_NUMBERS.includes(draft.remisNumber) || !(draft.markedAtMs > 0)
+      if (!REMIS_NUMBERS.includes(draft.remisNumber) || !(draft.markedAtMs > 0) || draft.markedAtMs > now()
         || draft.dayKey !== opsDayKey(draft.markedAtMs)) throw new Error('Salida inválida.');
       const ref = reference(OPS_EXITS_COLLECTION, draft.id);
       await runTransaction(db, async tx => {

@@ -1,6 +1,6 @@
 # Salidas pendientes entre días
 
-Cada toque en un número registra una salida independiente, con identificador único y fecha/hora del momento de la marca. La fecha operativa se calcula en Argentina. Un reintento conserva el mismo identificador y hora, sin sobrescribir otra salida.
+Antes de tocar un número se puede indicar la fecha y hora real de la salida en Argentina. Si el campo está vacío se usa el momento actual. Cada toque registra una salida independiente con identificador único. `markedAtMs` y `dayKey` conservan el momento real indicado; `createdAt` conserva por separado la hora de registro del servidor. Se rechazan fechas inválidas y futuras. El campo se vacía tras guardar para no reutilizar por accidente la hora anterior. La fecha operativa se calcula en Argentina. Un reintento conserva el mismo identificador y hora, sin sobrescribir otra salida.
 
 El panel consulta las salidas históricas. Muestra todas las pendientes, las salidas de hoy y las vinculadas hoy. El contador de pendientes incluye cualquier día. Se actualiza al cambiar de día aunque el panel siga abierto.
 
@@ -18,6 +18,8 @@ Se vincula automáticamente sólo cuando hay una única coincidencia en ambas di
 
 ## Validación
 
-`node tools/check.mjs`: 419 pruebas aprobadas, incluidas medianoche argentina/cambio de mes, cobros demorados varios días, múltiples salidas por número, reintentos y competencia por un mismo cobro. Se verificó que los documentos de cobros, saldos y cierres permanezcan idénticos.
+`node tools/check.mjs`: 423 pruebas aprobadas, incluidas medianoche argentina/cambio de mes, cobros demorados varios días, múltiples salidas por número, reintentos y competencia por un mismo cobro. Se verificó que los documentos de cobros, saldos y cierres permanezcan idénticos.
 
 Se revisó el panel en navegador local aislado: dos salidas del 30/09 siguen pendientes el 01/10, y vincular un cobro del 01/10 resuelve sólo una de ellas.
+
+Caso de revisión tardía comprobado: salida 10:00, cobro 10:30 y registro de la salida a las 12:00. El cruce usa las 10:00, y también funciona atravesando medianoche. La prueba visual confirmó la vinculación con un cobro ya existente al cargar la salida real.

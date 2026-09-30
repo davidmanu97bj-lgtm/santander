@@ -17,6 +17,24 @@ export function newExit(remisNumber, now = Date.now()) {
   return { id: exitDocId(dayKey, remisNumber), dayKey, remisNumber: Number(remisNumber), markedAtMs: now };
 }
 
+export function opsDateTimeInput(ms) {
+  const parts = new Intl.DateTimeFormat('en-CA', {timeZone:'America/Argentina/Buenos_Aires',
+    year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(new Date(ms));
+  const value = type => parts.find(p => p.type === type).value;
+  return `${value('year')}-${value('month')}-${value('day')}T${value('hour')}:${value('minute')}:${value('second')}`;
+}
+
+export function parseOpsDateTime(value, now = Date.now()) {
+  if (!value) return now;
+  if (!/^20\d{2}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value)) throw new Error('Indicá una fecha y hora de salida válida.');
+  const normalized = value.length === 16 ? value + ':00' : value;
+  // Iguazú uses UTC-3 throughout the supported period, independent of the browser's timezone.
+  const stamp = Date.parse(normalized + '-03:00');
+  if (!Number.isFinite(stamp) || opsDateTimeInput(stamp) !== normalized) throw new Error('Indicá una fecha y hora de salida válida.');
+  if (stamp > now) throw new Error('La salida no puede tener una fecha u hora futura.');
+  return stamp;
+}
+
 export function formatOpsDate(ms) {
   if (!(Number(ms) > 0)) return 'Sin fecha registrada';
   return new Intl.DateTimeFormat('es-AR', { timeZone:'America/Argentina/Buenos_Aires', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }).format(new Date(Number(ms)));
@@ -158,7 +176,14 @@ export function mountOpsSalidasBoard(host, {
         <span class="ops-salidas-live">En vivo</span>
       </header>
       <div class="ops-salidas-marcar">
-        <p class="ops-salidas-title">Nueva salida · cada toque registra un viaje distinto</p>
+        <p class="ops-salidas-title">Nueva salida · indicá cuándo salió y elegí el número</p>
+        <div class="ops-salidas-date">
+          <label>Fecha y hora real de la salida (Argentina)
+            <input type="datetime-local" step="1" data-ops-departed-at aria-describedby="opsSalidaDateHelp">
+          </label>
+          <button type="button" data-ops-now>Usar hora actual</button>
+        </div>
+        <p class="ops-salidas-date-help" id="opsSalidaDateHelp">Para una salida anterior, cargá su fecha y hora real. Si lo dejás vacío, se usa el momento actual. Cada toque en un número registra una salida distinta.</p>
         <div class="ops-salidas-chips" role="group" aria-label="Marcar salida por número"></div>
       </div>
       <div class="ops-salidas-summary" aria-live="polite"></div>
@@ -183,6 +208,8 @@ export function mountOpsSalidasBoard(host, {
   const summary = host.querySelector(".ops-salidas-summary");
   const tbody = host.querySelector("tbody");
   const statusEl = host.querySelector(".ops-salidas-status");
+  const dateInput = host.querySelector('[data-ops-departed-at]');
+  const nowButton = host.querySelector('[data-ops-now]');
   let exits = [];
   let stopListen = null;
   let busy = false;
@@ -213,6 +240,9 @@ export function mountOpsSalidasBoard(host, {
   function paint() {
     const dayKey = getDayKey();
     const board = buildOpsBoard({ numbers, exits, payments: getPayments(), dayKey });
+    dateInput.max = opsDateTimeInput(now());
+    dateInput.disabled = busy || Boolean(pendingDraft);
+    nowButton.disabled = dateInput.disabled;
     chips.innerHTML = numbers.map(n => {
       const out = board.rows.some(r => Number(r.remisNumber) === n && r.status === 'missing_charge');
       return `<button type="button" class="ops-salidas-chip${out ? " out" : ""}" data-ops-number="${n}" aria-label="Registrar nueva salida del ${n}" ${busy || !exitsReady ? 'disabled' : ''}>${n} +</button>`;
@@ -271,21 +301,32 @@ export function mountOpsSalidasBoard(host, {
       return;
     }
     const epoch = generation;
-    pendingDraft ||= newExit(remisNumber, now());
+    try {
+      pendingDraft ||= newExit(remisNumber, parseOpsDateTime(dateInput.value, now()));
+    } catch (error) {
+      statusEl.textContent = error.message;
+      return;
+    }
     busy = true;
     statusEl.textContent = "Registrando salida…";
     paint();
     try {
       await markExit(pendingDraft);
-      pendingDraft = null;
-      statusEl.textContent = 'Salida registrada.';
+      if (epoch === generation) {
+        pendingDraft = null;
+        dateInput.value = '';
+        statusEl.textContent = 'Salida registrada con su fecha y hora real.';
+      }
     } catch (error) {
       console.error(error);
       if (epoch === generation) statusEl.textContent = error?.message || "No se pudo actualizar la salida.";
     } finally {
-      busy = false;
-      if (running) paint();
+      if (epoch === generation) { busy = false; if (running) paint(); }
     }
+  });
+
+  nowButton.addEventListener('click', () => {
+    if (!busy && !pendingDraft) { dateInput.value = ''; statusEl.textContent = 'La próxima salida usará el momento actual.'; }
   });
 
   return {
@@ -313,6 +354,7 @@ export function mountOpsSalidasBoard(host, {
       running = false;
       busy = false;
       pendingDraft = null;
+      dateInput.value = '';
       if (typeof stopListen === "function") stopListen();
       stopListen = null;
       if (timer !== null) clearIntervalFn(timer);

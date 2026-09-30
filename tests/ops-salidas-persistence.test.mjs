@@ -61,6 +61,20 @@ test('cobro demorado días: vincula una vez, sin cambiar importes, fechas financ
   assert.deepEqual([...db.data.keys()].filter(k=>!Object.hasOwn(seed,k)),['ops_exit_payment_links/late']);
 });
 
+test('salida cargada retrospectivamente cruza cobro previo a la revisión y conserva auditoría de carga',async()=>{
+  const e=newExit(57,time('2026-10-01T23:50:00-03:00'));
+  const p=charge('paid-before-review','2026-10-02T00:30:00-03:00');
+  const {service,db,rows,seed}=fixture([],[p]);
+  await service.markExit(e); // review/load at 02/10 10:00, specified in fixture
+  assert.equal(rows()[0].createdAt,time('2026-10-02T10:00:00-03:00'));
+  assert.equal(rows()[0].markedAtMs,e.markedAtMs);
+  assert.equal(rows()[0].dayKey,'2026-10-01');
+  await service.linkPayment(board(rows(),[p],'2026-10-02').automaticLinks[0]);
+  assert.equal(rows()[0].paymentId,p.id);
+  for(const [key,value] of Object.entries(seed)) assert.deepEqual(db.data.get(key),value);
+  await assert.rejects(service.markExit(newExit(57,time('2026-10-03T10:00:00-03:00'))),/inválida/);
+});
+
 test('varias pendientes: no adivina la salida y un cobro nunca cancela más de una',async()=>{
   const exits=[departure('first','2026-09-30T22:00:00-03:00'),departure('second','2026-10-01T08:00:00-03:00')];
   const p=charge('p','2026-10-01T10:00:00-03:00');

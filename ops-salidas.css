@@ -30,6 +30,11 @@
 .ops-salidas-live{font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#1a9f5c;background:#e8f7ef;padding:4px 8px;border-radius:999px;white-space:nowrap}
 .ops-salidas-marcar{padding:12px 14px;border-bottom:1px solid #eef0f8;background:#f7f8fd}
 .ops-salidas-title{font-size:12px;font-weight:700;color:#4a5568;margin:0 0 8px}
+.ops-salidas-date{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.ops-salidas-date label{display:grid;gap:5px;font-size:12px;font-weight:700;color:#334155;min-width:0;max-width:100%}
+.ops-salidas-date input{box-sizing:border-box;min-width:0;max-width:100%;min-height:44px;padding:8px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;font:inherit;font-size:16px;color:#10164c}
+.ops-salidas-date button{min-height:44px;padding:8px 12px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;color:#10164c;cursor:pointer}
+.ops-salidas-date-help{font-size:12px;line-height:1.5;color:#64748b;margin:6px 0 12px}
 .ops-salidas-chips{display:flex;flex-wrap:wrap;gap:8px}
 .ops-salidas-chip{min-width:48px;text-align:center;padding:10px 8px;border-radius:12px;border:1.5px solid #d9dee8;background:#fff;font-weight:800;font-size:14px;color:#111b47;cursor:pointer}
 .ops-salidas-chip.out{background:#e8f7ef;border-color:#1a9f5c;color:#147a48}
