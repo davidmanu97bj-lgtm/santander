@@ -19,6 +19,40 @@ const compare=f=>f.e('[data-ops-compare]').handlers.click();
 const exit={id:'old',remisNumber:57,dayKey:'2026-09-30',markedAtMs:Date.parse('2026-09-30T23:58:00-03:00'),active:true};
 const payment={id:'late',remisNumber:57,type:'billing',createdAtMs:Date.parse('2026-10-01T10:00:00-03:00'),amount:100};
 
+test('multiple candidates and linked charges retain their own classification across close/reopen',()=>{
+  const f=fixture();f.ready();
+  f.payments([{...payment,viajePrivado:false,isPrivateTrip:false},{...payment,id:'second',amount:200}]);
+  f.receive([exit],true);compare(f);
+  assert.equal(f.links.length,0);
+  assert.match(f.e('tbody').innerHTML,/Ver 2 cobros candidatos/);
+  assert.match(f.e('tbody').innerHTML,/<option value="late"[^>]*>Nº remis 57/);
+  assert.match(f.e('tbody').innerHTML,/<strong>Nº remis 57<\/strong>/);
+  assert.match(f.e('tbody').innerHTML,/Revisar tipo de salida/);
+  for(let i=0;i<2;i++){
+    f.controller.stop();f.controller.start();
+    f.receive([{...exit,paymentId:'late'}],true);
+    assert.match(f.e('tbody').innerHTML,/Cobro registrado: <strong>Nº remis 57<\/strong>/);
+    assert.doesNotMatch(f.e('tbody').innerHTML,/cobros candidatos/);
+  }
+  f.payments([{...payment,remisNumber:null,viajePrivado:true,isPrivateTrip:true}]);f.controller.refresh();
+  assert.match(f.e('tbody').innerHTML,/Cobro registrado: <strong>Viaje privado<\/strong>/);
+  assert.match(f.e('tbody').innerHTML,/Revisar cobro vinculado/);
+  f.payments([]);f.controller.refresh();
+  assert.match(f.e('tbody').innerHTML,/Cobro registrado: <strong>Sin clasificar<\/strong>/);
+  f.controller.stop();
+});
+
+test('an expanded candidate does not keep the closed exit review editor locked',()=>{
+  const f=fixture();f.ready();f.payments([payment]);f.receive([exit],true);
+  const tbody=f.e('tbody');
+  // Only the candidate details is open, not the administrative review editor.
+  tbody.querySelector=selector=>selector==='details[open]'?{}:null;
+  f.payments([{...payment,operatorName:'Updated candidate'}]);
+  tbody.handlers.toggle({target:{matches:()=>true}});
+  assert.match(tbody.innerHTML,/Updated candidate/);
+  f.controller.stop();
+});
+
 test('panel cambia de día, espera ambos snapshots y compara después de cargar la revisión completa',async()=>{
   const f=fixture();f.receive([exit],true);f.advance('2026-10-01T00:01:00-03:00');
   assert.match(f.e('tbody').innerHTML,/30\/09\/2026/);assert.match(f.e('.ops-salidas-summary').innerHTML,/Salidas hoy<b>0/);assert.match(f.e('.ops-salidas-summary').innerHTML,/Por revisar<b>1/);
