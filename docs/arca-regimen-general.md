@@ -42,7 +42,7 @@ La clase A usa su propia serie, PDF, QR y archivo Telegram. `invoiceAEnabled` ac
 
 Se conserva el tratamiento exento y el monto completo del traslado: emitir A no convierte una operación exenta en gravada. Los receptores desconocidos o sin CUIT válido no se degradan a B. Los casos históricos en revisión no se migran automáticamente. Una corrección individual debe comprobar que no hay CAE ni envío incierto previo, conservar auditoría y no escribir en cobros, billeteras o cierres.
 
-La prueba real solicitada por el titular el 01/10/2026 fue rechazada por ARCA con código 10000: CUIT no autorizado a emitir comprobantes A. La habilitación A automática permanece desactivada. No existe factura válida hasta obtener CAE. Corresponde revisar REAR/RECE/RFI → Habilitación de comprobantes, F.855. Homologación no completada: WSAA informó un TA válido cuyo ticket no estaba disponible localmente.
+La emisión real solicitada por el titular el 01/10/2026 inicialmente fue rechazada por ARCA con código 10000. Tras completar la habilitación F.855 en REAR/RECE/RFI, ARCA autorizó la emisión A. Se verificó que el intento rechazado no tenía comprobante, se conservó auditoría y se retomó exclusivamente esa solicitud. Su CAE fue confirmado mediante consulta independiente antes de activar `invoiceAProductionVerified`. El cobro original permaneció intacto y Telegram actualizó su mensaje existente con el PDF A. Homologación no completada: WSAA informó un TA válido cuyo ticket no estaba disponible localmente; no se marcó como aprobada.
 
 ## Protección de antecedentes
 
