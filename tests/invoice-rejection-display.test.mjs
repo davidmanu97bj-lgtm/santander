@@ -45,7 +45,7 @@ test('rechazos sin detalle siguen sin autorización y mensajes antiguos no conta
 });
 
 test('distingue B y C histórica y explica las solicitudes que requieren revisión', () => {
-  for(const [type,label] of [[6,'Factura B'],[undefined,'Factura C'],[0,'Comprobante por revisar']]){
+  for(const [type,label] of [[1,'Factura A'],[6,'Factura B'],[undefined,'Factura C'],[0,'Comprobante por revisar']]){
     const nodes=all(context.createInvoiceCard({...record(null),invoiceType:type}));
     assert.ok(nodes.some(n=>n.textContent===label));
   }

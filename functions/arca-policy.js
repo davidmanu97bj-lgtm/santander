@@ -12,6 +12,15 @@ function generalPolicyReady(config) {
     config.domesticTaxiExemptionVerified === true && Array.isArray(config.approvedDriverUids) &&
     config.approvedDriverUids.length>0 && config.approvedDriverUids.every(uid=>typeof uid==='string'&&uid.trim().length>0);
 }
+function invoiceAEnabled(config) {
+  return generalPolicyReady(config) && config.invoiceAEnabled === true &&
+    (config.environment === 'homologation' || config.invoiceAHomologationPassed === true ||
+      (config.invoiceAProductionVerified === true && typeof config.invoiceAVerificationPaymentId === 'string' && config.invoiceAVerificationPaymentId.length > 0));
+}
+function enabledInvoiceTypes(config) {
+  const base = configuredInvoiceType(config);
+  return invoiceAEnabled(config) ? [base, 1] : [base];
+}
 function internationalBEnabled(config,now=new Date()) {
   const cutoff=Date.parse(config.internationalActiveFrom||'');
   return generalPolicyReady(config) && config.internationalInvoiceType===6 &&
@@ -32,4 +41,4 @@ function pointMatches(point, config) {
     config.pointEmissionType === 'CAE - Ri Iva' &&
     type === config.pointEmissionType;
 }
-module.exports = {DOMESTIC_EXEMPT_POLICY, INTERNATIONAL_EXEMPT_POLICY, configuredInvoiceType, generalPolicyReady, internationalBEnabled, invoiceTypeOf, pointMatches};
+module.exports = {DOMESTIC_EXEMPT_POLICY, INTERNATIONAL_EXEMPT_POLICY, configuredInvoiceType, generalPolicyReady, invoiceAEnabled, enabledInvoiceTypes, internationalBEnabled, invoiceTypeOf, pointMatches};

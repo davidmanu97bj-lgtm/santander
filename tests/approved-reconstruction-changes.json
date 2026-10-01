@@ -2,8 +2,8 @@
   "context": "Excepciones por ampliación explícita del alcance del usuario: reglas financieras, cierre único y Telegram. El baseline original se conserva. Normalizar CRLF evita diferencias propias de Windows.",
   "functions": {
     "createInvoiceCard": {
-      "hash": "457f2fc57bdea4c78b9a6f9343b086dbf6102e1e9f91ca046140e8798325eae2",
-      "reason": "Adaptación fiscal solicitada: presentar tipo B/C guardado en cada comprobante y alcance del régimen general; conserva diagnóstico de rechazos, sin alterar saldos ni activar emisión."
+      "hash": "79fcc9d8fd599eb8c039c2b5bd72c53c9b52e74da11ce779b1d1bfbc7ea4ff15",
+      "reason": "Solicitud expresa del 01/10/2026: factura A según receptor, habilitación fiscal pendiente visible y series independientes; se conservan cobros, saldos y cierres."
     },
     "initializeTourismSelector": {
       "hash": "a18b9d560e5b607893c23e4b28a1f78df772eca6cb0a37f4c65e25362ff4b9a9",
@@ -122,8 +122,12 @@
       "reason": "Acompanamiento del arreglo de pantalla blanca en iPhone: finishSplash limpia el watchdog y restaura atributos hidden del splash minimo."
     },
     "refreshArcaBillingStatus": {
-      "hash": "f9de503970542b1dc60674e043aad17daa635bd77300ba24c3d576dd9aa6788a",
-      "reason": "Adaptación fiscal solicitada: presentar tipo B/C guardado en cada comprobante y alcance del régimen general; conserva diagnóstico de rechazos, sin alterar saldos ni activar emisión."
+      "hash": "7955affabd0ebe91eb4f47a3b5f68c29e8cb17bc5cad34cae0c55798b1346f7c",
+      "reason": "Solicitud expresa del 01/10/2026: factura A según receptor, habilitación fiscal pendiente visible y series independientes; se conservan cobros, saldos y cierres."
+    },
+    "syncChargeCustomerFields": {
+      "hash": "bde9b6d87ef28b669909ece6e4eca75e87f01c236398aa1262ce267773cb0bbb",
+      "reason": "Solicitud expresa del 01/10/2026: factura A según receptor, habilitación fiscal pendiente visible y series independientes; se conservan cobros, saldos y cierres."
     }
   },
   "handlers": {
@@ -158,8 +162,8 @@
       "reason": "Publicación autorizada: Telegram conserva las reglas anteriores y toma el saldo anclado para cuentas migradas, para coincidir con la billetera y el cierre único."
     },
     "functions/telegram-compact.js": {
-      "hash": "0c5c1086db073234e80ce78bc79054b7537fd35acd8fcbc379841f46c3f18e82",
-      "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
+      "hash": "551c5eb8a4dc44021cef56f5f7af485beb0c894f797268a61495ac00f7d82a98",
+      "reason": "Solicitud expresa del 01/10/2026: soportar factura A según receptor, PDF y numeración independientes; pruebas de concurrencia y preservación de cobros, saldos y cierres."
     },
     "functions/tests/telegram-trip-delivery.test.js": {
       "hash": "0c6561d07d685184a784a09051167cbb554ac841004c8d2ead426dbd252e3043",
@@ -194,24 +198,28 @@
       "reason": "El usuario pidió rediseñar la administración: cambia el título a Resumen del equipo y conserva las comprobaciones de saldos en tiempo real."
     },
     "functions/arca-client.js": {
-      "hash": "d66afb11de165df83d48d47f20e9e1f4ff11f36c89d55a131b8c054ca6ad7b6b",
-      "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
+      "hash": "07365952e0411b849a47827a4ae12f10180c8aedaae44e1cecc619feda5c576d",
+      "reason": "Solicitud expresa del 01/10/2026: soportar factura A según receptor, PDF y numeración independientes; pruebas de concurrencia y preservación de cobros, saldos y cierres."
     },
     "functions/arca-functions.js": {
-      "hash": "ec414f07ef4a80c7f8324bd92a932a54b23a1f5ff131199ec209b57c99b2dd96",
-      "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
+      "hash": "b5e239e2f06e28ba43db20379c9d03b41927a856d136108cae3ccfd8703a5112",
+      "reason": "Solicitud expresa del 01/10/2026: factura A según receptor, habilitación fiscal pendiente visible y series independientes; se conservan cobros, saldos y cierres."
     },
     "functions/arca-invoice.js": {
-      "hash": "6da5b616950683b08d63f285a7286dcebf0c3fad2a29f50be397a70bc7be1b07",
-      "reason": "Conserva políticas fiscales B/C y revisión de datos. Pruebas paralelas Uber Fleet autorizadas: rechaza marcas de simulación o fuente shadow antes de construir la solicitud; suppressTelegram por sí solo sigue permitiendo facturar cobros reales. Verificado con clientes falsos y Firestore en memoria."
+      "hash": "15116a04a9c3706c07129cb2a12d9c31bffbf7557f6af4ae3dbc658f61620aba",
+      "reason": "Solicitud expresa del 01/10/2026: soportar factura A según receptor, PDF y numeración independientes; pruebas de concurrencia y preservación de cobros, saldos y cierres."
     },
     "functions/arca-pdf.js": {
-      "hash": "902b4ab744a222941e5357f3a718c0092fe93f121df130f1a44352d4e3d9c3f6",
-      "reason": "Adaptación fiscal solicitada: soporte B exenta con habilitación separada, serie/tipo/QR/PDF coherentes y compatibilidad histórica C. Cubierto por arca-general.test.js; no migra pendientes ni toca liquidaciones."
+      "hash": "2687f83c2e6ad7ebf81a5584675b980b7809a8903f2800f2202177340a8aa8df",
+      "reason": "Solicitud expresa del 01/10/2026: soportar factura A según receptor, PDF y numeración independientes; pruebas de concurrencia y preservación de cobros, saldos y cierres."
     },
     "functions/arca-worker.js": {
-      "hash": "9eda7a6314466207553a64c355d10cbd98ab779cc161429e614015f8f54a823b",
-      "reason": "Conserva activación, series B/C y conciliación de respuestas inciertas. Pruebas paralelas Uber Fleet autorizadas: impide encolar simulaciones y vuelve a comprobar solicitud y cobro original antes de contactar ARCA, incluso en solicitudes históricas. Mantiene bloqueos existentes y no altera pagos reales."
+      "hash": "fddb97ac8231a48b17ce0e4f77f17d820399d0ecad9e6a4453ac9bb9581d3860",
+      "reason": "Solicitud expresa del 01/10/2026: soportar factura A según receptor, PDF y numeración independientes; pruebas de concurrencia y preservación de cobros, saldos y cierres."
+    },
+    "functions/telegram-trip-delivery.js": {
+      "hash": "d51c20820101433f0399aa13a964df3441e116f14d9c0029028c875a7d7f8bec",
+      "reason": "Solicitud expresa del 01/10/2026: factura A según receptor, habilitación fiscal pendiente visible y series independientes; se conservan cobros, saldos y cierres."
     }
   }
 }

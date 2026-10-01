@@ -26,14 +26,17 @@ module.exports=function registerArca({db,assertAdmin}) {
       const api=client(c);
       // Resume the occupied series first; queued records must not starve reconciliation.
       const {seriesKey}=require('./arca-worker');
-      const active=(await db.collection('arca_series').doc(seriesKey(c)).get()).data()?.activeId;
-      if(active)await processInvoice({db,id:active,config:c,client:api});
-      const rows=await db.collection('arca_invoices').where('seriesKey','==',seriesKey(c)).where('status','in',['queued','reserved','sent','uncertain']).orderBy('createdAtMs').limit(3).get();
-      for(const row of rows.docs)await processInvoice({db,id:row.id,config:c,client:api});
+      for(const type of require('./arca-policy').enabledInvoiceTypes(c)) {
+        const key=seriesKey(c,type);
+        const active=(await db.collection('arca_series').doc(key).get()).data()?.activeId;
+        if(active)await processInvoice({db,id:active,config:c,client:api});
+        const rows=await db.collection('arca_invoices').where('seriesKey','==',key).where('status','in',['queued','reserved','sent','uncertain']).orderBy('createdAtMs').limit(3).get();
+        for(const row of rows.docs)await processInvoice({db,id:row.id,config:c,client:api});
+      }
     }),
     arcaBillingStatus:onCall({region},async request=>{
       if(!request.auth)throw new HttpsError('unauthenticated','Iniciá sesión.');
-      const c=await config(),policy=require('./arca-policy');return {enabled:enabled(c),environment:c.environment||'disabled',regime:c.regime||'monotributo',invoiceType:policy.configuredInvoiceType(c),internationalEnabled:enabled(c)&&(c.regime==='general'?policy.internationalBEnabled(c):internationalCEnabled(c))};
+      const c=await config(),policy=require('./arca-policy');return {enabled:enabled(c),environment:c.environment||'disabled',regime:c.regime||'monotributo',invoiceType:policy.configuredInvoiceType(c),invoiceAEnabled:enabled(c)&&policy.invoiceAEnabled(c),internationalEnabled:enabled(c)&&(c.regime==='general'?policy.internationalBEnabled(c):internationalCEnabled(c))};
     }),
     arcaInvoicePdf:onCall({region,timeoutSeconds:45,memory:'256MiB'},async request=>{
       if(!request.auth)throw new HttpsError('unauthenticated','Iniciá sesión.');

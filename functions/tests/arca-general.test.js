@@ -16,6 +16,12 @@ const config={enabled:true,environment:'homologation',regime:'general',invoiceTy
 const payment=()=>({driverUid:'test-driver',type:'billing',method:'cash',status:'completed',amount:100000,
   createdAt:{toMillis:()=>NOW},invoiceRequest:{version:'arca_c_v1',serviceDate:'2026-09-23',
     scope:'national',origin:'Origen de prueba',destination:'Destino de prueba',distanceKm:20,customer:{}}});
+const aConfig={...config,invoiceAEnabled:true};
+function namedPayment(vat='registered') {
+  const p=payment();p.method='digital';p.amount=32500;
+  p.invoiceRequest.customer={requested:true,name:'Empresa de prueba',documentType:'CUIT',documentNumber:'20123456786',vatCondition:vat};
+  return p;
+}
 function memoryDb(){
   const data=new Map();let pending=Promise.resolve();const ref=(c,id)=>({id,path:c+'/'+id});
   return {data,collection:c=>({doc:id=>ref(c,id)}),runTransaction:fn=>{
@@ -165,4 +171,48 @@ test('PDF/QR/nombre B coherentes y C histórica conservada',async()=>{
   const oldQr=JSON.parse(Buffer.from(new URL(qrUrl(old)).searchParams.get('p'),'base64'));assert.equal(oldQr.tipoCmp,11);
   assert.equal(invoiceFilename(old),'FC-3-1.pdf');await invoicePdf(old);
   await assert.rejects(invoicePdf({...i,status:'review'}));await assert.rejects(invoicePdf({...i,issuerRegime:'monotributo'}));
+});
+
+test('A se selecciona por receptor, conserva importe exento y no degrada a B si falta habilitación',()=>{
+  for(const vat of ['registered','monotributo']) {
+    const p=namedPayment(vat),before=JSON.stringify(p),i=buildInvoice(p,aConfig,new Date(NOW));
+    assert.equal(i.invoiceType,1);assert.deepEqual(i.issues,[]);
+    assert.equal(i.detail.ImpTotal,32500);assert.equal(i.detail.ImpOpEx,32500);assert.equal(i.detail.ImpIVA,0);assert.equal(i.detail.ImpNeto,0);
+    assert.equal(JSON.stringify(p),before);
+    const gated=buildInvoice(p,config,new Date(NOW));assert.equal(gated.invoiceType,1);assert.ok(gated.issues.includes('invoice_a_requires_review'));
+    const prod=buildInvoice(p,{...aConfig,environment:'production'},new Date(NOW));assert.ok(prod.issues.includes('invoice_a_requires_review'));
+  }
+  for(const vat of ['consumer','exempt'])assert.equal(buildInvoice(namedPayment(vat),aConfig,new Date(NOW)).invoiceType,6);
+  for(const patch of [{documentNumber:'20123456780'},{documentType:'DNI'},{vatCondition:'pending'},{name:''}]) {
+    const p=namedPayment();Object.assign(p.invoiceRequest.customer,patch);assert.ok(buildInvoice(p,aConfig,new Date(NOW)).issues.length);
+  }
+});
+
+test('A y B tienen series separadas; concurrencia, reintentos y respuesta perdida no duplican ni alteran saldos',async()=>{
+  const db=memoryDb(),client=api();
+  db.data.set('billing_records/a',namedPayment());db.data.set('billing_records/b',payment());
+  db.data.set('drivers/test-driver',{balance:777});const source=JSON.stringify([...db.data]);
+  await Promise.all([enqueueInvoice(db,'a',aConfig,NOW),enqueueInvoice(db,'a',aConfig,NOW),enqueueInvoice(db,'b',aConfig,NOW)]);
+  assert.equal(db.data.get('arca_invoices/a').seriesKey,seriesKey(aConfig,1));
+  assert.equal(db.data.get('arca_invoices/b').seriesKey,seriesKey(aConfig,6));
+  const original=client.authorize;client.authorize=async(...args)=>{await original(...args);throw Error('timeout');};
+  const run=()=>processInvoice({db,id:'a',config:aConfig,client,now:()=>NOW});
+  await Promise.all([run(),run()]);await run();await run();
+  assert.equal(client.calls,1);assert.equal(db.data.get('arca_invoices/a').status,'authorized');
+  assert.deepEqual(client.trace.at(-1),['consult',3,1,1]);
+  assert.equal(JSON.stringify([...db.data].filter(([k])=>!k.startsWith('arca_'))),source);
+  const i=db.data.get('arca_invoices/a');assert.equal(matchesAuthorized({...client.issued.get(1),CbteTipo:6},i.detail,3,1),false);
+  assert.equal(matchesAuthorized({...client.issued.get(1),CondicionIVAReceptorId:6},i.detail,3,1),false);
+});
+
+test('A genera PDF, QR y nombre correctos, y la B anterior en revisión no se migra masivamente',async()=>{
+  const i={...buildInvoice(namedPayment(),aConfig,new Date(NOW)),status:'authorized',number:1,cae:'12345678901234',caeExpires:'20261003'};
+  assert.equal((await invoicePdf(i)).subarray(0,4).toString(),'%PDF');assert.equal(invoiceFilename(i),'PRUEBA-FA-3-1.pdf');
+  assert.equal(JSON.parse(Buffer.from(new URL(qrUrl(i)).searchParams.get('p'),'base64')).tipoCmp,1);
+  await assert.rejects(invoicePdf({...i,issuerRegime:'monotributo'}));
+  const db=memoryDb(),client=api();db.data.set('billing_records/old',namedPayment());
+  db.data.set('arca_invoices/old',{...i,invoiceType:6,status:'review',issues:['invoice_a_requires_review'],cae:null,number:null,seriesKey:seriesKey(config)});
+  const before=JSON.stringify(db.data.get('arca_invoices/old'));
+  await enqueueInvoice(db,'old',aConfig,NOW);await processInvoice({db,id:'old',config:aConfig,client,now:()=>NOW});
+  assert.equal(JSON.stringify(db.data.get('arca_invoices/old')),before);assert.equal(client.calls,0);
 });

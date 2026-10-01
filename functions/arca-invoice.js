@@ -1,6 +1,6 @@
 "use strict";
 const {createHash} = require('node:crypto');
-const {configuredInvoiceType,generalPolicyReady,internationalBEnabled}=require('./arca-policy');
+const {configuredInvoiceType,generalPolicyReady,internationalBEnabled,invoiceAEnabled}=require('./arca-policy');
 function validCuit(value) {
   const s=String(value||'').replace(/\D/g,'');
   if(!/^\d{11}$/.test(s))return false;
@@ -24,7 +24,7 @@ function buildInvoice(payment,config,now=new Date()) {
   const req=payment.invoiceRequest;
   if(req?.version!=='arca_c_v1' || !['cash','digital'].includes(payment.method) || !['billing','payment'].includes(payment.type)) return null;
   const issues=[];
-  const invoiceType=configuredInvoiceType(config),general=config.regime==='general';
+  let invoiceType=configuredInvoiceType(config);const general=config.regime==='general';
   if(config.regime!=='monotributo'&&!generalPolicyReady(config))issues.push('regime_requires_review');
   if(general) {
     const validScope=req.scope==='national'||(req.scope==='international'&&internationalBEnabled(config,now));
@@ -61,8 +61,12 @@ function buildInvoice(payment,config,now=new Date()) {
     if(docType===96&&!/^\d{7,8}$/.test(docNumber))issues.push('invalid_customer_dni');
   }
   if(!vat || ([1,4,6].includes(vat)&&docType!==80))issues.push('customer_vat_requires_review');
-  // A (and its authorization variants) needs a separate, verified issuer setup.
-  if(general&&![4,5].includes(vat))issues.push('invoice_a_requires_review');
+  // A is selected by the recipient's tax status, not just by requesting a named receipt.
+  // Never downgrade A to B if A activation or recipient validation is incomplete.
+  if(general&&[1,6].includes(vat)) {
+    invoiceType=1;
+    if(!invoiceAEnabled(config))issues.push('invoice_a_requires_review');
+  }
   // ARCA consumer-final identification threshold, verified 2026-09-12; config can lower it.
   const limit=Math.min(Number(config.consumerIdentificationLimit)||10000000,10000000);
   if(amount>=limit&&docType===99)issues.push('customer_identification_required');
@@ -77,7 +81,7 @@ function buildInvoice(payment,config,now=new Date()) {
 }
 function matchesAuthorized(record,detail,point,type=11) {
   return record?.Resultado==='A' && record.EmisionTipo==='CAE' && Number(record.PtoVta)===Number(point) && Number(record.CbteTipo)===type &&
-    (type!==6||Number(record.CondicionIVAReceptorId)===Number(detail.CondicionIVAReceptorId)) &&
+    (![1,6].includes(type)||Number(record.CondicionIVAReceptorId)===Number(detail.CondicionIVAReceptorId)) &&
     ['Concepto','DocTipo','DocNro','CbteDesde','CbteHasta','ImpTotal','ImpNeto','ImpTotConc','ImpOpEx','ImpTrib','ImpIVA','MonCotiz'].every(k=>record[k]!==undefined&&Number(record[k])===Number(detail[k])) &&
     ['CbteFch','FchServDesde','FchServHasta','FchVtoPago','MonId'].every(k=>String(record[k])===String(detail[k])) &&
     /^\d{14}$/.test(String(record.CodAutorizacion)) && /^\d{8}$/.test(String(record.FchVto));
