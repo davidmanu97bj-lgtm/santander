@@ -1,7 +1,7 @@
 "use strict";
 const {randomUUID}=require('node:crypto');
 const {buildInvoice,isSimulatedFiscalSource,matchesAuthorized,authorizationFromResponse}=require('./arca-invoice');
-const {configuredInvoiceType,generalPolicyReady,internationalBEnabled,invoiceTypeOf,pointMatches}=require('./arca-policy');
+const {configuredInvoiceType,generalPolicyReady,internationalBEnabled,invoiceTypeOf,pointMatches,enabledInvoiceTypes}=require('./arca-policy');
 const LEASE_MS=180000;
 const JOBS='arca_invoices',SERIES='arca_series';
 function enabled(config) {
@@ -10,7 +10,7 @@ function enabled(config) {
     (config.environment!=='production'||(config.homologationPassed===true&&config.registrationVerified===true&&
       (config.regime!=='general'||config.generalHomologationPassed===true)));
 }
-const seriesKey=c=>`${c.environment}_${c.cuit}_${Number(c.pointOfSale)}_${configuredInvoiceType(c)}`;
+const seriesKey=(c,type=configuredInvoiceType(c))=>`${c.environment}_${c.cuit}_${Number(c.pointOfSale)}_${type}`;
 async function enqueueInvoice(db,id,config,now=Date.now()) {
   const jobRef=db.collection(JOBS).doc(id),paymentRef=db.collection('billing_records').doc(id);
   await db.runTransaction(async tx=>{
@@ -22,12 +22,18 @@ async function enqueueInvoice(db,id,config,now=Date.now()) {
     const cutoff=Date.parse(config.activeFrom||'');
     const active=enabled(config)&&Number.isFinite(created)&&Number.isFinite(cutoff)&&created>=cutoff;
     const status=!active?'disabled':invoice.issues.length?'review':'queued';
-    tx.create(jobRef,{...invoice,paymentId:id,driverUid:String(payment.driverUid||''),status,createdAtMs:now,updatedAtMs:now,number:null,cae:null,caeExpires:null,seriesKey:seriesKey(config),leaseUntil:0});
+    tx.create(jobRef,{...invoice,paymentId:id,driverUid:String(payment.driverUid||''),status,createdAtMs:now,updatedAtMs:now,number:null,cae:null,caeExpires:null,seriesKey:seriesKey(config,invoice.invoiceType),leaseUntil:0});
   });
 }
 async function processInvoice({db,id,config,client,now=()=>Date.now()}) {
   if(!enabled(config))return;
-  const ref=db.collection(JOBS).doc(id),series=db.collection(SERIES).doc(seriesKey(config)),paymentRef=db.collection('billing_records').doc(id);
+  const ref=db.collection(JOBS).doc(id),paymentRef=db.collection('billing_records').doc(id);
+  // Read the immutable fiscal snapshot first, then recheck it while locking its own series.
+  const initial=await db.runTransaction(async tx=>(await tx.get(ref)).data());
+  if(!initial)return;
+  const type=invoiceTypeOf(initial);
+  if(!enabledInvoiceTypes(config).includes(type))return;
+  const series=db.collection(SERIES).doc(seriesKey(config,type));
   const owner=randomUUID();
   const job=await db.runTransaction(async tx=>{
     const [snap,s,source]=await Promise.all([tx.get(ref),tx.get(series),tx.get(paymentRef)]);
@@ -36,7 +42,8 @@ async function processInvoice({db,id,config,client,now=()=>Date.now()}) {
     // before any ARCA call; preserve an occupied series if its outcome is uncertain.
     if(isSimulatedFiscalSource(j)||(source.exists&&isSimulatedFiscalSource(source.data())))return null;
     if(!['queued','reserved','sent','uncertain'].includes(j.status)||j.seriesKey!==series.id||j.environment!==config.environment||j.leaseUntil>now())return null;
-    if(invoiceTypeOf(j)!==configuredInvoiceType(config)||Number(j.issuer?.pointOfSale)!==Number(config.pointOfSale)||String(j.issuer?.cuit)!==String(config.cuit))return null;
+    if(invoiceTypeOf(j)!==type||Number(j.issuer?.pointOfSale)!==Number(config.pointOfSale)||String(j.issuer?.cuit)!==String(config.cuit))return null;
+    if(type===1&&(![1,6].includes(Number(j.detail?.CondicionIVAReceptorId))||Number(j.detail?.DocTipo)!==80))return null;
     if(config.regime==='general'&&(j.issuerRegime!=='general'||j.taxPolicy!==config.taxPolicy||j.issues?.length))return null;
     if(config.regime==='general'&&!config.approvedDriverUids.includes(j.driverUid))return null;
     if(config.regime==='general'&&j.scope==='international'&&(!internationalBEnabled(config,new Date(now()))||j.internationalTaxPolicy!==config.internationalTaxPolicy))return null;
@@ -46,7 +53,6 @@ async function processInvoice({db,id,config,client,now=()=>Date.now()}) {
     tx.update(ref,{owner,leaseUntil:now()+LEASE_MS,updatedAtMs:now()});return j;
   });
   if(!job)return;
-  const type=invoiceTypeOf(job);
   async function update(data,release=false) {
     return db.runTransaction(async tx=>{
       const [snap,s]=await Promise.all([tx.get(ref),tx.get(series)]);

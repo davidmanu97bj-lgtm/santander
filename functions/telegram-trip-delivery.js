@@ -32,7 +32,9 @@ async function deliverTripNotification({db,ref,paymentId,caption,photo,chatId,ap
       await save({status:'sent',leaseUntil:0});
       return {skipped:true,messageId};
     }
-    const notice = authorized ? '' : ['review','rejected','disabled'].includes(invoiceState)
+    const rows=invoice?.messages?.Obs ?? invoice?.messages;
+    const rejectedA=invoiceState==='rejected' && Number(invoice.invoiceType)===1 && (Array.isArray(rows)?rows:[rows]).some(row=>String(row?.Msg||row?.message||'').includes('NO SE ENCUENTRA AUTORIZADA A EMITIR COMPROBANTES'));
+    const notice = rejectedA ? '\n\n⚠️ Factura A no emitida: falta habilitar el CUIT de Explora en ARCA. El cobro ya está registrado; no volver a cargarlo.' : authorized ? '' : ['review','rejected','disabled'].includes(invoiceState)
       ? '\n\n⚠️ Factura pendiente de revisión en Explora.' : '\n\n🧾 Factura ARCA pendiente.';
     let bytes = null, pdfError = null;
     if (authorized) {

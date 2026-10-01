@@ -77,7 +77,7 @@ function createArcaClient({environment,cuit,certificate,privateKey,fetchImpl=fet
       checkErrors(result);if(!result.ResultGet)throw new ArcaError('ARCA_INVALID_RESPONSE');return result.ResultGet;
     },
     async authorize(pointOfSale,detail,type=11) {
-      if(![6,11].includes(type))throw new ArcaError('ARCA_UNSUPPORTED_INVOICE_TYPE');
+      if(![1,6,11].includes(type))throw new ArcaError('ARCA_UNSUPPORTED_INVOICE_TYPE');
       const result=await call('FECAESolicitar',{FeCAEReq:{FeCabReq:{CantReg:1,PtoVta:pointOfSale,CbteTipo:type},FeDetReq:{FECAEDetRequest:detail}}});
       const rows=list(result.FeDetResp?.FECAEDetResponse);
       // Only a complete, explicit rejection is definitive. All other errors require reconciliation.

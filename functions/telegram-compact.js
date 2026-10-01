@@ -65,7 +65,7 @@ function richMessage(text,{photo,document} = {}) {
   return {blocks};
 }
 function invoiceFilename(invoice) {
-  const letter = {6:'B',11:'C'}[require('./arca-policy').invoiceTypeOf(invoice)];
+  const letter = {1:'A',6:'B',11:'C'}[require('./arca-policy').invoiceTypeOf(invoice)];
   if(!letter)throw new Error('INVOICE_UNSUPPORTED_TYPE');
   const prefix = invoice.environment === 'production' ? `F${letter}` : `PRUEBA-F${letter}`;
   return `${prefix}-${Number(invoice.issuer.pointOfSale)}-${Number(invoice.number)}.pdf`;

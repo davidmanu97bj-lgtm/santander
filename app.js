@@ -4429,8 +4429,18 @@ function syncChargeCustomerFields() {
   for (const id of ["chargeCustomerName","chargeCustomerDocType","chargeCustomerDoc","chargeCustomerVat"]) $(id).disabled = !enabled;
   $("chargeCustomerName").required = enabled;
   $("chargeCustomerDoc").required = enabled;
+  $("chargeCustomerVat").required = enabled;
+  const vat = $("chargeCustomerVat").value;
+  const needsCuit = enabled && ["registered","monotributo","exempt"].includes(vat);
+  if (needsCuit) $("chargeCustomerDocType").value = "CUIT";
+  $("chargeCustomerDocType").disabled = !enabled || needsCuit;
+  $("chargeCustomerInvoiceHint").textContent = !enabled ? "" :
+    ["registered","monotributo"].includes(vat) ? "Factura A: ingresá el CUIT y la razón social del receptor. Se emitirá cuando ARCA la autorice." :
+    ["consumer","exempt"].includes(vat) ? "Factura B a nombre del pasajero. Para factura A elegí Responsable inscripto o Monotributista, según su constancia." :
+    "Confirmá la condición fiscal del receptor antes de solicitar la factura.";
 }
 $("chargeNamedInvoice")?.addEventListener("change", syncChargeCustomerFields);
+$("chargeCustomerVat")?.addEventListener("change", syncChargeCustomerFields);
 function chargeDraftRequest() {
   return {
     version:"arca_c_v1",
@@ -6849,7 +6859,11 @@ async function refreshArcaBillingStatus() {
     const data = await cachedArcaStatus(uid);
     if (generation !== authGeneration || uid !== auth.currentUser?.uid) return;
     $("arcaModeLabel").textContent=data.enabled ? (data.environment === "production" ? "Automática" : "Pruebas") : "Sin activar";
-    $("arcaModeNote").textContent=data.enabled ? (data.environment === "production" ? (data.regime === "general" ? (data.internationalEnabled ? "Se solicitará factura B para los traslados exentos a consumidor final o sujeto exento. Los casos fuera de ese alcance quedan para revisión." : "Se solicitará factura B para los viajes nacionales exentos a consumidor final o sujeto exento. Los demás casos quedan para revisión.") : data.internationalEnabled ? "Al confirmar se solicitará la Factura C del viaje." : "Al confirmar se solicitará la factura. Los viajes internacionales quedan para revisión.") : "Homologación: las facturas de prueba no tienen validez fiscal.") : "El viaje se guarda. La emisión fiscal todavía no está activada.";
+    if(data.enabled && data.environment === "production" && data.regime === "general" && !data.invoiceAEnabled) {
+      $("arcaModeNote").textContent="Factura B automática para traslados exentos habilitados. Las solicitudes de factura A quedan pendientes hasta habilitar su emisión en ARCA.";
+      return;
+    }
+    $("arcaModeNote").textContent=data.enabled ? (data.environment === "production" ? (data.regime === "general" ? (data.internationalEnabled ? "Se solicitará factura A para responsables inscriptos o monotributistas, y B para consumidores finales o exentos. Los datos incompletos o servicios fuera del alcance habilitado quedan para revisión." : "Se solicitará factura A o B según la condición fiscal del receptor, para viajes nacionales exentos habilitados. Los demás casos quedan para revisión.") : data.internationalEnabled ? "Al confirmar se solicitará la Factura C del viaje." : "Al confirmar se solicitará la factura. Los viajes internacionales quedan para revisión.") : "Homologación: las facturas de prueba no tienen validez fiscal.") : "El viaje se guarda. La emisión fiscal todavía no está activada.";
   } catch {
     if (generation !== authGeneration || uid !== auth.currentUser?.uid) return;
     $("arcaModeLabel").textContent="Por verificar";
@@ -6917,7 +6931,7 @@ function createInvoiceCard(invoice) {
   amount.append(invoiceElement("span", "invoice-caption", "Importe facturado"), invoiceElement("strong", "", money(invoice.detail?.ImpTotal || 0)));
   if (!authorized) amount.firstChild.textContent = "Importe a facturar";
   const reference = invoiceElement("div", "invoice-number");
-  const invoiceLetter = {6:"B",11:"C"}[invoice.invoiceType === undefined ? 11 : Number(invoice.invoiceType)];
+  const invoiceLetter = {1:"A",6:"B",11:"C"}[invoice.invoiceType === undefined ? 11 : Number(invoice.invoiceType)];
   reference.append(invoiceElement("span", "invoice-caption", invoiceLetter ? `Factura ${invoiceLetter}` : "Comprobante por revisar"), invoiceElement("strong", "", authorized ? `${String(invoice.issuer.pointOfSale).padStart(5,"0")}-${String(invoice.number).padStart(8,"0")}` : "Pendiente de emisión"));
   main.append(amount, reference);
   const route = String(invoice.description || "Servicio de traslado")

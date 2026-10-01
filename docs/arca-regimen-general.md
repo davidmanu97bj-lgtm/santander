@@ -6,7 +6,7 @@ Esta implementación agrega B (código 6) sin activar producción. Conserva las 
 
 - Responsable inscripto: B para consumidor final o sujeto exento, exclusivamente por traslado nacional en taxi/remis hasta 100 km, cuando la exención haya sido verificada al configurar el emisor.
 - El total se informa en `ImpOpEx`; `ImpNeto`, `ImpIVA` e `ImpTotConc` quedan en cero. No equivale a una venta gravada al 0%.
-- Clientes responsables inscriptos o monotributistas quedan en revisión: la emisión A y sus variantes necesitan habilitación separada.
+- Clientes responsables inscriptos o monotributistas seleccionan A (código 1), con CUIT obligatorio. Quedan en revisión hasta verificar y activar separadamente esa emisión. Una factura nominada para consumidor final o exento sigue siendo B.
 - El transporte internacional de pasajeros puede habilitarse como B exenta mediante una política y fecha de activación específicas, luego de verificar su encuadre. No hereda la habilitación internacional del antiguo emisor C. No se le aplica el límite nacional de 100 km.
 - Traslados internacionales sin esa habilitación, nacionales mayores a 100 km, datos incompletos y servicios anteriores a la activación quedan en revisión. La distancia por sí sola no determina el tratamiento de un cruce de frontera.
 - Solo los identificadores de choferes reales incluidos expresamente en `approvedDriverUids` pueden generar solicitudes B automáticas. Los perfiles de prueba quedan en revisión.
@@ -35,6 +35,16 @@ Además deben verificarse los campos existentes de emisor, punto exclusivo, insc
 Para transporte internacional verificado se requieren adicionalmente `internationalInvoiceType: 6`, `internationalTaxPolicy: "international_passenger_transport_exempt_v1"`, `internationalTransportExemptionVerified: true` e `internationalActiveFrom` nuevo. La matrícula del pasajero, su nacionalidad o una etiqueta de distancia no acreditan por sí solas un transporte internacional. El alcance configurado debe corresponder a los traslados efectivamente vendidos por el emisor.
 
 ## Protección contra duplicados
+
+## Ampliación A (01/10/2026)
+
+La clase A usa su propia serie, PDF, QR y archivo Telegram. `invoiceAEnabled` activa A únicamente con `invoiceAHomologationPassed`, o bien `invoiceAProductionVerified` y `invoiceAVerificationPaymentId` respaldados por una emisión real autorizada y conciliada. Ningún indicador se activa por pasar pruebas unitarias. Se admite A simple, no se infieren variantes con retención o CBU informada.
+
+Se conserva el tratamiento exento y el monto completo del traslado: emitir A no convierte una operación exenta en gravada. Los receptores desconocidos o sin CUIT válido no se degradan a B. Los casos históricos en revisión no se migran automáticamente. Una corrección individual debe comprobar que no hay CAE ni envío incierto previo, conservar auditoría y no escribir en cobros, billeteras o cierres.
+
+La prueba real solicitada por el titular el 01/10/2026 fue rechazada por ARCA con código 10000: CUIT no autorizado a emitir comprobantes A. La habilitación A automática permanece desactivada. No existe factura válida hasta obtener CAE. Corresponde revisar REAR/RECE/RFI → Habilitación de comprobantes, F.855. Homologación no completada: WSAA informó un TA válido cuyo ticket no estaba disponible localmente.
+
+## Protección de antecedentes
 
 El ID del cobro conserva una sola solicitud. No se reemplazan solicitudes C al cambiar de configuración. La serie contiene ambiente, CUIT, punto y tipo de comprobante. El tipo y la condición del emisor quedan guardados en cada solicitud y gobiernan consulta, autorización, PDF y QR.
 
