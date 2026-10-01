@@ -1,5 +1,23 @@
 /** Salió vs cobro por número remis (sin adjudicación). */
 export const REMIS_NUMBERS = Object.freeze([28, 57, 104, 31, 43, 154, 15, 134]);
+
+// Presentation only: preserve the recorded choice without changing Ops matching.
+// Missing aliases are allowed; explicit disagreement or malformed values need review.
+export function classifyRecordedCharge(row = {}) {
+  const flags = [row.viajePrivado, row.isPrivateTrip].filter(value => value != null);
+  const raw = row.remisNumber;
+  const hasNumber = raw != null && raw !== '';
+  const validNumber = (typeof raw === 'number' || (typeof raw === 'string' && /^\d+$/.test(raw.trim())))
+    && REMIS_NUMBERS.includes(Number(raw));
+  if (flags.some(value => typeof value !== 'boolean')
+      || (flags.includes(true) && flags.includes(false))
+      || (hasNumber && (!validNumber || flags.includes(true)))) {
+    return {kind:'review', label:'Por revisar'};
+  }
+  if (flags.includes(true)) return {kind:'private', label:'Viaje privado'};
+  if (validNumber) return {kind:'remis', label:`Nº remis ${Number(raw)}`};
+  return {kind:'unclassified', label:'Sin clasificar'};
+}
 export const OPS_EXITS_COLLECTION = "ops_number_exits";
 export const OPS_DISPOSITIONS = Object.freeze({
   own:'Propio · requiere cobro', internal_cover:'Reemplazo entre choferes de Explora · requiere cobro',
@@ -132,7 +150,8 @@ export function buildOpsBoard({ numbers = REMIS_NUMBERS, exits = [], payments = 
         :exit.disposition==='review'?'Confirmar origen o cobertura':exit.paymentId && status==='review'?'Revisar cobro vinculado'
         :unique?'Coincidencia única por vincular':candidates.length?'Varios cruces posibles · no reclamar todavía'
         :status==='missing_charge'?'Sin cobro encontrado': 'Cobro vinculado';
-      return { ...exit, candidates, status, reason, ageMs, ageLabel, canRemind:status==='missing_charge' && ageMs>=7200000,
+      return { ...exit, candidates, status, reason, ageMs, ageLabel,
+        chargeClassification:exit.paymentId ? classifyRecordedCharge(payment) : null, canRemind:status==='missing_charge' && ageMs>=7200000,
         registeredLabel:formatOpsDate(exit.createdAt?.toMillis?.() || (typeof exit.createdAt==='number'?exit.createdAt:0)),
         markedLabel:formatOpsDate(exit.markedAtMs),
         chargeLabel:{matched:'Vinculado',review:'Por revisar',excluded:'Excluido',missing_charge:'Pendiente'}[status],
@@ -207,7 +226,7 @@ export function mountOpsSalidasBoard(host, {
     <div class="ops-salidas-toolbar"><label>Mostrar<select data-ops-filter><option value="all">Todas las salidas</option><option value="missing_charge">Pendientes sin cobro encontrado</option><option value="review">Por revisar</option><option value="matched">Vinculadas</option><option value="excluded">Excluidas del reclamo</option></select></label><button type="button" data-ops-compare>Comparar cobros</button></div>
     <p class="ops-salidas-status" role="status"></p>
     <div class="ops-salidas-table-wrap"><table class="ops-salidas-table"><thead><tr><th>Número / mensaje</th><th>Salida real / registro</th><th>Antigüedad</th><th>Estado</th><th>Cobro cargado</th><th>Acción</th></tr></thead><tbody></tbody></table></div>
-    <details class="ops-salidas-guide"><summary>Criterios para OPERACIONES</summary><p>R / remis o un número solo puede indicar salida; T / taxi no corresponde. Punto: presente. Raya: salió. X: ausencia, sin viaje que reclamar. «Baja vacío» conserva el turno; «sube con out» va hacia el aeropuerto.</p><p>Uber / «por app» y cobertura externa quedan excluidos por evento. Un reemplazo entre choferes de Explora sí requiere cobro. La cobertura vale para una sola salida. El cambio de lista no cancela pendientes.</p><p>«Pago a Explora», gastos, deudas y cierres no son cobros de viajes. Por revisar no significa falta de cobro confirmada. Si la hora, cobertura o correspondencia es incierta, dejá el caso por revisar. Este panel no envía avisos: sigue usando el control de WhatsApp y Telegram ya programado.</p></details>
+    <details class="ops-salidas-guide"><summary>Criterios para OPERACIONES</summary><p>La clasificación del cobro muestra lo registrado por el chofer: número remis o viaje privado. Sin clasificar indica datos insuficientes; Por revisar indica datos inválidos o contradictorios. Es independiente del tipo de salida (propio, Uber o cobertura externa). El cruce por número y hora no confirma recorrido ni chofer.</p><p>R / remis o un número solo puede indicar salida; T / taxi no corresponde. Punto: presente. Raya: salió. X: ausencia, sin viaje que reclamar. «Baja vacío» conserva el turno; «sube con out» va hacia el aeropuerto.</p><p>Uber / «por app» y cobertura externa quedan excluidos por evento. Un reemplazo entre choferes de Explora sí requiere cobro. La cobertura vale para una sola salida. El cambio de lista no cancela pendientes.</p><p>«Pago a Explora», gastos, deudas y cierres no son cobros de viajes. Por revisar no significa falta de cobro confirmada. Si la hora, cobertura o correspondencia es incierta, dejá el caso por revisar. Este panel no envía avisos: sigue usando el control de WhatsApp y Telegram ya programado.</p></details>
   </section>`;
   const q=s=>host.querySelector(s), chips=q('.ops-salidas-chips'),tbody=q('tbody'),summary=q('.ops-salidas-summary'),statusEl=q('.ops-salidas-status');
   const dateInput=q('[data-ops-departed-at]'),sourceInput=q('[data-ops-source]'),kindInput=q('[data-ops-disposition]'),noteInput=q('[data-ops-note]');
@@ -233,10 +252,12 @@ export function mountOpsSalidasBoard(host, {
     // A concurrent revision is rejected by the transaction instead of overwriting it.
     if(!editingReview||busy){
     visibleRows=board.rows.filter(r=>!filter.value||filter.value==='all'||filter.value===r.status);
+    const expandedCandidates=new Set([...(tbody.querySelectorAll?.('.ops-charge-candidates[open]')||[])].map(el=>el.dataset.opsCandidates));
     tbody.innerHTML=visibleRows.map((row,i)=>{
-      const candidateControl=!row.paymentId&&row.candidates.length?`<select data-ops-select="${i}" aria-label="Cobro para salida ${row.remisNumber} del ${escape(row.markedLabel)}" ${busy||!paymentsReady()?'disabled':''}><option value="">Elegir cobro…</option>${row.candidates.map(p=>`<option value="${escape(p.id)}" ${selections.get(row.id)===p.id?'selected':''}>${escape(formatOpsDate(paymentTime(p)))} · ${escape(p.operatorName||p.driverName||'')} · $${Number(p.amount||p.monto||0).toLocaleString('es-AR')} · ${escape(p.id.slice(-6))}</option>`).join('')}</select><button type="button" data-ops-link="${i}" ${busy||!exitsReady||!paymentsReady()?'disabled':''}>Vincular cobro</button>`:'';
-      const reviewControl=!row.paymentId&&reviewExit?`<details data-ops-review-editor><summary>Revisar clasificación</summary><label>Clasificación<select data-ops-review-kind="${i}">${Object.entries(OPS_DISPOSITIONS).map(([v,label])=>`<option value="${v}" ${(row.disposition||'own')===v?'selected':''}>${label}</option>`).join('')}</select></label><label>Motivo<input data-ops-review-note="${i}" maxlength="500" value="${escape(row.reviewNote)}"></label><button type="button" data-ops-review="${i}" ${busy||!exitsReady?'disabled':''}>Guardar revisión</button></details>`:'';
-      return `<tr><td><span class="ops-salidas-num">${Number(row.remisNumber)}</span><small>${escape(row.sourceRef||'Registro anterior sin referencia')}</small></td><td>${row.markedLabel}<small>Cargada: ${row.registeredLabel}</small></td><td>${row.ageLabel}</td><td><span class="ops-salidas-badge ${row.status==='matched'?'yes':row.status==='review'?'review':row.status==='excluded'?'excluded':'no'}">${row.chargeLabel}</span><small>${escape(row.reason)}</small>${row.canRemind?'<small>2 h o más · verificar antes de reclamar</small>':''}${row.reviewNote?`<small>${escape(row.reviewNote)}</small>`:''}</td><td>${row.chargeAtLabel}</td><td>${candidateControl||escape(row.status==='matched'?'Vinculado':row.status==='excluded'?'No reclamar':row.status==='review'?'Revisión necesaria':'Esperando cobro')}${reviewControl}</td></tr>`;
+      const candidateControl=!row.paymentId&&row.candidates.length?`<select data-ops-select="${i}" aria-label="Cobro para salida ${row.remisNumber} del ${escape(row.markedLabel)}" ${busy||!paymentsReady()?'disabled':''}><option value="">Elegir cobro…</option>${row.candidates.map(p=>`<option value="${escape(p.id)}" ${selections.get(row.id)===p.id?'selected':''}>${escape(classifyRecordedCharge(p).label)} · ${escape(formatOpsDate(paymentTime(p)))} · ${escape(p.operatorName||p.driverName||'')} · $${Number(p.amount||p.monto||0).toLocaleString('es-AR')} · ${escape(p.id.slice(-6))}</option>`).join('')}</select><button type="button" data-ops-link="${i}" ${busy||!exitsReady||!paymentsReady()?'disabled':''}>Vincular cobro</button>`:'';
+      const reviewControl=!row.paymentId&&reviewExit?`<details data-ops-review-editor><summary>Revisar tipo de salida</summary><label>Tipo de salida<select data-ops-review-kind="${i}">${Object.entries(OPS_DISPOSITIONS).map(([v,label])=>`<option value="${v}" ${(row.disposition||'own')===v?'selected':''}>${label}</option>`).join('')}</select></label><label>Motivo<input data-ops-review-note="${i}" maxlength="500" value="${escape(row.reviewNote)}"></label><button type="button" data-ops-review="${i}" ${busy||!exitsReady?'disabled':''}>Guardar revisión</button></details>`:'';
+      const chargeDetails=`${row.chargeClassification?`<span class="ops-charge-classification">Cobro registrado: <strong>${escape(row.chargeClassification.label)}</strong></span>`:""}${!row.paymentId&&row.candidates.length?`<details class="ops-charge-candidates" data-ops-candidates="${escape(row.id)}" ${expandedCandidates.has(row.id)?"open":""}><summary>Ver ${row.candidates.length} cobro${row.candidates.length===1?"":"s"} candidato${row.candidates.length===1?"":"s"}</summary>${row.candidates.map(p=>`<p><strong>${escape(classifyRecordedCharge(p).label)}</strong><br>${escape(formatOpsDate(paymentTime(p)))} · ${escape(p.operatorName||p.driverName||"Chofer sin identificar")} · $${Number(p.amount||p.monto||0).toLocaleString("es-AR")}<br>Ref. ${escape(p.id.slice(-6))}</p>`).join("")}</details>`:""}`;
+      return `<tr><td><span class="ops-salidas-num">${Number(row.remisNumber)}</span><small>${escape(row.sourceRef||'Registro anterior sin referencia')}</small></td><td>${row.markedLabel}<small>Cargada: ${row.registeredLabel}</small></td><td>${row.ageLabel}</td><td><span class="ops-salidas-badge ${row.status==='matched'?'yes':row.status==='review'?'review':row.status==='excluded'?'excluded':'no'}">${row.chargeLabel}</span><small>${escape(row.reason)}</small>${row.canRemind?'<small>2 h o más · verificar antes de reclamar</small>':''}${row.reviewNote?`<small>${escape(row.reviewNote)}</small>`:''}</td><td>${row.chargeAtLabel}${chargeDetails}</td><td>${candidateControl||escape(row.status==='matched'?'Vinculado':row.status==='excluded'?'No reclamar':row.status==='review'?'Revisión necesaria':'Esperando cobro')}${reviewControl}</td></tr>`;
     }).join('')||'<tr><td colspan="6">No hay salidas en esta vista.</td></tr>';
     }
     if(running&&autoEnabled&&exitsReady&&paymentsReady()&&!busy&&linkPayment){const pair=board.automaticLinks.find(p=>!attempted.has(`${p.exitId}/${p.paymentId}`));if(pair){attempted.add(`${pair.exitId}/${pair.paymentId}`);void link(pair);}}
@@ -257,7 +278,7 @@ export function mountOpsSalidasBoard(host, {
   });
   compareButton.addEventListener('click',()=>{if(busy||!exitsReady||!paymentsReady())return;autoEnabled=true;attempted.clear();statusEl.textContent='Comparando cobros. Los casos ambiguos quedan por revisar; no se envían avisos.';paint();});
   filter.addEventListener('change',()=>{editingReview=false;paint();});
-  tbody.addEventListener('toggle',event=>{if(!event.target.matches?.('[data-ops-review-editor]'))return;editingReview=Boolean(tbody.querySelector?.('details[open]'));if(editingReview)autoEnabled=false;else if(!busy)paint();},true);
+  tbody.addEventListener('toggle',event=>{if(!event.target.matches?.('[data-ops-review-editor]'))return;editingReview=Boolean(tbody.querySelector?.('details[data-ops-review-editor][open]'));if(editingReview)autoEnabled=false;else if(!busy)paint();},true);
   tbody.addEventListener('change',event=>{const input=event.target.closest('[data-ops-select]');if(input){const row=visibleRows[Number(input.dataset.opsSelect)];if(row)selections.set(row.id,input.value);}});
   tbody.addEventListener('click',async event=>{
     if(busy||!exitsReady)return;

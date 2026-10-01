@@ -97,3 +97,5 @@
  .admin-mobile-note{display:block;color:#8a98a4;font-size:12px;line-height:1.6;max-width:300px;margin:25px auto;text-align:center;}
  .admin-digital-card{max-height:calc(100dvh - 24px);overflow:auto;}
 }
+
+.admin-charge-classification{display:inline-block;margin-top:6px;padding:4px 8px;border:1px solid #ccd8e1;border-radius:8px;background:#f0f5f8;color:#24485b;font-size:12px;font-weight:600;line-height:1.4;white-space:normal;overflow-wrap:anywhere}

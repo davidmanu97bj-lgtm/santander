@@ -1,14 +1,15 @@
 import { mountDriverAvailability } from "./driver-availability.js?v=20260922-perpetuos";
 import {
   REMIS_NUMBERS,
+  classifyRecordedCharge,
   OPS_EXITS_COLLECTION,
   opsDayKey,
   renderChargeRemisStep,
   readChargeRemisSelection,
   mountOpsSalidasBoard
-} from "./ops-salidas.js?v=20260930-operaciones-v3";
+} from "./ops-salidas.js?v=20260930-clasificacion-cobros";
 import { createOpsExitStore } from "./ops-salidas-store.js?v=20260930-operaciones-v3";
-import { mountAdminWorkspace } from "./admin-workspace.js?v=20260919-admin-1";
+import { mountAdminWorkspace } from "./admin-workspace.js?v=20260930-clasificacion-cobros";
 import { mountUberFleet } from "./uber-fleet-ui.js?v=20260929-fleet-shadow";
 import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20260919-admin-1";
 import { mountPeriodClose } from "./period-ui.js?v=20260919-login-period-1";
@@ -7064,7 +7065,7 @@ function adminWorkspaceState() {
   for(const r of adminPayments.filter(r=>!movementIsDeleted(r)&&!r.migrationVersion)){
     const adjustment=isSettlementAdjustment(r)||isReimbursementCompensation(r);
     if(adjustment)movements.push(row(r,'payment','Pago / compensación',r.adjustmentDirection==='driver_to_explora'?'Chofer → Explora':r.adjustmentDirection==='explora_to_driver'?'Explora → chofer':'Compensación'));
-    else if(['cash','digital'].includes(r.method))movements.push(row(r,r.method,'Cobro de viaje',r.method==='cash'?'Efectivo':'Digital'));
+    else if(['cash','digital'].includes(r.method))movements.push({...row(r,r.method,'Cobro de viaje',r.method==='cash'?'Efectivo':'Digital'),chargeClassification:classifyRecordedCharge(r)});
   }
   for(const r of adminExpenses.filter(r=>!movementIsDeleted(r)))movements.push(row(r,'expense',r.expenseLabel||'Gasto',r.expensePaymentMethod==='digital'?'Digital · Explora':'Efectivo · Chofer'));
   for(const r of adminDebts.filter(r=>!movementIsDeleted(r)))movements.push(row(r,'debt','Deuda 100% chofer','Deuda',r.totalAmount||r.originalAmount||r.amount));
