@@ -2,6 +2,7 @@
 const {createHash}=require('node:crypto');
 
 const periodPolicy=require('./period-policy');
+const uberWeeklyPolicy=require('./uber-weekly-policy');
 const collections={cobros:'billing_records',gastos:'gastos',cierres:'cierres_semanales',deudas:'deudas_choferes',pagosDeuda:'deuda_pagos',adelantos:'prestamos_operativos',uber:'uber_weekly_closures'};
 const owners=['driverUid','choferUid','uid','ownerUid','driverId','choferId','userUid','operatorUid'];
 const clean=value=>String(value??'').replace(/[\r\n\t]+/g,' ').slice(0,1000);
@@ -18,11 +19,12 @@ function buildMonthlyReport({uid,profile={},month,input,now=Date.now(),explora={
   if(!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month))throw new Error('Elegí un mes válido.');
   const current=localDate(now).slice(0,7);if(month>current)throw new Error('El mes todavía no comenzó.');
   const rows=[],issues=[];let cash=0,digital=0,cashbox=0;
+  const uberNetTotals={cash:0,digital:0,total:0,cashbox:0,recordCount:0};
   const add=(group,r,date,extra={})=>rows.push({group,id:r.id,date,dateRegistered:localDate(stamp(r)),amount:round(amount(r)),detail:clean(r.detail||r.notes||r.reason||r.description||r.service||r.expenseLabel||r.expenseType||group),status:clean(r.status||r.reviewStatus||'sin estado'),proof:proof(r),...extra});
   const acceptedClosures=new Set((input.cierres||[]).filter(r=>!inactive(r)&&['completed','paid','approved'].includes(r.status)).map(r=>r.id));
   for(const [source,records] of Object.entries(input))for(const r of records) {
     const charge=source==='cobros'&&['billing','payment'].includes(r.type)&&!r.internalSettlementAdjustment&&!r.excludeFromBillingGross;
-    const date=charge?serviceDate(r):source==='uber'?(r.weekEndDate||r.weekEnd||localDate(stamp(r))):localDate(stamp(r));
+    const date=charge?serviceDate(r):source==='uber'?(uberWeeklyPolicy.isNew(r)?r.weekCloseDate||localDate(stamp(r)):r.weekEndDate||r.weekEnd||localDate(stamp(r))):localDate(stamp(r));
     if(!date){issues.push(`${source}/${r.id}: sin fecha; revisar antes de facturar.`);continue;}
     if(String(date).slice(0,7)!==month)continue;
     if(charge) {
@@ -32,6 +34,17 @@ function buildMonthlyReport({uid,profile={},month,input,now=Date.now(),explora={
       else if(!inactive(r))issues.push(`Cobro ${r.id}: pendiente o importe inválido; no incluido en el bruto.`);
       const route=r.invoiceRequest?.origin&&r.invoiceRequest?.destination?`${r.invoiceRequest.origin} - ${r.invoiceRequest.destination}`:r.service||r.detail;
       add('Cobros de viajes',r,date,{included,cashbox:box,method:method(r),detail:clean(route),fiscalReference:clean(r.invoiceId||r.arcaInvoiceId||''),dateBasis:r.invoiceRequest?.serviceDate||r.serviceDate?'Fecha del servicio':'Fecha de registro (sin fecha de servicio)'});
+    } else if(source==='uber'&&uberWeeklyPolicy.isNew(r)) {
+      const settled=!inactive(r)&&!r.isSimulated&&!r.createdBySimulation&&r.verificationMode!=='simulation'&&uberWeeklyPolicy.confirmed(r);
+      const net=uberWeeklyPolicy.calculate(r);
+      if(settled) {
+        for(const field of ['cash','digital','total','cashbox'])uberNetTotals[field]=round(uberNetTotals[field]+net[field]);
+        uberNetTotals.recordCount++;
+        issues.push(`Uber neto ${r.id}: sin bruto fiscal; base mensual incompleta. Revisar antes de facturar. El neto conciliado no se suma como facturación bruta.`);
+      }
+      add('Uber neto conciliado',r,date,{included:false,settled,amount:net.total,cash:net.cash,digital:net.digital,cashbox:net.cashbox,
+        method:`Efectivo chofer: ${net.cash.toFixed(2)}; digital neto Explora: ${net.digital.toFixed(2)}`,
+        detail:'Conciliación semanal Uber Fleet; no acredita el bruto fiscal',dateBasis:'Semana finalizada; importes netos conciliados sin bruto fiscal'});
     } else if(source==='uber') {
       const included=!inactive(r)&&((r.verifiedAutomatically&&r.reviewStatus==='completed')||(r.adminConfirmed&&['approved','completed'].includes(r.reviewStatus||r.status)));
       if(included){cash+=Number(r.grossAmount??r.amount??0);cashbox+=round(Number(r.grossAmount??r.amount??0)*periodPolicy.cashboxRate(r));}
@@ -50,6 +63,7 @@ function buildMonthlyReport({uid,profile={},month,input,now=Date.now(),explora={
   const report={version:'monthly_gross_40_v1',uid,driverName:clean(profile.displayName||profile.nombre||profile.username||'Chofer'),driverCuit:clean(profile.cuit||''),month,closedMonth:month<current,generatedAtMs:now,totals:{cash:round(cash),digital:round(digital),gross,cashbox:round(cashbox),rate:40,participation},recipient,invoiceDetail,issues,rows,
     explanation:'Según la participación comercial indicada por Explora, el chofer factura el 40% de la facturación bruta de sus viajes del mes. Gastos, caja chica, multas, deudas, préstamos y transferencias se informan para conciliar movimientos, pero no reducen esta base ni se suman como nuevos cobros. El resumen no es una factura fiscal ni acredita su emisión.',
     criteria:'Viajes por fecha de servicio; cuando falta, por fecha de registro, identificado en el detalle. Cierres, pagos y gastos por fecha de registro. Cada cierre se informa completo aunque incluya operaciones de otro mes; no se usa como base del 40%. Los ajustes vinculados a un cierre son su contrapartida, no otro pago. Saldos de deuda mostrados al generar el informe, no reconstruidos al último día del mes.'};
+  if(uberNetTotals.recordCount){report.fiscalComplete=false;report.uberNetTotals=uberNetTotals;}
   report.revision=createHash('sha256').update(JSON.stringify({...report,generatedAtMs:0})).digest('hex');return report;
 }
 async function loadMonthlyReport(db,uid,month,now=Date.now()) {

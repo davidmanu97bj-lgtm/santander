@@ -92,10 +92,7 @@ try {
     }
     assert.deepEqual(errors,[]);await browser.close();browser=null;
   }
-  // The existing availability bootstrap updates its local presence documents on login.
-  // Every other record (including billing, debts, exits and any new financial collection) must stay unchanged.
-  const withoutAvailability=state=>({...state,records:Object.fromEntries(Object.entries(state.records).filter(([key])=>!/^driver_availability(?:_days)?\//.test(key)))});
-  assert.deepEqual(withoutAvailability(await api({action:'inspect'})),withoutAvailability(before),'Inspecting classifications must not write financial records or exits');
+  assert.deepEqual(await api({action:'inspect'}),before,'Inspecting classifications must not write any records');
   console.log('No financial or exit writes; screenshots: '+output);
 } finally {
   await browser?.close();await new Promise(resolve=>server.close(resolve));

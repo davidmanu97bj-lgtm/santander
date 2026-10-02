@@ -5,7 +5,6 @@
 <title>Explora · Salida vs cobro · Vista previa</title>
 <link rel="stylesheet" href="./styles.css">
 <link rel="stylesheet" href="./explora-ui.css">
-<link rel="stylesheet" href="./driver-availability.css?v=20260922-perpetuos">
 <style>
 /* Solo layout de la página de preview — el cobro usa clases reales de la app */
 body:has(#chargeModal.preview-static),
@@ -44,12 +43,13 @@ body:has(#managementModal.preview-static){overflow:auto!important}
 #managementModal.preview-static .charge-brand-logo{width:160px}
 
 /* Chips remis: misma grilla que disponibilidad; estado elegido visible */
-#managementModal .av-numbers{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 14px}
-#managementModal .av-numbers button{
+#managementModal .charge-remis-numbers{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 14px}
+#managementModal .charge-remis-numbers button{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:5px 2px;
   min-height:52px;font-size:20px;font-weight:800;border-radius:12px;cursor:default;
   border:1.5px solid #cbd3db;background:#fff;color:#10164c;
 }
-#managementModal .av-numbers button[aria-pressed="true"]{
+#managementModal .charge-remis-numbers button[aria-pressed="true"]{
   background:#10164c;border-color:#10164c;color:#fff;box-shadow:0 4px 12px #10164c33;
 }
 #managementModal .preview-private-btn{
@@ -90,7 +90,7 @@ body:has(#managementModal.preview-static){overflow:auto!important}
 .ops-badge{font-size:11px;font-weight:700;padding:5px 9px;border-radius:999px;white-space:nowrap;display:inline-block}
 .ops-badge.yes{background:#e8f7ef;color:#147a48}
 .ops-badge.no{background:#fdecec;color:#b42318}
-.ops-badge.libre{background:#eef0f8;color:#606781}
+.ops-badge.no-exit{background:#eef0f8;color:#606781}
 .ops-action{font-size:11px;color:#b42318;font-weight:600}
 .ops-action.ok{color:#147a48}
 .ops-action.muted{color:#9aa3b5;font-weight:500}
@@ -181,7 +181,7 @@ body:has(#managementModal.preview-static){overflow:auto!important}
                 <div class="charge-panel">
                   <h3>Número remis</h3>
                   <p class="preview-hint" style="margin:0 0 10px">Elegí el número del viaje (mismo selector de chips que disponibilidad).</p>
-                  <div class="av-numbers" role="group" aria-label="Selector de número remis">
+                  <div class="charge-remis-numbers" role="group" aria-label="Selector de número remis">
                     <button type="button" aria-pressed="false">28</button>
                     <button type="button" aria-pressed="true">57</button>
                     <button type="button" aria-pressed="false">104</button>
@@ -232,7 +232,7 @@ body:has(#managementModal.preview-static){overflow:auto!important}
           <div class="ops-summary">
             <span>Salieron<b>2</b></span>
             <span>Sin cobro<b>1</b></span>
-            <span>Libres<b>6</b></span>
+            <span>Sin salida<b>6</b></span>
           </div>
           <div class="ops-table-wrap">
             <table>
@@ -263,7 +263,7 @@ body:has(#managementModal.preview-static){overflow:auto!important}
                 <tr>
                   <td><span class="ops-num free">28</span></td>
                   <td>—</td>
-                  <td><span class="ops-badge libre">Libre</span></td>
+                  <td><span class="ops-badge no-exit">Sin salida</span></td>
                   <td>—</td>
                   <td><span class="ops-action muted">Sin salida</span></td>
                 </tr>

@@ -23,6 +23,9 @@ async function registerUberSubmission({db, uid, input, driverName, balance, busi
       if (existing.data().verifiedProofId !== proofId) throw new HttpsError('already-exists','Esta semana ya estÃ¡ registrada.');
       return {id, record:existing.data(), alreadyRegistered:true};
     }
+    // New weeks are reconciled by the administrator from Fleet. Retrying an
+    // already registered legacy operation above remains read-only and idempotent.
+    if (input.adminFleetRequired === true) throw new HttpsError('failed-precondition','El administrador debe cargar el cierre semanal con el efectivo y el digital conciliados de Uber Fleet.');
     const week = eligibleUberWeek(new Date(now));
     if (!week || proof.weekStartDate !== week.start || proof.weekCloseDate !== week.close ||
         input.weekStartDate !== week.start || input.weekCloseDate !== week.close) throw new HttpsError('failed-precondition','Esta semana no estÃ¡ disponible. VolvÃ© al inicio.');
@@ -92,7 +95,7 @@ function createUberSubmissionFunction({db,businessId,assertViewer,getProfile,get
     if(request.data?.settlementRuleVersion!==periodPolicy.VERSION)throw new HttpsError('failed-precondition','Actualizá la página para usar las billeteras nuevas antes de liquidar Uber.');
     const [profile, settlement] = await Promise.all([getProfile(uid),getBalance(uid)]);
     const data = profile?.data() || {};
-    return registerUberSubmission({db,uid,businessId,input:request.data || {},
+    return registerUberSubmission({db,uid,businessId,input:{...request.data,adminFleetRequired:true},
       driverName:String(data.displayName || data.nombreCompleto || data.nombre || data.name || data.username || data.usuario || 'Chofer'),
       balance:Number(settlement.balance || 0)});
   });

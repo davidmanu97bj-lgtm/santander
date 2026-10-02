@@ -3095,13 +3095,16 @@ a.proof:hover { background: #e3e7f0; }
 
 /* Acceso con la identidad actual de Explora. */
 .login-screen {
-  position:fixed; inset:0; z-index:4000; min-height:100dvh; overflow-y:auto;
+  position:fixed; inset:0; z-index:4000; overflow-y:auto;
+  flex-direction:column; align-items:center; justify-content:flex-start;
   padding:max(24px,env(safe-area-inset-top)) 18px max(24px,env(safe-area-inset-bottom));
-  background:#fff; color:#171c2b; place-items:center; color-scheme:light;
+  background:#fff; color:#171c2b; color-scheme:light;
 }
-.login-screen:not(.hidden) { display:grid!important; }
+.login-screen:not(.hidden) { display:flex!important; }
 .login-screen.hidden { display:none!important; }
 .login-card {
+  /* Auto margins center when space is available and collapse when scrolling. */
+  flex:none; margin-block:auto;
   width:min(100%,432px)!important; padding:36px!important;
   border:1px solid #e5e8ed!important; border-radius:22px!important;
   background:#fff!important; box-shadow:0 14px 48px #17202e08!important;
@@ -3904,11 +3907,9 @@ body {
 
 .login-screen {
   width: 100%;
-  height: 100vh;
+  height: 100%;
   height: 100dvh;
-  min-height: 100vh;
-  min-height: 100dvh;
-  bottom: 0;
+  min-height: 0;
   background: #fff !important;
 }
 
@@ -3924,9 +3925,6 @@ body {
     min-height: -webkit-fill-available;
   }
 
-  .login-screen {
-    min-height: -webkit-fill-available;
-  }
 }
 
 
@@ -7305,7 +7303,9 @@ body .money-entry input:focus { outline:none !important; border-color:transparen
 .login-screen {
   padding-top:calc(24px + var(--app-safe-top));
   padding-bottom:calc(24px + var(--app-safe-bottom));
-  align-items:safe center;
+  padding-left:calc(18px + var(--app-safe-left));
+  padding-right:calc(18px + var(--app-safe-right));
+  scroll-padding-block:24px;
 }
 .modal { padding-top:calc(16px + var(--app-safe-top)); }
 .modal > .modal-card { max-height:calc(100dvh - var(--app-safe-top) - var(--app-safe-bottom) - 48px); }

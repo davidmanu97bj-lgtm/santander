@@ -1,6 +1,7 @@
 "use strict";
 const expensePolicy = require('./expense-policy');
 const periodPolicy = require('./period-policy');
+const uberWeeklyPolicy = require('./uber-weekly-policy');
 
 const AMOUNT_FIELDS = [
   "amount", "monto", "valor", "finalPrice", "total", "importe", "price", "precio",
@@ -112,7 +113,8 @@ function digitalCashboxAmount(records = []) {
 function newCashboxSupplement(records = [], uber = []) {
   const cash = records.filter(item => periodPolicy.isNew(item) && !movementIsDeleted(item) && !isSimulated(item) && !billingSettlementDirection(item) && !teamIsReimbursementCompensation(item) && paymentMethodOf(item) === "cash" && !cashboxIsExcluded(item)).reduce((sum,item)=>sum+amountOf(item),0);
   const uberCash = uber.filter(item=>periodPolicy.isNew(item) && !movementIsDeleted(item) && !isSimulated(item) && uberImpactsSettlement(item)).reduce((sum,item)=>sum+uberCashAmount(item),0);
-  return (cash + uberCash) * 0.05;
+  const fleetSupplement = uber.filter(item=>!movementIsDeleted(item)&&!isSimulated(item)&&uberImpactsSettlement(item)).reduce((sum,item)=>sum+uberWeeklyPolicy.supplementalCashbox(item),0);
+  return (cash + uberCash) * 0.05 + fleetSupplement;
 }
 
 function grossFlowPrincipalDelta(records = []) {
@@ -288,7 +290,8 @@ function uberTransferAmount(data = {}) {
 }
 
 function uberGrossPrincipalDelta(records = []) {
-  return records.filter(item => item.settlementRuleVersion === "uber_gross_cash_cashbox_5_v1").reduce((sum, item) => sum + uberCashAmount(item) * 0.50, 0);
+  return records.filter(item => item.settlementRuleVersion === "uber_gross_cash_cashbox_5_v1").reduce((sum, item) => sum + uberCashAmount(item) * 0.50, 0)
+    + records.reduce((sum,item)=>sum+uberWeeklyPolicy.roundingAdjustment(item),0);
 }
 function uberCashboxAmount(data = {}) {
   const explicit = moneyNumber(data.cashboxAmount ?? data.uberCashboxAmount ?? 0);
@@ -297,6 +300,7 @@ function uberCashboxAmount(data = {}) {
 }
 
 function uberImpactsSettlement(data = {}) {
+  if (uberWeeklyPolicy.isNew(data) || data.settlementWorkflowVersion === uberWeeklyPolicy.WORKFLOW) return uberWeeklyPolicy.confirmed(data);
   const workflow = safeText(data.settlementWorkflowVersion || data.workflowVersion).toLowerCase();
   const status = safeText(data.reviewStatus || data.status).toLowerCase();
   if (workflow === "v85_verified_direct") return data.verifiedAutomatically === true && status === "completed";
@@ -394,7 +398,7 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
     uberGrossTotal += grossAmount;
     uberCashTotal += uberCashAmount(week);
     uberTransferTotal += uberTransferAmount(week);
-    uberCashboxGenerated += periodPolicy.isNew(week) ? uberCashAmount(week) * 0.10 : uberCashboxAmount(week);
+    uberCashboxGenerated += uberWeeklyPolicy.isNew(week) ? uberWeeklyPolicy.calculate(week).cashbox : periodPolicy.isNew(week) ? uberCashAmount(week) * 0.10 : uberCashboxAmount(week);
   }
 
   let expenseTotal = 0;
@@ -446,7 +450,7 @@ function calculateOpenBillingBalance({ records = [], closures = [], uberWeeks = 
   driverSettlementTotal = roundMoney(driverSettlementTotal);
   exploraSettlementTotal = roundMoney(exploraSettlementTotal);
   const settlementPaymentTotal = roundMoney(driverSettlementTotal - exploraSettlementTotal);
-  const netToDriver = records.some(row => row.migrationVersion === 'opening_balance_20260918_v1' && !movementIsDeleted(row))
+  const netToDriver = records.some(row => row.migrationVersion === 'opening_balance_20260918_v1' && !movementIsDeleted(row)) || uberWeeks.some(row=>uberWeeklyPolicy.isNew(row)&&!movementIsDeleted(row)&&!isSimulated(row)&&uberImpactsSettlement(row))
     ? -calculateTeamRealtimeSettlementBalance({records,closures,uberWeeks,expenses,debts}).balance || 0
     : roundMoney(netBeforePayments + driverSettlementTotal - exploraSettlementTotal);
 
@@ -617,5 +621,6 @@ module.exports = {
   calculateTeamRealtimeSettlementBalance,
   isDriverBillingSettlementPayment,
   latestBillingCutoffMs,
-  latestCashboxResetMs
+  latestCashboxResetMs,
+  uberImpactsSettlement, uberCashAmount, uberTransferAmount, uberGrossAmount, rowMs, movementIsDeleted, isSimulated
 };
