@@ -9,7 +9,7 @@ const telegram = fs.readFileSync(new URL("../functions/index.js", import.meta.ur
 const balance = fs.readFileSync(new URL("../functions/telegram-billing-balance.js", import.meta.url), "utf8");
 const submission = fs.readFileSync(new URL("../functions/uber-submission.js", import.meta.url), "utf8");
 
-// El chofer carga un único total semanal y la evidencia desde cámara o galería.
+// Se conserva el marcado histórico del comprobante; las altas nuevas son sólo del admin.
 assert.match(html, /id="uberGrossAmount"/);
 assert.match(html, /data-photo-picker="uber"/);
 assert.match(html, /id="uberProofCamera"[^>]*capture="environment"/);
@@ -26,7 +26,8 @@ assert.match(app, /function uberDriverSubmissionDelta\(grossAmount = 0, item/);
 assert.match(app, /uberUsesGrossCashRule\(item\) \? 1\.05 : 0\.55/);
 assert.match(app, /impactLabel: "Reparto 50% \+ caja chica 10%"/);
 assert.doesNotMatch(html, /operationPreviewUberGross|operationPreviewUberExplora|operationPreviewUberCashbox|operationPreviewUberDriver/);
-assert.match(app, /httpsCallable\(functions,"registerUberLiquidation"/);
+assert.doesNotMatch(app, /httpsCallable\(functions,["']registerUberLiquidation["']/);
+assert.match(app, /httpsCallable\(functions,'adminRegisterUberWeeklyClosure'/);
 assert.match(submission, /v85_verified_direct/);
 assert.match(submission, /reviewStatus:'completed'/);
 assert.match(app, /selectedPhotoFile\("uber"\)/);
@@ -52,7 +53,7 @@ assert.match(rules, /data\.proofUrl\.size\(\) > 0/);
 assert.match(rules, /resource\.data\.driverUid == uid\(\)/);
 assert.doesNotMatch(rules, /data\.exploraShare \* 2 == data\.grossAmount/);
 assert.match(app, /async function resolveUberSubmissionTarget/);
-assert.match(app, /Registrando liquidación/);
+assert.match(app, /El administrador registra el cierre semanal de Uber desde Fleet/);
 assert.match(storageRules, /allow update: if \(isAuthorizedAdmin\(\) \|\| isOwner\(driverUid\)\)/);
 
 // Telegram cubre el envío con foto y la aprobación/rechazo de David.

@@ -26,12 +26,25 @@ export function periodBreakdown(quote) {
   return {debts,debtTotal:round(debts.reduce((sum,debt)=>sum+debt.amount,0)),lines,
     walletTarget:round((s.netCash+s.netDigital)/2),compensation};
 }
+export function uberPeriodMarkup(uber) {
+  if(!uber)return section('uber','cash','UBER','Cierre semanal<br>cargado por Admin','<p class="period-uber-note">El detalle de Uber estará disponible al actualizar la consulta.</p>');
+  const unknown=Number(uber.unavailableCount||0)>0;
+  const amounts=unknown
+    ? row('Total cobrado efectivo (con desglose)',uber.cash)+row('Total cobrado digital (con desglose)',uber.digital)+row('Total anterior sin desglose',uber.unavailableTotal)
+    : row('Total cobrado efectivo',uber.cash)+row('Total cobrado digital',uber.digital);
+  return section('uber','cash','UBER','Efectivo: chofer<br>Digital: Explora',amounts+
+    row('TOTAL UBER',uber.total,true)+row('Caja chica de Uber incluida',uber.cashbox)+
+    `<div class="period-instruction"><strong>${Math.abs(uber.balance)<=.005?'Sin importe a transferir por Uber':`Por Uber, ${uber.balance>0?'el chofer pasa a Explora':'Explora pasa al chofer'} <span>${escapeUi(money(Math.abs(uber.balance)))}</span>`}</strong><small>Se compensa en el único cierre del período.</small></div>`+
+    (unknown?'<p class="period-uber-note">Desglose no disponible para liquidaciones anteriores. Sus importes y su saldo se conservan.</p>':'')+
+    '<p class="period-uber-note">Ya incluido en el saldo total y la caja chica; no se suma otra vez.</p>');
+}
 export function periodMarkup(quote) {
   const s=quote.summary,driverPays=quote.balance>0.5,balanced=quote.amount<=.5;
   const breakdown=periodBreakdown(quote);
   const walletMessage=paymentMessage(s.walletDifference,`Para que ambos tengan ${money(breakdown.walletTarget)} en sus billeteras.`);
   return section('cash','cash','Efectivo y Uber','Ingresos y gastos<br>en mano',row('Total cobrado',s.cash)+row('Total gastado',-s.cashExpense)+row('NETO EFECTIVO',s.netCash,true)+(s.walletDifference>.005?walletMessage:''))+
     section('digital','digital','Digital','Tarjeta,<br>transferencia o QR',row('Total cobrado',s.digital)+row('Total gastado',-s.digitalExpense)+row('NETO DIGITAL',s.netDigital,true)+(s.walletDifference<-.005?walletMessage:''))+
+    uberPeriodMarkup(quote.presentation?.uber)+
     section('cashbox','expense','Caja chica','10% sobre el<br>total bruto',row('Total cobrado (efectivo + digital)',s.gross)+row('Total caja chica',s.cashbox,true,'10% facturación total')+paymentMessage(s.cashbox,'De caja chica.'))+
     section('debts','debt','Deudas','Gastos a cargo<br>del chofer (100%)',
       (breakdown.debts.length?breakdown.debts.map(debt=>row(debt.label,debt.amount)).join(''):row('Deudas pendientes',0))+

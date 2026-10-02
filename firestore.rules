@@ -641,12 +641,11 @@ service cloud.firestore {
       allow list: if isAdmin()
         || (signedIn() && resource.data.driverUid == uid());
 
-      allow create: if signedIn()
-        && owns(request.resource.data)
-        && validUberClosureRequest(request.resource.data);
+      // New weeks are registered by the admin-only Fleet callable. Block older
+      // clients from creating a second, total-as-cash submission directly.
+      allow create: if false;
 
-      // El chofer crea el pedido con monto y comprobante. Únicamente David puede
-      // aprobar, corregir o rechazar; su confirmación es la que impacta el saldo.
+      // Existing requests retain their historical review and confirmation flow.
       // Se conserva la confirmación v82 sólo para documentos históricos ya creados.
       allow update: if isAdmin() || (
         signedIn()
@@ -1266,14 +1265,12 @@ service cloud.firestore {
     }
     // Settings, access tickets and numbering are server-only (default deny).
 
-    // Availability and contacts are written only by validated server operations.
+    // Retired availability: retain historical documents without client access.
     match /driver_availability/{driverUid} {
-      allow read: if isActiveTeamViewer() && resource.data.active == true;
-      allow write: if false;
+      allow read, write: if false;
     }
     match /driver_availability_days/{day} {
-      allow read: if isActiveTeamViewer();
-      allow write: if false;
+      allow read, write: if false;
     }
     // Phone audit and notification events stay server-only.
 

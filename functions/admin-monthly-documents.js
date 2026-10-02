@@ -9,7 +9,7 @@ function buildOverview({profiles,input,invoices,month,now=Date.now()}){
       const owned=Object.fromEntries(Object.entries(input).map(([source,rows])=>[source,rows.filter(row=>belongs(row,profile.id))]));
       const report=buildMonthlyReport({uid:profile.id,profile,month,input:owned,now});
       const attached=invoices.filter(i=>i.driverUid===profile.id&&i.month===month).sort((a,b)=>Number(b.uploadedAtMs||0)-Number(a.uploadedAtMs||0));
-      return {uid:profile.id,name:report.driverName,active:profile.active!==false&&profile.activo!==false&&!profile.deleted&&!profile.isDeleted&&!profile.eliminado&&!/inactiv|disabled|eliminad|deleted/.test(String(profile.status||profile.estado||'').toLowerCase()),totals:report.totals,issues:report.issues,closedMonth:report.closedMonth,invoices:attached,hasActivity:report.rows.length>0};
+      return {uid:profile.id,name:report.driverName,active:profile.active!==false&&profile.activo!==false&&!profile.deleted&&!profile.isDeleted&&!profile.eliminado&&!/inactiv|disabled|eliminad|deleted/.test(String(profile.status||profile.estado||'').toLowerCase()),totals:report.totals,issues:report.issues,closedMonth:report.closedMonth,invoices:attached,hasActivity:report.rows.length>0,...(report.fiscalComplete===false?{fiscalComplete:false,uberNetTotals:report.uberNetTotals}:{})};
     }).filter(row=>row.active||row.hasActivity||row.invoices.length).sort((a,b)=>a.name.localeCompare(b.name,'es'));
 }
 module.exports=({db,assertAdmin})=>{

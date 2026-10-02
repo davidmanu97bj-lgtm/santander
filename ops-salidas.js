@@ -184,8 +184,8 @@ export function renderChargeRemisStep(container, { numbers = REMIS_NUMBERS, sele
   container.innerHTML = `
     <div class="charge-panel charge-remis-panel">
       <h3>Número remis</h3>
-      <p class="charge-remis-hint">Elegí el número del viaje. No usa adjudicación.</p>
-      <div class="av-numbers charge-remis-numbers" role="group" aria-label="Selector de número remis">
+      <p class="charge-remis-hint">Elegí el número del viaje.</p>
+      <div class="charge-remis-numbers" role="group" aria-label="Selector de número remis">
         ${numbers.map(n => `<button type="button" data-charge-remis="${n}" aria-pressed="${selectedNumber === n ? "true" : "false"}">${n}</button>`).join("")}
       </div>
       <div class="charge-remis-or"><span>o</span></div>

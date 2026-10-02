@@ -1,4 +1,3 @@
-import { mountDriverAvailability } from "./driver-availability.js?v=20260922-perpetuos";
 import {
   REMIS_NUMBERS,
   classifyRecordedCharge,
@@ -7,13 +6,14 @@ import {
   renderChargeRemisStep,
   readChargeRemisSelection,
   mountOpsSalidasBoard
-} from "./ops-salidas.js?v=20260930-clasificacion-cobros";
+} from "./ops-salidas.js?v=20261002-retiro-disponibilidad";
 import { createOpsExitStore } from "./ops-salidas-store.js?v=20260930-operaciones-v3";
-import { mountAdminWorkspace } from "./admin-workspace.js?v=20260930-clasificacion-cobros";
+import { mountAdminWorkspace } from "./admin-workspace.js?v=20261002-login-uber";
 import { mountUberFleet } from "./uber-fleet-ui.js?v=20260929-fleet-shadow";
+import { mountAdminUberLiquidation } from "./admin-uber-liquidation-ui.js?v=20261002-uber-admin";
 import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20260919-admin-1";
-import { mountPeriodClose } from "./period-ui.js?v=20260919-login-period-1";
-import { mountMonthlyManagement } from "./monthly-management.js?v=20260919-login-period-1";
+import { mountPeriodClose } from "./period-ui.js?v=20261002-uber-wallet";
+import { mountMonthlyManagement } from "./monthly-management.js?v=20261002-uber-net";
 import { exploraIcon, activityKind, activityRowContent, recentActivitiesMarkup } from "./explora-ui.js?v=20260919-login-period-1";
 import { app, auth, authReady } from "./auth-session.js?v=20260914-web-only-1";
 import { movementColor } from "./movement-colors.js?v=20260914-web-only-1";
@@ -42,11 +42,6 @@ import {
 const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 const storage = getStorage(app);
 const functions = getFunctions(app, "southamerica-east1");
-const driverAvailability = mountDriverAvailability({
-  call:async (name,data)=>(await httpsCallable(functions,name)(data)).data,
-  listenTeam:(next,error)=>onSnapshot(query(collection(db,'driver_availability'),where('active','==',true)),{includeMetadataChanges:true},snapshot=>next(snapshot.docs.map(row=>({...row.data(),uid:row.id})),!snapshot.metadata.fromCache),error),
-  listenDay:(day,next,error)=>onSnapshot(doc(db,'driver_availability_days',day),{includeMetadataChanges:true},snapshot=>next(snapshot.data(),!snapshot.metadata.fromCache),error)
-});
 const exploraRouteCallable = httpsCallable(functions, "exploraRoute");
 const adminCreateDriverCallable = httpsCallable(functions, "adminCreateDriver");
 const adminUpdateDriverCallable = httpsCallable(functions, "adminUpdateDriver");
@@ -83,6 +78,7 @@ const monthlyManagement=mountMonthlyManagement({
 const $ = id => document.getElementById(id);
 let adminWorkspace = null;
 let uberFleetWorkspace = null;
+let adminUberLiquidationWorkspace = null;
 
 function photoPicker(key) {
   return document.querySelector(`[data-photo-picker="${key}"]`);
@@ -629,7 +625,13 @@ function uberUsesGrossCashRule(item = {}) {
   return item.settlementRuleVersion === "uber_gross_cash_cashbox_5_v1";
 }
 function uberGrossPrincipalDelta(records = []) {
-  return records.filter(uberUsesGrossCashRule).reduce((sum, item) => sum + uberCashRevenueOf(item) * 0.50, 0);
+  const legacy = records.filter(uberUsesGrossCashRule).reduce((sum, item) => sum + uberCashRevenueOf(item) * 0.50, 0);
+  const fleetRounding = records.filter(item => item.settlementRuleVersion === "uber_admin_fleet_split_10_v1").reduce((sum,item)=>sum+ExploraUberWeeklyPolicy.roundingAdjustment(item),0);
+  return legacy + fleetRounding;
+}
+function roundBalanceForFleet(balance, records = [], cutoffMs = 0) {
+  return records.some(item => item.settlementRuleVersion === "uber_admin_fleet_split_10_v1" && !movementIsDeleted(item) && recordTimestampMs(item) > cutoffMs && uberImpactsSettlement(item))
+    ? ExploraUberWeeklyPolicy.roundMoney(balance) : balance;
 }
 function uberDriverSubmissionDelta(grossAmount = 0, item = {settlementRuleVersion:"uber_gross_cash_cashbox_5_v1"}) {
   if (item.settlementRuleVersion === "net_wallets_cashbox_10_v1") return Number(grossAmount || 0) * 0.60;
@@ -639,6 +641,7 @@ function uberDriverSubmissionDelta(grossAmount = 0, item = {settlementRuleVersio
 function uberImpactsSettlement(item = {}) {
   const workflow = String(item.settlementWorkflowVersion || item.workflowVersion || "").toLowerCase();
   const status = String(item.reviewStatus || item.status || "").toLowerCase();
+  if (workflow === "v86_admin_fleet_weekly" || item.settlementRuleVersion === "uber_admin_fleet_split_10_v1") return !item.isSimulated && !item.createdBySimulation && item.verificationMode !== "simulation" && ExploraUberWeeklyPolicy.confirmed(item);
   if (workflow === "v85_verified_direct") return item.verifiedAutomatically === true && status === "completed";
   if (workflow === "v84_driver_submission_admin_review") {
     return item.adminConfirmed === true && /approved|confirmed|completed/.test(status);
@@ -1114,7 +1117,8 @@ function digitalCashboxAmount(records = []) {
 function newCashboxSupplement(records = [], uber = []) {
   const cash = records.filter(item => item.settlementRuleVersion === "net_wallets_cashbox_10_v1" && item.method === "cash" && !movementIsDeleted(item) && !cashboxIsExcluded(item) && !isSettlementAdjustment(item) && !isReimbursementCompensation(item)).reduce((sum,item)=>sum+Number(item.amount||0),0);
   const uberCash = uber.filter(item => item.settlementRuleVersion === "net_wallets_cashbox_10_v1" && !movementIsDeleted(item) && uberImpactsSettlement(item)).reduce((sum,item)=>sum+uberCashRevenueOf(item),0);
-  return (cash + uberCash) * 0.05;
+  const fleetCashbox = uber.filter(item => item.settlementRuleVersion === "uber_admin_fleet_split_10_v1" && !movementIsDeleted(item) && uberImpactsSettlement(item)).reduce((sum,item)=>sum+ExploraUberWeeklyPolicy.supplementalCashbox(item),0);
+  return (cash + uberCash) * 0.05 + fleetCashbox;
 }
 
 function grossFlowPrincipalDelta(records = []) {
@@ -1372,7 +1376,7 @@ function settlementMovementDeltaSince(cutoffMs, sourcePayments = payments, sourc
 
   return {
     cashRevenue, digitalRevenue, uberRevenue, uberCashRevenue, uberTransferRevenue, cashBox, automaticExpenseImpact,
-    driverPaid, exploraPaid, delta
+    driverPaid, exploraPaid, delta:roundBalanceForFleet(delta, scopedUber, cutoffMs)
   };
 }
 
@@ -1531,14 +1535,10 @@ function renderUberPendingBadge() {
   const button = $("addUberBtn");
   const badge = $("uberPendingBadge");
   if (!button || !badge) return;
-  const count = pendingUberWeeks().length;
-  button.classList.toggle("hidden", count === 0 || dashboardLoad?.complete() !== true);
-  badge.textContent = String(count);
-  badge.classList.toggle("hidden", count === 0);
-  button.classList.toggle("has-pending-alert", count > 0);
-  button.title = count
-    ? `${count} ${count === 1 ? "semana de Uber pendiente" : "semanas de Uber pendientes"}`
-    : "No hay semanas de Uber pendientes";
+  button.classList.add("hidden");
+  button.disabled = true;
+  badge.classList.add("hidden");
+  button.title = "El administrador carga el cierre semanal desde Fleet. Consultá Uber en Billeteras.";
 }
 
 setInterval(() => { if (auth.currentUser && !isAdminProfile()) renderUberPendingBadge(); }, 60000);
@@ -1729,7 +1729,7 @@ function settlementModel() {
     balance = baseBalance - driverPaid + exploraPaid;
   }
 
-  const normalizedBalance = Math.abs(balance) > 0.5 ? balance : 0;
+  const normalizedBalance = Math.abs(balance) > 0.5 ? roundBalanceForFleet(balance,activeUber,legacyAnchor?.timestamp || billingBaseline) : 0;
   const compensationAvailable = 0;
 
   return {
@@ -1947,6 +1947,14 @@ function buildUnifiedReceipts(order = "newest") {
     .filter(uberImpactsSettlement)
     .flatMap(item => {
       const gross = uberGrossRevenueOf(item);
+      if (item.settlementRuleVersion === "uber_admin_fleet_split_10_v1") {
+        const amounts = ExploraUberWeeklyPolicy.calculate({cashAmount:uberCashRevenueOf(item),transferAmount:uberTransferRevenueOf(item)});
+        const base = {...item,method:"uber",_receiptGroupKey:"uber:"+item.id,detail:`Semana ${uberWeekLabelForItem(item)} · Efectivo ${money(amounts.cash)} · Digital ${money(amounts.digital)}`};
+        return [
+          {...base,type:"uber_receipt",service:"Liquidación UBER · Fleet",amount:gross,_sortPriority:2},
+          {...base,id:item.id+"_cashbox",type:"cashbox_receipt",service:"Caja UBER · 10%",amount:amounts.cashbox,_cashboxGrossAmount:gross,_sortPriority:1}
+        ];
+      }
       if (uberUsesGrossCashRule(item) || item.settlementRuleVersion === "net_wallets_cashbox_10_v1") {
         const base = {...item, method:"uber", _receiptGroupKey:"uber:" + item.id, detail:"Semana " + uberWeekLabelForItem(item)};
         return [
@@ -2416,6 +2424,13 @@ function receiptBalanceSnapshot(item = {}) {
   const valid = value => (typeof value === "number" || (typeof value === "string" && value.trim() !== "")) && Number.isFinite(Number(value));
   if (!valid(before) || !valid(after)) return null;
   let start = Number(before), finish = Number(after);
+  if (item.settlementRuleVersion === "uber_admin_fleet_split_10_v1" && item.method === "uber") {
+    const amounts = ExploraUberWeeklyPolicy.calculate({cashAmount:item.cashAmount ?? item.uberCashAmount ?? 0,transferAmount:item.transferAmount ?? item.uberTransferAmount ?? 0});
+    const principal = ExploraUberWeeklyPolicy.roundMoney(amounts.balance - amounts.cashbox);
+    if (item.type === "cashbox_receipt") start = ExploraUberWeeklyPolicy.roundMoney(start + principal);
+    else finish = ExploraUberWeeklyPolicy.roundMoney(start + principal);
+    return {before:start,after:finish,movementImpact:ExploraUberWeeklyPolicy.roundMoney(finish-start)};
+  }
   if (item.settlementRuleVersion === "net_wallets_cashbox_10_v1") {
     if (!["expense_receipt","expense_reimbursement_receipt"].includes(item.type)) {
       const principal = Number(item._cashboxGrossAmount ?? item.amount) * (item.method === "digital" ? -0.5 : 0.5);
@@ -3013,7 +3028,7 @@ function adminBillingBalanceForDriver(driver = {}) {
       driverExpenses
     );
     const anchoredBalance = legacyAnchor.balance + postAnchor.delta + adminDebtTotal;
-    return Math.abs(anchoredBalance) > 0.5 ? anchoredBalance : 0;
+    return Math.abs(anchoredBalance) > 0.5 ? roundBalanceForFleet(anchoredBalance,driverUber,legacyAnchor.timestamp) : 0;
   }
 
   const cashRevenue = driverPayments
@@ -3047,7 +3062,7 @@ function adminBillingBalanceForDriver(driver = {}) {
   const balance = (cashRevenue * 0.50) + (uberCashRevenue * 0.50 + uberPrincipalExtra) + cashBox + adminDebtTotal
     - (digitalRevenue * 0.50) - (uberTransferRevenue * 0.50)
     - automaticExpenseImpact - driverPaid + exploraPaid + grossFlowPrincipalDelta(driverPayments);
-  return Math.abs(balance) > 0.5 ? balance : 0;
+  return Math.abs(balance) > 0.5 ? roundBalanceForFleet(balance,activeUber,baseline) : 0;
 }
 
 function adminOpenDebtItemsForDriver(driver = {}) {
@@ -3248,6 +3263,7 @@ function unsubscribeAdminDashboard() {
   if (typeof opsSalidasBoard !== "undefined") opsSalidasBoard?.stop();
   adminWorkspace?.reset();
   uberFleetWorkspace?.reset();
+  adminUberLiquidationWorkspace?.reset();
   adminUnsubscribers.forEach(unsubscribe => {
     try { unsubscribe?.(); } catch (_) {}
   });
@@ -3257,6 +3273,11 @@ function unsubscribeAdminDashboard() {
 
 function renderAdminDashboardUpdates() {
   if (!auth.currentUser || !isAdminProfile()) return;
+  const uberEntry = $("adminUberLiquidationBtn");
+  if (uberEntry) {
+    uberEntry.disabled = !adminDashboardFinancialReady();
+    uberEntry.title = uberEntry.disabled ? "Sincronizando los datos de los choferes" : "Cargar el cierre semanal conciliado de Fleet";
+  }
   if (typeof opsSalidasBoard !== "undefined") opsSalidasBoard?.refresh();
   adminWorkspace?.refresh();
   if (!dashboardLoad?.complete()) {
@@ -4290,7 +4311,6 @@ $("adminManageClosuresBtn")?.addEventListener("click", () => {
 
 onAuthStateChanged(auth, async user => {
   tripCalendar.reset();
-  driverAvailability.reset();
   adminWorkspace?.reset();
   uberFleetWorkspace?.reset();
   $("adminDigitalExpenseModal")?.classList.add("hidden");
@@ -4387,7 +4407,6 @@ onAuthStateChanged(auth, async user => {
   await finishSplash("app");
   if (isCurrent()) {
     subscribeTeamRealtimeDashboard();
-    void driverAvailability.start({uid:user.uid,isAdmin:isAdminProfile()});
     if (isAdminProfile() && typeof ensureOpsSalidasBoard === "function") ensureOpsSalidasBoard()?.start();
     refreshArcaBillingStatus();
   }
@@ -5756,16 +5775,7 @@ function refreshUberProofPreview() {
 photoPicker("uber")?.addEventListener("change", refreshUberProofPreview);
 $("uberForm")?.addEventListener("reset", () => setTimeout(refreshUberProofPreview, 0));
 
-$("addUberBtn")?.addEventListener("click", () => {
-  $("uberForm").reset();
-  delete $("uberForm").dataset.previewConfirmed;
-  $("uberStatus").textContent = "";
-  $("uberStatus").className = "status";
-  renderUberWeekSelector();
-  if (!selectedPendingUberWeek() || dashboardLoad?.complete() !== true) return;
-  renderUberStep(0);
-  $("uberModal").classList.remove("hidden");
-});
+$("addUberBtn")?.addEventListener("click", () => periodClose.open());
 
 $("uberWeekSelect")?.addEventListener("change", updateUberWeekSummary);
 
@@ -5777,109 +5787,9 @@ $("closeUberHelpBtn")?.addEventListener("click", () => {
   $("uberHelpModal")?.classList.add("hidden");
 });
 
-$("uberForm")?.addEventListener("submit", async e => {
+$("uberForm")?.addEventListener("submit", e => {
   e.preventDefault();
-  const user = auth.currentUser;
-  if (!user) return;
-
-  const week = selectedPendingUberWeek();
-  const amount = parseUberAmount($("uberGrossAmount")?.value || "");
-  const file = selectedPhotoFile("uber");
-  if (uberScanBusy) return;
-  if (dashboardLoad?.complete() !== true) return;
-  if (!week) {
-    $("uberStatus").textContent = "Elegí una semana cerrada pendiente.";
-    $("uberStatus").className = "status error";
-    renderUberWeekSelector();
-    return;
-  }
-  if (!(amount > 0)) {
-    $("uberStatus").textContent = "Ingresá las ganancias netas que muestra Uber.";
-    $("uberStatus").className = "status error";
-    return;
-  }
-  if (uberStep === 0) { renderUberStep(1); return; }
-  if (!file) {
-    $("uberStatus").textContent = "Adjuntá el comprobante semanal de Uber.";
-    $("uberStatus").className = "status error";
-    return;
-  }
-  if (!String(file.type || "").startsWith("image/")) {
-    $("uberStatus").textContent = "El comprobante debe ser una imagen.";
-    $("uberStatus").className = "status error";
-    return;
-  }
-  if (Number(file.size || 0) > 15 * 1024 * 1024) {
-    $("uberStatus").textContent = "La imagen es demasiado grande. Elegí una foto de hasta 15 MB.";
-    $("uberStatus").className = "status error";
-    return;
-  }
-  if (uberStep === 1) {
-    if (await verifyUberPhoto(file, week, amount)) renderUberStep(2);
-    return;
-  }
-  if (!uberProofCheck || uberProofCheck.amount !== amount || uberProofCheck.weekStartDate !== week.weekStartDate || Date.now() - uberProofCheck.checkedAt > 3500000) {
-    renderUberStep(1);
-    $("uberScanFeedback").textContent = "Volvé a verificar la captura antes de registrar.";
-    return;
-  }
-  if (!acquireSubmissionLock("uber")) {
-    $("uberStatus").textContent = "Este cierre ya se está enviando.";
-    $("uberStatus").className = "status";
-    return;
-  }
-
-  $("saveUberBtn").disabled = true;
-  setPhotoPickerDisabled("uber", true);
-  $("saveUberBtn").textContent = "Subiendo comprobante…";
-  $("uberStatus").textContent = "";
-
-  try {
-    if (isUberWeekLoaded(week)) {
-      $("uberStatus").textContent = `La semana ${week.label} ya está registrada.`;
-      $("uberStatus").className = "status error";
-      renderUberWeekSelector();
-      return;
-    }
-
-    $("saveUberBtn").textContent = "Registrando liquidación…";
-    const {data:result} = await httpsCallable(functions,"registerUberLiquidation",{timeout:90000})({
-      settlementRuleVersion:ExploraPeriodPolicy.VERSION,
-      verifiedProofId:uberProofCheck.id, amount, weekStartDate:week.weekStartDate, weekCloseDate:week.weekCloseDate
-    });
-    const saved = normalizeUberRecord(result.id,result.record);
-    uberClosures = [saved, ...uberClosures.filter(item => item.id !== result.id)];
-    render();
-
-    renderUberWeekSelector();
-    const remaining = pendingUberWeeks().length;
-    $("uberStatus").textContent = remaining
-      ? `Liquidación registrada. Quedan ${remaining} ${remaining === 1 ? "semana pendiente" : "semanas pendientes"}.`
-      : `Liquidación registrada. El total y la caja chica ya se aplicaron a tu saldo.`;
-    $("uberStatus").className = "status success";
-    $("saveUberBtn").textContent = "Registrado ✓";
-    $("uberForm").reset();
-    if (!remaining) closeModalAndGoTop("uberModal");
-  } catch (err) {
-    console.error(err);
-    const code = firebaseErrorCode(err);
-    if (code.includes("permission-denied") || code.includes("storage/unauthorized")) {
-      $("uberStatus").textContent = "No pudimos registrar la liquidación. Verificá nuevamente la captura y volvé a intentar.";
-    } else if (code.includes("already-exists")) {
-      $("uberStatus").textContent = `La semana ${week.label} ya está registrada.`;
-    } else if (code.includes("failed-precondition")) {
-      renderUberStep(1);
-      $("uberStatus").textContent = "La captura o la semana ya no están vigentes. Verificá nuevamente antes de registrar.";
-    } else {
-      $("uberStatus").textContent = "No se pudo registrar la liquidación de Uber. Podés reintentar sin duplicarla.";
-    }
-    $("uberStatus").className = "status error";
-  } finally {
-    releaseSubmissionLock("uber");
-    setPhotoPickerDisabled("uber", false);
-    $("saveUberBtn").disabled = pendingUberWeeks().length === 0;
-    if (!$("saveUberBtn").disabled) $("saveUberBtn").textContent = uberStep === 2 ? "Registrar liquidación" : "Continuar";
-  }
+  $("uberStatus").textContent = "El administrador registra el cierre semanal de Uber desde Fleet. Consultá el resultado en Billeteras.";
 });
 
 function resetDriverClose() {
@@ -7178,6 +7088,12 @@ function ensureOpsSalidasBoard() {
 }
 adminWorkspace=mountAdminWorkspace({getState:adminWorkspaceState,loadDocuments:async input=>(await httpsCallable(functions,'adminMonthlyDocuments',{timeout:300000})(input)).data,openDebt:openAdminDebt,openDigital:openAdminDigitalExpense});
 uberFleetWorkspace=mountUberFleet({defaultDigitalRecipient:'explora',isAuthorized:()=>Boolean(auth.currentUser&&isAdminProfile()),call:async(name,input)=>(await httpsCallable(functions,name,{timeout:120000})(input)).data});
+adminUberLiquidationWorkspace=mountAdminUberLiquidation({
+  isAuthorized:()=>Boolean(auth.currentUser&&isAdminProfile()&&adminDashboardFinancialReady()),
+  getDrivers:()=>[...new Map(adminDrivers.filter(driver=>driver.active!==false&&driver.activo!==false&&!driver.deleted&&!driver.isDeleted&&!['admin','administrador','owner','superadmin'].includes(String(driver.role||driver.rol||'').toLowerCase())).map(driver=>{const uid=driver.authUid||driver.uid||driver.id;return [uid,{uid,name:driver.displayName||driver.nombreCompleto||driver.nombre||driver.name||driver.username||'Chofer'}];})).values()],
+  register:async input=>(await httpsCallable(functions,'adminRegisterUberWeeklyClosure',{timeout:120000})(input)).data,
+  onCompleted:()=>scheduleDashboardRender(renderAdminDashboardUpdates)
+});
 
 // Hand a submit made during startup to the authenticated login handler once.
 document.documentElement.dataset.exploraAppReady = 'true';

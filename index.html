@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#ffffff" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -16,7 +16,7 @@
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js" crossorigin />
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js" crossorigin />
   <script type="module" async src="./login-entry.js?v=20260921-release-number-2"></script>
-  <link rel="modulepreload" href="./app.js?v=20260930-clasificacion-cobros" />
+  <link rel="modulepreload" href="./app.js?v=20261002-login-uber" />
   <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
@@ -125,16 +125,16 @@
       .service-option{min-height:80px;padding:13px 11px}.service-option strong{font-size:12px}.service-option span{font-size:16px}
     }
   </style>
-  <link rel="stylesheet" href="./styles.css?v=20260919-admin-1" />
+  <link rel="stylesheet" href="./styles.css?v=20261002-login-uber" />
   <link rel="stylesheet" href="./movement-colors.css?v=20260919-admin-1" />
   <link rel="stylesheet" href="./explora-ui.css?v=20260919-admin-1" />
-  <link rel="stylesheet" href="./driver-availability.css?v=20260922-perpetuos" />
-  <link rel="stylesheet" href="./ops-salidas.css?v=20260930-clasificacion-cobros" />
+  <link rel="stylesheet" href="./ops-salidas.css?v=20261002-retiro-disponibilidad" />
   <link rel="stylesheet" href="./admin-workspace.css?v=20260930-clasificacion-cobros" />
   <link rel="stylesheet" href="./uber-fleet-ui.css?v=20260929-fleet-shadow" />
+  <link rel="stylesheet" href="./admin-uber-liquidation-ui.css?v=20261002-uber-admin" />
 </head>
 <body>
-<style id="explora-boot-splash">#splashScreen{min-height:100dvh;display:grid;place-items:center;padding:24px;background:var(--bg,#f3f5f7);color:var(--ink,#0e1116);font:650 15px/1.4 Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#splashScreen.hidden,#splashScreen[hidden]{display:none!important}#splashMessage{margin:0;text-align:center}</style>
+<style id="explora-boot-splash">#splashScreen{position:fixed;inset:0;z-index:4000;box-sizing:border-box;height:100%;height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:auto;padding:calc(24px + env(safe-area-inset-top,0px)) calc(24px + env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) calc(24px + env(safe-area-inset-left,0px));background:var(--bg,#f3f5f7);color:var(--ink,#0e1116);font:650 15px/1.4 Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#splashScreen.hidden,#splashScreen[hidden]{display:none!important}#splashMessage{flex:none;max-width:100%;margin:auto;text-align:center;overflow-wrap:anywhere}</style>
 <section id="splashScreen" class="hidden" hidden aria-hidden="true"><p id="splashMessage"></p></section>
 
 <section id="loginScreen" class="login-screen hidden" aria-label="Ingresar a EXPLORA">
@@ -192,8 +192,8 @@
             <button id="adminAddDebtBtn" disabled class="admin-quick debt" type="button"><span data-explora-icon="debt"></span><span><strong>Deuda 100% chofer</strong><small>Multa u otro importe a su cargo.</small></span><b aria-hidden="true">↗</b></button>
             <button id="adminGroupDebtBtn" disabled class="admin-quick group" type="button"><span data-explora-icon="management"></span><span><strong>Deuda grupal</strong><small>El mismo importe para cada chofer activo.</small></span><b aria-hidden="true">↗</b></button>
           </div><p id="adminQuickStatus" role="status">Sincronizando el equipo…</p></section>
-          <button type="button" id="adminAvailabilityBtn" disabled>Disponibilidad de choferes</button>
           <button type="button" id="adminUberFleetBtn" class="uber-fleet-entry">Uber Fleet <small>Comparar viajes sin alterar saldos</small></button>
+          <button type="button" id="adminUberLiquidationBtn" class="uber-fleet-entry" disabled title="Sincronizando los datos de los choferes">Cierre semanal de Uber <small>Cargar efectivo y digital conciliados de Fleet</small></button>
           <div id="opsSalidasBoard" class="ops-salidas-host"></div>
           <p class="admin-mobile-note">Los informes y el control del equipo están disponibles en la versión para notebook.</p>
           <div class="admin-desktop-only">
@@ -228,7 +228,6 @@
           <button id="homeLogoutBtn" class="home-logout" type="button">Salir</button>
         </div>
         <p id="homeDriverGreeting" class="home-driver-greeting">Hola, chofer</p>
-        <section id="driverAvailability" hidden aria-label="Tu disponibilidad"></section>
         <section class="collection-tools" aria-labelledby="collectionToolsTitle">
           <h1 id="collectionToolsTitle">Herramientas de cobro <span aria-hidden="true"></span></h1>
           <div id="driverQuickActions" class="collection-grid" tabindex="-1">
@@ -847,7 +846,8 @@
 
 
 <script src="./functions/period-policy.js?v=20260919-admin-1"></script>
+<script src="./functions/uber-weekly-policy.js?v=20261002-uber-admin"></script>
 <script src="./functions/expense-policy.js?v=20260919-admin-1"></script>
-<script type="module" src="./app.js?v=20260930-clasificacion-cobros"></script>
+<script type="module" src="./app.js?v=20261002-login-uber"></script>
 </body>
 </html>

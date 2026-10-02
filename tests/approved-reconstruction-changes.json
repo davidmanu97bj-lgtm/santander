@@ -34,28 +34,28 @@
       "reason": "Regla aprobada: dos billeteras netas, reparto 50%, caja chica 10% bruto solo para movimientos nuevos; conserva ramas históricas. Pruebas period-policy, settlement-gross-flow y realtime-balance."
     },
     "settlementMovementDeltaSince": {
-      "hash": "c4a29a131dafa5e3b36a89dbd7d4ea7a177b76466086eabfdd1395882a267dd9",
-      "reason": "Regla aprobada: dos billeteras netas, reparto 50%, caja chica 10% bruto solo para movimientos nuevos; conserva ramas históricas. Pruebas period-policy, settlement-gross-flow y realtime-balance."
+      "hash": "d674310f8c154a722a65c570427ce33df29d9278a42f10cd6bb81b2e15efcf91",
+      "reason": "David autorizó integrar Uber al cálculo vigente: el nuevo marcador comparte redondeo monetario de servidor también después de un saldo anclado; pasado intacto."
     },
     "openCashboxAmount": {
       "hash": "d090d555af6b8344bb57adf8afaa4d88265a1f8fa0b24a4ca85e7053ea977880",
       "reason": "Regla aprobada: dos billeteras netas, reparto 50%, caja chica 10% bruto solo para movimientos nuevos; conserva ramas históricas. Pruebas period-policy, settlement-gross-flow y realtime-balance."
     },
     "buildUnifiedReceipts": {
-      "hash": "86521d18b6279cd0f9ecff2cd78bb96f2519f9ba413eb7bdf3414dc382c2a8f4",
-      "reason": "Inicio y actividades con presentación compartida; nuevo período tras cierre sin eliminar el historial."
+      "hash": "810d8e5597c4866a134906b4c0e7da9e8ed4773272ba096e7d9762318e28c5e5",
+      "reason": "Nueva carga Uber autorizada: mostrar efectivo y digital y separar principal y caja para el nuevo marcador, sin modificar registros ni recibos antiguos."
     },
     "render": {
       "hash": "51efd30855fc1eaff2edb1ac922ec4da31543a7ac301ccb455464e4e9da06e15",
       "reason": "Inicio y actividades con presentación compartida; nuevo período tras cierre sin eliminar historial. Oculta comprobantes de caja chica solo en Todas las actividades, antes de contar y paginar, sin modificar cálculos ni registros. Oculta el asiento interno de migración únicamente en actividades; la deuda inicial continúa en Billeteras y en el cálculo."
     },
     "receiptBalanceSnapshot": {
-      "hash": "bdfe1105dc2cf1b591f7c1358e8d67178437fb2d5f70c43b661aa9a0cb199ed2",
-      "reason": "Cierre único: compensa la deuda incluida sin descontarla dos veces; pruebas period-closure y period-policy."
+      "hash": "c2009843d2e2b2c0df64aed86ae989fe40f12e1ca01276ff2c4eea1c8c8007bd",
+      "reason": "Nueva carga Uber autorizada: mostrar su principal y caja en continuidad con centavos exactos, usando fotografías existentes sin reescribir ningún dato."
     },
     "adminBillingBalanceForDriver": {
-      "hash": "dbe05d2f5a775ab4adb1dcd8c0af9c244d1304f9992309decf1be26e9ee5298c",
-      "reason": "Regla aprobada: dos billeteras netas, reparto 50%, caja chica 10% bruto solo para movimientos nuevos; conserva ramas históricas. Pruebas period-policy, settlement-gross-flow y realtime-balance."
+      "hash": "ef5ca84b7ff2ca1b60225730f905163cd7a8c6d5d45a5393335ae005e86cddb1",
+      "reason": "David autorizó cálculo Uber con política de billeteras vigente: panel admin comparte redondeo nuevo y conserva el modelo anterior cuando no hay nuevas semanas."
     },
     "previewDefinition": {
       "hash": "c57389baacaa5feca1903342b5b0ac9d440cb33757d059a451a42cf8ade09a89",
@@ -102,12 +102,12 @@
       "reason": "Menú administrativo solicitado: reutiliza la selección de choferes activos en Pago digital."
     },
     "unsubscribeAdminDashboard": {
-      "hash": "393a75cd88a0bb808cd26f2514ef632be5ca37e810a791a298cbae8da8074311",
-      "reason": "Salidas pendientes solicitado: detiene listener y temporizador de operaciones al cerrar sesión para evitar vínculos con datos de otra sesión. No altera cálculos de saldos ni cierres."
+      "hash": "d38630df2b5b3d4d4d86720925e9f32b29448672e09b3ffec63e7f5081537d4b",
+      "reason": "La nueva carga Uber exclusiva admin se cierra e invalida al abandonar la sesión; no cambia los movimientos, cierres ni saldos existentes."
     },
     "renderAdminDashboardUpdates": {
-      "hash": "c6b2f22dac702d165d6884266ffc906042a95fef6b88fb34b73bf330bbc8b217",
-      "reason": "Ops salidas: refresh del tablero al actualizar dashboard admin; cruza salió vs cobro por número sin adjudicación."
+      "hash": "8c46112e832e5ab2f98dc00bb426309262644811230ff4066f422295ec513e9d",
+      "reason": "La nueva entrada de carga Uber exclusiva admin permanece deshabilitada mientras se sincroniza el equipo, según el flujo autorizado por David."
     },
     "subscribeAdminDashboard": {
       "hash": "b630e8d214bd34e2bb3c86e0b91280e1560f1d383a3a91768c2d1beeda9fc6c3",
@@ -128,6 +128,22 @@
     "syncChargeCustomerFields": {
       "hash": "bde9b6d87ef28b669909ece6e4eca75e87f01c236398aa1262ce267773cb0bbb",
       "reason": "Solicitud expresa del 01/10/2026: factura A según receptor, habilitación fiscal pendiente visible y series independientes; se conservan cobros, saldos y cierres."
+    },
+    "uberGrossPrincipalDelta": {
+      "hash": "cce90af97d45f5bc61028eae1cb47ce0ff60d8ba712c0bcdfd40b6beef4e044e",
+      "reason": "David autorizó cierres Uber administrados con efectivo y digital netos: reconciliar centavos de la nueva política sin alterar las reglas históricas."
+    },
+    "uberImpactsSettlement": {
+      "hash": "55cf027b4eda4dd30fafb30ace3d90912a8d765ff8b82fdeb557037c867e6c87",
+      "reason": "David indicó carga semanal del administrador desde Fleet: sólo el nuevo marcador confirmado participa del saldo; las ramas históricas mantienen sus filtros."
+    },
+    "renderUberPendingBadge": {
+      "hash": "f1d739f07acf2a85fc5fe11bde9aea63993800d61835da16c741bb3e8053becf",
+      "reason": "La carga semanal futura fue asignada explícitamente al administrador desde Fleet; se retira la entrada de carga financiera del chofer y conserva la consulta."
+    },
+    "settlementModel": {
+      "hash": "9dfdf013c394e900ff1382c9c92bd2fafecdd804786ec74bcbb86d0ad33b7914",
+      "reason": "Integración Uber autorizada por David: frontera monetaria coherente sólo al existir nuevas semanas Fleet, con reglas y resultados históricos conservados."
     }
   },
   "handlers": {
@@ -146,20 +162,20 @@
   },
   "protectedFiles": {
     "firestore.rules": {
-      "hash": "4a45bdc6b81bce727f685731402440bc15f14e3a3a5a7ad66f863eec4aca3f29",
-      "reason": "OPERACIONES solicitado: altas idempotentes por referencia de WhatsApp, fecha real no futura y clasificación por evento con revisión concurrente. Mantiene vínculo exclusivo, inmutabilidad de fecha/número y reglas financieras sin cambios."
+      "hash": "2a3cd0b47025222ef289b98dcb7200d7eda45fcb75a0c47cf32041fbed879bdf",
+      "reason": "David retiró disponibilidad y asignó nuevas semanas Uber al admin: negar colecciones retiradas y altas directas de clientes Uber antiguos, preservando lecturas e historial."
     },
     "functions/expense-policy.js": {
       "hash": "044e01190580912b786c33020c3b663b16eee01da5c6a7600482301a11abffa2",
       "reason": "Agrega Peaje y la lista permitida al chofer sin eliminar categorías históricas/admin."
     },
     "functions/index.js": {
-      "hash": "c2e5d2f4ac383c273fc28d72c24b1b23e3efe93fb72c85ab3bb015bfbed475ed",
-      "reason": "Integración Uber Fleet autorizada: callables de comparación y observación programada cada cinco minutos, deshabilitada por defecto y sin escrituras financieras. Conserva disparadores de cobros propios y cierres históricos."
+      "hash": "c09c6ede545c87808e274825c61df2a6177ee65943401febfdf7ecf1484fee4b",
+      "reason": "David autorizó retiro disponibilidad y carga Uber exclusiva admin: registrar handlers inertes y nuevo callable; forzar bloqueo de nuevas cargas por chofer, sin despliegue."
     },
     "functions/telegram-billing-balance.js": {
-      "hash": "aabb3748111e32c61eae773b2fb75dc15158698ac5d045a32014330838631c66",
-      "reason": "Publicación autorizada: Telegram conserva las reglas anteriores y toma el saldo anclado para cuentas migradas, para coincidir con la billetera y el cierre único."
+      "hash": "3077e8d40d0fbcc23478a4a1010545b8312d4c6c1c9b1879ed223ba6a6f96e5d",
+      "reason": "David autorizó Uber efectivo/digital netos con reglas de billetera vigentes: nuevo marcador y centavos compartidos, conservando todas las fórmulas y registros históricos."
     },
     "functions/telegram-compact.js": {
       "hash": "551c5eb8a4dc44021cef56f5f7af485beb0c894f797268a61495ac00f7d82a98",
@@ -174,8 +190,8 @@
       "reason": "Expectativas matemáticas de la nueva regla con sus ramas históricas."
     },
     "functions/uber-submission.js": {
-      "hash": "e79bf5a9538c83b0660cafabc1ea0df181394773273b19380b557e26f41fd8a6",
-      "reason": "Publicación autorizada: los movimientos nuevos requieren la regla de billeteras netas; las versiones anteriores deben actualizarse para evitar registrar operaciones con la fórmula antigua. Los documentos históricos se conservan."
+      "hash": "491c4fc93279c7f2be9afdaa9f93618325bdf60fa352aedd0b0291a49009c8c9",
+      "reason": "La carga semanal futura queda exclusivamente en admin por pedido de David; el callable anterior rechaza nuevas cargas y sólo permite repetir lectura del registro ya aplicado."
     },
     "package.json": {
       "hash": "40c21405917c3460de89730d565da267aadda0dcbb8c67cfc2e50c2245cc746a",
@@ -186,8 +202,8 @@
       "reason": "Resúmenes PDF de solo lectura para dueño/admin y facturas PDF del chofer sin sobrescritura ni eliminación."
     },
     "styles.css": {
-      "hash": "ff22e0d57f8f97edfecf0ca0ffa17a5b745ac62ba6dc0ecc043a46910f081c92",
-      "reason": "Presentación móvil de la reconstrucción: cada paso de efectivo, digital y gasto mantiene sus datos y acciones visibles en el alto del teléfono; el comprobante digital replica los botones de Cargar gasto."
+      "hash": "805736f46c47da240e0adfed7f75a3b80141ea19ff5bb22e012cac5154f797ff",
+      "reason": "David pidió corregir el recorte inferior de login y carga: contención de altura dinámica, márgenes automáticos, áreas seguras y scroll completo, sin cambios de autenticación ni cálculo."
     },
     "firebase.json": {
       "hash": "18394688c9724275f63283dcea3fb6e30685c3250b36b408e6ddcb12687b9480",

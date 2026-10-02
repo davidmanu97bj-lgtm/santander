@@ -18,7 +18,7 @@ for(const [index,method,amount,detail] of [[1,'cash',136000,'Traslado Aeropuerto
 }
 // Illustrative local-only example requested for reviewing the settlement screen.
 seed['deudas_choferes/demo-multa']={driverUid:'preview-driver',uid:'preview-driver',type:'admin_debt',amount:50000,remainingAmount:50000,status:'active',detail:'Multa',createdAtMs:now-3600000};
-const statePath=path.resolve(ROOT,'..',previewAdmin?'preview-admin-state.json':'preview-state.json');
+const statePath=path.resolve(process.env.PREVIEW_STATE_PATH||path.join(ROOT,'..',previewAdmin?'preview-admin-state.json':'preview-state.json'));
 const saved=fs.existsSync(statePath)?JSON.parse(fs.readFileSync(statePath,'utf8')):null;
 const db=new MemoryStore(saved?.records||seed), uploads=new Map(saved?.uploadEntries||[]);
 function match(data,c) {if(c.type==='or')return c.conditions.some(item=>match(data,item));if(c.type!=='where')return true;const value=data[c.field];return c.op==='=='?value===c.value:c.op==='>='?value>=c.value:c.op==='<='?value<=c.value:c.op==='>'?value>c.value:c.op==='<'?value<c.value:true;}
@@ -32,13 +32,14 @@ async function api(body) {
   if(action==='inspect')return {records:Object.fromEntries(db.data),uploads:[...uploads.keys()]};
   if(action==='reset'){db.data=new Map(Object.entries(structuredClone(seed)));uploads.clear();return {};}
   if(action==='call') {
+    if(body.name==='adminRegisterUberWeeklyClosure') {
+      if(!previewAdmin)throw Object.assign(new Error('Solo el administrador puede registrar el cierre semanal de Uber.'),{code:'permission-denied'});
+      const {registerAdminUberWeek}=require('../functions/admin-uber-weekly');
+      return registerAdminUberWeek({db,adminUid:uid,input:body.input,driverName:db.data.get('choferes/'+body.input.driverUid)?.displayName||'Chofer de prueba',businessId:'preview-local'});
+    }
     if(['uberFleetStatus','uberFleetAnalyze','uberFleetTemplates'].includes(body.name)&&previewAdmin){
       const service=require('../functions/uber-fleet-service').createFleetShadowService({db,assertAdmin:async()=>uid});
       return service[({uberFleetStatus:'status',uberFleetAnalyze:'analyze',uberFleetTemplates:'templates'})[body.name]]({auth:{uid},data:body.input});
-    }
-    if(['availabilityBootstrap','availabilitySavePhone','availabilityChange'].includes(body.name)) {
-      const service=require('../functions/driver-availability').createAvailabilityService({db,adminUid:'preview-admin'});
-      return service[({availabilityBootstrap:'bootstrap',availabilitySavePhone:'savePhone',availabilityChange:'change'})[body.name]]({auth:{uid},data:body.input});
     }
     if(body.name==='adminMonthlyDocuments'&&previewAdmin)return require('../functions/admin-monthly-documents')({db,assertAdmin:async()=>uid}).adminMonthlyDocuments.run({data:body.input});
     if(body.name==='exploraRoute') {

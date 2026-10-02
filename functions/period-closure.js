@@ -2,7 +2,8 @@
 const {createHash}=require('node:crypto');
 const {HttpsError,onCall}=require('firebase-functions/v2/https');
 const {getDownloadURL}=require('firebase-admin/storage');
-const {calculateTeamRealtimeSettlementBalance}=require('./telegram-billing-balance');
+const {calculateTeamRealtimeSettlementBalance,uberImpactsSettlement,uberCashAmount,uberTransferAmount,uberGrossAmount,rowMs,movementIsDeleted,isSimulated}=require('./telegram-billing-balance');
+const uberWeeklyPolicy=require('./uber-weekly-policy');
 const policy=require('./period-policy');
 const expensesPolicy=require('./expense-policy');
 const OWNERS=['driverUid','choferUid','uid','ownerUid','driverId','choferId','userUid','createdByUid'];
@@ -32,15 +33,16 @@ function quoteFromInput(uid,input) {
   const current=r=>active(r)&&policy.isNew(r)&&ms(r)>cutoff;
   const records=input.records.filter(current).filter(r=>r.type!=='settlement_adjustment'&&r.type!=='reimbursement_compensation');
   const uber=input.uberWeeks.filter(current).filter(r=>r.settlementWorkflowVersion==='v85_verified_direct'?r.verifiedAutomatically&&r.reviewStatus==='completed':r.adminConfirmed&&/approved|completed/.test(r.reviewStatus||r.status||''));
+  const fleetUber=input.uberWeeks.filter(r=>uberWeeklyPolicy.isNew(r)&&!movementIsDeleted(r)&&!isSimulated(r)&&rowMs(r)>cutoff&&uberImpactsSettlement(r));
   const expenseRows=input.expenses.filter(current);
   const sum=(rows,fn=value)=>policy.round(rows.reduce((total,row)=>total+fn(row),0));
-  const cash=sum(records.filter(r=>policy.method(r)==='cash'))+sum(uber,r=>Number(r.grossAmount??r.amount??0));
-  const digital=sum(records.filter(r=>policy.method(r)==='digital'));
+  const cash=sum(records.filter(r=>policy.method(r)==='cash'))+sum(uber,r=>Number(r.grossAmount??r.amount??0))+sum(fleetUber,uberCashAmount);
+  const digital=sum(records.filter(r=>policy.method(r)==='digital'))+sum(fleetUber,uberTransferAmount);
   const cashExpense=sum(expenseRows.filter(r=>policy.expenseMethod(r)==='cash'));
   const digitalExpense=sum(expenseRows.filter(r=>policy.expenseMethod(r)==='digital'));
   const driverExpenses=expenseRows.filter(r=>expensesPolicy.find(r.expenseType)?.group==='driver');
   const exploraExpenses=expenseRows.filter(r=>expensesPolicy.find(r.expenseType)?.group==='explora');
-  const cashbox=sum(records.filter(r=>!(r.excludeFromCashbox||r.cashboxExcluded||r.cajaChicaEliminada||r.ignoreCashbox||r.noCashbox)),r=>value(r)*.1)+sum(uber,r=>Number(r.grossAmount??r.amount??0)*.1);
+  const cashbox=sum(records.filter(r=>!(r.excludeFromCashbox||r.cashboxExcluded||r.cajaChicaEliminada||r.ignoreCashbox||r.noCashbox)),r=>value(r)*.1)+sum(uber,r=>Number(r.grossAmount??r.amount??0)*.1)+sum(fleetUber,r=>uberWeeklyPolicy.calculate(r).cashbox);
   const netCash=policy.round(cash-cashExpense),netDigital=policy.round(digital-digitalExpense);
   const walletDifference=policy.round((netCash-netDigital)/2);
   const responsibilityAdjustment=policy.round((sum(driverExpenses)-sum(exploraExpenses))/2);
@@ -54,8 +56,17 @@ function quoteFromInput(uid,input) {
   // Notification delivery metadata must not invalidate an unchanged financial quote.
   const ids=Object.fromEntries(Object.entries(input).map(([name,rows])=>[name,rows.map(row=>row.id).sort()]));
   const quoteId=createHash('sha256').update(JSON.stringify(stable({uid,balance:model.balance,summary,cutoff,ids}))).digest('hex');
+  // Display metadata deliberately stays out of the quote fingerprint and persisted
+  // settlement summary. Existing weeks and their close identities are unchanged.
+  const visibleUber=input.uberWeeks.filter(r=>!movementIsDeleted(r)&&!isSimulated(r)&&rowMs(r)>cutoff&&uberImpactsSettlement(r));
+  const unknownUber=visibleUber.filter(r=>!uberWeeklyPolicy.isNew(r));
+  const presentationUber={cash:sum(fleetUber,uberCashAmount),digital:sum(fleetUber,uberTransferAmount),total:sum(visibleUber,uberGrossAmount),
+    cashbox:sum(visibleUber,r=>uberWeeklyPolicy.isNew(r)?uberWeeklyPolicy.calculate(r).cashbox:uberCashAmount(r)*(policy.isNew(r)?.10:.05)),
+    balance:calculateTeamRealtimeSettlementBalance({uberWeeks:visibleUber}).balance,recordCount:visibleUber.length,
+    unavailableTotal:sum(unknownUber,uberGrossAmount),unavailableCount:unknownUber.length};
   return {quoteId,version:policy.VERSION,workflow:WORKFLOW,balance:model.balance,amount:model.amount,direction:model.direction,
     summary,
+    presentation:{uber:presentationUber},
     cutoffAtMs:cutoff};
 }
 async function periodQuote({db,uid}) {
