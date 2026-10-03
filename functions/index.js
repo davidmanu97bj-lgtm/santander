@@ -22,6 +22,8 @@ const { queryGoogleRoute: queryRouteService } = require("./google-route-service"
 const telegramCompact = require("./telegram-compact");
 const expensePolicy = require("./expense-policy");
 const periodPolicy = require("./period-policy");
+const uberWeeklyPolicy = require("./uber-weekly-policy");
+const { adminUberConfirmationTelegramText } = require("./admin-uber-weekly");
 const { deliverTripNotification } = require("./telegram-trip-delivery");
 const { invoicePdf } = require("./arca-pdf");
 
@@ -45,6 +47,9 @@ exports.registerUberLiquidation = require("./uber-submission").createUberSubmiss
 exports.adminRegisterUberWeeklyClosure = require('./admin-uber-weekly').createAdminUberWeekFunction({
   db, businessId:PROJECT_ID, assertAdmin, getProfile:teamRealtimeProfileForIdentity,
   isEligibleProfile:(id,data)=>teamRealtimeDriverIsActive(data)&&!teamRealtimeDriverIsAdmin(id,data)
+});
+exports.driverConfirmAdminUberWeeklyClosure = require('./admin-uber-weekly').createDriverConfirmAdminUberWeekFunction({
+  db, assertViewer:assertTeamRealtimeViewer
 });
 
 const ADMIN_UIDS = new Set(["2LziyTTdFcZzSOhK3hLbAKs2U4s2"]);
@@ -799,6 +804,9 @@ function closureTelegramText(data = {}) {
 }
 
 function uberTelegramText(data = {}) {
+  if (data.settlementWorkflowVersion === uberWeeklyPolicy.WORKFLOW) {
+    return adminUberConfirmationTelegramText(data);
+  }
   if (data.settlementWorkflowVersion === "v85_verified_direct") {
     return telegramCompact.uberSummary({data,driverName:telegramDriverName(data),balance:data.telegramSettlementAfterBalance});
   }
@@ -3236,6 +3244,26 @@ exports.notifyClosureTelegramGroupV1 = onDocumentWritten({
   });
 });
 
+async function notifyConfirmedAdminUberWeek(event) {
+  const before=event.data?.before?.exists?(event.data.before.data()||{}):{};
+  const after=event.data?.after?.exists?(event.data.after.data()||{}):null;
+  if(!after||after.driverConfirmationRequired!==true||!uberWeeklyPolicy.confirmed(after)||
+    after.driverConfirmedByUid!==after.driverUid||after.deleted===true||after.isDeleted===true||after.eliminado===true||
+    after.isSimulated===true||after.createdBySimulation===true||after.verificationMode==='simulation')
+    return {skipped:true,reason:'awaiting-driver-confirmation'};
+  if(uberWeeklyPolicy.confirmed(before))return {skipped:true,reason:'stage-not-changed'};
+  const docId=telegramSafeText(event.params?.docId||event.data?.after?.id);
+  const current=(await db.collection('uber_weekly_closures').doc(docId).get()).data();
+  if(!current||!uberWeeklyPolicy.confirmed(current)||current.inputFingerprint!==after.inputFingerprint||
+    current.deleted===true||current.isDeleted===true||current.eliminado===true)
+    return {skipped:true,reason:'deleted-or-replaced'};
+  // This stable key shares the existing transactional notification claim. A
+  // retry or a metadata update cannot send a second acceptance notification.
+  return telegramProcessNotification({kind:'uber',docId,notificationKey:`${docId}_driver_confirmed`,
+    sourceCollection:'uber_weekly_closures',sourceDocumentId:docId,data:after,eventId:event.id,
+    caption:uberTelegramText(after),requirePhoto:false});
+}
+
 // Telegram grupal · cierre semanal de Uber:
 // envío del chofer con foto y monto, y decisión final de David.
 exports.notifyUberClosureTelegramGroupV1 = onDocumentWritten({
@@ -3249,6 +3277,7 @@ exports.notifyUberClosureTelegramGroupV1 = onDocumentWritten({
   const before = event.data?.before?.exists ? (event.data.before.data() || {}) : {};
   const after = event.data?.after?.exists ? (event.data.after.data() || {}) : null;
   if (!after) return { skipped: true, reason: "deleted" };
+  if(after.settlementWorkflowVersion===uberWeeklyPolicy.WORKFLOW)return notifyConfirmedAdminUberWeek(event);
   const role = telegramSafeText(after.createdByRole).toLowerCase();
   if (role && role !== "driver" && role !== "chofer") return { skipped: true, reason: "not-driver-created" };
   const beforeReview = telegramSafeText(before.reviewStatus || before.status).toLowerCase();

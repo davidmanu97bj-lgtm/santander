@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import {createRequire} from 'node:module';
 import {MemoryStore} from '../tools/preview/memory-store.mjs';
 const require=createRequire(import.meta.url);
-const {registerAdminUberWeek,createAdminUberWeekFunction,validateInput}=require('../functions/admin-uber-weekly.js');
+const {registerAdminUberWeek,confirmAdminUberWeek,createAdminUberWeekFunction,validateInput}=require('../functions/admin-uber-weekly.js');
 const policy=require('../functions/uber-weekly-policy.js');
 const {calculateTeamRealtimeSettlementBalance:balance,calculateOpenBillingBalance}=require('../functions/telegram-billing-balance.js');
 const {quoteFromInput,confirmPeriodClosure,periodQuote}=require('../functions/period-closure.js');
@@ -13,11 +13,12 @@ const {buildMonthlyReport}=require('../functions/monthly-report.js');
 const uid='driver-test',now=Date.parse('2026-10-02T15:00:00Z');
 const input=(cashAmount=6000,transferAmount=4000)=>({driverUid:uid,weekStartDate:'2026-09-21',weekCloseDate:'2026-09-28',cashAmount,transferAmount,totalAmount:cashAmount+transferAmount,sourceReference:'Fleet semana 21 septiembre',amountBasis:'net_after_uber_commission',cashRecipient:'driver',digitalRecipient:'explora',reconciled:true});
 const register=(db,data=input(),extra={})=>registerAdminUberWeek({db,adminUid:'admin-test',input:data,now,businessId:'test-business',...extra});
+const registerAccepted=async(db,data=input())=>{const pending=await register(db,data);return confirmAdminUberWeek({db,driverUid:uid,input:{closureId:pending.id},now:now+1});};
 const rows=db=>({records:[],expenses:[],debts:[],closures:[],uberWeeks:[...db.data].filter(([path])=>path.startsWith('uber_weekly_closures/')).map(([path,row])=>({...row,id:path.split('/')[1]}))});
 
 test('Fleet admin: cash, digital, mixto y cero aplican una sola caja10% y desglosan la misma contribución',async()=>{
   for(const [cash,digital,expected] of [[10000,0,6000],[0,10000,-4000],[6000,4000,2000],[0,0,0],[100.05,0,60.04],[100,.17,59.94],[100,1.95,59.23]]) {
-    const db=new MemoryStore(),result=await register(db,input(cash,digital)),data=rows(db),quote=quoteFromInput(uid,data);
+    const db=new MemoryStore(),result=await registerAccepted(db,input(cash,digital)),data=rows(db),quote=quoteFromInput(uid,data);
     assert.equal(result.record.settlementRuleVersion,policy.VERSION);
     assert.equal(balance(data).balance,expected);
     assert.equal(calculateOpenBillingBalance(data).netToDriver,-expected||0);
@@ -112,7 +113,7 @@ test('nuevo workflow requiere confirmación admin y queda fuera si eliminado o s
 
 test('historial se conserva sin desglose inventado, y combinar billeteras no duplica caja Uber',async()=>{
   const db=new MemoryStore(),legacy={id:'legacy',driverUid:uid,grossAmount:5000,amount:5000,cashAmount:5000,transferAmount:0,createdAtMs:now-1000,settlementRuleVersion:'net_wallets_cashbox_10_v1',settlementWorkflowVersion:'v85_verified_direct',verifiedAutomatically:true,reviewStatus:'completed'};
-  await register(db);const data=rows(db);data.uberWeeks.push(legacy);data.records.push({id:'payment',method:'digital',amount:5000,createdAtMs:now,settlementRuleVersion:'net_wallets_cashbox_10_v1'});
+  await registerAccepted(db);const data=rows(db);data.uberWeeks.push(legacy);data.records.push({id:'payment',method:'digital',amount:5000,createdAtMs:now,settlementRuleVersion:'net_wallets_cashbox_10_v1'});
   const before=JSON.stringify(data),quote=quoteFromInput(uid,data);
   assert.equal(quote.balance,3000);assert.equal(quote.presentation.uber.balance,5000);
   assert.equal(quote.presentation.uber.total,15000);assert.equal(quote.presentation.uber.unavailableTotal,5000);
@@ -121,7 +122,7 @@ test('historial se conserva sin desglose inventado, y combinar billeteras no dup
 });
 
 test('cierre de período compensa alta Fleet y posterior consulta no vuelve a cobrar ni mostrar la semana',async()=>{
-  const db=new MemoryStore();await register(db);
+  const db=new MemoryStore();await registerAccepted(db);
   const quote=await periodQuote({db,uid});
   await confirmPeriodClosure({db,uid,input:{quoteId:quote.quoteId,proofPath:`cierres_semanales/period/${uid}/${quote.quoteId}/proof.png`},proofMetadata:async()=>({size:100,contentType:'image/png',url:'https://example.test/proof'}),now:now+1000});
   const after=await periodQuote({db,uid});assert.equal(after.balance,0);assert.equal(after.presentation.uber.recordCount,0);
@@ -158,7 +159,7 @@ test('Fleet neto no inventa bruto fiscal; conserva informes históricos y advier
   const oldInput={cobros:[{id:'cash',type:'billing',method:'cash',amount:1000,status:'completed',createdAtMs:now-20*86400000}]};
   const old=buildMonthlyReport({uid,month:'2026-09',now,input:oldInput});
   assert.equal(Object.hasOwn(old,'fiscalComplete'),false);assert.equal(Object.hasOwn(old,'uberNetTotals'),false);
-  const db=new MemoryStore();await register(db);const week=rows(db).uberWeeks[0];
+  const db=new MemoryStore();await registerAccepted(db);const week=rows(db).uberWeeks[0];
   const next=buildMonthlyReport({uid,month:'2026-09',now,input:{...oldInput,uber:[week]}});
   assert.deepEqual(next.totals,old.totals);assert.equal(next.fiscalComplete,false);
   assert.deepEqual(next.uberNetTotals,{cash:6000,digital:4000,total:10000,cashbox:1000,recordCount:1});

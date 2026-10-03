@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
-import {adminUberInput,adminUberWeek,parseUberNetAmount,adminUberReview} from '../admin-uber-liquidation-ui.js';
+import {adminUberInput,adminUberWeek,parseUberNetAmount,adminUberReview,isPendingAdminUberConfirmation,driverUberConfirmationMarkup} from '../admin-uber-liquidation-ui.js';
 import {periodMarkup,periodBreakdown} from '../period-ui.js';
 const require=createRequire(import.meta.url);
 const ExploraUberWeeklyPolicy=require('../functions/uber-weekly-policy.js');
@@ -22,16 +22,18 @@ function browserBalances(data) {
     ExploraUberWeeklyPolicy,ExploraPeriodPolicy,ExploraExpensePolicy,payments:data.records,expenses:data.expenses,uberClosures:data.uberWeeks,closures:data.closures,debts:data.debts,advances:[],debtPayments:[],adminPayments:data.records,adminExpenses:data.expenses,adminUberClosures:data.uberWeeks,adminAllClosures:data.closures,adminDebts:data.debts}));
 }
 
-test('admin conserva importes netos conciliados, custodias y referencia manual',()=>{
-  assert.deepEqual(adminUberInput(values,week),{driverUid:'test-driver',...week,cashAmount:6000,transferAmount:4000,totalAmount:10000,sourceReference:values.sourceReference,amountBasis:'net_after_uber_commission',cashRecipient:'driver',digitalRecipient:'explora',reconciled:true});
+test('admin sólo carga dos importes y el total se calcula sin una referencia ni un check',()=>{
+  assert.deepEqual(adminUberInput({driverUid:'test-driver',cash:'6.000',digital:'4.000'},week),{driverUid:'test-driver',...week,cashAmount:6000,transferAmount:4000,totalAmount:10000});
+  assert.equal(adminUberInput({...values,total:'999'},week).totalAmount,10000,'El total editable viejo no se usa');
+  assert.equal(adminUberInput({...values,cash:'0,10',digital:'0,20'},week).totalAmount,.3);
   assert.equal(parseUberNetAmount('1.234,56'),1234.56);
   assert.equal(adminUberInput({...values,cash:'0',digital:'0',total:'0'},week).totalAmount,0);
   assert.deepEqual(adminUberWeek(new Date('2026-10-02T12:00:00Z')),week);
   assert.deepEqual(adminUberWeek(new Date('2026-09-28T12:00:00Z')),{weekStartDate:'2026-09-14',weekCloseDate:'2026-09-21'});
 });
 
-test('el formulario rechaza suma incorrecta, importe vacío/negativo, falta chofer o conciliación',()=>{
-  for(const changes of [{total:'9.999'},{digital:''},{cash:'-1'},{digital:'-1'},{cash:'1,001'},{cash:'NaN'},{driverUid:''},{sourceReference:''},{reconciled:false}])assert.throws(()=>adminUberInput({...values,...changes},week));
+test('el formulario rechaza importe vacío/negativo, falta de chofer y total excesivo',()=>{
+  for(const changes of [{digital:''},{cash:'-1'},{digital:'-1'},{cash:'1,001'},{cash:'NaN'},{driverUid:''},{cash:'60.000.000',digital:'60.000.000'}])assert.throws(()=>adminUberInput({...values,...changes},week));
   assert.throws(()=>parseUberNetAmount('-1'),/negativo.*Fleet/);
 });
 
@@ -47,11 +49,14 @@ test('nuevo Uber: ambos clientes y servidor coinciden para efectivo, digital, mi
 });
 
 test('tarjeta Uber debajo de Digital muestra dirección y no altera el cierre ni duplica la caja',()=>{
-  for(const [cash,digital,message] of [[10000,0,'el chofer pasa a Explora'],[0,10000,'Explora pasa al chofer'],[0,0,'Sin importe a transferir por Uber']]) {
+  for(const [cash,digital,message] of [[10000,0,'Pasale'],[0,10000,'Explora te pasa'],[0,0,'Sin importe pendiente']]) {
     const data=input({uberWeeks:[row(cash,digital)]}),quote=quoteFromInput('test-driver',data),before=JSON.stringify(quote);
     const html=periodMarkup(quote),sections=html.split('</section>');
     assert.match(sections[1],/>Digital<\/h2>/);assert.match(sections[2],/>UBER<\/h2>/);
-    assert.ok(sections[2].includes(message));assert.match(sections[2],/no se suma otra vez/);
+    assert.ok(sections[2].includes(message));assert.match(sections[2],/se suman una sola vez/);
+    assert.doesNotMatch(sections[2],/Caja chica de Uber incluida/);
+    assert.equal(quote.presentation.uber.walletDifference,(cash-digital)/2);
+    assert.equal(quote.presentation.ordinary.cash,0);assert.equal(quote.presentation.ordinary.digital,0);
     assert.match(sections[2],/Total cobrado efectivo/);assert.match(sections[2],/Total cobrado digital/);
     assert.equal(periodBreakdown(quote).lines.reduce((sum,line)=>sum+line.balance,0),quote.balance);
     assert.equal(quote.summary.cashbox,(cash+digital)*.1);
@@ -98,5 +103,14 @@ test('historial de nuevo Uber separa principal y caja sin repetir impacto',()=>{
   const calculate=item=>vm.runInNewContext(`${declarations}\nreceiptBalanceSnapshot(item)`,{...context,item});
   const principal=calculate({...receipt,type:'uber_receipt'}),cashbox=calculate({...receipt,type:'cashbox_receipt',amount:1000,_cashboxGrossAmount:10000});
   assert.equal(principal.movementImpact,1000);assert.equal(cashbox.movementImpact,1000);assert.equal(principal.after,cashbox.before);assert.equal(cashbox.after,2100);
-  assert.match(adminUberReview(ExploraUberWeeklyPolicy.calculate({cashAmount:0,transferAmount:10000})),/Explora le pasa al chofer/);
+  assert.match(adminUberReview(ExploraUberWeeklyPolicy.calculate({cashAmount:0,transferAmount:10000})),/El chofer revisa y acepta/);
+});
+
+test('confirmación del chofer muestra efectivo, digital, total y 10% sin alterar históricos',()=>{
+  const pending=row(21100,22959,{driverConfirmationRequired:true,driverConfirmed:false,reviewStatus:'awaiting_driver_confirmation'});
+  assert.equal(isPendingAdminUberConfirmation(pending),true);
+  for(const extra of [{driverConfirmed:true},{deleted:true},{driverConfirmationRequired:false},{reviewStatus:'completed'},{adminConfirmed:false}])assert.equal(isPendingAdminUberConfirmation({...pending,...extra}),false);
+  const html=driverUberConfirmationMarkup(pending,ExploraUberWeeklyPolicy);
+  for(const text of ['21.100','22.959','44.059','4.405,9','Al aceptar'])assert.ok(html.includes(text),text);
+  assert.doesNotMatch(html,/45%|5%|Sin transferencia/);
 });

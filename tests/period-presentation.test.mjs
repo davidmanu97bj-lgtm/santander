@@ -13,11 +13,11 @@ test('ejemplo solicitado: caja 51.200, multa 50.000 y billetera a favor 120.000 
   const q=quote(136000,376000,[],[{id:'fine',driverUid:'test',type:'admin_debt',amount:50000,detail:'Multa'}]);
   const result=periodBreakdown(q);
   assert.equal(q.balance,-18800);
-  assert.deepEqual(result.lines.map(line=>line.balance),[51200,50000,-120000]);
-  assert.deepEqual(result.lines.map(line=>line.label),['Debés de caja chica','Debés de multa','Explora te debe de billetera']);
+  assert.deepEqual(result.lines.map(line=>line.balance),[51200,0,50000,-120000,0]);
+  assert.deepEqual(result.lines.map(line=>line.label),['Debés de caja chica','Debés de caja chica Uber','Debés de multa','Explora te debe de billetera','Debés de saldo anterior']);
   assert.equal(result.walletTarget,256000);
   const html=periodMarkup(q);
-  assert.equal((html.match(/Para que ambos tengan/g)||[]).length,1);
+  assert.equal((html.match(/Para que ambos tengan/g)||[]).length,2);
   assert.doesNotMatch(html.split('</section>')[0],/period-instruction/);
   assert.match(html.split('</section>')[1],/Explora te pasa/);
   for(const text of ['Explora te pasa','120.000','256.000','De caja chica.','Por tu deuda.','18.800','Y queda todo cerrado.'])assert.ok(html.includes(text),text);
@@ -49,6 +49,22 @@ test('motivos de deuda se escapan como texto y los saldos previos permanecen vis
   const q=quote(100,200,[],[{id:'d',driverUid:'test',type:'admin_debt',amount:40,detail:'<img onerror=alert(1)>'}]);
   assert.ok(!periodMarkup(q).includes('<img onerror'));
   assert.match(periodMarkup(q), /&lt;img onerror=alert\(1\)&gt;/);
-  q.summary.previousBalance=80;q.balance+=80;q.amount=Math.abs(q.balance);
+  q.summary.previousBalance=80;q.presentation.previousBalance=80;q.balance+=80;q.amount=Math.abs(q.balance);
   assert.match(periodMarkup(q),/Debés de saldo anterior/);
+});
+test('resumen separa Uber y caja una sola vez y coincide con el cierre en ambas direcciones',()=>{
+  const fleet=require('../functions/uber-weekly-policy.js');
+  for(const [cash,digital] of [[21100,22959],[0,10000],[10000,0],[10000,10000],[.7,0],[100.01,0]]) {
+    for(const expenseType of ['combustible','multa','cubiertas'])for(const method of ['cash','digital']) {
+      const q=quoteFromInput('test',{records:[{...base,id:'ordinary',method,amount:523.41}],
+        expenses:[{...base,id:'expense',expenseType,expensePaymentMethod:method,amount:613.27,receiptFlowVersion:'gross_expense_policy_v3'}],
+        debts:[],closures:[],uberWeeks:[{...base,id:'fleet',cashAmount:cash,transferAmount:digital,totalAmount:cash+digital,
+          settlementRuleVersion:fleet.VERSION,settlementWorkflowVersion:fleet.WORKFLOW,adminConfirmed:true,reviewStatus:'completed'}]});
+      const breakdown=periodBreakdown(q);
+      assert.equal(Math.round(breakdown.lines.reduce((sum,line)=>sum+line.balance,0)*100),Math.round(q.balance*100));
+      assert.equal(breakdown.uberCashbox,fleet.calculate({cashAmount:cash,transferAmount:digital}).cashbox);
+      assert.equal(breakdown.lines.filter(line=>line.label==='Debés de caja chica Uber').length,1);
+      assert.equal(breakdown.ordinary.cash+breakdown.ordinary.digital,523.41);
+    }
+  }
 });
