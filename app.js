@@ -10,9 +10,9 @@ import {
 import { createOpsExitStore } from "./ops-salidas-store.js?v=20260930-operaciones-v3";
 import { mountAdminWorkspace } from "./admin-workspace.js?v=20261002-login-uber";
 import { mountUberFleet } from "./uber-fleet-ui.js?v=20260929-fleet-shadow";
-import { mountAdminUberLiquidation } from "./admin-uber-liquidation-ui.js?v=20261002-uber-admin";
+import { mountAdminUberLiquidation, isPendingAdminUberConfirmation, driverUberConfirmationMarkup } from "./admin-uber-liquidation-ui.js?v=20261002-uber-confirmation";
 import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20260919-admin-1";
-import { mountPeriodClose } from "./period-ui.js?v=20261002-uber-wallet";
+import { mountPeriodClose } from "./period-ui.js?v=20261002-uber-cashbox-separated";
 import { mountMonthlyManagement } from "./monthly-management.js?v=20261002-uber-net";
 import { exploraIcon, activityKind, activityRowContent, recentActivitiesMarkup } from "./explora-ui.js?v=20260919-login-period-1";
 import { app, auth, authReady } from "./auth-session.js?v=20260914-web-only-1";
@@ -2219,6 +2219,7 @@ $("acceptDriverDebtBtn")?.addEventListener("click", acceptDriverDebtConfirmation
 
 let activeUberDriverConfirmationId = "";
 let acceptingUberDriverConfirmation = false;
+const deferredUberDriverConfirmations = new Set();
 
 function uberAdminDecisionStorageKey(item = {}) {
   const uid = auth.currentUser?.uid || "anonymous";
@@ -2236,9 +2237,10 @@ function uberAdminDecisionWasSeen(item = {}) {
 
 function pendingUberDriverConfirmations() {
   return uberClosures
-    .filter(item => String(item.settlementWorkflowVersion || "").toLowerCase() === "v84_driver_submission_admin_review")
-    .filter(item => /approved|rejected/.test(String(item.reviewStatus || item.status || "").toLowerCase()))
-    .filter(item => !uberAdminDecisionWasSeen(item))
+    .filter(item => isPendingAdminUberConfirmation(item)
+      ? !deferredUberDriverConfirmations.has(item.id)
+      : String(item.settlementWorkflowVersion || "").toLowerCase() === "v84_driver_submission_admin_review"&&
+        /approved|rejected/.test(String(item.reviewStatus || item.status || "").toLowerCase())&&!uberAdminDecisionWasSeen(item))
     .sort((a, b) => recordTimestampMs(a) - recordTimestampMs(b));
 }
 
@@ -2263,6 +2265,16 @@ function renderUberDriverConfirmation(item = {}) {
   const button = $("confirmUberDriverResult");
   const status = $("uberDriverConfirmationStatus");
   if (!modal || !body || !button || !status || !item.id) return;
+
+  $('deferUberDriverConfirmation').classList.toggle('hidden',!isPendingAdminUberConfirmation(item));
+  $('deferUberDriverConfirmation').disabled=false;
+  if(isPendingAdminUberConfirmation(item)) {
+    activeUberDriverConfirmationId=item.id;acceptingUberDriverConfirmation=false;
+    status.textContent='';status.className='status';button.disabled=false;button.textContent='Aceptar';
+    $('uberDriverConfirmationTitle').textContent='Confirmá tus importes de Uber';
+    body.innerHTML=driverUberConfirmationMarkup(item);
+    modal.classList.remove('hidden');button.focus();return;
+  }
 
   const review = String(item.reviewStatus || item.status || "").toLowerCase();
   const approved = /approved|confirmed|completed/.test(review) && item.adminConfirmed === true;
@@ -2321,11 +2333,25 @@ function maybeShowUberDriverConfirmation() {
   if (pending.length) renderUberDriverConfirmation(pending[0]);
 }
 
-function confirmUberDriverResult() {
+async function confirmUberDriverResult() {
   if (acceptingUberDriverConfirmation || !activeUberDriverConfirmationId || isAdminProfile()) return;
   const item = uberClosures.find(row => row.id === activeUberDriverConfirmationId);
   if (!item) return;
   acceptingUberDriverConfirmation = true;
+  if(isPendingAdminUberConfirmation(item)) {
+    const actorUid=auth.currentUser?.uid,button=$('confirmUberDriverResult'),status=$('uberDriverConfirmationStatus');
+    button.disabled=true;$('deferUberDriverConfirmation').disabled=true;button.textContent='Confirmando…';
+    status.textContent='Guardando tu aceptación…';status.className='status';
+    try {
+      await httpsCallable(functions,'driverConfirmAdminUberWeeklyClosure',{timeout:120000})({closureId:item.id});
+      if(auth.currentUser?.uid!==actorUid)return;
+      deferredUberDriverConfirmations.add(item.id);
+      closeUberDriverConfirmationModal();render();
+    } catch(error) {
+      if(auth.currentUser?.uid===actorUid){status.textContent=error.message||'No se pudo confirmar. Podés reintentar sin duplicar el importe.';status.className='status error';}
+    } finally {acceptingUberDriverConfirmation=false;button.disabled=false;button.textContent='Aceptar';$('deferUberDriverConfirmation').disabled=false;}
+    return;
+  }
   try {
     localStorage.setItem(uberAdminDecisionStorageKey(item), "seen");
   } catch (_) {}
@@ -2334,6 +2360,11 @@ function confirmUberDriverResult() {
 }
 
 $("confirmUberDriverResult")?.addEventListener("click", confirmUberDriverResult);
+$('deferUberDriverConfirmation')?.addEventListener('click',()=>{
+  if(acceptingUberDriverConfirmation)return;
+  if(activeUberDriverConfirmationId)deferredUberDriverConfirmations.add(activeUberDriverConfirmationId);
+  closeUberDriverConfirmationModal();
+});
 
 
 function ensureProofImageViewer() {

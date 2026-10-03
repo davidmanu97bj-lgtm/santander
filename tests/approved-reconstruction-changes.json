@@ -144,6 +144,18 @@
     "settlementModel": {
       "hash": "9dfdf013c394e900ff1382c9c92bd2fafecdd804786ec74bcbb86d0ad33b7914",
       "reason": "Integración Uber autorizada por David: frontera monetaria coherente sólo al existir nuevas semanas Fleet, con reglas y resultados históricos conservados."
+    },
+    "pendingUberDriverConfirmations": {
+      "hash": "514643de80f41785f360085164356a78c68d9cff5bd6aad4189174b5d2f828cf",
+      "reason": "Solicitud expresa del 02/10/2026: el administrador carga efectivo y digital de Uber; el chofer acepta antes de que la semana afecte las billeteras. Se conserva la confirmación de registros históricos y se prueban reintentos, propiedad, fechas y cierre."
+    },
+    "renderUberDriverConfirmation": {
+      "hash": "7bcb9532b428a12268bc57f36903551b7780066db2b1119ed9e31d31bfb11ac9",
+      "reason": "Solicitud expresa del 02/10/2026: el administrador carga efectivo y digital de Uber; el chofer acepta antes de que la semana afecte las billeteras. Se conserva la confirmación de registros históricos y se prueban reintentos, propiedad, fechas y cierre."
+    },
+    "confirmUberDriverResult": {
+      "hash": "cbdf1585fff1a11f73dcd93e56f7a5c3d4ffee92fb1e85cdedddc081d6bf3594",
+      "reason": "Solicitud expresa del 02/10/2026: el administrador carga efectivo y digital de Uber; el chofer acepta antes de que la semana afecte las billeteras. Se conserva la confirmación de registros históricos y se prueban reintentos, propiedad, fechas y cierre."
     }
   },
   "handlers": {
@@ -170,8 +182,8 @@
       "reason": "Agrega Peaje y la lista permitida al chofer sin eliminar categorías históricas/admin."
     },
     "functions/index.js": {
-      "hash": "c09c6ede545c87808e274825c61df2a6177ee65943401febfdf7ecf1484fee4b",
-      "reason": "David autorizó retiro disponibilidad y carga Uber exclusiva admin: registrar handlers inertes y nuevo callable; forzar bloqueo de nuevas cargas por chofer, sin despliegue."
+      "hash": "449e09c535ece2c3d4505a6572dd57b6834f351e3dfc60487b783f031a22b790",
+      "reason": "Solicitud expresa del 02/10/2026: callable de aceptación autenticada del chofer y notificación escrita de Telegram sólo después de confirmar Uber. Se usa el trigger existente y su claim idempotente, sin notificar el alta pendiente ni modificar otras operaciones."
     },
     "functions/telegram-billing-balance.js": {
       "hash": "3077e8d40d0fbcc23478a4a1010545b8312d4c6c1c9b1879ed223ba6a6f96e5d",

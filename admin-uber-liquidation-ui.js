@@ -21,18 +21,29 @@ export function adminUberWeek(now=new Date()) {
 }
 
 export function adminUberInput(values,week) {
-  const cashAmount=parseUberNetAmount(values.cash),transferAmount=parseUberNetAmount(values.digital),totalAmount=parseUberNetAmount(values.total);
+  const cashAmount=parseUberNetAmount(values.cash),transferAmount=parseUberNetAmount(values.digital);
+  const totalAmount=(Math.round(cashAmount*100)+Math.round(transferAmount*100))/100;
   if(!values.driverUid)throw new Error('Elegí un chofer.');
-  if(Math.round(cashAmount*100)+Math.round(transferAmount*100)!==Math.round(totalAmount*100))throw new Error('Efectivo y digital deben sumar el total neto de la semana.');
-  const sourceReference=String(values.sourceReference||'').trim();
-  if(sourceReference.length<3||sourceReference.length>300)throw new Error('Indicá la referencia del reporte de Fleet (entre 3 y 300 caracteres).');
-  if(values.reconciled!==true)throw new Error('Confirmá que conciliaste los importes netos y sus destinatarios.');
-  return {driverUid:values.driverUid,...week,cashAmount,transferAmount,totalAmount,sourceReference,
-    amountBasis:'net_after_uber_commission',digitalRecipient:'explora',cashRecipient:'driver',reconciled:true};
+  if(totalAmount>100000000)throw new Error('El total supera el máximo permitido.');
+  return {driverUid:values.driverUid,...week,cashAmount,transferAmount,totalAmount};
 }
 
 export function adminUberReview(result) {
-  return `<dl class="admin-uber-net-review"><div><dt>Total neto</dt><dd>${escapeUi(money(result.total))}</dd></div><div><dt>Caja chica incluida</dt><dd>${escapeUi(money(result.cashbox))}</dd></div><div><dt>${result.balance>0?'Chofer le pasa a Explora':result.balance<0?'Explora le pasa al chofer':'Sin transferencia por Uber'}</dt><dd>${escapeUi(money(Math.abs(result.balance)))}</dd></div></dl><p class="file-note">Este importe se compensa con los demás movimientos de Billeteras en un único cierre.</p>`;
+  return `<dl class="admin-uber-net-review"><div><dt>Total Uber</dt><dd id="adminUberNetTotal">${escapeUi(money(result.total))}</dd></div></dl><p class="file-note">El chofer revisa y acepta. Recién entonces se incorpora a Billeteras, con el 10% de caja chica, y se avisa por Telegram.</p>`;
+}
+
+export function isPendingAdminUberConfirmation(item={}) {
+  return item.settlementRuleVersion==='uber_admin_fleet_split_10_v1'&&item.settlementWorkflowVersion==='v86_admin_fleet_weekly'&&
+    item.driverConfirmationRequired===true&&item.adminConfirmed===true&&item.driverConfirmed!==true&&
+    String(item.reviewStatus||item.status||'').toLowerCase()==='awaiting_driver_confirmation'&&
+    !item.deleted&&!item.isDeleted&&!item.eliminado;
+}
+
+export function driverUberConfirmationMarkup(item,policy=globalThis.ExploraUberWeeklyPolicy) {
+  const result=policy.calculate(item);
+  return `<div class="uber-driver-confirmation-week">Semana ${escapeUi(item.weekStartDate)} al ${escapeUi(item.weekCloseDate)}</div>
+    <div class="uber-driver-result-grid"><div><span>Efectivo que tenés</span><b>${escapeUi(money(result.cash))}</b></div><div><span>Digital recibido por Explora</span><b>${escapeUi(money(result.digital))}</b></div><div><span>Total Uber</span><b>${escapeUi(money(result.total))}</b></div><div><span>Caja chica Uber · 10%</span><b>${escapeUi(money(result.cashbox))}</b></div></div>
+    <p class="uber-driver-confirmation-note">Al aceptar se incorporan estos importes a tus billeteras y se solicita el aviso escrito a Telegram. El saldo final se compensa con tus otros movimientos.</p>`;
 }
 
 export function mountAdminUberLiquidation({isAuthorized,getDrivers,register,onCompleted,policy=globalThis.ExploraUberWeeklyPolicy}) {
@@ -40,26 +51,23 @@ export function mountAdminUberLiquidation({isAuthorized,getDrivers,register,onCo
   let dialog,busy=false,week,generation=0;
   const el=id=>dialog.querySelector('#'+id);
   const close=()=>{if(busy)return;generation++;dialog.close();button?.focus();};
-  const fields=()=>({driverUid:el('adminUberNetDriver').value,cash:el('adminUberNetCash').value,digital:el('adminUberNetDigital').value,total:el('adminUberNetTotal').value,sourceReference:el('adminUberNetSource').value,reconciled:el('adminUberNetConfirmed').checked});
+  const fields=()=>({driverUid:el('adminUberNetDriver').value,cash:el('adminUberNetCash').value,digital:el('adminUberNetDigital').value});
   function preview(){
     el('adminUberNetStatus').textContent='';
-    try{const data=adminUberInput({...fields(),reconciled:true,sourceReference:'preview'},week);el('adminUberNetReview').innerHTML=adminUberReview(policy.calculate(data));}
-    catch{el('adminUberNetReview').textContent='Completá efectivo, digital y total para ver la compensación.';}
+    try{const data=adminUberInput({...fields(),driverUid:fields().driverUid||'preview'},week);el('adminUberNetReview').innerHTML=adminUberReview(policy.calculate(data));}
+    catch{el('adminUberNetReview').textContent='Completá efectivo y digital. El total se suma automáticamente.';}
   }
   function ensure(){
     if(dialog)return;
     dialog=document.createElement('dialog');dialog.className='admin-uber-net-dialog';dialog.setAttribute('aria-labelledby','adminUberNetTitle');
     dialog.innerHTML=`<form id="adminUberNetForm" novalidate><header><div><p class="eyebrow">ADMINISTRACIÓN</p><h2 id="adminUberNetTitle">Cierre semanal de Uber</h2></div><button type="button" id="adminUberNetClose">Cerrar</button></header>
       <p id="adminUberNetWeek" class="admin-uber-net-week"></p>
-      <p>Cargá el <strong>efectivo retenido por el chofer y el digital neto recibido por Explora</strong>, con las comisiones de Uber ya descontadas y conciliados con el reporte semanal de Fleet.</p>
+      <p>Importes de la liquidación de Uber, con su comisión ya descontada.</p>
       <fieldset id="adminUberNetFields"><label>Chofer<select id="adminUberNetDriver" required></select></label>
       <div class="admin-uber-net-grid"><label>Efectivo retenido por el chofer<input id="adminUberNetCash" inputmode="decimal" type="text" placeholder="0,00" autocomplete="off" required></label><label>Digital neto de Explora<input id="adminUberNetDigital" inputmode="decimal" type="text" placeholder="0,00" autocomplete="off" required></label></div>
-      <label>Total neto de la semana<input id="adminUberNetTotal" inputmode="decimal" type="text" placeholder="0,00" autocomplete="off" required></label>
-      <p class="file-note">Efectivo + digital deben coincidir con el total neto. Si Fleet muestra efectivo bruto o comisiones pendientes de descontar, conciliá esos importes antes de registrar.</p>
-      <label>Referencia del reporte de Fleet<input id="adminUberNetSource" type="text" maxlength="300" placeholder="Reporte, período e identificador del conductor" required></label>
-      <label class="admin-uber-net-check"><input id="adminUberNetConfirmed" type="checkbox"><span>Verifiqué la semana, los importes netos, las comisiones y que el chofer conserva el efectivo y Explora recibe el digital.</span></label></fieldset>
+      </fieldset>
       <div id="adminUberNetReview" aria-live="polite"></div><p id="adminUberNetStatus" role="status" aria-live="polite"></p>
-      <footer><button type="button" id="adminUberNetCancel">Cancelar</button><button type="submit" id="adminUberNetSave" class="save">Registrar cierre semanal</button></footer></form>`;
+      <footer><button type="button" id="adminUberNetCancel">Cancelar</button><button type="submit" id="adminUberNetSave" class="save">Enviar al chofer</button></footer></form>`;
     document.body.append(dialog);
     el('adminUberNetClose').onclick=close;el('adminUberNetCancel').onclick=close;
     dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();else generation++;});
@@ -67,17 +75,18 @@ export function mountAdminUberLiquidation({isAuthorized,getDrivers,register,onCo
     el('adminUberNetForm').addEventListener('submit',async event=>{
       event.preventDefault();if(busy||!isAuthorized())return;
       let input;try{input=adminUberInput(fields(),week);}catch(error){el('adminUberNetStatus').textContent=error.message;return;}
-      const seq=generation;busy=true;el('adminUberNetFields').disabled=true;el('adminUberNetSave').disabled=true;el('adminUberNetClose').disabled=true;el('adminUberNetCancel').disabled=true;dialog.setAttribute('aria-busy','true');el('adminUberNetStatus').textContent='Registrando cierre semanal…';
+      const seq=generation;busy=true;el('adminUberNetFields').disabled=true;el('adminUberNetSave').disabled=true;el('adminUberNetClose').disabled=true;el('adminUberNetCancel').disabled=true;dialog.setAttribute('aria-busy','true');el('adminUberNetStatus').textContent='Enviando al chofer…';
       try{
         const result=await register(input);if(seq!==generation||!isAuthorized())return;
-        el('adminUberNetStatus').textContent=result.alreadyRegistered?'Esta semana ya quedó registrada con estos importes.':'Cierre semanal registrado. Ya está incluido en Billeteras.';
-        el('adminUberNetSave').textContent='Registrado';onCompleted?.(result);
+        const completed=result.record?.driverConfirmed===true||result.record?.reviewStatus==='completed';
+        el('adminUberNetStatus').textContent=completed?'Esta semana ya fue aceptada y está incluida en Billeteras.':result.alreadyRegistered?'Estos importes ya están esperando la aceptación del chofer.':'Enviado. El saldo se actualiza cuando el chofer toca Aceptar.';
+        el('adminUberNetSave').textContent=completed?'Aceptado':'Esperando al chofer';onCompleted?.(result);
       }catch(error){if(seq===generation&&isAuthorized()){el('adminUberNetStatus').textContent=error.message||'No se pudo registrar el cierre. Podés reintentar.';el('adminUberNetFields').disabled=false;el('adminUberNetSave').disabled=false;}}
       finally{busy=false;dialog.removeAttribute('aria-busy');el('adminUberNetClose').disabled=false;el('adminUberNetCancel').disabled=false;}
     });
   }
   function open(){
-    if(!isAuthorized())return;ensure();if(busy)return;generation++;week=adminUberWeek();el('adminUberNetForm').reset();el('adminUberNetFields').disabled=false;el('adminUberNetSave').disabled=false;el('adminUberNetSave').textContent='Registrar cierre semanal';
+    if(!isAuthorized())return;ensure();if(busy)return;generation++;week=adminUberWeek();el('adminUberNetForm').reset();el('adminUberNetFields').disabled=false;el('adminUberNetSave').disabled=false;el('adminUberNetSave').textContent='Enviar al chofer';
     el('adminUberNetWeek').textContent=`Semana ${week.weekStartDate} al ${week.weekCloseDate}`;
     const drivers=getDrivers();el('adminUberNetDriver').innerHTML='<option value="">Elegir chofer</option>'+drivers.map(driver=>`<option value="${escapeUi(driver.uid)}">${escapeUi(driver.name)}</option>`).join('');
     preview();dialog.showModal();el('adminUberNetDriver').focus();

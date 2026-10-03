@@ -32,6 +32,13 @@ async function api(body) {
   if(action==='inspect')return {records:Object.fromEntries(db.data),uploads:[...uploads.keys()]};
   if(action==='reset'){db.data=new Map(Object.entries(structuredClone(seed)));uploads.clear();return {};}
   if(action==='call') {
+    if(body.name==='driverConfirmAdminUberWeeklyClosure') {
+      if(previewAdmin)throw Object.assign(new Error('El chofer debe aceptar desde su cuenta de prueba.'),{code:'permission-denied'});
+      const {confirmAdminUberWeek,adminUberConfirmationTelegramText}=require('../functions/admin-uber-weekly');
+      const result=await confirmAdminUberWeek({db,driverUid:uid,input:body.input});
+      if(!result.alreadyConfirmed)db.data.set('preview_telegram/'+result.id,{text:adminUberConfirmationTelegramText(result.record),createdAtMs:Date.now(),localOnly:true});
+      return result;
+    }
     if(body.name==='adminRegisterUberWeeklyClosure') {
       if(!previewAdmin)throw Object.assign(new Error('Solo el administrador puede registrar el cierre semanal de Uber.'),{code:'permission-denied'});
       const {registerAdminUberWeek}=require('../functions/admin-uber-weekly');

@@ -64,9 +64,32 @@ function quoteFromInput(uid,input) {
     cashbox:sum(visibleUber,r=>uberWeeklyPolicy.isNew(r)?uberWeeklyPolicy.calculate(r).cashbox:uberCashAmount(r)*(policy.isNew(r)?.10:.05)),
     balance:calculateTeamRealtimeSettlementBalance({uberWeeks:visibleUber}).balance,recordCount:visibleUber.length,
     unavailableTotal:sum(unknownUber,uberGrossAmount),unavailableCount:unknownUber.length};
+  const ordinaryCash=sum(records.filter(r=>policy.method(r)==='cash'));
+  const ordinaryDigital=sum(records.filter(r=>policy.method(r)==='digital'));
+  const ordinaryNetCash=policy.round(ordinaryCash-cashExpense),ordinaryNetDigital=policy.round(ordinaryDigital-digitalExpense);
+  const presentationOrdinary={cash:ordinaryCash,digital:ordinaryDigital,cashExpense,digitalExpense,
+    netCash:ordinaryNetCash,netDigital:ordinaryNetDigital,gross:policy.round(ordinaryCash+ordinaryDigital),
+    cashbox:sum(records.filter(r=>!(r.excludeFromCashbox||r.cashboxExcluded||r.cajaChicaEliminada||r.ignoreCashbox||r.noCashbox)),r=>value(r)*.1),
+    walletDifference:policy.round((ordinaryNetCash-ordinaryNetDigital)/2),walletTarget:policy.round((ordinaryNetCash+ordinaryNetDigital)/2)};
+  // Each Fleet week has already settled its own cent rounding. Never use the
+  // thresholded standalone ledger balance as the transfer between Uber wallets.
+  presentationUber.walletDifference=sum(fleetUber,r=>{const amounts=uberWeeklyPolicy.calculate(r);return amounts.balance-amounts.cashbox;});
+  presentationUber.cashboxInPeriod=sum(fleetUber,r=>uberWeeklyPolicy.calculate(r).cashbox);
+  presentationUber.cashboxGrossInPeriod=sum(fleetUber,r=>uberWeeklyPolicy.calculate(r).total);
+  presentationUber.walletTarget=policy.round(presentationUber.cashboxGrossInPeriod/2);
+  // Historical Uber has no reliable payment split. Keep its entire contribution
+  // in the displayed prior balance, without reapplying today's 10% cashbox rule.
+  const presentationResidual=policy.round(model.balance-presentationOrdinary.walletDifference-responsibilityAdjustment-externalDebt-
+    presentationOrdinary.cashbox-presentationUber.cashboxInPeriod-presentationUber.walletDifference)||0;
+  const onlyPresentedRows=!input.closures.length&&!input.debts.length&&input.records.every(r=>records.includes(r))&&
+    input.expenses.every(r=>expenseRows.includes(r))&&input.uberWeeks.every(r=>fleetUber.includes(r));
+  // The ledger treats totals up to fifty cents as balanced. Explain that tolerance
+  // only when every source is shown; a small real historical balance stays prior.
+  const roundingAdjustment=model.balance===0&&Math.abs(presentationResidual)<=.5&&onlyPresentedRows?presentationResidual:0;
+  const presentationPreviousBalance=policy.round(presentationResidual-roundingAdjustment)||0;
   return {quoteId,version:policy.VERSION,workflow:WORKFLOW,balance:model.balance,amount:model.amount,direction:model.direction,
     summary,
-    presentation:{uber:presentationUber},
+    presentation:{ordinary:presentationOrdinary,uber:presentationUber,previousBalance:presentationPreviousBalance,roundingAdjustment},
     cutoffAtMs:cutoff};
 }
 async function periodQuote({db,uid}) {

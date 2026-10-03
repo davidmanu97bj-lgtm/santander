@@ -16,6 +16,7 @@
   // Reconcile each new week's half-cent split to its settled integer-cent amount.
   // Keeping this separate from cashbox preserves the actual cashbox shown in UI.
   const roundingAdjustment=item=>{if(!isNew(item))return 0;const a=calculate(item);return a.balance-((a.cash-a.digital)*.5+a.cashbox);};
-  const confirmed=item=>isNew(item)&&item.settlementWorkflowVersion===WORKFLOW&&item.adminConfirmed===true&&String(item.reviewStatus||item.status||'').toLowerCase()==='completed';
+  const confirmed=item=>isNew(item)&&item.settlementWorkflowVersion===WORKFLOW&&item.adminConfirmed===true&&
+    (item.driverConfirmationRequired!==true||item.driverConfirmed===true)&&String(item.reviewStatus||item.status||'').toLowerCase()==='completed';
   return Object.freeze({VERSION,WORKFLOW,isNew,calculate,supplementalCashbox,roundingAdjustment,roundMoney,confirmed});
 });
