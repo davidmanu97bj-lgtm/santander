@@ -56,6 +56,18 @@ test('un cierre indica quién pagó y resuelve el nombre del chofer',async()=>{
   assert.match(h.sent[1].caption,/Quién pagó: Javier pagó/);
   assert.ok(h.sent.every(row=>row.requirePhoto));
 });
+test('administración sin comprobante se informa como texto sin exigir una foto ni inventar adjuntos',async()=>{
+  const waiver={receiptStatus:'waived_by_admin',receiptWaived:true,receiptWaivedByRole:'admin',receiptWaivedByUid:'admin',proofUrl:'',receiptUrl:''};
+  const expense=handler('notifyExpenseV2');
+  await expense.run(event({...waiver,driverName:'Javier',createdByName:'David',createdByRole:'admin',amount:40000,detail:'canon',expensePaymentMethod:'digital'}));
+  assert.match(expense.sent[0].caption,/Comprobante: sin comprobante, registrado por administración/);
+  assert.equal(Boolean(expense.sent[0].requirePhoto),false);
+  const closure=handler('notifyClosureTelegramGroupV1');
+  await closure.run(event({...waiver,driverUid:'javier',status:'completed',paymentDirection:'explora_to_driver',settlementAmount:18800}));
+  assert.match(closure.sent[0].caption,/Quién pagó: Explora pagó/);
+  assert.match(closure.sent[0].caption,/Comprobante: sin comprobante, registrado por administración/);
+  assert.equal(closure.sent[0].requirePhoto,false);
+});
 test('el ajuste asociado al cierre no genera un segundo aviso',async()=>{
   const h=handler('notifyBillingRecordV2',{telegramInternalBillingMovement:()=>true});
   await h.run(event({notificationHandledByClosure:true,closureId:'period_1',internalSettlementAdjustment:true}));

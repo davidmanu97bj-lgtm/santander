@@ -98,8 +98,8 @@
       "reason": "Si salida y llegada son del catálogo local, aplica kilómetros precalculados al instante y solo llama a Google Routes cuando hace falta."
     },
     "renderAdminDriverOptions": {
-      "hash": "dd0b8974c12a3ecac9d65ffb9903d5ee3c8f7320cb9a8de940b733ad27e9b5ae",
-      "reason": "Menú administrativo solicitado: reutiliza la selección de choferes activos en Pago digital."
+      "hash": "cc261d6986e5139ce99249c0bc91d6596454d6365ab5b07240afe798d4dd56f3",
+      "reason": "Tarjetas por chofer aprobadas el 07/10/2026: conservar el UID bloqueado de cada formulario durante snapshots para impedir cambiar el destinatario de una acción."
     },
     "unsubscribeAdminDashboard": {
       "hash": "d38630df2b5b3d4d4d86720925e9f32b29448672e09b3ffec63e7f5081537d4b",
@@ -156,6 +156,34 @@
     "confirmUberDriverResult": {
       "hash": "cbdf1585fff1a11f73dcd93e56f7a5c3d4ffee92fb1e85cdedddc081d6bf3594",
       "reason": "Solicitud expresa del 02/10/2026: el administrador carga efectivo y digital de Uber; el chofer acepta antes de que la semana afecte las billeteras. Se conserva la confirmación de registros históricos y se prueban reintentos, propiedad, fechas y cierre."
+    },
+    "renderAdminDriverList": {
+      "hash": "0b1a8c97d63543cf082daa937a79b43e9619a0fd6f3dd2ed2d036524f7bdd5ee",
+      "reason": "Rediseño autorizado el 07/10/2026: delegar tarjetas horizontales a admin-workspace, preservando adminBillingBalanceForDriver y todos los cálculos existentes."
+    },
+    "deleteAdminFinancialMovement": {
+      "hash": "9284b20ddc136299825d5697ba1060184f7e303115e0c75fad5b4eb049e67e97",
+      "reason": "Acciones por chofer aprobadas el 07/10/2026: validar el UID bloqueado de la tarjeta antes de eliminar; los callables financieros y parámetros originales se conservan."
+    },
+    "renderAdminClosures": {
+      "hash": "741db653a6bf97b513032153cd83f62131980e1ad47d7b24ec9ff17f3a720ded",
+      "reason": "Cierre por tarjeta autorizado el 07/10/2026: filtrar una copia de los cierres por identidad inequívoca del chofer, sin mutar el listado ni los importes globales."
+    },
+    "openAdminPayment": {
+      "hash": "00f3c1b16103f11c4ca7869d1b467971c93177908956b655bc722665e7c0619f",
+      "reason": "Tarjeta por chofer autorizada el 07/10/2026: validar propietario inequívoco del cierre, rechazar alias contradictorios y reiniciar Sin comprobante; conserva el cálculo existente."
+    },
+    "showInvoices": {
+      "hash": "74882b2af32022ec132f85c8711593e72f8b78fd732e8657399c78c3339513e3",
+      "reason": "Facturas ARCA por tarjeta autorizadas el 07/10/2026: filtrar por UID en Firestore antes del límite y separar el caché por chofer; emisor fiscal intacto."
+    },
+    "adminOpenDebtItemsForDriver": {
+      "hash": "751ddebff671fd01800519812c145ab3dd650310bdb13e4fc6beab4a41815322",
+      "reason": "Acciones por tarjeta autorizadas el 07/10/2026: seleccionar deudas por propietario inequívoco para no cancelar deudas de otro chofer con alias contradictorios. No cambia el calculador de saldos."
+    },
+    "approveDriverClosurePayment": {
+      "hash": "49e73c30838f0ce5fe4b08bbf9b3ee33e129c8e23b052e57eae5029877d7456b",
+      "reason": "Acciones por tarjeta autorizadas el 07/10/2026: verificar dentro de la transacción el propietario actual y su coherencia con la tarjeta antes de confirmar el pago, sin cambiar reparto ni importe."
     }
   },
   "handlers": {
@@ -174,24 +202,24 @@
   },
   "protectedFiles": {
     "firestore.rules": {
-      "hash": "2a3cd0b47025222ef289b98dcb7200d7eda45fcb75a0c47cf32041fbed879bdf",
-      "reason": "David retiró disponibilidad y asignó nuevas semanas Uber al admin: negar colecciones retiradas y altas directas de clientes Uber antiguos, preservando lecturas e historial."
+      "hash": "7bb39005c3aa53733bdb0abb74d94ac21ce50e30c6077b9bf0715ec0e5c555c7",
+      "reason": "Sin comprobante administrativo autorizado el 07/10/2026: exigir rol admin, UID del actor y fecha de servidor para la excepción; impedir a choferes falsificar o quitar esa auditoría. Ver pruebas de emulador."
     },
     "functions/expense-policy.js": {
       "hash": "044e01190580912b786c33020c3b663b16eee01da5c6a7600482301a11abffa2",
       "reason": "Agrega Peaje y la lista permitida al chofer sin eliminar categorías históricas/admin."
     },
     "functions/index.js": {
-      "hash": "449e09c535ece2c3d4505a6572dd57b6834f351e3dfc60487b783f031a22b790",
-      "reason": "Solicitud expresa del 02/10/2026: callable de aceptación autenticada del chofer y notificación escrita de Telegram sólo después de confirmar Uber. Se usa el trigger existente y su claim idempotente, sin notificar el alta pendiente ni modificar otras operaciones."
+      "hash": "6272f71b039fa50e079b25c227962534738ecc043154ff750bfdd0a0341a4b40",
+      "reason": "Cierres sin comprobante autorizados el 07/10/2026: aclarar ausencia explícita del adjunto en Telegram conservando importes y disparadores financieros."
     },
     "functions/telegram-billing-balance.js": {
       "hash": "3077e8d40d0fbcc23478a4a1010545b8312d4c6c1c9b1879ed223ba6a6f96e5d",
       "reason": "David autorizó Uber efectivo/digital netos con reglas de billetera vigentes: nuevo marcador y centavos compartidos, conservando todas las fórmulas y registros históricos."
     },
     "functions/telegram-compact.js": {
-      "hash": "551c5eb8a4dc44021cef56f5f7af485beb0c894f797268a61495ac00f7d82a98",
-      "reason": "Solicitud expresa del 01/10/2026: soportar factura A según receptor, PDF y numeración independientes; pruebas de concurrencia y preservación de cobros, saldos y cierres."
+      "hash": "6d61984b9ff8a5155b0213f0f99defba7ca06c3fab955eac9d66c207fc45a720",
+      "reason": "Pagos digitales sin comprobante autorizados el 07/10/2026: Telegram distingue excepción administrativa de respaldo adjunto, sin cambiar importes."
     },
     "functions/tests/telegram-trip-delivery.test.js": {
       "hash": "0c6561d07d685184a784a09051167cbb554ac841004c8d2ead426dbd252e3043",
@@ -222,8 +250,8 @@
       "reason": "Publicación autorizada: exigir revalidación de JavaScript y CSS para evitar mezclar archivos financieros y visuales de versiones distintas en navegadores con caché."
     },
     "functions/tests/team-realtime-contract.test.js": {
-      "hash": "3ea7758041322a5055f8c2beaf84b13170b0d65cda6960e0de5d41d4370ad492",
-      "reason": "El usuario pidió rediseñar la administración: cambia el título a Resumen del equipo y conserva las comprobaciones de saldos en tiempo real."
+      "hash": "f0044062205138ead9756b6c27c8a509949a0d7e46a7244c26ab80e6a8b06432",
+      "reason": "Rediseño por chofer aprobado el 07/10/2026: comprobar tarjetas y acciones por UID manteniendo verificación conductual del calculador original y exclusión de perfiles no conductores."
     },
     "functions/arca-client.js": {
       "hash": "07365952e0411b849a47827a4ae12f10180c8aedaae44e1cecc619feda5c576d",

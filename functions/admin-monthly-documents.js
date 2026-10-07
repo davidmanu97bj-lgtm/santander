@@ -21,8 +21,10 @@ module.exports=({db,assertAdmin})=>{
     if(!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)||month>current)throw new HttpsError('invalid-argument','Elegí un mes válido.');
     if(uid){
       if(!/^[\w-]{1,128}$/.test(uid))throw new HttpsError('invalid-argument','Chofer inválido.');
-      const report=await loadMonthlyReport(db,uid,month);
-      return {pdf:{base64:(await monthlyPdf(report)).toString('base64'),filename:`Explora-${report.driverName.replace(/[^a-zA-Z0-9_-]/g,'_')}-${month}.pdf`}};
+      if(request.data?.overviewOnly!==true){
+        const report=await loadMonthlyReport(db,uid,month);
+        return {pdf:{base64:(await monthlyPdf(report)).toString('base64'),filename:`Explora-${report.driverName.replace(/[^a-zA-Z0-9_-]/g,'_')}-${month}.pdf`}};
+      }
     }
     return db.runTransaction(async tx=>{
       const names=[...Object.values(sources),'choferes','usuarios','driver_monthly_invoices'];
@@ -30,7 +32,7 @@ module.exports=({db,assertAdmin})=>{
       const records=Object.fromEntries(names.map((name,i)=>[name,snaps[i].docs.map(d=>({...d.data(),id:d.id}))]));
       const profiles=new Map(records.choferes.map(p=>[p.id,p]));
       for(const profile of records.usuarios)if(profiles.has(profile.id))profiles.set(profile.id,{...profiles.get(profile.id),...profile});
-      return {month,rows:buildOverview({profiles:[...profiles.values()],input:Object.fromEntries(Object.entries(sources).map(([key,name])=>[key,records[name]])),invoices:records.driver_monthly_invoices,month})};
+      return {month,rows:buildOverview({profiles:[...profiles.values()].filter(profile=>!uid||profile.id===uid),input:Object.fromEntries(Object.entries(sources).map(([key,name])=>[key,records[name]])),invoices:records.driver_monthly_invoices,month})};
     });
   })};
 };

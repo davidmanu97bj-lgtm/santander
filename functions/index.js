@@ -515,6 +515,7 @@ function telegramSimpleFinancialText({ title, data = {}, amount = 0, detail = "O
     `Chofer: ${telegramDriverName(data)}`,
     `Monto: ${telegramMoney(amount)}`,
     `Detalle: ${telegramSafeText(detail || "Operación registrada").slice(0, 500)}`,
+    ...(data.receiptStatus === 'waived_by_admin' && data.receiptWaived === true ? ['Comprobante: sin comprobante, registrado por administración'] : []),
     telegramSignedSettlementLine(balance),
     ...telegramDateTimeLines(dateData || data)
   ].join("\n");
@@ -2874,7 +2875,7 @@ function telegramInternalBillingText(data = {}) {
     const direction = data.adjustmentDirection || data.settlementDirection || data.paymentDirection;
     return telegramCompact.managementSummary({
       driverName:telegramDriverName(data),amount:telegramAmount(data),paying:direction === "driver_to_explora",
-      balance:data.telegramSettlementAfterBalance ?? data.settlementAfter, note:data.notes
+      balance:data.telegramSettlementAfterBalance ?? data.settlementAfter, note:data.notes, data
     });
   }
   const detail = telegramSafeText(data.detail || data.notes || data.reason) ||
@@ -2928,7 +2929,7 @@ function telegramAdminAuditText(data = {}) {
 }
 
 function closureTelegramUpdateChanged(before = {}, after = {}) {
-  const keys = ["status","paidAmountTotal","remainingAmount","amountDueFromDriver","amountDueToDriver","proofUrl","receiptUrl","completedAt"];
+  const keys = ["status","paidAmountTotal","remainingAmount","amountDueFromDriver","amountDueToDriver","proofUrl","receiptUrl","receiptStatus","receiptWaived","completedAt"];
   return keys.some(key => JSON.stringify(before?.[key] ?? null) !== JSON.stringify(after?.[key] ?? null));
 }
 

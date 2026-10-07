@@ -44,7 +44,7 @@ test('Movimientos view model carries classification only for travel charges and 
   const before=structuredClone(payments);
   const context={classifyRecordedCharge,auth:{currentUser:{}},isAdminProfile:()=>true,dashboardLoad:{complete:()=>true},
     adminDrivers:[],adminPayments:payments,adminExpenses:[{id:'expense',amount:50}],adminDebts:[],adminDebtPayments:[],adminUberClosures:[{id:'uber',amount:600}],adminAllClosures:[],
-    adminDriverIsAdministrator:()=>false,adminDriverIsActive:()=>true,movementIsDeleted:()=>false,
+    adminScopedRecordOwner:()=>null,adminDriverIsAdministrator:()=>false,adminDriverIsActive:()=>true,movementIsDeleted:()=>false,
     recordTimestampMs:()=>123,recordProofUrl:()=>'',isSettlementAdjustment:r=>Boolean(r.adjustmentDirection),isReimbursementCompensation:()=>false};
   vm.createContext(context);vm.runInContext(source.slice(start,source.indexOf('\n}',start)+2),context);
   const rows=context.adminWorkspaceState().movements;
