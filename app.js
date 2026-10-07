@@ -8,10 +8,10 @@ import {
   mountOpsSalidasBoard
 } from "./ops-salidas.js?v=20261002-retiro-disponibilidad";
 import { createOpsExitStore } from "./ops-salidas-store.js?v=20260930-operaciones-v3";
-import { mountAdminWorkspace } from "./admin-workspace.js?v=20261002-login-uber";
+import { mountAdminWorkspace } from "./admin-workspace.js?v=20261007-driver-cards";
 import { mountUberFleet } from "./uber-fleet-ui.js?v=20260929-fleet-shadow";
 import { mountAdminUberLiquidation, isPendingAdminUberConfirmation, driverUberConfirmationMarkup } from "./admin-uber-liquidation-ui.js?v=20261002-uber-confirmation";
-import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20260919-admin-1";
+import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20261007-admin-receipts";
 import { mountPeriodClose } from "./period-ui.js?v=20261002-uber-cashbox-separated";
 import { mountMonthlyManagement } from "./monthly-management.js?v=20261002-uber-net";
 import { exploraIcon, activityKind, activityRowContent, recentActivitiesMarkup } from "./explora-ui.js?v=20260919-login-period-1";
@@ -3016,6 +3016,27 @@ function adminRecordBelongsToDriver(item = {}, driver = {}) {
   return recordNames.some(value => driverNames.has(value));
 }
 
+function adminScopedRecordOwner(item = {}) {
+  const drivers = adminDrivers.filter(driver => !adminDriverIsAdministrator(driver));
+  const explicit = String(item.driverUid || '').trim().toLowerCase();
+  const matches = explicit
+    ? drivers.filter(driver => adminDriverIdentitySet(driver).has(explicit))
+    : drivers.filter(driver => adminRecordBelongsToDriver(item, driver));
+  return matches.length === 1 ? matches[0] : null;
+}
+function adminScopedRecordBelongsToDriver(item, driver) {
+  return Boolean(driver?.id && adminScopedRecordOwner(item)?.id === driver.id);
+}
+
+function adminClosurePaymentUid(item = {}) {
+  const owner = adminScopedRecordOwner(item);
+  const uid = String(item.operatorUid || item.driverUid || item.choferUid || item.uid || '').trim();
+  if (!owner || !uid || !adminDriverIdentitySet(owner).has(uid.toLowerCase())) {
+    throw new Error('El cierre tiene datos de chofer contradictorios o incompletos. Revisá el registro antes de confirmar.');
+  }
+  return uid;
+}
+
 function adminBillingBaselineForDriver(driver = {}) {
   return adminAllClosures
     .filter(item => adminRecordBelongsToDriver(item, driver))
@@ -3098,7 +3119,7 @@ function adminBillingBalanceForDriver(driver = {}) {
 
 function adminOpenDebtItemsForDriver(driver = {}) {
   return adminDebts
-    .filter(item => adminRecordBelongsToDriver(item, driver))
+    .filter(item => adminScopedRecordBelongsToDriver(item, driver))
     .filter(item => !movementIsDeleted(item))
     .filter(item => debtImpactsSettlement(item))
     .filter(item => Number(item.amount || 0) > 0.5)
@@ -3138,7 +3159,7 @@ function renderAdminDriverOptions() {
   ].forEach(([id, options]) => {
     const select = $(id);
     if (!select) return;
-    const previous = select.value;
+    const previous = select.dataset.driverScope || select.value;
     select.innerHTML = options || `<option value="">No hay choferes disponibles</option>`;
     if (previous && Array.from(select.options).some(option => option.value === previous)) select.value = previous;
   });
@@ -3146,46 +3167,52 @@ function renderAdminDriverOptions() {
 }
 
 function renderAdminDriverList() {
-  const box = $("adminDriverList");
-  if (!box || !isAdminProfile()) return;
-
-  const active = adminDrivers
-    .filter(driver => !adminDriverIsAdministrator(driver) && adminDriverIsActive(driver))
-    .sort((a, b) => adminDriverLabel(a).localeCompare(adminDriverLabel(b), "es", { sensitivity: "base" }));
-
-  if (!active.length) {
-    box.innerHTML = `<div class="admin-driver-empty">No hay choferes activos.</div>`;
-    renderAdminDriverOptions();
-    return;
-  }
-
-  box.innerHTML = active.map(driver => {
-    // Admin ya escucha todos los movimientos y calcula de inmediato, sin esperar
-    // los segundos que puede tardar el disparador que actualiza la vista pública.
-    const balance = adminBillingBalanceForDriver(driver);
-    const amount = Math.abs(balance);
-    const stateClass = balance > 0.5 ? "driver-owes" : balance < -0.5 ? "explora-owes" : "balanced";
-    const label = balance > 0.5
-      ? "Chofer debe"
-      : balance < -0.5
-        ? "Explora debe"
-        : "Cuentas equilibradas";
-    return `<article class="admin-driver-row ${stateClass}">
-      <strong class="admin-driver-name">${escapeHtml(adminDriverLabel(driver))}</strong>
-      <div class="admin-driver-balance">
-        <span>${label}</span>
-        <b>${money(amount)}</b>
-      </div>
-    </article>`;
-  }).join("");
-
+  if (!isAdminProfile()) return;
   renderAdminDriverOptions();
+  adminWorkspace?.refresh();
+}
+
+// The selected card owns each opened form, even if live snapshots refresh options.
+let adminClosureScopeUid = '';
+function lockAdminDriverSelection(selectId, driverUid = '') {
+  const select = $(selectId);
+  if (!select) return;
+  const driver = driverUid ? adminDriverById(driverUid) : null;
+  if (driverUid && !driver) throw new Error('El chofer ya no está disponible.');
+  select.dataset.driverScope = driver?.id || '';
+  select.disabled = Boolean(driver);
+  if (driver) select.value = driver.id;
+}
+function driverFromAdminControl(selectId) {
+  const select = $(selectId);
+  if (!select || (select.dataset.driverScope && select.value !== select.dataset.driverScope)) return null;
+  return adminDriverById(select.value);
+}
+function adminScopedDriver() {
+  return adminDriverById(adminWorkspace?.getSelectedDriverUid?.() || '');
+}
+function adminReceiptWaiver(actor, atMs = Date.now()) {
+  if (!actor?.uid || auth.currentUser?.uid !== actor.uid || !isAdminProfile()) throw new Error('Solo administración puede registrar sin comprobante.');
+  return {receiptStatus:'waived_by_admin',receiptRequired:false,receiptWaived:true,
+    receiptWaivedByUid:actor.uid,receiptWaivedByRole:'admin',
+    receiptWaivedAt:serverTimestamp(),receiptWaivedAtMs:atMs};
+}
+function syncAdminReceiptChoice(checkId, fileId) {
+  const check = $(checkId), input = $(fileId);
+  if (!check || !input) return;
+  const waived = isAdminProfile() && check.checked;
+  input.required = !waived;
+  input.disabled = waived;
+  if (waived) input.value = '';
+}
+for (const [checkId,fileId] of [['adminExpenseNoReceipt','adminExpenseProof'],['adjustmentNoReceipt','adjustmentProof'],['adminCloseNoReceipt','adminCloseProof']]) {
+  $(checkId)?.addEventListener('change',()=>syncAdminReceiptChoice(checkId,fileId));
 }
 
 function renderAdminHistory() {
   const box = $("adminHistoryList");
   if (!box) return;
-  const driver = adminDriverById($("historyDriver")?.value || "");
+  const driver = driverFromAdminControl("historyDriver");
   if (!driver) {
     box.innerHTML = `<div class="admin-empty">Seleccioná un chofer.</div>`;
     return;
@@ -3194,7 +3221,7 @@ function renderAdminHistory() {
   const rows = [];
 
   adminPayments
-    .filter(item => adminRecordBelongsToDriver(item, driver))
+    .filter(item => adminScopedRecordBelongsToDriver(item, driver))
     .filter(item => isSettlementAdjustment(item))
     .forEach(item => rows.push({
       kind: "Ajuste",
@@ -3208,7 +3235,7 @@ function renderAdminHistory() {
     }));
 
   adminDebts
-    .filter(item => adminRecordBelongsToDriver(item, driver))
+    .filter(item => adminScopedRecordBelongsToDriver(item, driver))
     .forEach(item => rows.push({
       kind: "Deuda",
       title: movementIsDeleted(item) || Number(item.amount || 0) <= 0.5 ? "Deuda cerrada / anulada" : "Deuda agregada",
@@ -3223,7 +3250,7 @@ function renderAdminHistory() {
     }));
 
   adminDebtPayments
-    .filter(item => adminRecordBelongsToDriver(item, driver))
+    .filter(item => adminScopedRecordBelongsToDriver(item, driver))
     .forEach(item => rows.push({
       kind: "Pago de deuda",
       title: "Pago registrado",
@@ -3235,7 +3262,7 @@ function renderAdminHistory() {
     }));
 
   adminAllClosures
-    .filter(item => adminRecordBelongsToDriver(item, driver))
+    .filter(item => adminScopedRecordBelongsToDriver(item, driver))
     .filter(item => closureKind(item) === "facturacion")
     .forEach(item => rows.push({
       kind: "Cierre",
@@ -3372,14 +3399,14 @@ function subscribeAdminDashboard() {
 
 
 function adminFinancialMovementRows() {
-  const driver = adminDriverById($("movementDriver")?.value || "");
+  const driver = driverFromAdminControl("movementDriver");
   if (!driver) return [];
   const filter = $("movementTypeFilter")?.value || "all";
   const rows = [];
 
   if (filter === "all" || filter === "cobro") {
     adminPayments
-      .filter(item => adminRecordBelongsToDriver(item, driver))
+      .filter(item => adminScopedRecordBelongsToDriver(item, driver))
       .filter(item => !movementIsDeleted(item))
       .filter(item => !isSettlementAdjustment(item) && !isReimbursementCompensation(item))
       .filter(item => item.method === "cash" || item.method === "digital")
@@ -3398,7 +3425,7 @@ function adminFinancialMovementRows() {
 
   if (filter === "all" || filter === "gasto") {
     adminExpenses
-      .filter(item => adminRecordBelongsToDriver(item, driver))
+      .filter(item => adminScopedRecordBelongsToDriver(item, driver))
       .filter(item => !movementIsDeleted(item))
       .forEach(item => rows.push({
         id:item.id,
@@ -3414,7 +3441,7 @@ function adminFinancialMovementRows() {
   }
 
   if (filter === "all" || filter === "uber") {
-    adminUberClosures.filter(item => adminRecordBelongsToDriver(item,driver))
+    adminUberClosures.filter(item => adminScopedRecordBelongsToDriver(item,driver))
       .filter(item => !movementIsDeleted(item)).forEach(item => rows.push({
         id:item.id,type:"uber",label:"Liquidación Uber",amount:uberGrossRevenueOf(item),
         detail:uberWeekLabelForItem(item),createdAt:recordTimestampMs(item),method:"cash",proofUrl:recordProofUrl(item)
@@ -3427,7 +3454,7 @@ function adminFinancialMovementRows() {
 function renderAdminFinancialMovements() {
   const box = $("adminMovementList");
   if (!box) return;
-  const driver = adminDriverById($("movementDriver")?.value || "");
+  const driver = driverFromAdminControl("movementDriver");
   if (!driver) {
     box.innerHTML = `<div class="admin-empty">Seleccioná un chofer.</div>`;
     return;
@@ -3466,7 +3493,7 @@ function renderAdminFinancialMovements() {
 }
 
 function openAdminFinancialEdit(item = {}) {
-  const driver = adminDriverById($("movementDriver")?.value || "");
+  const driver = driverFromAdminControl("movementDriver");
   if (!driver || !item.id) return;
   $("financialEditModal").dataset.movementColor = ["green","red"].includes(item.visualMovementColor) ? item.visualMovementColor : "";
   $("financialEditDocumentId").value = item.id;
@@ -3480,7 +3507,7 @@ function openAdminFinancialEdit(item = {}) {
 }
 
 async function deleteAdminFinancialMovement(type, documentId) {
-  const driver = adminDriverById($("movementDriver")?.value || "");
+  const driver = driverFromAdminControl("movementDriver");
   if (!driver || !documentId || !["cobro","gasto","uber"].includes(type)) return;
   const reason = window.prompt(`Motivo para eliminar este ${type}:`);
   if (!String(reason || "").trim()) return;
@@ -3578,14 +3605,16 @@ function closureDriverPaymentMethodLabel(item = {}) {
 function renderAdminClosures() {
   if (!isAdminProfile()) return;
   const box = $("adminClosureList");
-  const pendingExplora = closures.filter(item => {
+  const scopeDriver = adminDriverById(adminClosureScopeUid);
+  const scopedClosures = adminClosureScopeUid ? (scopeDriver ? closures.filter(item => adminScopedRecordBelongsToDriver(item, scopeDriver)) : []) : closures;
+  const pendingExplora = scopedClosures.filter(item => {
     const status = String(item.status || "").toLowerCase();
     return item.direction === "explora_pays_driver" && closureRemaining(item) > 0 && !/completed|reject|rechaz|cancel/.test(status);
   });
-  const pendingDriverReview = closures.filter(item =>
+  const pendingDriverReview = scopedClosures.filter(item =>
     item.direction === "driver_pays_explora" && /awaiting_admin_review|pending_admin_review/.test(String(item.status || "").toLowerCase())
   );
-  const driverPayments = closures.filter(item => {
+  const driverPayments = scopedClosures.filter(item => {
     const status = String(item.status || "").toLowerCase();
     return item.direction === "driver_pays_explora" && Number(item.paidAmountTotal || 0) > 0.5 && !/reject|rechaz|awaiting|pending/.test(status);
   }).slice(0, 6);
@@ -3611,7 +3640,7 @@ function renderAdminClosures() {
         <b>${money(closureRemaining(item))}</b>
       </div>
       <p>Transferir a ${escapeHtml(item.recipientAlias || "alias no informado")} · CUIT ${escapeHtml(formatCuit(item.recipientCuit || ""))}.</p>
-      <button type="button" class="admin-proof-button" data-admin-closure="${escapeHtml(item.id)}">Pagar y subir comprobante</button>
+      <button type="button" class="admin-proof-button" data-admin-closure="${escapeHtml(item.id)}">Registrar pago</button>
     </article>`).join("");
 
   const pendingHtml = reviewHtml || payHtml
@@ -3952,13 +3981,16 @@ async function approveDriverClosurePayment(item) {
   const admin = auth.currentUser;
   if (!admin || !isAdminProfile()) return;
   const closureRef = doc(db, ROOT_COLLECTIONS.closures, item.id);
-  const driverUid = item.operatorUid || item.driverUid || item.choferUid || item.uid || "";
+  adminClosurePaymentUid(item);
+  const expectedDriverId = adminScopedRecordOwner(item).id;
   const paymentRef = doc(collection(db, ROOT_COLLECTIONS.payments));
 
   await runTransaction(db, async transaction => {
     const closureSnap = await transaction.get(closureRef);
     if (!closureSnap.exists()) throw new Error("El cierre ya no existe.");
     const current = closureSnap.data() || {};
+    const driverUid = adminClosurePaymentUid(current);
+    if (adminScopedRecordOwner(current)?.id !== expectedDriverId) throw new Error("El chofer del cierre cambió. Volvé a revisarlo.");
     if (!/awaiting_admin_review|pending_admin_review/.test(String(current.status || "").toLowerCase())) {
       throw new Error("Este cierre ya fue resuelto.");
     }
@@ -4053,6 +4085,7 @@ $("adminPendingApproveBtn")?.addEventListener("click", async () => {
     $("closeDriverView").classList.add("hidden");
     $("closeAdminView").classList.remove("hidden");
     $("adminClosureList").classList.add("hidden");
+    adminClosureScopeUid = adminScopedRecordOwner(candidate.item)?.id || "";
     openAdminPayment(candidate.id);
     return;
   }
@@ -4263,6 +4296,8 @@ $("adminAdjustmentBtn")?.addEventListener("click", () => {
   if (!isAdminProfile()) return;
   renderAdminDriverOptions();
   $("adminAdjustmentForm").reset();
+  lockAdminDriverSelection("adjustmentDriver", adminScopedDriver()?.id);
+  syncAdminReceiptChoice("adjustmentNoReceipt","adjustmentProof");
   $("adminAdjustmentStatus").textContent = "";
   $("adminAdjustmentStatus").className = "status";
   $("adminAdjustmentModal").classList.remove("hidden");
@@ -4272,6 +4307,7 @@ $("adminAdjustmentBtn")?.addEventListener("click", () => {
 $("adminMovementsBtn")?.addEventListener("click", () => {
   if (!isAdminProfile()) return;
   renderAdminDriverOptions();
+  lockAdminDriverSelection("movementDriver", adminScopedDriver()?.id);
   $("adminMovementStatus").textContent = "";
   $("adminMovementStatus").className = "status";
   $("adminMovementsModal").classList.remove("hidden");
@@ -4327,6 +4363,7 @@ $("financialEditForm")?.addEventListener("submit", async event => {
 $("adminHistoryBtn")?.addEventListener("click", () => {
   if (!isAdminProfile()) return;
   renderAdminDriverOptions();
+  lockAdminDriverSelection("historyDriver", adminScopedDriver()?.id);
   $("adminHistoryStatus").textContent = "";
   $("adminHistoryStatus").className = "status";
   $("adminHistoryModal").classList.remove("hidden");
@@ -4346,6 +4383,8 @@ onAuthStateChanged(auth, async user => {
   uberFleetWorkspace?.reset();
   $("adminDigitalExpenseModal")?.classList.add("hidden");
   $("adminDigitalExpenseForm")?.reset();
+  adminClosureScopeUid = "";
+  for (const id of ["adminExpenseDriver","adjustmentDriver","debtDriver","historyDriver","movementDriver"]) lockAdminDriverSelection(id);
   const generation = ++authGeneration;
   const isCurrent = () => generation === authGeneration && auth.currentUser?.uid === user?.uid;
   cancelDashboardRender();
@@ -5140,8 +5179,9 @@ $("debtForm")?.addEventListener("submit", async event => {
   const admin = auth.currentUser;
   if (!admin || !isAdminProfile()) return;
 
+  if ($("debtDriver").dataset.driverScope && $("debtDriver").value !== $("debtDriver").dataset.driverScope) return;
   const groupDebt = $("debtDriver").value === "__all__";
-  const driver = adminDriverById($("debtDriver").value);
+  const driver = driverFromAdminControl("debtDriver");
   const amount = parseMoneyInput($("debtAmount").value);
   const detail = $("debtDetail").value.trim();
   const file = $("debtProof").files?.[0];
@@ -5268,13 +5308,14 @@ $("debtForm")?.addEventListener("submit", async event => {
 $("adminAdjustmentForm")?.addEventListener("submit", async event => {
   event.preventDefault();
   const admin = auth.currentUser;
-  if (!admin || !isAdminProfile()) return;
+  if (!admin || !isAdminProfile() || $("saveAdminAdjustmentBtn").disabled) return;
 
-  const driver = adminDriverById($("adjustmentDriver").value);
+  const driver = driverFromAdminControl("adjustmentDriver");
   const movementType = $("adjustmentType").value;
   const amount = parseMoneyInput($("adjustmentAmount").value);
   const detail = $("adjustmentDetail").value.trim();
-  const file = $("adjustmentProof").files?.[0];
+  const withoutReceipt = $("adjustmentNoReceipt").checked;
+  const file = withoutReceipt ? null : $("adjustmentProof").files?.[0];
   const status = $("adminAdjustmentStatus");
   const button = $("saveAdminAdjustmentBtn");
 
@@ -5293,7 +5334,7 @@ $("adminAdjustmentForm")?.addEventListener("submit", async event => {
     status.className = "status error";
     return;
   }
-  if (!file) {
+  if (!file && !withoutReceipt) {
     status.textContent = "Adjuntá el comprobante.";
     status.className = "status error";
     return;
@@ -5318,14 +5359,19 @@ $("adminAdjustmentForm")?.addEventListener("submit", async event => {
   status.textContent = "";
 
   try {
-    const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const folder = movementType === "debt_payment" ? "deudas" : "billing_receipts";
-    const proofPath = movementType === "debt_payment"
-      ? `${folder}/${driver.id}/pagos/${localDayKey()}_${Date.now()}_${cleanName}`
-      : `${folder}/${driver.id}/admin_${localDayKey()}_${Date.now()}_${cleanName}`;
-    const storageRef = ref(storage, proofPath);
-    await uploadBytes(storageRef, file);
-    const proofUrl = await getDownloadURL(storageRef);
+    let proofUrl = '', proofPath = '';
+    const receiptAudit = withoutReceipt ? adminReceiptWaiver(admin) : {};
+    if (file) {
+      const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const folder = movementType === "debt_payment" ? "deudas" : "billing_receipts";
+      proofPath = movementType === "debt_payment"
+        ? `${folder}/${driver.id}/pagos/${localDayKey()}_${Date.now()}_${cleanName}`
+        : `${folder}/${driver.id}/admin_${localDayKey()}_${Date.now()}_${cleanName}`;
+      const storageRef = ref(storage, proofPath);
+      await uploadBytes(storageRef, file);
+      proofUrl = await getDownloadURL(storageRef);
+    }
+    if (auth.currentUser?.uid !== admin.uid || !isAdminProfile()) throw new Error('La sesión cambió.');
 
     if (movementType === "debt_payment") {
       const localDebts = adminOpenDebtItemsForDriver(driver);
@@ -5379,6 +5425,7 @@ $("adminAdjustmentForm")?.addEventListener("submit", async event => {
           detail,
           notes: detail,
           allocations,
+          ...receiptAudit,
           proofUrl,
           proofPath,
           receiptUrl: proofUrl,
@@ -5433,6 +5480,7 @@ $("adminAdjustmentForm")?.addEventListener("submit", async event => {
         service,
         detail,
         notes: detail,
+        ...receiptAudit,
         proofUrl,
         proofPath,
         receiptUrl: proofUrl,
@@ -5932,12 +5980,16 @@ function prepareDriverClose() {
 function openAdminPayment(closureId) {
   const item = closures.find(closure => closure.id === closureId);
   if (!item) return;
+  if (adminClosureScopeUid && !adminScopedRecordBelongsToDriver(item, adminDriverById(adminClosureScopeUid) || {})) return;
+  try { adminClosurePaymentUid(item); } catch(error) { window.alert(error.message); return; }
   const remaining = closureRemaining(item);
   if (remaining <= 0) return;
 
   selectedAdminClosureId = closureId;
   $("adminClosureId").value = closureId;
   $("adminPaymentForm").reset();
+  syncAdminReceiptChoice("adminCloseNoReceipt","adminCloseProof");
+  $("adminClosureId").value = closureId;
   setMoneyInput("adminPaymentAmount", remaining);
   $("adminPaymentLimit").textContent = `Saldo máximo: ${money(remaining)}.`;
   $("adminPaymentSummary").innerHTML = `<small>Explora paga a</small><strong>${escapeHtml(item.operatorName || "Chofer")} · ${money(remaining)}</strong><span>Alias: ${escapeHtml(item.recipientAlias || "No informado")} · CUIT: ${escapeHtml(formatCuit(item.recipientCuit || ""))}</span>`;
@@ -5952,7 +6004,8 @@ $("closeDayBtn")?.addEventListener("click", () => {
   render();
   $("closeModal").classList.remove("hidden");
   if (isAdminProfile()) {
-    $("closeModalTitle").textContent = "Gestionar cierres";
+    adminClosureScopeUid = adminScopedDriver()?.id || "";
+    $("closeModalTitle").textContent = adminScopedDriver() ? "Cierres · " + adminDriverLabel(adminScopedDriver()) : "Gestionar cierres";
     $("closeDriverView").classList.add("hidden");
     $("closeAdminView").classList.remove("hidden");
     $("adminPaymentForm").classList.add("hidden");
@@ -6188,19 +6241,23 @@ $("cancelAdminPayment")?.addEventListener("click", () => {
 $("adminPaymentForm")?.addEventListener("submit", async event => {
   event.preventDefault();
   const admin = auth.currentUser;
-  if (!admin || !isAdminProfile() || !selectedAdminClosureId) return;
+  if (!admin || !isAdminProfile() || !selectedAdminClosureId || $("confirmAdminPayment").disabled) return;
   const item = closures.find(closure => closure.id === selectedAdminClosureId);
-  if (!item) return;
+  if (!item || (adminClosureScopeUid && !adminScopedRecordBelongsToDriver(item, adminDriverById(adminClosureScopeUid) || {}))) return;
 
+  let paymentDriverUid;
+  try { paymentDriverUid = adminClosurePaymentUid(item); } catch(error) { $("adminPaymentStatus").textContent=error.message; return; }
+  const expectedDriverId = adminScopedRecordOwner(item).id;
   const remaining = closureRemaining(item);
   const amount = parseMoneyInput($("adminPaymentAmount").value);
-  const file = $("adminCloseProof").files?.[0];
+  const withoutReceipt = $("adminCloseNoReceipt").checked;
+  const file = withoutReceipt ? null : $("adminCloseProof").files?.[0];
   if (!amount || amount <= 0 || amount > remaining + 0.5) {
     $("adminPaymentStatus").textContent = `Ingresá un importe entre $1 y ${money(remaining)}.`;
     $("adminPaymentStatus").className = "status error";
     return;
   }
-  if (!file) {
+  if (!file && !withoutReceipt) {
     $("adminPaymentStatus").textContent = "Adjuntá el comprobante del pago de Explora.";
     $("adminPaymentStatus").className = "status error";
     return;
@@ -6209,18 +6266,31 @@ $("adminPaymentForm")?.addEventListener("submit", async event => {
   $("confirmAdminPayment").disabled = true;
   $("confirmAdminPayment").textContent = "Guardando pago…";
   try {
-    const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
-    const proofPath = `cierres_semanales/${currentWeeklyPeriodId()}/${item.operatorUid}/admin_${item.id}_${Date.now()}_${cleanName}`;
-    const storageRef = ref(storage, proofPath);
-    await uploadBytes(storageRef, file);
-    const proofUrl = await getDownloadURL(storageRef);
+    let proofUrl = '', proofPath = '';
+    const receiptAudit = withoutReceipt ? adminReceiptWaiver(admin) : {};
+    if (file) {
+      const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+      proofPath = `cierres_semanales/${currentWeeklyPeriodId()}/${paymentDriverUid}/admin_${item.id}_${Date.now()}_${cleanName}`;
+      const storageRef = ref(storage, proofPath);
+      await uploadBytes(storageRef, file);
+      proofUrl = await getDownloadURL(storageRef);
+    }
+    if (auth.currentUser?.uid !== admin.uid || !isAdminProfile()) throw new Error('La sesión cambió.');
 
     const paymentRef = doc(collection(db, ROOT_COLLECTIONS.payments));
     const closureRef = doc(db, ROOT_COLLECTIONS.closures, item.id);
-    const newPaidTotal = Number(item.paidAmountTotal || 0) + amount;
-    const newRemaining = Math.max(0, remaining - amount);
-    const batch = writeBatch(db);
-    batch.set(paymentRef, {
+    let newRemaining;
+    await runTransaction(db, async transaction => {
+      const snapshot = await transaction.get(closureRef);
+      if (!snapshot.exists()) throw new Error('El cierre ya no existe.');
+      const current = normalizeClosureRecord(item.id, snapshot.data());
+      paymentDriverUid = adminClosurePaymentUid(current);
+      if (adminScopedRecordOwner(current)?.id !== expectedDriverId) throw new Error('El chofer del cierre cambió. Volvé a revisarlo.');
+      const currentRemaining = closureRemaining(current);
+      if (current.direction !== 'explora_pays_driver' || /completed|reject|rechaz|cancel/.test(String(current.status || '').toLowerCase()) || amount > currentRemaining + .5) throw new Error('El cierre cambió. Volvé a abrirlo para revisar el importe pendiente.');
+      const newPaidTotal = Number(current.paidAmountTotal || 0) + amount;
+      newRemaining = Math.max(0, currentRemaining - amount);
+      transaction.set(paymentRef, {
       // Ajuste interno: la UI lo muestra del lado efectivo del chofer, pero no debe
       // sumarse otra vez a la facturación histórica ni disparar un Telegram de cobro.
       method: "cash",
@@ -6238,6 +6308,7 @@ $("adminPaymentForm")?.addEventListener("submit", async event => {
       service: "Ajuste de Explora",
       notes: newRemaining <= 0.5 ? "Pago total de Explora" : "Pago parcial de Explora",
       detail: newRemaining <= 0.5 ? "Pago total de Explora" : "Pago parcial de Explora",
+      ...receiptAudit,
       proofUrl,
       proofPath,
       receiptUrl: proofUrl,
@@ -6245,14 +6316,14 @@ $("adminPaymentForm")?.addEventListener("submit", async event => {
       closureId: item.id,
       dayKey: localDayKey(),
       weeklyPeriodId: currentWeeklyPeriodId(),
-      driverUid: item.operatorUid,
-      choferUid: item.operatorUid,
-      uid: item.operatorUid,
-      ownerUid: item.operatorUid,
-      driverId: item.operatorUid,
-      driverName: item.operatorName || "Chofer",
-      operatorUid: item.operatorUid,
-      operatorName: item.operatorName || "",
+      driverUid: paymentDriverUid,
+      choferUid: paymentDriverUid,
+      uid: paymentDriverUid,
+      ownerUid: paymentDriverUid,
+      driverId: paymentDriverUid,
+      driverName: current.operatorName || "Chofer",
+      operatorUid: paymentDriverUid,
+      operatorName: current.operatorName || "",
       createdByUid: admin.uid,
       createdByRole: "admin",
       createdByName: currentProfile?.displayName || currentProfile?.username || "Administrador",
@@ -6260,21 +6331,23 @@ $("adminPaymentForm")?.addEventListener("submit", async event => {
       createdAtMs: Date.now(),
       createdAt: serverTimestamp()
     });
-    batch.update(closureRef, {
+    transaction.update(closureRef, {
       paidAmountTotal: newPaidTotal,
       remainingAmount: newRemaining,
       amountDueToDriver: newRemaining,
       amountToDriver: newRemaining,
       amountDueFromDriver: 0,
       amountFromDriver: 0,
+      ...(withoutReceipt ? {} : {receiptStatus:"attached",receiptRequired:true,receiptWaived:deleteField(),receiptWaivedByUid:deleteField(),receiptWaivedByRole:deleteField(),receiptWaivedAt:deleteField(),receiptWaivedAtMs:deleteField()}),
       lastProofUrl: proofUrl,
       lastProofPath: proofPath,
+      ...receiptAudit,
       proofUrl,
       proofPath,
       receiptUrl: proofUrl,
       receiptPath: proofPath,
-      proofUploadedByUid: admin.uid,
-      proofUploadedByRole: "admin",
+      proofUploadedByUid: withoutReceipt ? deleteField() : admin.uid,
+      proofUploadedByRole: withoutReceipt ? deleteField() : "admin",
       status: newRemaining <= 0.5 ? "completed" : "partially_paid",
       reviewStatus: newRemaining <= 0.5 ? "completed" : "approved_partial",
       actionedByAdminUid: admin.uid,
@@ -6283,7 +6356,7 @@ $("adminPaymentForm")?.addEventListener("submit", async event => {
       lastPaymentAt: serverTimestamp(),
       completedAt: newRemaining <= 0.5 ? serverTimestamp() : null
     });
-    await batch.commit();
+    });
 
     $("adminPaymentStatus").textContent = newRemaining <= 0.5
       ? "Pago registrado. El cierre quedó equilibrado."
@@ -6960,10 +7033,15 @@ function renderInvoices() {
     groups.get(month).append(createInvoiceCard(invoice));
   }
 }
-function showInvoices(allDrivers = false) {
+function showInvoices(allDrivers = false, driverId = "") {
   const user=auth.currentUser;if(!user)return;
   const generation = ++invoiceViewGeneration;
-  const scope = allDrivers && isAdminProfile() ? "all" : user.uid;
+  const targetDriver = driverId && isAdminProfile() ? adminDriverById(driverId) : null;
+  if (driverId && !targetDriver) return;
+  const targetUid = targetDriver ? (targetDriver.authUid || targetDriver.uid || targetDriver.id) : user.uid;
+  const teamScope = allDrivers && isAdminProfile() && !targetDriver;
+  const scope = teamScope ? "all" : targetUid;
+  $("invoicesTitle").textContent = targetDriver ? "Facturas ARCA · " + adminDriverLabel(targetDriver) : "Facturas ARCA";
   const cached = invoiceViewCache.get(scope);
   let receivedSnapshot = false;
   clearInvoiceFiles();
@@ -6977,9 +7055,9 @@ function showInvoices(allDrivers = false) {
   }
   document.querySelector('[data-close="invoicesModal"]').focus();
   stopInvoiceSubscription?.();
-  const invoiceQuery = allDrivers && isAdminProfile()
+  const invoiceQuery = teamScope
     ? query(collection(db,"arca_invoices"),orderBy("createdAtMs","desc"),limit(30))
-    : query(collection(db,"arca_invoices"),where("driverUid","==",user.uid),orderBy("createdAtMs","desc"),limit(30));
+    : query(collection(db,"arca_invoices"),where("driverUid","==",targetUid),orderBy("createdAtMs","desc"),limit(30));
   stopInvoiceSubscription=onSnapshot(invoiceQuery,{includeMetadataChanges:true},snapshot=>{
     if (generation !== invoiceViewGeneration || auth.currentUser?.uid !== user.uid) return;
     if (cached && snapshot.empty && snapshot.metadata.fromCache) return;
@@ -7013,9 +7091,9 @@ function adminWorkspaceState() {
   const authorized=Boolean(auth.currentUser&&isAdminProfile()),ready=authorized&&Boolean(dashboardLoad?.complete());
   if(!authorized||!ready)return {authorized,ready,error:Boolean(dashboardLoad?.errors.size),accounts:[],movements:[],closures:[]};
   const drivers=adminDrivers.filter(d=>!adminDriverIsAdministrator(d));
-  const owner=r=>drivers.find(d=>adminRecordBelongsToDriver(r,d));
+  const owner=r=>adminScopedRecordOwner(r);
   const name=r=>{const d=owner(r);return d?adminDriverLabel(d):r.driverName||r.operatorName||'Chofer sin identificar';};
-  const row=(r,kind,label,method,amount=r.amount)=>({id:r.id,kind,label,method,amount:Number(amount)||0,time:recordTimestampMs(r),driver:name(r),detail:r.invoiceRequest?.origin&&r.invoiceRequest?.destination?r.invoiceRequest.origin+' → '+r.invoiceRequest.destination:r.detail||r.notes||r.reason||r.expenseLabel||label,proof:recordProofUrl(r)});
+  const row=(r,kind,label,method,amount=r.amount)=>({id:r.id,driverUid:owner(r)?.id||'',receiptStatus:r.receiptStatus||'',receiptWaivedByUid:r.receiptWaivedByUid||'',receiptWaivedAtMs:r.receiptWaivedAtMs||0,kind,label,method,amount:Number(amount)||0,time:recordTimestampMs(r),driver:name(r),detail:r.invoiceRequest?.origin&&r.invoiceRequest?.destination?r.invoiceRequest.origin+' → '+r.invoiceRequest.destination:r.detail||r.notes||r.reason||r.expenseLabel||label,proof:recordProofUrl(r)});
   const movements=[];
   for(const r of adminPayments.filter(r=>!movementIsDeleted(r)&&!r.migrationVersion)){
     const adjustment=isSettlementAdjustment(r)||isReimbursementCompensation(r);
@@ -7033,7 +7111,7 @@ function adminWorkspaceState() {
       status:statusNames[r.status]||r.status||'Pendiente',completed:['completed','paid','approved'].includes(r.status),
       direction:['driver_to_explora','driver_pays_explora'].includes(direction)?'Chofer → Explora':['explora_to_driver','explora_pays_driver'].includes(direction)?'Explora → chofer':'Sin transferencia'};
   }).sort((a,b)=>b.time-a.time);
-  return {authorized,ready,accounts:drivers.filter(adminDriverIsActive).map(d=>({name:adminDriverLabel(d),balance:adminBillingBalanceForDriver(d)})),movements,closures:closureRows};
+  return {authorized,ready,accounts:drivers.filter(adminDriverIsActive).map(d=>({uid:d.id,name:adminDriverLabel(d),balance:adminBillingBalanceForDriver(d)})),movements,closures:closureRows};
 }
 function renderGroupDebtPreview(){
   const group=$('debtDriver').value==='__all__';
@@ -7045,17 +7123,20 @@ function renderGroupDebtPreview(){
     box.innerHTML='<strong>'+drivers.length+' choferes activos</strong><span>'+money(amount)+' por chofer · Total '+money(amount*drivers.length)+'</span><small>'+drivers.map(d=>escapeHtml(adminDriverLabel(d))).join(' · ')+'</small>';
   }
 }
-function openAdminDebt(group=false){
+function openAdminDebt(group=false,driverUid=""){
   if(!isAdminProfile())return;
   pendingGroupDebt=null;renderAdminDriverOptions();$('debtForm').reset();
+  lockAdminDriverSelection('debtDriver',group?'':driverUid);
   if(group)$('debtDriver').value='__all__';
   $('debtStatus').textContent='';$('debtStatus').className='status';$('saveDebtBtn').disabled=false;
   renderGroupDebtPreview();$('debtModal').classList.remove('hidden');
 }
 $('debtDriver').addEventListener('change',renderGroupDebtPreview);$('debtAmount').addEventListener('input',renderGroupDebtPreview);
-function openAdminDigitalExpense(){
+function openAdminDigitalExpense(driverUid=""){
   if(!isAdminProfile())return;
   renderAdminDriverOptions();$('adminDigitalExpenseForm').reset();
+  lockAdminDriverSelection('adminExpenseDriver',driverUid);
+  syncAdminReceiptChoice('adminExpenseNoReceipt','adminExpenseProof');
   $('adminExpenseType').innerHTML=ExploraExpensePolicy.groups.map(g=>'<optgroup label="'+escapeHtml(g.groupLabel||g.label)+'">'+ExploraExpensePolicy.types.filter(t=>t.group===g.id).map(t=>'<option value="'+t.id+'">'+escapeHtml(t.label)+'</option>').join('')+'</optgroup>').join('');
   $('adminDigitalExpenseStatus').textContent='';$('adminDigitalExpenseStatus').className='status';$('saveAdminDigitalExpense').disabled=false;
   renderAdminExpenseResponsibility();$('adminDigitalExpenseModal').classList.remove('hidden');
@@ -7068,29 +7149,33 @@ $('adminExpenseType').addEventListener('change',renderAdminExpenseResponsibility
 $('adminDigitalExpenseForm').addEventListener('submit',async event=>{
   event.preventDefault();const actor=auth.currentUser,button=$('saveAdminDigitalExpense'),status=$('adminDigitalExpenseStatus');
   if(!actor||!isAdminProfile()||button.disabled)return;
-  const driver=adminDriverById($('adminExpenseDriver').value),amount=parseMoneyInput($('adminExpenseAmount').value),detail=$('adminExpenseDetail').value.trim(),file=$('adminExpenseProof').files?.[0],typeId=$('adminExpenseType').value;
+  const withoutReceipt=$('adminExpenseNoReceipt').checked;
+  const driver=driverFromAdminControl('adminExpenseDriver'),amount=parseMoneyInput($('adminExpenseAmount').value),detail=$('adminExpenseDetail').value.trim(),file=withoutReceipt?null:$('adminExpenseProof').files?.[0],typeId=$('adminExpenseType').value;
   if(!driver||!adminDriverIsActive(driver)||!Number.isFinite(amount)||amount<=0||amount>100000000||!detail||!ExploraExpensePolicy.find(typeId)){status.textContent='Completá el chofer, el concepto, el importe y el detalle.';return;}
-  if(!file||file.size<=0||file.size>15*1024*1024||!(/^(image\/|application\/pdf$)/.test(file.type))){status.textContent='Adjuntá una imagen o PDF de hasta 15 MB.';return;}
+  if(!withoutReceipt&&(!file||file.size<=0||file.size>15*1024*1024||!(/^(image\/|application\/pdf$)/.test(file.type)))){status.textContent='Adjuntá una imagen o PDF de hasta 15 MB.';return;}
   if(!dashboardLoad?.complete()){status.textContent='Esperá a que se sincronicen los datos del equipo.';return;}
   button.disabled=true;button.textContent='Guardando…';status.textContent='';
   const controls=[...$('adminDigitalExpenseModal').querySelectorAll('input,select,[data-close]')];controls.forEach(c=>c.disabled=true);
   let operation,fingerprint;
   try{
-    fingerprint=await buildSubmissionFingerprint('admin_digital_expense',{driverUid:driver.id,amount,detail,typeId,proof:await sha256Hex(await file.arrayBuffer())});
+    fingerprint=await buildSubmissionFingerprint('admin_digital_expense',{driverUid:driver.id,amount,detail,typeId,proof:withoutReceipt?'without-receipt':await sha256Hex(await file.arrayBuffer())});
     operation=reservePendingOperation('admin_digital_expense',actor.uid,fingerprint);
     const expenseRef=doc(db,ROOT_COLLECTIONS.expenses,operation.operationId);
     const existing=await getDocFromServer(expenseRef);
     if(!assertSameCommittedOperation(existing,operation.operationId,fingerprint)){
-      const proofPath='gastos/'+driver.id+'/'+operation.operationId+'/'+file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-      const storageRef=ref(storage,proofPath);await uploadBytes(storageRef,file,{contentType:file.type});const proofUrl=await getDownloadURL(storageRef);
-      const payload=buildAdminDigitalExpense({driver:{id:driver.id,name:adminDriverLabel(driver)},actor:{uid:actor.uid,name:currentProfile?.displayName||currentProfile?.username||'Administrador'},amount,detail,typeId,proofUrl,proofPath,file,operation,fingerprint,businessId:BUSINESS_ID,dayKey:localDayKey()},ExploraExpensePolicy,ExploraPeriodPolicy);
+      let proofUrl='',proofPath='';
+      if(file){
+        proofPath='gastos/'+driver.id+'/'+operation.operationId+'/'+file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+        const storageRef=ref(storage,proofPath);await uploadBytes(storageRef,file,{contentType:file.type});proofUrl=await getDownloadURL(storageRef);
+      }
+      const payload=buildAdminDigitalExpense({driver:{id:driver.id,name:adminDriverLabel(driver)},actor:{uid:actor.uid,role:'admin',name:currentProfile?.displayName||currentProfile?.username||'Administrador'},amount,detail,typeId,proofUrl,proofPath,file,withoutReceipt,operation,fingerprint,businessId:BUSINESS_ID,dayKey:localDayKey()},ExploraExpensePolicy,ExploraPeriodPolicy);
       if(auth.currentUser?.uid!==actor.uid||!isAdminProfile())throw new Error('La sesión cambió. Volvé a ingresar.');
-      await runTransaction(db,async tx=>{const previous=await tx.get(expenseRef);if(assertSameCommittedOperation(previous,operation.operationId,fingerprint))return;tx.set(expenseRef,{...payload,createdAt:serverTimestamp()});});
+      await runTransaction(db,async tx=>{const previous=await tx.get(expenseRef);if(assertSameCommittedOperation(previous,operation.operationId,fingerprint))return;tx.set(expenseRef,{...payload,...(withoutReceipt?adminReceiptWaiver(actor,operation.createdAtMs):{}),createdAt:serverTimestamp()});});
     }
     clearPendingOperation('admin_digital_expense',actor.uid,fingerprint,operation.operationId);
     $('adminDigitalExpenseModal').classList.add('hidden');
   }catch(error){status.textContent=error.message||'No se pudo confirmar. Reintentá; la misma operación no se duplicará.';status.className='status error';}
-  finally{button.disabled=false;button.textContent='Confirmar pago digital';controls.forEach(c=>c.disabled=false);}
+  finally{button.disabled=false;button.textContent='Confirmar pago digital';controls.forEach(c=>c.disabled=false);lockAdminDriverSelection('adminExpenseDriver',$('adminExpenseDriver').dataset.driverScope);syncAdminReceiptChoice('adminExpenseNoReceipt','adminExpenseProof');}
 });
 
 let opsSalidasBoard = null;
@@ -7117,7 +7202,12 @@ function ensureOpsSalidasBoard() {
   });
   return opsSalidasBoard;
 }
-adminWorkspace=mountAdminWorkspace({getState:adminWorkspaceState,loadDocuments:async input=>(await httpsCallable(functions,'adminMonthlyDocuments',{timeout:300000})(input)).data,openDebt:openAdminDebt,openDigital:openAdminDigitalExpense});
+adminWorkspace=mountAdminWorkspace({getState:adminWorkspaceState,loadDocuments:async input=>(await httpsCallable(functions,'adminMonthlyDocuments',{timeout:300000})(input)).data,openDebt:openAdminDebt,openDigital:()=>openAdminDigitalExpense(),onDriverAction:(action,uid)=>{
+  if(!isAdminProfile()||!dashboardLoad?.complete()||!adminDriverById(uid))return;
+  if(action==='invoices')showInvoices(false,uid);
+  if(action==='digital')openAdminDigitalExpense(uid);
+  if(action==='debt')openAdminDebt(false,uid);
+}});
 uberFleetWorkspace=mountUberFleet({defaultDigitalRecipient:'explora',isAuthorized:()=>Boolean(auth.currentUser&&isAdminProfile()),call:async(name,input)=>(await httpsCallable(functions,name,{timeout:120000})(input)).data});
 adminUberLiquidationWorkspace=mountAdminUberLiquidation({
   isAuthorized:()=>Boolean(auth.currentUser&&isAdminProfile()&&adminDashboardFinancialReady()),

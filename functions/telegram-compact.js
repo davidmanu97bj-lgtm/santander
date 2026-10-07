@@ -3,6 +3,8 @@ const periodPolicy = require('./period-policy');
 const {summarizeAddress}=require('./address-summary');
 const clean = (value, max = 180) => String(value ?? '').replace(/[\r\n\t]+/g,' ').trim().slice(0,max);
 const money = value => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value) || 0);
+const receiptLines = data => data.receiptStatus === 'waived_by_admin' && data.receiptWaived === true
+  ? ['Comprobante: sin comprobante, registrado por administración'] : [];
 function balanceLine(value) {
   if (!Number.isFinite(Number(value))) return 'Saldo no disponible';
   const amount = Number(value);
@@ -20,7 +22,7 @@ function expenseSummary({driverName,amount,detail,data={},dateLines=[]}) {
   const actor = clean(data.createdByName || data.registeredByName || 'Administrador');
   return [digital ? `${actor} Gasto digital:` : `${clean(driverName)} Gasto:`,
     ...(digital ? [`Detalle: ${clean(detail) || 'Gasto'}`,`Monto: ${money(amount)}`,`Al chofer: ${clean(driverName)}`]
-      : [`Motivo: ${clean(detail) || 'Gasto'}`,`Total cargado del gasto: ${money(amount)}`]),...dateLines].join('\n');
+      : [`Motivo: ${clean(detail) || 'Gasto'}`,`Total cargado del gasto: ${money(amount)}`]),...receiptLines(data),...dateLines].join('\n');
 }
 function debtSummary({data,driverName,amount,dateLines=[]}) {
   return [`${clean(data.createdByName || data.registeredByName || 'Administrador')} Deuda 100%: ${clean(driverName)}`,
@@ -45,11 +47,11 @@ function closureSummary({data,driverName,dateLines=[]}) {
   const amount = data.settlementAmount ?? data.paidAmountTotal ?? data.requestedPaymentAmount ?? data.amount ?? Math.max(Number(data.amountDueFromDriver)||0,Number(data.amountDueToDriver)||0);
   return [`${clean(driverName)} pidió un cierre`,
     `${paid ? 'Quién pagó' : 'Quién debe pagar'}: ${exploraPays ? 'Explora' : driverPays ? clean(driverName) : 'Sin transferencia'}${paid && (exploraPays || driverPays) ? ' pagó' : ''}`,
-    `Monto: ${money(amount)}`,`Estado: ${paid ? 'cerrado' : clean(data.status || 'pendiente')}`,...dateLines].join('\n');
+    `Monto: ${money(amount)}`,`Estado: ${paid ? 'cerrado' : clean(data.status || 'pendiente')}`,...receiptLines(data),...dateLines].join('\n');
 }
-function managementSummary({driverName,amount,paying,balance,note}) {
+function managementSummary({driverName,amount,paying,balance,note,data={}}) {
   return [paying ? '📤 Pago a Explora' : '📥 Cobro a Explora',`👤 ${clean(driverName)}`,
-    `Importe: ${money(amount)}`,...(clean(note) ? [`Nota: ${clean(note)}`] : []),'',balanceLine(balance)].join('\n');
+    `Importe: ${money(amount)}`,...(clean(note) ? [`Nota: ${clean(note)}`] : []),...receiptLines(data),'',balanceLine(balance)].join('\n');
 }
 function uberSummary({data,driverName,balance}) {
   const amount = Number(data.grossAmount || data.totalAmount || data.amount || 0), box = amount * periodPolicy.cashboxRate(data);

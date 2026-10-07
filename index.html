@@ -16,7 +16,7 @@
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js" crossorigin />
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js" crossorigin />
   <script type="module" async src="./login-entry.js?v=20260921-release-number-2"></script>
-  <link rel="modulepreload" href="./app.js?v=20261002-uber-confirmation" />
+  <link rel="modulepreload" href="./app.js?v=20261007-admin-driver-cards" />
   <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
@@ -129,7 +129,7 @@
   <link rel="stylesheet" href="./movement-colors.css?v=20260919-admin-1" />
   <link rel="stylesheet" href="./explora-ui.css?v=20260919-admin-1" />
   <link rel="stylesheet" href="./ops-salidas.css?v=20261002-retiro-disponibilidad" />
-  <link rel="stylesheet" href="./admin-workspace.css?v=20260930-clasificacion-cobros" />
+  <link rel="stylesheet" href="./admin-workspace.css?v=20261007-driver-cards" />
   <link rel="stylesheet" href="./uber-fleet-ui.css?v=20260929-fleet-shadow" />
   <link rel="stylesheet" href="./admin-uber-liquidation-ui.css?v=20261002-uber-admin" />
 </head>
@@ -169,56 +169,51 @@
   </header>
   <main class="main">
     <section id="adminDashboard" class="admin-dashboard hidden" aria-label="Panel de administración">
-      <div class="admin-shell">
-        <aside class="admin-sidebar admin-desktop-only">
-          <div class="admin-sidebar-brand">EXPLORA<small>CONTROL OPERATIVO</small></div>
-          <nav aria-label="Administración">
-            <button type="button" data-admin-view="overview" aria-current="page"><span data-explora-icon="home"></span>Resumen del equipo</button>
-            <button type="button" data-admin-view="movements"><span data-explora-icon="management"></span>Movimientos</button>
-            <button type="button" data-admin-view="closures"><span data-explora-icon="wallet"></span>Cierres y pagos</button>
-            <button type="button" data-admin-view="accountant"><span data-explora-icon="expense"></span>Contadora</button>
-          </nav>
-          <div class="admin-sidebar-tools"><small>HERRAMIENTAS</small>
-            <button id="adminInvoicesBtn" type="button">Facturas ARCA <span>↗</span></button>
-            <button id="adminCalendarBtn" type="button">Calendario <span>↗</span></button>
-            <button id="adminDriversBtn" type="button">Gestionar choferes <span>↗</span></button>
+      <div class="admin-shell"><div class="admin-workspace">
+        <header class="admin-workspace-heading"><div><span class="admin-eyebrow">ADMINISTRACIÓN</span><h1 id="adminWorkspaceTitle" tabindex="-1">Tu equipo</h1><p id="adminWorkspaceSubtitle">Cada acción se aplica al chofer de su tarjeta.</p></div><button id="adminLogoutBtn" type="button" class="admin-exit">Salir</button></header>
+        <nav class="admin-primary-actions" aria-label="Herramientas generales">
+          <button id="adminOperationsBtn" data-admin-view="operations" type="button"><span data-explora-icon="management"></span>Operaciones</button>
+          <button id="adminDriversBtn" type="button"><span data-explora-icon="home"></span>Gestión de choferes</button>
+          <button id="adminGroupDebtBtn" type="button" disabled><span data-explora-icon="debt"></span>Deuda grupal</button>
+        </nav>
+        <p id="adminQuickStatus" role="status">Sincronizando el equipo…</p>
+        <button id="adminBackToDrivers" class="admin-back" type="button" hidden>← Volver a los choferes</button>
+        <section data-admin-panel="overview" aria-label="Cuentas de choferes">
+          <div class="admin-driver-list-heading"><span>CUENTAS POR CHOFER</span><span class="admin-live">En tiempo real</span></div>
+          <div id="adminDriverList" class="admin-driver-list" aria-live="polite"><div class="admin-driver-empty">Consultando saldos…</div></div>
+        </section>
+        <section data-admin-panel="operations" hidden aria-label="Operaciones">
+          <div id="adminOverviewMetrics" class="admin-metrics" aria-live="polite"></div>
+          <div class="admin-operations-tools">
+            <button type="button" id="adminUberFleetBtn" class="uber-fleet-entry">Uber Fleet <small>Comparar viajes sin alterar saldos</small></button>
+            <button type="button" id="adminUberLiquidationBtn" class="uber-fleet-entry" disabled title="Sincronizando los datos de los choferes">Cierre semanal de Uber <small>Cargar efectivo y digital conciliados de Fleet</small></button>
+            <button id="adminCalendarBtn" class="admin-outline" type="button">Calendario</button>
+            <button id="adminInvoicesBtn" class="admin-outline" type="button">Facturas ARCA del equipo</button>
           </div>
-          <p class="admin-sidebar-note">Todo el equipo.<br>Una misma vista.</p>
-        </aside>
-        <div class="admin-workspace">
-          <header class="admin-workspace-heading"><div><span class="admin-eyebrow">ADMINISTRACIÓN</span><h1 id="adminWorkspaceTitle">Resumen del equipo</h1><h1 class="admin-mobile-title">Administración</h1><p id="adminWorkspaceSubtitle">Saldos actualizados de todos tus choferes.</p></div><button id="adminLogoutBtn" type="button" class="admin-exit">Salir</button></header>
-          <section class="admin-quick-section" aria-label="Cargas rápidas"><div class="admin-section-label"><h2>Cargas rápidas</h2><span>Elegí qué querés registrar</span></div><div class="admin-quick-actions">
-            <button id="adminDigitalExpenseBtn" disabled class="admin-quick digital" type="button"><span data-explora-icon="digital"></span><span><strong>Pago digital</strong><small>Gasto pagado por Explora para un chofer.</small></span><b aria-hidden="true">↗</b></button>
-            <button id="adminAddDebtBtn" disabled class="admin-quick debt" type="button"><span data-explora-icon="debt"></span><span><strong>Deuda 100% chofer</strong><small>Multa u otro importe a su cargo.</small></span><b aria-hidden="true">↗</b></button>
-            <button id="adminGroupDebtBtn" disabled class="admin-quick group" type="button"><span data-explora-icon="management"></span><span><strong>Deuda grupal</strong><small>El mismo importe para cada chofer activo.</small></span><b aria-hidden="true">↗</b></button>
-          </div><p id="adminQuickStatus" role="status">Sincronizando el equipo…</p></section>
-          <button type="button" id="adminUberFleetBtn" class="uber-fleet-entry">Uber Fleet <small>Comparar viajes sin alterar saldos</small></button>
-          <button type="button" id="adminUberLiquidationBtn" class="uber-fleet-entry" disabled title="Sincronizando los datos de los choferes">Cierre semanal de Uber <small>Cargar efectivo y digital conciliados de Fleet</small></button>
           <div id="opsSalidasBoard" class="ops-salidas-host"></div>
-          <p class="admin-mobile-note">Los informes y el control del equipo están disponibles en la versión para notebook.</p>
-          <div class="admin-desktop-only">
-            <section data-admin-panel="overview">
-              <div id="adminOverviewMetrics" class="admin-metrics" aria-live="polite"></div>
-              <div class="admin-surface"><div class="admin-section-label"><div><h2>Estado de las cuentas</h2><p>Quién debe a quién, sin abrir cada chofer.</p></div><span class="admin-live">En tiempo real</span></div><div id="adminDriverList" class="admin-driver-list" aria-live="polite"><div class="admin-driver-empty">Consultando saldos…</div></div></div>
-            </section>
-            <section data-admin-panel="movements" hidden class="admin-surface">
-              <div class="admin-section-label"><div><h2>Actividad de todo el equipo</h2><p>Cobros, gastos y deudas con sus comprobantes.</p></div><button id="adminMovementsBtn" type="button" class="admin-outline">Corregir un movimiento</button></div>
-              <div class="admin-filters"><label>Mes<select id="adminActivityMonth"></select></label><label>Mostrar<select id="adminActivityType"><option value="all">Todos</option><option value="cash">Cobros en efectivo</option><option value="digital">Cobros digitales</option><option value="expense">Gastos</option><option value="debt">Deudas</option><option value="payment">Pagos</option><option value="uber">Uber</option></select></label><label class="admin-search">Buscar<input id="adminActivitySearch" type="search" placeholder="Chofer o detalle"></label></div>
-              <div id="adminActivityTable" class="admin-table-scroll"></div><button id="adminMoreActivity" class="admin-outline" type="button" hidden>Ver más movimientos</button>
-            </section>
-            <section data-admin-panel="closures" hidden class="admin-surface">
-              <div class="admin-section-label"><div><h2>Cierres y pagos</h2><p>Rendiciones de todos los choferes y sus comprobantes.</p></div><button id="adminManageClosuresBtn" class="admin-outline" type="button">Gestionar pendientes</button></div>
-              <div class="admin-toolbar"><button id="adminAdjustmentBtn" class="admin-outline" type="button">Registrar pago / ajuste</button><button id="adminHistoryBtn" class="admin-outline" type="button">Consultar historial</button></div>
-              <div id="adminClosuresTable" class="admin-table-scroll"></div>
-            </section>
-            <section data-admin-panel="accountant" hidden class="admin-surface">
-              <div class="admin-section-label"><div><h2>Documentación del mes</h2><p>El 40% de participación, el resumen detallado y la factura recibida de cada chofer.</p></div><button id="adminRefreshDocuments" type="button" class="admin-outline">Actualizar</button></div>
-              <div class="admin-filters"><label>Mes del informe<select id="adminDocumentsMonth"></select></label><p>El importe se calcula sobre la facturación bruta. Los gastos y las deudas no reducen el 40%.</p></div>
-              <p id="adminDocumentsStatus" role="status"></p><div id="adminDocumentsTable" class="admin-table-scroll"></div>
-            </section>
-          </div>
-        </div>
-      </div>
+        </section>
+        <section data-admin-panel="movements" hidden class="admin-surface">
+          <div class="admin-section-label"><div><h2>Movimientos · <span data-admin-scoped-name></span></h2><p>Cobros, gastos, deudas y pagos de este chofer.</p></div><button id="adminMovementsBtn" type="button" class="admin-outline">Corregir un movimiento</button></div>
+          <div class="admin-filters"><label>Mes<select id="adminActivityMonth"></select></label><label>Mostrar<select id="adminActivityType"><option value="all">Todos</option><option value="cash">Cobros en efectivo</option><option value="digital">Cobros digitales</option><option value="expense">Gastos</option><option value="debt">Deudas</option><option value="payment">Pagos</option><option value="uber">Uber</option></select></label><label class="admin-search">Buscar<input id="adminActivitySearch" type="search" placeholder="Buscar un detalle"></label></div>
+          <div id="adminActivityTable" class="admin-table-scroll" tabindex="0" aria-label="Movimientos del chofer"></div><button id="adminMoreActivity" class="admin-outline" type="button" hidden>Ver más movimientos</button>
+        </section>
+        <section data-admin-panel="closures" hidden class="admin-surface">
+          <div class="admin-section-label"><div><h2>Cierre / achique · <span data-admin-scoped-name></span></h2><p>Rendiciones, pagos y ajustes de este chofer.</p></div><button id="adminManageClosuresBtn" class="admin-outline" type="button">Gestionar cierre pendiente</button></div>
+          <div class="admin-toolbar"><button id="adminAdjustmentBtn" class="admin-outline" type="button">Registrar pago / achique</button><button id="adminHistoryBtn" class="admin-outline" type="button">Consultar historial</button></div>
+          <div id="adminClosuresTable" class="admin-table-scroll" tabindex="0" aria-label="Cierres del chofer"></div>
+        </section>
+        <section data-admin-panel="receipts" hidden class="admin-surface">
+          <div class="admin-section-label"><div><h2>Comprobantes · <span data-admin-scoped-name></span></h2><p>Respaldos de sus movimientos y cierres. Las cargas sin comprobante quedan identificadas.</p></div></div>
+          <div class="admin-filters"><label>Mes<select id="adminReceiptsMonth"></select></label></div>
+          <div id="adminReceiptsTable" class="admin-table-scroll" tabindex="0" aria-label="Comprobantes del chofer"></div>
+        </section>
+        <section data-admin-panel="accountant" hidden class="admin-surface">
+          <div class="admin-section-label"><div><h2>Contadora · <span data-admin-scoped-name></span></h2><p>El resumen del mes y la factura recibida de este chofer.</p></div><button id="adminRefreshDocuments" type="button" class="admin-outline">Actualizar</button></div>
+          <div class="admin-filters"><label>Mes del informe<select id="adminDocumentsMonth"></select></label><p>El 40% se calcula sobre la facturación bruta. Los gastos y las deudas no reducen esa base.</p></div>
+          <p id="adminDocumentsStatus" role="status"></p><div id="adminDocumentsTable" class="admin-table-scroll" tabindex="0" aria-label="Documentación del chofer"></div>
+        </section>
+        <div hidden aria-hidden="true"><button id="adminDigitalExpenseBtn" disabled type="button">Carga digital</button><button id="adminAddDebtBtn" disabled type="button">Deuda 100% chofer</button></div>
+      </div></div>
     </section>
 
     <div id="driverDashboard">
@@ -411,13 +406,13 @@
 
 <div id="adminDigitalExpenseModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="adminDigitalExpenseTitle">
  <div class="modal-card admin-digital-card"><div class="modal-head"><h2 id="adminDigitalExpenseTitle">Pago digital de Explora</h2><button class="x" data-close="adminDigitalExpenseModal" aria-label="Cerrar">×</button></div>
- <p class="admin-form-note">Registrá un gasto ya pagado por Explora y adjuntá su comprobante.</p>
+ <p class="admin-form-note">Registrá un gasto ya pagado por Explora. Adjuntá el comprobante o indicá que no tenés uno.</p>
  <form id="adminDigitalExpenseForm">
   <div class="field"><label for="adminExpenseDriver">Chofer</label><select id="adminExpenseDriver" required></select></div>
   <div class="field"><label for="adminExpenseType">Concepto</label><select id="adminExpenseType" required></select><p id="adminExpenseResponsibility" class="file-note"></p></div>
   <div class="field"><label for="adminExpenseAmount">Monto pagado</label><input id="adminExpenseAmount" class="money-input" type="text" inputmode="numeric" data-money-input autocomplete="off" placeholder="0" required></div>
   <div class="field"><label for="adminExpenseDetail">Detalle</label><input id="adminExpenseDetail" maxlength="280" placeholder="Ej. Pago del seguro del auto" required></div>
-  <div class="field"><label for="adminExpenseProof">Comprobante</label><input id="adminExpenseProof" type="file" accept="image/*,.pdf" required></div>
+  <div class="field"><label for="adminExpenseProof">Comprobante</label><input id="adminExpenseProof" type="file" accept="image/*,.pdf" required><label class="admin-no-receipt"><input id="adminExpenseNoReceipt" type="checkbox"> Sin comprobante</label><small class="file-note">Quedará registrado quién confirmó esta operación sin adjunto.</small></div>
   <p id="adminDigitalExpenseStatus" role="status" class="status"></p><div class="modal-actions"><button type="button" class="secondary" data-close="adminDigitalExpenseModal">Cancelar</button><button type="submit" class="save" id="saveAdminDigitalExpense">Confirmar pago digital</button></div>
  </form></div>
 </div>
@@ -506,7 +501,7 @@
       </div>
       <div class="field"><label for="adjustmentAmount">Importe</label><input id="adjustmentAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div>
       <div class="field"><label for="adjustmentDetail">Motivo / detalle</label><input id="adjustmentDetail" placeholder="Ej. Pago parcial" required></div>
-      <div class="field"><label for="adjustmentProof">Comprobante</label><input id="adjustmentProof" type="file" accept="image/*,.pdf" required></div>
+      <div class="field"><label for="adjustmentProof">Comprobante</label><input id="adjustmentProof" type="file" accept="image/*,.pdf" required><label class="admin-no-receipt"><input id="adjustmentNoReceipt" type="checkbox"> Sin comprobante</label><small class="file-note">Quedará registrado quién confirmó esta operación sin adjunto.</small></div>
       <div id="adminAdjustmentStatus" class="status"></div>
       <div class="modal-actions"><button type="button" class="secondary" data-close="adminAdjustmentModal">Cancelar</button><button id="saveAdminAdjustmentBtn" type="submit" class="save">Registrar movimiento</button></div>
     </form>
@@ -835,7 +830,7 @@
         </div>
         <div class="field">
           <label for="adminCloseProof">Comprobante de Explora</label>
-          <input id="adminCloseProof" type="file" accept="image/*,.pdf" required>
+          <input id="adminCloseProof" type="file" accept="image/*,.pdf" required><label class="admin-no-receipt"><input id="adminCloseNoReceipt" type="checkbox"> Sin comprobante</label><small class="file-note">Quedará registrado quién confirmó esta operación sin adjunto.</small>
           <div class="file-note">Se sumará a Efectivo como “Ajuste de Explora”.</div>
         </div>
         <div id="adminPaymentStatus" class="status"></div>
@@ -849,6 +844,6 @@
 <script src="./functions/period-policy.js?v=20260919-admin-1"></script>
 <script src="./functions/uber-weekly-policy.js?v=20261002-uber-confirmation"></script>
 <script src="./functions/expense-policy.js?v=20260919-admin-1"></script>
-<script type="module" src="./app.js?v=20261002-uber-confirmation"></script>
+<script type="module" src="./app.js?v=20261007-admin-driver-cards"></script>
 </body>
 </html>

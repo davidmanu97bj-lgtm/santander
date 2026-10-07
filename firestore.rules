@@ -38,6 +38,39 @@ service cloud.firestore {
         || hasAdminDocument();
     }
 
+    // An absent file is not permission to waive a receipt. Only the explicit,
+    // authenticated administrative action may create this audit trail.
+    function hasAdminReceiptWaiver(data) {
+      return data.get('receiptStatus', '') == 'waived_by_admin'
+        || data.keys().hasAny(['receiptWaived','receiptWaivedByUid','receiptWaivedByRole','receiptWaivedAt','receiptWaivedAtMs']);
+    }
+
+    function validAdminReceiptWaiver(data) {
+      return isAdmin()
+        && data.get('receiptStatus', '') == 'waived_by_admin'
+        && data.get('receiptWaived', false) == true
+        && data.get('receiptRequired', true) == false
+        && data.get('receiptWaivedByUid', '') == uid()
+        && data.get('receiptWaivedByRole', '') == 'admin'
+        && data.get('receiptWaivedAt', null) == request.time
+        && data.get('receiptWaivedAtMs', 0) is number && data.receiptWaivedAtMs > 0
+        && data.get('proofUrl', '') == '' && data.get('proofPath', '') == ''
+        && data.get('receiptUrl', '') == '' && data.get('receiptPath', '') == '';
+    }
+
+    function financialReceiptCreateAllowed() {
+      return !hasAdminReceiptWaiver(request.resource.data) || validAdminReceiptWaiver(request.resource.data);
+    }
+
+    function financialReceiptUpdateAllowed() {
+      return ((!hasAdminReceiptWaiver(resource.data) || isAdmin()) && !hasAdminReceiptWaiver(request.resource.data))
+        || !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'receiptWaived','receiptWaivedByUid','receiptWaivedByRole','receiptWaivedAt','receiptWaivedAtMs',
+          'receiptStatus','receiptRequired','proofUrl','proofPath','receiptUrl','receiptPath'
+        ])
+        || validAdminReceiptWaiver(request.resource.data);
+    }
+
     function isActiveTeamViewer() {
       return isAdmin() || (
         signedIn()
@@ -309,67 +342,67 @@ service cloud.firestore {
       // Reading a missing operation is needed by the idempotent create transaction.
       allow get: if signedIn() && (!exists(/databases/$(database)/documents/billing_records/$(recordId)) || isAdmin() || owns(resource.data));
       allow list: if isAdmin() || (signedIn() && owns(resource.data));
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data) && validDriverCharge(request.resource.data));
-      allow update: if (!resource.data.keys().hasAny(["invoiceRequest"]) || resource.data.invoiceRequest.get('version', '') != "arca_c_v1") && (isAdmin() || (
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || (signedIn() && owns(request.resource.data) && validDriverCharge(request.resource.data)));
+      allow update: if financialReceiptUpdateAllowed() && ((!resource.data.keys().hasAny(["invoiceRequest"]) || resource.data.invoiceRequest.get('version', '') != "arca_c_v1") && (isAdmin() || (
         signedIn()
         && owns(resource.data)
         && owns(request.resource.data)
         && ownershipFieldsUnchanged()
         && adminFieldsUnchanged()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['createdAt'])
-      ));
+      )));
       allow delete: if isAdmin() && (!resource.data.keys().hasAny(["invoiceRequest"]) || resource.data.invoiceRequest.get('version', '') != "arca_c_v1");
     }
 
     match /facturaciones/{recordId} {
       allow read: if signedIn();
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data));
-      allow update: if isAdmin() || (
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || (signedIn() && owns(request.resource.data)));
+      allow update: if financialReceiptUpdateAllowed() && (isAdmin() || (
         signedIn() && owns(resource.data) && owns(request.resource.data)
         && ownershipFieldsUnchanged() && adminFieldsUnchanged()
-      );
+      ));
       allow delete: if isAdmin();
     }
 
     match /cobros/{recordId} {
       allow read: if signedIn();
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data));
-      allow update: if isAdmin() || (
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || (signedIn() && owns(request.resource.data)));
+      allow update: if financialReceiptUpdateAllowed() && (isAdmin() || (
         signedIn() && owns(resource.data) && owns(request.resource.data)
         && ownershipFieldsUnchanged() && adminFieldsUnchanged()
-      );
+      ));
       allow delete: if isAdmin();
     }
 
     match /servicios/{recordId} {
       allow read: if signedIn();
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data));
-      allow update: if isAdmin() || (
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || (signedIn() && owns(request.resource.data)));
+      allow update: if financialReceiptUpdateAllowed() && (isAdmin() || (
         signedIn() && owns(resource.data) && owns(request.resource.data)
         && ownershipFieldsUnchanged() && adminFieldsUnchanged()
-      );
+      ));
       allow delete: if isAdmin();
     }
 
     match /receipt_index/{receiptId} {
       allow get: if signedIn();
       allow list: if isAdmin() || owns(resource.data);
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data));
-      allow update: if isAdmin() || (
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || (signedIn() && owns(request.resource.data)));
+      allow update: if financialReceiptUpdateAllowed() && (isAdmin() || (
         signedIn() && owns(resource.data) && owns(request.resource.data)
         && ownershipFieldsUnchanged() && adminFieldsUnchanged()
-      );
+      ));
       allow delete: if isAdmin();
     }
 
     match /payment_operations/{operationId} {
       allow get: if signedIn();
       allow list: if isAdmin() || owns(resource.data);
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data));
-      allow update: if isAdmin() || (
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || (signedIn() && owns(request.resource.data)));
+      allow update: if financialReceiptUpdateAllowed() && (isAdmin() || (
         signedIn() && owns(resource.data) && owns(request.resource.data)
         && ownershipFieldsUnchanged() && adminFieldsUnchanged()
-      );
+      ));
       allow delete: if isAdmin();
     }
 
@@ -401,28 +434,28 @@ service cloud.firestore {
           && d.receiptPath == d.proofPath && d.status == 'active';
       }
       allow read: if isAdmin() || owns(resource.data);
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data)
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || (signedIn() && owns(request.resource.data)
         && request.resource.data.get('expenseType', '') in ['combustible','lavadero','seguro_auto','control_municipal','vtv','peaje']
         && request.resource.data.get('expensePaymentMethod', 'cash') == 'cash'
         && request.resource.data.get('settlementRuleVersion', '') == 'net_wallets_cashbox_10_v1'
-        && policyExpense(request.resource.data) && validExpensePolicy(request.resource.data));
-      allow update: if isAdmin() || (
+        && policyExpense(request.resource.data) && validExpensePolicy(request.resource.data)));
+      allow update: if financialReceiptUpdateAllowed() && (isAdmin() || (
         signedIn() && owns(resource.data) && owns(request.resource.data)
         && ownershipFieldsUnchanged() && adminFieldsUnchanged()
         && (policyExpense(resource.data)
           ? request.resource.data.diff(resource.data).affectedKeys().hasOnly(['createdAt'])
           : !policyExpense(request.resource.data))
-      );
+      ));
       allow delete: if isAdmin();
     }
 
     match /prestamos_operativos/{loanId} {
       allow read: if isAdmin() || owns(resource.data);
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data));
-      allow update: if isAdmin() || (
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || (signedIn() && owns(request.resource.data)));
+      allow update: if financialReceiptUpdateAllowed() && (isAdmin() || (
         signedIn() && owns(resource.data) && owns(request.resource.data)
         && ownershipFieldsUnchanged() && adminFieldsUnchanged()
-      );
+      ));
       allow delete: if isAdmin();
     }
 
@@ -558,11 +591,11 @@ service cloud.firestore {
           && ownershipFieldsUnchanged();
       }
 
-      allow create: if isAdmin() || isUberWeeklyDebtCreate();
-      allow update: if isAdmin()
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || isUberWeeklyDebtCreate());
+      allow update: if financialReceiptUpdateAllowed() && (isAdmin()
         || driverDebtAckUpdate()
         || driverDebtPaymentUpdate()
-        || driverUberDebtResubmissionUpdate();
+        || driverUberDebtResubmissionUpdate());
       allow delete: if isAdmin();
 
       match /payments/{paymentId} {
@@ -727,8 +760,9 @@ service cloud.firestore {
 
       allow get: if isAdmin() || owns(resource.data);
       allow list: if isAdmin() || owns(resource.data);
-      allow create: if isAdmin() || isStandardDebtPaymentCreate() || isExpenseDebtOffsetCreate();
-      allow update, delete: if isAdmin();
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || isStandardDebtPaymentCreate() || isExpenseDebtOffsetCreate());
+      allow update: if financialReceiptUpdateAllowed() && isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /deuda_movimientos/{movementId} {
@@ -769,8 +803,9 @@ service cloud.firestore {
 
       allow get: if isAdmin() || owns(resource.data);
       allow list: if isAdmin() || owns(resource.data);
-      allow create: if isAdmin() || isStandardDebtMovementCreate() || isExpenseDebtMovementCreate();
-      allow update, delete: if isAdmin();
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || isStandardDebtMovementCreate() || isExpenseDebtMovementCreate());
+      allow update: if financialReceiptUpdateAllowed() && isAdmin();
+      allow delete: if isAdmin();
     }
 
     // =========================================================
@@ -804,13 +839,13 @@ service cloud.firestore {
 
     match /acumulados_semanales/{snapshotId} {
       allow read: if signedIn();
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data));
-      allow update: if isAdmin() || (
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || (signedIn() && owns(request.resource.data)));
+      allow update: if financialReceiptUpdateAllowed() && (isAdmin() || (
         signedIn()
         && owns(resource.data)
         && owns(request.resource.data)
         && ownershipFieldsUnchanged()
-      );
+      ));
       allow delete: if isAdmin();
     }
 
@@ -818,32 +853,33 @@ service cloud.firestore {
       allow get: if signedIn();
       allow list: if isAdmin() || owns(resource.data);
       // Driver closes through confirmPeriodClosure: server validates proof and balance atomically.
-      allow create, update: if isAdmin();
+      allow create: if financialReceiptCreateAllowed() && isAdmin();
+      allow update: if financialReceiptUpdateAllowed() && isAdmin();
       allow delete: if isAdmin();
     }
 
     match /pagos_semanales/{paymentId} {
       allow get: if signedIn();
       allow list: if isAdmin() || owns(resource.data);
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data));
-      allow update: if isAdmin() || (
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || (signedIn() && owns(request.resource.data)));
+      allow update: if financialReceiptUpdateAllowed() && (isAdmin() || (
         signedIn()
         && owns(resource.data)
         && owns(request.resource.data)
         && ownershipFieldsUnchanged()
         && adminFieldsUnchanged()
-      );
+      ));
       allow delete: if isAdmin();
     }
 
     match /pagos/{paymentId} {
       allow get: if signedIn();
       allow list: if isAdmin() || owns(resource.data);
-      allow create: if isAdmin() || (signedIn() && owns(request.resource.data));
-      allow update: if isAdmin() || (
+      allow create: if financialReceiptCreateAllowed() && (isAdmin() || (signedIn() && owns(request.resource.data)));
+      allow update: if financialReceiptUpdateAllowed() && (isAdmin() || (
         signedIn() && owns(resource.data) && owns(request.resource.data)
         && ownershipFieldsUnchanged() && adminFieldsUnchanged()
-      );
+      ));
       allow delete: if isAdmin();
     }
 
