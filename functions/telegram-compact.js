@@ -28,7 +28,7 @@ function debtSummary({data,driverName,amount,dateLines=[]}) {
   return [`${clean(data.createdByName || data.registeredByName || 'Administrador')} Deuda 100%: ${clean(driverName)}`,
     `Detalle: ${clean(data.detail || data.reason || data.description || data.notes || data.motivo) || 'Deuda del chofer'}`,
     `Monto: ${money(amount)}`,
-    ...(data.driverConfirmationRequired && !data.acknowledgedByDriver ? ['Estado: pendiente de aceptación del chofer'] : []),...dateLines].join('\n');
+    ...(data.driverConfirmationRequired && !data.acknowledgedByDriver ? ['Estado: pendiente de aceptación del chofer'] : []),...receiptLines(data),...dateLines].join('\n');
 }
 function groupDebtSummary({data,dateLines=[]}) {
   const drivers=Array.isArray(data.drivers)?data.drivers:[];

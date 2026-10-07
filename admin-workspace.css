@@ -84,6 +84,7 @@
 .field .admin-no-receipt,.admin-no-receipt{display:flex;align-items:center;gap:10px;min-height:44px;width:fit-content;max-width:100%;margin:6px 0 0;padding:8px 0;box-sizing:border-box;cursor:pointer;font-size:13px;font-weight:600;color:#24495c;line-height:1.4;}
 .field .admin-no-receipt input[type="checkbox"],.admin-no-receipt input[type="checkbox"]{appearance:auto;-webkit-appearance:checkbox;display:block;flex:0 0 18px;width:18px;height:18px;min-width:18px;min-height:18px;max-width:18px;padding:0;margin:0;border-radius:3px;accent-color:#24495c;cursor:pointer;}
 .admin-no-receipt input[type="checkbox"]:focus-visible{outline:3px solid #4380a5;outline-offset:3px;}
+.field .admin-no-receipt[hidden],.admin-no-receipt[hidden]{display:none;}
 .admin-waiver-date{line-height:1.45;}
 .group-debt-preview{background:#f6f0e2;border:1px solid #e9d9ad;border-radius:12px;padding:16px;font-size:13px;color:#6c572c;margin:15px 0;line-height:1.6;}
 .group-debt-preview strong,.group-debt-preview span{display:block;}.group-debt-preview small{display:block;margin-top:8px;}

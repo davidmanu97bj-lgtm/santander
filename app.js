@@ -2134,7 +2134,7 @@ function renderDriverDebtConfirmation(item = {}) {
     ${proofUrl ? (imageProof
       ? `<button type="button" class="driver-debt-confirmation-proof" data-proof-preview="${escapeHtml(proofUrl)}" data-proof-alt="Comprobante de ${escapeHtml(concept)}" aria-label="Ampliar comprobante de deuda"><img src="${escapeHtml(proofUrl)}" alt="Comprobante de ${escapeHtml(concept)}"></button>`
       : `<a class="driver-debt-confirmation-proof-link" target="_blank" rel="noopener" href="${escapeHtml(proofUrl)}">Abrir comprobante adjunto</a>`)
-      : `<div class="driver-debt-confirmation-proof-missing">Comprobante no disponible.</div>`}
+      : `<div class="driver-debt-confirmation-proof-missing">${item.receiptStatus === 'waived_by_admin' ? 'Sin comprobante · registrado por administración.' : 'Comprobante no disponible.'}</div>`}
     <div class="driver-debt-balance-grid" aria-label="Saldo antes y después de aceptar la deuda">
       <div class="driver-debt-balance-card is-${before.tone}">
         <span>Ahora</span>
@@ -3205,7 +3205,7 @@ function syncAdminReceiptChoice(checkId, fileId) {
   input.disabled = waived;
   if (waived) input.value = '';
 }
-for (const [checkId,fileId] of [['adminExpenseNoReceipt','adminExpenseProof'],['adjustmentNoReceipt','adjustmentProof'],['adminCloseNoReceipt','adminCloseProof']]) {
+for (const [checkId,fileId] of [['adminExpenseNoReceipt','adminExpenseProof'],['adjustmentNoReceipt','adjustmentProof'],['adminCloseNoReceipt','adminCloseProof'],['debtNoReceipt','debtProof']]) {
   $(checkId)?.addEventListener('change',()=>syncAdminReceiptChoice(checkId,fileId));
 }
 
@@ -5135,13 +5135,7 @@ $("addExpenseBtn")?.addEventListener("click", () => {
 });
 
 $("addDebtBtn")?.addEventListener("click", () => {
-  if (!isAdminProfile()) return;
-  pendingGroupDebt=null;
-  renderAdminDriverOptions();
-  $("debtForm").reset();
-  $("debtStatus").textContent = "";
-  $("debtStatus").className = "status";
-  $("debtModal").classList.remove("hidden");
+  openAdminDebt(false);
 });
 
 let pendingGroupDebt=null;
@@ -5177,14 +5171,15 @@ async function registerGroupDriverDebt({admin,amount,detail,file}) {
 $("debtForm")?.addEventListener("submit", async event => {
   event.preventDefault();
   const admin = auth.currentUser;
-  if (!admin || !isAdminProfile()) return;
+  if (!admin || !isAdminProfile() || $("saveDebtBtn").disabled) return;
 
   if ($("debtDriver").dataset.driverScope && $("debtDriver").value !== $("debtDriver").dataset.driverScope) return;
   const groupDebt = $("debtDriver").value === "__all__";
   const driver = driverFromAdminControl("debtDriver");
   const amount = parseMoneyInput($("debtAmount").value);
   const detail = $("debtDetail").value.trim();
-  const file = $("debtProof").files?.[0];
+  const withoutReceipt = $("debtNoReceipt").checked;
+  const file = withoutReceipt ? null : $("debtProof").files?.[0];
 
   if (!groupDebt && (!driver || !adminDriverIsActive(driver))) {
     $("debtStatus").textContent = "Seleccioná un chofer activo.";
@@ -5201,8 +5196,8 @@ $("debtForm")?.addEventListener("submit", async event => {
     $("debtStatus").className = "status error";
     return;
   }
-  if (!file) {
-    $("debtStatus").textContent = "Adjuntá el comprobante de la deuda.";
+  if ((groupDebt && withoutReceipt) || (!file && !withoutReceipt)) {
+    $("debtStatus").textContent = groupDebt ? "Adjuntá el comprobante de la deuda grupal." : "Adjuntá el comprobante o seleccioná Sin comprobante.";
     $("debtStatus").className = "status error";
     return;
   }
@@ -5223,11 +5218,20 @@ $("debtForm")?.addEventListener("submit", async event => {
       .filter(item => !movementIsDeleted(item) && debtImpactsSettlement(item))
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const settlementAfterDebt = settlementBeforeDebt + amount;
-    const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const proofPath = `deudas/${driver.id}/${localDayKey()}_${Date.now()}_${cleanName}`;
-    const storageRef = ref(storage, proofPath);
-    await uploadBytes(storageRef, file);
-    const proofUrl = await getDownloadURL(storageRef);
+    const now = Date.now();
+    let proofUrl = '', proofPath = '', attachment;
+    if (withoutReceipt) {
+      attachment = {...adminReceiptWaiver(admin, now), proofUrl, proofPath, receiptUrl:'', receiptPath:''};
+    } else {
+      const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      proofPath = `deudas/${driver.id}/${localDayKey()}_${now}_${cleanName}`;
+      const storageRef = ref(storage, proofPath);
+      await uploadBytes(storageRef, file);
+      proofUrl = await getDownloadURL(storageRef);
+      attachment = {proofUrl, proofPath, receiptUrl:proofUrl, receiptPath:proofPath,
+        proofMimeType:file.type||'', proofFileName:file.name||cleanName,
+        receiptMimeType:file.type||'', receiptFileName:file.name||cleanName};
+    }
 
     const debtRef = await addDoc(collection(db, ROOT_COLLECTIONS.debts), {
       type: "admin_debt",
@@ -5243,14 +5247,7 @@ $("debtForm")?.addEventListener("submit", async event => {
       detail,
       reason: detail,
       notes: detail,
-      proofUrl,
-      proofPath,
-      proofMimeType: file.type || "",
-      proofFileName: file.name || cleanName,
-      receiptUrl: proofUrl,
-      receiptPath: proofPath,
-      receiptMimeType: file.type || "",
-      receiptFileName: file.name || cleanName,
+      ...attachment,
       dayKey: localDayKey(),
       driverUid: driver.id,
       choferUid: driver.id,
@@ -5277,7 +5274,7 @@ $("debtForm")?.addEventListener("submit", async event => {
       businessId: BUSINESS_ID,
       createdByUid: admin.uid,
       createdByName: currentProfile?.displayName || currentProfile?.username || "Administrador",
-      createdAtMs: Date.now(),
+      createdAtMs: now,
       createdAt: serverTimestamp()
     });
 
@@ -5287,7 +5284,8 @@ $("debtForm")?.addEventListener("submit", async event => {
       debtId: debtRef.id,
       amount,
       detail,
-      proofUrl
+      proofUrl,
+      ...(withoutReceipt ? adminReceiptWaiver(admin, now) : {})
     });
 
     $("debtStatus").textContent = `Deuda de ${money(amount)} agregada a ${adminDriverLabel(driver)}.`;
@@ -7117,7 +7115,11 @@ function renderGroupDebtPreview(){
   const group=$('debtDriver').value==='__all__';
   $('debtModalTitle').textContent=group?'Deuda grupal':'Deuda 100% chofer';
   $('debtAmountLabel').textContent=group?'Importe por chofer':'Importe de la deuda';
-  $('debtModalNote').textContent=group?'El importe se suma completo a cada chofer activo. No se reparte entre el grupo.':'La deuda quedará asociada al chofer seleccionado, con su motivo y comprobante.';
+  $('debtModalNote').textContent=group?'El importe se suma completo a cada chofer activo. No se reparte entre el grupo.':'La deuda quedará asociada al chofer seleccionado. Adjuntá el comprobante o elegí Sin comprobante.';
+  $('debtNoReceiptChoice').hidden=group;
+  $('debtNoReceipt').disabled=group;
+  if(group)$('debtNoReceipt').checked=false;
+  syncAdminReceiptChoice('debtNoReceipt','debtProof');
   const box=$('groupDebtPreview');box.hidden=!group;
   if(group){const drivers=adminDrivers.filter(d=>!adminDriverIsAdministrator(d)&&adminDriverIsActive(d)),amount=parseMoneyInput($('debtAmount').value)||0;
     box.innerHTML='<strong>'+drivers.length+' choferes activos</strong><span>'+money(amount)+' por chofer · Total '+money(amount*drivers.length)+'</span><small>'+drivers.map(d=>escapeHtml(adminDriverLabel(d))).join(' · ')+'</small>';

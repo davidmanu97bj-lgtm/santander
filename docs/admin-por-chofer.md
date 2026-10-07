@@ -20,7 +20,7 @@ El control de salidas del aeropuerto continúa en su instancia original, dentro 
 
 ## Sin comprobante
 
-Administración puede elegir «Sin comprobante» en carga digital, pago/achique y registro de pago de un cierre. La elección deshabilita el archivo y guarda la identidad del administrador y la fecha del servidor. Los permisos de los choferes para adjuntar comprobantes no se amplían.
+Administración puede elegir «Sin comprobante» en carga digital, pago/achique, registro de pago de un cierre y «100% chofer deuda» individual. La elección deshabilita el archivo y guarda la identidad del administrador y la fecha del servidor. Se reinicia al abrir otra deuda; la deuda grupal sigue requiriendo un archivo. Los permisos de los choferes para adjuntar comprobantes no se amplían.
 
 ## Verificación
 

@@ -184,6 +184,10 @@
     "approveDriverClosurePayment": {
       "hash": "49e73c30838f0ce5fe4b08bbf9b3ee33e129c8e23b052e57eae5029877d7456b",
       "reason": "Acciones por tarjeta autorizadas el 07/10/2026: verificar dentro de la transacción el propietario actual y su coherencia con la tarjeta antes de confirmar el pago, sin cambiar reparto ni importe."
+    },
+    "renderDriverDebtConfirmation": {
+      "hash": "81c51c94faa9b43ee0843ec44514440bb61d25ee73e70506f61b1c855dbf0df0",
+      "reason": "Solicitud expresa del 07/10/2026: permitir Sin comprobante en deuda individual 100% chofer sólo para administración, con actor/hora auditados, Telegram y aceptación del chofer; conserva importe, grupo y fórmulas."
     }
   },
   "handlers": {
@@ -218,8 +222,8 @@
       "reason": "David autorizó Uber efectivo/digital netos con reglas de billetera vigentes: nuevo marcador y centavos compartidos, conservando todas las fórmulas y registros históricos."
     },
     "functions/telegram-compact.js": {
-      "hash": "6d61984b9ff8a5155b0213f0f99defba7ca06c3fab955eac9d66c207fc45a720",
-      "reason": "Pagos digitales sin comprobante autorizados el 07/10/2026: Telegram distingue excepción administrativa de respaldo adjunto, sin cambiar importes."
+      "hash": "b65a0c3adf63a51fef32c08244d5dfc2f4108f792a00633f146ae0ceb53747cc",
+      "reason": "Solicitud expresa del 07/10/2026: permitir Sin comprobante en deuda individual 100% chofer sólo para administración, con actor/hora auditados, Telegram y aceptación del chofer; conserva importe, grupo y fórmulas."
     },
     "functions/tests/telegram-trip-delivery.test.js": {
       "hash": "0c6561d07d685184a784a09051167cbb554ac841004c8d2ead426dbd252e3043",
