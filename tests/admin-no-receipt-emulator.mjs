@@ -27,7 +27,7 @@ async function check(name,fn){await fn();rows.push(name);console.log('PASS '+nam
 async function denied(fn){await assert.rejects(fn,error=>error.code==='permission-denied');}
 try{
   await setDoc(doc(admin.db,'choferes','receipt-driver'),{active:true});
-  for(const name of ['billing_records','cobros','gastos','cierres_semanales','deuda_pagos','pagos_semanales','pagos']){
+  for(const name of ['billing_records','cobros','gastos','cierres_semanales','deudas_choferes','deuda_pagos','pagos_semanales','pagos']){
     const id=`admin-waiver-${suffix}`;
     await check(`${name}: admin waiver persists with server timestamp`,async()=>{
       await setDoc(doc(admin.db,name,id),waiver());
@@ -39,6 +39,21 @@ try{
   }
   await check('client timestamp is rejected',()=>denied(()=>setDoc(doc(admin.db,'gastos',`client-time-${suffix}`),{...waiver(),receiptWaivedAt:Timestamp.fromMillis(1)})));
   await check('fake attached link alongside waiver is rejected',()=>denied(()=>setDoc(doc(admin.db,'gastos',`link-${suffix}`),{...waiver(),proofUrl:'https://example.test/fake.pdf'})));
+  await check('individual debt without receipt requires the administrative actor and server time',async()=>{
+    for(const changes of [{receiptWaivedByUid:'receipt-driver'},{receiptWaivedAt:Timestamp.fromMillis(1)},{receiptWaivedByRole:'driver'}]){
+      await denied(()=>setDoc(doc(admin.db,'deudas_choferes',`invalid-debt-${suffix}`),{...waiver(),...changes}));
+    }
+  });
+  await check('driver can accept an individual debt without altering its receipt audit',async()=>{
+    const id=`pending-debt-${suffix}`;
+    await setDoc(doc(admin.db,'deudas_choferes',id),{...waiver(),createdByUid:'receipt-admin',createdByRole:'admin',driverConfirmationRequired:true,acknowledgedByDriver:false});
+    const before=(await getDoc(doc(admin.db,'deudas_choferes',id))).data();
+    await updateDoc(doc(driver.db,'deudas_choferes',id),{acknowledgedByDriver:true,acknowledgedAt:serverTimestamp(),updatedAt:serverTimestamp()});
+    const after=(await getDoc(doc(admin.db,'deudas_choferes',id))).data();
+    assert.equal(after.acknowledgedByDriver,true);assert.equal(after.receiptStatus,'waived_by_admin');
+    assert.equal(after.receiptWaivedAt.toMillis(),before.receiptWaivedAt.toMillis());assert.equal(after.receiptWaivedByUid,'receipt-admin');
+    await denied(()=>updateDoc(doc(driver.db,'deudas_choferes',id),{receiptWaivedByUid:'receipt-driver'}));
+  });
   await check('receipt waiver cannot be removed by driver',()=>denied(()=>updateDoc(doc(driver.db,'cobros',`admin-waiver-${suffix}`),{
     receiptStatus:'uploaded',receiptWaived:deleteField(),receiptWaivedByUid:deleteField(),receiptWaivedByRole:deleteField(),receiptWaivedAt:deleteField(),receiptWaivedAtMs:deleteField()
   })));

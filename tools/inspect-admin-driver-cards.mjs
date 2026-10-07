@@ -157,6 +157,66 @@ async function exerciseNoReceipt(page) {
   return {digital:true,partialPayment:true,closure:true,otherDriverUntouched:true};
 }
 
+async function exerciseIndividualDebtWithoutReceipt(page) {
+  const before=await api({action:'inspect'}),detail='QA DEUDA INDIVIDUAL SIN COMPROBANTE';
+  await page.locator(action(selectedUid,'debt')).click();
+  assert.equal(await page.locator('#debtDriver').inputValue(),selectedUid);
+  assert.ok(await page.locator('#debtDriver').isDisabled(),'Individual debt locks the card driver');
+  assert.ok(await page.locator('#debtNoReceiptChoice').isVisible());
+  assert.equal(await page.locator('#debtNoReceipt').isChecked(),false);
+  assert.equal(await page.locator('#debtProof').evaluate(input=>input.required),true);
+  await page.locator('#debtAmount').fill('32000');
+  await page.locator('#debtDetail').fill(detail);
+  assert.equal(await page.locator('#debtForm').evaluate(form=>form.checkValidity()),false,'A missing file without an explicit waiver is invalid');
+  await page.locator('#saveDebtBtn').click();
+  // Check the submit handler as well as native HTML required-file validation.
+  await page.locator('#debtForm').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  assert.match(await page.locator('#debtStatus').innerText(),/comprobante/i);
+  assert.deepEqual((await api({action:'inspect'})).records,before.records,'No debt is created without a receipt or explicit waiver');
+
+  await page.locator('#debtNoReceipt').check();
+  assert.equal(await page.locator('#debtProof').evaluate(input=>input.required),false);
+  assert.ok(await page.locator('#debtProof').isDisabled());
+  await page.locator('#saveDebtBtn').click();
+  const [debtPath,debt]=await waitForRecord((p,r)=>p.startsWith('deudas_choferes/')&&r.detail===detail,'Individual debt without receipt was not saved');
+  assertWaiver(debt);
+  assert.equal(debt.type,'admin_debt');assert.equal(debt.amount,32000);assert.equal(debt.totalAmount,32000);assert.equal(debt.remainingAmount,32000);
+  assert.equal(debt.driverConfirmationRequired,true,'Driver confirmation policy is unchanged');
+  for(const key of ['driverUid','uid','ownerUid','driverId','operatorUid'])assert.equal(debt[key],selectedUid,key+' is scoped');
+  await page.locator('#debtModal').waitFor({state:'hidden'});
+  const after=await api({action:'inspect'});
+  assert.equal(Object.entries(after.records).filter(([p,r])=>p.startsWith('deudas_choferes/')&&r.detail===detail).length,1,'One individual debt');
+  assert.equal(after.uploads.length,before.uploads.length,'No fake proof upload');
+  for(const [p,r] of Object.entries(before.records))assert.deepEqual(after.records[p],r,'An existing record was changed: '+p);
+  const newPaths=Object.keys(after.records).filter(p=>!Object.hasOwn(before.records,p));
+  assert.deepEqual(newPaths.filter(p=>!p.startsWith('admin_audit/')),[debtPath],'No invoices, trips or other drivers are created');
+  await page.locator(action(selectedUid,'debt')).click();
+  assert.equal(await page.locator('#debtNoReceipt').isChecked(),false,'Opening the form resets the waiver');
+  assert.equal(await page.locator('#debtProof').evaluate(input=>input.required),true);
+  assert.equal(await page.locator('#debtProof').isDisabled(),false);
+  await page.locator('#debtNoReceipt').check();
+  await closeModal(page,'debtModal');
+
+  await page.locator('#adminGroupDebtBtn').click();
+  assert.equal(await page.locator('#debtDriver').inputValue(),'__all__');
+  assert.equal(await page.locator('#debtNoReceiptChoice').isVisible(),false,'Group debt does not offer a waiver');
+  assert.equal(await page.locator('#debtNoReceipt').isChecked(),false,'Group opening clears a previous individual waiver');
+  assert.equal(await page.locator('#debtProof').evaluate(input=>input.required),true);
+  assert.equal(await page.locator('#debtProof').isDisabled(),false);
+  await page.locator('#debtAmount').fill('32000');
+  await page.locator('#debtDetail').fill('QA GROUP MUST REQUIRE RECEIPT');
+  assert.equal(await page.locator('#debtForm').evaluate(form=>form.checkValidity()),false);
+  await page.locator('#saveDebtBtn').click();
+  await page.locator('#debtForm').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  assert.match(await page.locator('#debtStatus').innerText(),/comprobante/i);
+  await page.locator('#debtNoReceipt').evaluate(input=>{input.checked=true;});
+  await page.locator('#debtForm').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  assert.match(await page.locator('#debtStatus').innerText(),/comprobante.*grupal/i,'Group handler rejects a stale or forced waiver');
+  assert.deepEqual((await api({action:'inspect'})).records,after.records,'Group debt without a proof is not written');
+  await closeModal(page,'debtModal');
+  return {explicitWaiverRequired:true,oneDebt:true,driverLocked:true,receiptAudit:true,reopenResets:true,groupStillRequiresProof:true};
+}
+
 let browser;
 try {
   for (const engine of (process.env.UI_ENGINES || 'chromium,webkit').split(',')) {
@@ -243,7 +303,8 @@ try {
       await overview(page);
       await assertNoOverflow(page,`${engine} ${viewport.width} after navigation`);
       const noReceipt=viewport.width===1440?await exerciseNoReceipt(page):null;
-      report.cases.push({engine,...viewport,actions:expectedActions,uidScope:true,focusPreserved:true,bounds,noReceipt});
+      const individualDebt=await exerciseIndividualDebtWithoutReceipt(page);
+      report.cases.push({engine,...viewport,actions:expectedActions,uidScope:true,focusPreserved:true,bounds,noReceipt,individualDebt});
       await context.close();
     }
     await browser.close();browser=null;

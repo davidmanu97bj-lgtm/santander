@@ -47,6 +47,20 @@ test('la deuda avisa al cargarla y no vuelve a avisar al aceptar o pagar',async(
   assert.equal(h.sent.length,1);assert.match(h.sent[0].caption,/David Deuda 100%: Javier\nDetalle: Deuda del chofer\nMonto:.*50\.000/);
   assert.match(h.sent[0].caption,/pendiente de aceptación/);assert.equal(h.sent[0].requirePhoto,true);
 });
+test('deuda individual sin comprobante informa la ausencia y conserva un único aviso y la aceptación del chofer',async()=>{
+  const h=handler('notifyAdminDriverDebtTelegramV1');
+  const debt={driverName:'Javier',createdByName:'David',createdByRole:'admin',amount:50000,detail:'Gasto a cargo del chofer',driverConfirmationRequired:true,
+    receiptStatus:'waived_by_admin',receiptWaived:true,receiptWaivedByUid:'admin',receiptWaivedByRole:'admin',proofUrl:'',receiptUrl:''};
+  await h.run(event(debt));
+  await h.run(event({...debt,acknowledgedByDriver:true},debt));
+  await h.run(event({...debt,status:'paid'},debt));
+  assert.equal(h.sent.length,1);
+  assert.match(h.sent[0].caption,/David Deuda 100%: Javier\nDetalle: Gasto a cargo del chofer\nMonto:.*50\.000/);
+  assert.match(h.sent[0].caption,/Estado: pendiente de aceptación del chofer/);
+  assert.match(h.sent[0].caption,/Comprobante: sin comprobante, registrado por administración/);
+  assert.equal(h.sent[0].requirePhoto,false);
+  assert.equal(h.sent[0].data.proofUrl,'');
+});
 test('un cierre indica quién pagó y resuelve el nombre del chofer',async()=>{
   const h=handler('notifyClosureTelegramGroupV1');
   for(const paymentDirection of ['explora_to_driver','driver_to_explora']) {

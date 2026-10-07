@@ -129,7 +129,7 @@
   <link rel="stylesheet" href="./movement-colors.css?v=20260919-admin-1" />
   <link rel="stylesheet" href="./explora-ui.css?v=20260919-admin-1" />
   <link rel="stylesheet" href="./ops-salidas.css?v=20261002-retiro-disponibilidad" />
-  <link rel="stylesheet" href="./admin-workspace.css?v=20261007-driver-cards" />
+  <link rel="stylesheet" href="./admin-workspace.css?v=20261007-debt-no-receipt" />
   <link rel="stylesheet" href="./uber-fleet-ui.css?v=20260929-fleet-shadow" />
   <link rel="stylesheet" href="./admin-uber-liquidation-ui.css?v=20261002-uber-admin" />
 </head>
@@ -428,7 +428,7 @@
       </div>
       <div class="field"><label id="debtAmountLabel" for="debtAmount">Importe de la deuda</label><input id="debtAmount" class="money-input" type="text" inputmode="numeric" data-money-input placeholder="0" autocomplete="off" required></div>
       <div class="field"><label for="debtDetail">Detalle / motivo</label><input id="debtDetail" placeholder="Ej. Diferencia de caja" required></div>
-      <div class="field"><label for="debtProof">Comprobante</label><input id="debtProof" type="file" accept="image/*,.pdf" required><div class="file-note">El chofer podrá ver este comprobante desde su pantalla.</div></div>
+      <div class="field"><label for="debtProof">Comprobante</label><input id="debtProof" type="file" accept="image/*,.pdf" required><label id="debtNoReceiptChoice" class="admin-no-receipt"><input id="debtNoReceipt" type="checkbox"> Sin comprobante</label><div class="file-note">El chofer verá el comprobante o la indicación de que administración registró la deuda sin adjunto.</div></div>
       <div id="groupDebtPreview" class="group-debt-preview" hidden aria-live="polite"></div><div id="debtStatus" class="status"></div>
       <div class="modal-actions"><button type="button" class="secondary" data-close="debtModal">Cancelar</button><button id="saveDebtBtn" type="submit" class="save">Registrar deuda</button></div>
     </form>
@@ -844,6 +844,6 @@
 <script src="./functions/period-policy.js?v=20260919-admin-1"></script>
 <script src="./functions/uber-weekly-policy.js?v=20261002-uber-confirmation"></script>
 <script src="./functions/expense-policy.js?v=20260919-admin-1"></script>
-<script type="module" src="./app.js?v=20261007-admin-driver-cards"></script>
+<script type="module" src="./app.js?v=20261007-debt-no-receipt"></script>
 </body>
 </html>
