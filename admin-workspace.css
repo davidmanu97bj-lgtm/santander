@@ -43,6 +43,15 @@
 .admin-driver-action:hover{border-color:#a3b9c9;background:#edf4f8;}
 .admin-driver-action.action-digital{background:#edf7f7;border-color:#d3e9e9;color:#337d84;}
 .admin-driver-action.action-digital:hover{background:#e0f1f1;border-color:#8fbfc2;}
+.admin-driver-action.action-digital.monthly-missing{background:#fff0ef;border:2px solid #cd403a;color:#a42220;}
+.admin-driver-action.action-digital.monthly-missing:hover{background:#ffe1df;border-color:#a42220;}
+.admin-monthly-note{font-size:10px;line-height:1.3;font-weight:650;overflow-wrap:anywhere;}
+.admin-monthly-status{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;}
+.admin-monthly-status button{border:1px solid #ecc5c2;border-radius:9px;padding:10px 12px;min-height:42px;background:#fff0ef;color:#a42220;font:inherit;font-size:12px;cursor:pointer;}
+.admin-monthly-status button.is-loaded{background:#edf8f2;color:#277957;border-color:#badcca;}
+.admin-monthly-status button:focus-visible{outline:3px solid #4380a5;outline-offset:2px;}
+#adminExpenseMonthlyFields[hidden]{display:none;}
+#adminExpenseMonthlyFields input,#adminExpenseMonthlyFields select{max-width:100%;min-width:0;box-sizing:border-box;}
 .admin-driver-action.action-debt{background:#fff1f0;border-color:#f0d8d5;color:#b55a51;}
 .admin-driver-action.action-debt:hover{background:#fae5e2;border-color:#dca29c;}
 .admin-live{white-space:nowrap;background:#edf8f2;color:#2b805f!important;border-radius:20px;padding:5px 10px;font-size:10px!important;letter-spacing:0;font-weight:500;}

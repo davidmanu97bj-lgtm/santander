@@ -9,17 +9,19 @@
   const groups = [
     {id:'shared',label:'50% chofer · 50% Explora',refundRate:0.5,description:'Explora reintegra el 50%',types:[
       ['service','Service del auto','wrench'],['combustible','Combustible','fuel'],['lavadero','Lavadero','wash'],
-      ['patente','Patente','plate'],['seguro_auto','Seguro del auto','carShield'],['control_municipal','Municipalidad','municipal'],['vtv','VTV','inspection'],['peaje','Peaje','toll']
+      ['patente','Patente','plate'],['canon_compartido','Canon compartido','key'],['seguro_auto','Seguro del auto','carShield'],['control_municipal','Municipalidad','municipal'],['vtv','VTV','inspection'],['peaje','Peaje','toll']
     ]},
     {id:'driver',label:'100% chofer',refundRate:0,description:'Sin reintegro · 100% deuda del chofer',types:[
       ['seguro_vida','Seguro de vida','heart'],['monotributo','Monotributo','tax'],['multa','Multa','ticket'],
-      ['choque','Choque','collision'],['ruptura','Ruptura','broken'],['prestamo','Préstamo','loan'],['canon','Canon','key']
+      ['choque','Choque','collision'],['ruptura','Ruptura','broken'],['prestamo','Préstamo','loan'],['canon','Canon','key'],['patente_chofer','Patente · 100% chofer','plate']
     ]},
     {id:'explora',label:'100% Explora',refundRate:1,description:'Explora reintegra el 100%',types:[
       ['cubiertas','Cubiertas','tire'],['picos','Picos','valve'],['luces','Luces quemadas','light'],
       ['pastillas','Pastillas','pads'],['disco_freno','Disco de freno','disc']
     ]}
   ];
+  // Canon and patente variants get distinct IDs so historical entries retain
+  // their original allocation. All four remain restricted to administrators.
   const driverAllowedTypes = Object.freeze(['combustible','lavadero','seguro_auto','control_municipal','vtv','peaje']);
   const types = groups.flatMap(group => group.types.map(([id,label,icon]) => Object.freeze({id,label,icon,group:group.id,groupLabel:group.label,refundRate:group.refundRate})));
   function find(type) { return types.find(item => item.id === type) || null; }

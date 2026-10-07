@@ -7,7 +7,7 @@ export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 export const PROJECT_ID = 'explora-control-operativo';
 export const HOSTING_FILES = [
   'uber-fleet-ui.js', 'uber-fleet-ui.css', 'admin-uber-liquidation-ui.js', 'admin-uber-liquidation-ui.css', 'functions/uber-weekly-policy.js', 'ops-salidas-store.js',
-  'ops-salidas.js', 'ops-salidas.css', 'monthly-management.js', 'login-entry.js', 'admin-workspace.js', 'admin-workspace.css', 'admin-digital-expense.js',
+  'ops-salidas.js', 'ops-salidas.css', 'monthly-management.js', 'login-entry.js', 'admin-workspace.js', 'admin-workspace.css', 'admin-digital-expense.js', 'admin-monthly-charges.js',
   'period-ui.js', 'explora-ui.js', 'explora-ui.css', 'assets/explora-home-reference.png',
   'index.html', 'app.js', 'auth-session.js', 'movement-colors.js', 'movement-colors.css', 'tourism-catalog.js', 'calendar-core.js', 'trip-calendar.js', 'styles.css', 'firebase-config.js',
   'service-worker.js', 'manifest.json', 'icon-192.png', 'icon-512.png',

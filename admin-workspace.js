@@ -9,7 +9,7 @@ const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036
 const actions=[
   ['movements','Movimientos','management'],['closures','Cierre / achique','wallet'],
   ['receipts','Comprobantes','upload'],['accountant','Contadora','expense'],
-  ['invoices','Facturas ARCA','expense'],['digital','Carga digital','digital'],
+  ['invoices','Facturas ARCA','expense'],['digital','Deuda digital','digital'],
   ['debt','100% chofer deuda','debt']
 ];
 const scopedViews=new Set(['movements','closures','receipts','accountant']);
@@ -28,7 +28,11 @@ export function renderDriverCards(accounts,{ready=true}={}){
     const label=balance>0.5?'Chofer debe':balance<-.5?'Explora debe':'Al día';
     return `<article class="admin-driver-card ${state}" data-admin-driver="${esc(d.uid)}" aria-label="Cuenta de ${esc(d.name)}">
       <div class="admin-driver-identity"><h2>${esc(d.name)}</h2><div class="admin-driver-card-balance"><span>${label}</span><strong>${money(Math.abs(balance))}</strong></div></div>
-      <div class="admin-driver-actions" role="group" aria-label="Acciones de ${esc(d.name)}">${actions.map(([action,label,icon])=>`<button type="button" class="admin-driver-action action-${action}" data-admin-driver-action="${action}" data-driver-uid="${esc(d.uid)}" aria-label="${esc(label)} · ${esc(d.name)}"><span class="admin-driver-action-icon">${exploraIcon(icon)}</span><span>${label}</span></button>`).join('')}</div>
+      <div class="admin-driver-actions" role="group" aria-label="Acciones de ${esc(d.name)}">${actions.map(([action,label,icon])=>{
+        const missing=action==='digital'?d.monthlyCharges?.missing:undefined;
+        const note=missing?(missing.length?'Falta: '+missing.map(c=>c==='canon'?'Canon':'Patente').join(' + '):'Canon y patente cargados'):'';
+        return `<button type="button" class="admin-driver-action action-${action}${missing?.length?' monthly-missing':''}" data-admin-driver-action="${action}" data-driver-uid="${esc(d.uid)}" aria-label="${esc(label)} · ${esc(d.name)}${note?' · '+esc(note):''}"><span class="admin-driver-action-icon">${exploraIcon(icon)}</span><span>${label}</span>${note?`<small class="admin-monthly-note">${esc(note)}</small>`:''}</button>`;
+      }).join('')}</div>
     </article>`;
   }).join('');
 }
