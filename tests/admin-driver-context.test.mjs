@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {monthlyChargeMonth,monthlyChargesForDriver} from '../admin-monthly-charges.js';
 
 // Exercise the shipped functions, not reimplementations of the ownership rules.
 const source=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8');
@@ -27,6 +28,7 @@ const profiles=()=>[
 function fixture(drivers=profiles()) {
   const controls=new Map();
   const context={
+    monthlyChargeMonth,monthlyChargesForDriver,
     adminDrivers:drivers,EXPLORA_ADMIN_UIDS:new Set(['admin']),
     auth:{currentUser:{uid:'admin'}},adminAllowed:true,
     $:id=>controls.get(id),serverTimestamp:()=>({serverTimestamp:true}),

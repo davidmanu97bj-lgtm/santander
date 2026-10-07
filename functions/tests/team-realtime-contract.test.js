@@ -13,7 +13,8 @@ const functions = fs.readFileSync(path.join(root, "functions/index.js"), "utf8")
 const rules = fs.readFileSync(path.join(root, "firestore.rules"), "utf8");
 const workspace = fs.readFileSync(path.join(root, "admin-workspace.js"), "utf8");
 
-test("el nuevo panel conserva los saldos en tiempo real de todo el equipo", () => {
+test("el nuevo panel conserva los saldos en tiempo real de todo el equipo", async () => {
+  const {monthlyChargeMonth,monthlyChargesForDriver}=await import('../../admin-monthly-charges.js');
   assert.match(html, /id="adminWorkspaceTitle"[^>]*>Tu equipo<\/h1>/);
   assert.match(html, /id="adminDriverList"/);
   assert.doesNotMatch(html, /id="summaryBilledAmount"/);
@@ -22,7 +23,7 @@ test("el nuevo panel conserva los saldos en tiempo real de todo el equipo", () =
   assert.match(workspace, /Chofer debe/);
   assert.match(workspace, /Explora debe/);
   const calls = [];
-  const context = {auth:{currentUser:{uid:"admin"}},isAdminProfile:()=>true,dashboardLoad:{complete:()=>true},
+  const context = {monthlyChargeMonth,monthlyChargesForDriver,auth:{currentUser:{uid:"admin"}},isAdminProfile:()=>true,dashboardLoad:{complete:()=>true},
     adminDrivers:[{id:"driver-one",name:"Chofer uno",active:true},{id:"driver-two",name:"Chofer dos",active:true},{id:"inactive",active:false},{id:"admin",role:"admin",active:true}],
     adminDriverIsAdministrator:driver=>driver.role==="admin",adminDriverIsActive:driver=>driver.active,
     adminDriverLabel:driver=>driver.name,adminBillingBalanceForDriver:driver=>{calls.push(driver.id);return driver.id==="driver-one"?25000:-10000;},
@@ -30,7 +31,8 @@ test("el nuevo panel conserva los saldos en tiempo real de todo el equipo", () =
   const start=app.indexOf("function adminWorkspaceState()"),end=app.indexOf("\n}",start)+2;
   vm.runInNewContext(app.slice(start,end)+"\nresult=adminWorkspaceState();",context);
   assert.deepEqual(calls,["driver-one","driver-two"]);
-  assert.deepEqual(JSON.parse(JSON.stringify(context.result.accounts)),[{uid:"driver-one",name:"Chofer uno",balance:25000},{uid:"driver-two",name:"Chofer dos",balance:-10000}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(context.result.accounts)).map(({monthlyCharges,...account})=>account),[{uid:"driver-one",name:"Chofer uno",balance:25000},{uid:"driver-two",name:"Chofer dos",balance:-10000}]);
+  for(const account of context.result.accounts)assert.deepEqual(Array.from(account.monthlyCharges.missing),['canon','patente']);
 });
 
 test("el listado de choferes está visible en Admin y la gestión permite borrar", () => {

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {monthlyChargeMonth,monthlyChargesForDriver} from '../admin-monthly-charges.js';
 import {classifyRecordedCharge, REMIS_NUMBERS, buildOpsBoard} from '../ops-salidas.js';
 
 test('recorded number and private choice use explicit fields only, without mutating records', () => {
@@ -42,7 +43,7 @@ test('Movimientos view model carries classification only for travel charges and 
     {id:'adjustment',method:'cash',amount:500,adjustmentDirection:'driver_to_explora',remisNumber:134}
   ];
   const before=structuredClone(payments);
-  const context={classifyRecordedCharge,auth:{currentUser:{}},isAdminProfile:()=>true,dashboardLoad:{complete:()=>true},
+  const context={monthlyChargeMonth,monthlyChargesForDriver,classifyRecordedCharge,auth:{currentUser:{}},isAdminProfile:()=>true,dashboardLoad:{complete:()=>true},
     adminDrivers:[],adminPayments:payments,adminExpenses:[{id:'expense',amount:50}],adminDebts:[],adminDebtPayments:[],adminUberClosures:[{id:'uber',amount:600}],adminAllClosures:[],
     adminScopedRecordOwner:()=>null,adminDriverIsAdministrator:()=>false,adminDriverIsActive:()=>true,movementIsDeleted:()=>false,
     recordTimestampMs:()=>123,recordProofUrl:()=>'',isSettlementAdjustment:r=>Boolean(r.adjustmentDirection),isReimbursementCompensation:()=>false};

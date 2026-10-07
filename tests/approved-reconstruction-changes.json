@@ -106,8 +106,8 @@
       "reason": "La nueva carga Uber exclusiva admin se cierra e invalida al abandonar la sesión; no cambia los movimientos, cierres ni saldos existentes."
     },
     "renderAdminDashboardUpdates": {
-      "hash": "8c46112e832e5ab2f98dc00bb426309262644811230ff4066f422295ec513e9d",
-      "reason": "La nueva entrada de carga Uber exclusiva admin permanece deshabilitada mientras se sincroniza el equipo, según el flujo autorizado por David."
+      "hash": "14f8ff598054c14d03656fe8ed1bc1fd8c57db11ed5add32ac84bab96ec2dbee",
+      "reason": "Pedido del usuario 07/10/2026: refrescar los avisos de canon/patente en el formulario abierto cuando llegan registros de otro administrador; no modifica fuentes, saldos ni otras acciones del panel."
     },
     "subscribeAdminDashboard": {
       "hash": "b630e8d214bd34e2bb3c86e0b91280e1560f1d383a3a91768c2d1beeda9fc6c3",
@@ -210,8 +210,8 @@
       "reason": "Sin comprobante administrativo autorizado el 07/10/2026: exigir rol admin, UID del actor y fecha de servidor para la excepción; impedir a choferes falsificar o quitar esa auditoría. Ver pruebas de emulador."
     },
     "functions/expense-policy.js": {
-      "hash": "044e01190580912b786c33020c3b663b16eee01da5c6a7600482301a11abffa2",
-      "reason": "Agrega Peaje y la lista permitida al chofer sin eliminar categorías históricas/admin."
+      "hash": "5bc6204a6212ca7c39e549e4a905b04c0031f1c859d3092e2f35d318026420ab",
+      "reason": "Pedido del usuario 07/10/2026: canon y patente mensuales con reparto seleccionable 50/50 o 100% chofer. Agrega canon_compartido y patente_chofer sin modificar IDs ni porcentajes históricos; pruebas de ledger/cierre y permisos."
     },
     "functions/index.js": {
       "hash": "6272f71b039fa50e079b25c227962534738ecc043154ff750bfdd0a0341a4b40",
@@ -254,8 +254,8 @@
       "reason": "Publicación autorizada: exigir revalidación de JavaScript y CSS para evitar mezclar archivos financieros y visuales de versiones distintas en navegadores con caché."
     },
     "functions/tests/team-realtime-contract.test.js": {
-      "hash": "f0044062205138ead9756b6c27c8a509949a0d7e46a7244c26ab80e6a8b06432",
-      "reason": "Rediseño por chofer aprobado el 07/10/2026: comprobar tarjetas y acciones por UID manteniendo verificación conductual del calculador original y exclusión de perfiles no conductores."
+      "hash": "77fae4216906ee8ebef15fdd598b18779d4e32c88c53b5841a25c79019a9f8b5",
+      "reason": "Adaptar el harness al estado mensual derivado solicitado el 07/10/2026: usar los helpers reales y seguir comprobando íntegros los saldos de cada chofer, agregando comprobación de los dos recordatorios."
     },
     "functions/arca-client.js": {
       "hash": "07365952e0411b849a47827a4ae12f10180c8aedaae44e1cecc619feda5c576d",

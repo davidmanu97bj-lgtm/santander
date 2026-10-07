@@ -129,7 +129,7 @@
   <link rel="stylesheet" href="./movement-colors.css?v=20260919-admin-1" />
   <link rel="stylesheet" href="./explora-ui.css?v=20260919-admin-1" />
   <link rel="stylesheet" href="./ops-salidas.css?v=20261002-retiro-disponibilidad" />
-  <link rel="stylesheet" href="./admin-workspace.css?v=20261007-debt-no-receipt" />
+  <link rel="stylesheet" href="./admin-workspace.css?v=20261007-monthly" />
   <link rel="stylesheet" href="./uber-fleet-ui.css?v=20260929-fleet-shadow" />
   <link rel="stylesheet" href="./admin-uber-liquidation-ui.css?v=20261002-uber-admin" />
 </head>
@@ -405,11 +405,16 @@
 
 
 <div id="adminDigitalExpenseModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="adminDigitalExpenseTitle">
- <div class="modal-card admin-digital-card"><div class="modal-head"><h2 id="adminDigitalExpenseTitle">Pago digital de Explora</h2><button class="x" data-close="adminDigitalExpenseModal" aria-label="Cerrar">×</button></div>
+ <div class="modal-card admin-digital-card"><div class="modal-head"><h2 id="adminDigitalExpenseTitle">Deuda digital</h2><button class="x" data-close="adminDigitalExpenseModal" aria-label="Cerrar">×</button></div>
  <p class="admin-form-note">Registrá un gasto ya pagado por Explora. Adjuntá el comprobante o indicá que no tenés uno.</p>
  <form id="adminDigitalExpenseForm">
   <div class="field"><label for="adminExpenseDriver">Chofer</label><select id="adminExpenseDriver" required></select></div>
+  <div id="adminExpenseMonthlyStatus" class="admin-monthly-status" aria-label="Cargas mensuales"></div>
   <div class="field"><label for="adminExpenseType">Concepto</label><select id="adminExpenseType" required></select><p id="adminExpenseResponsibility" class="file-note"></p></div>
+  <div id="adminExpenseMonthlyFields" hidden>
+   <div class="field"><label for="adminExpenseMonth">Mes al que corresponde</label><input id="adminExpenseMonth" type="month"><small class="file-note">Cada chofer tiene una carga de canon y una de patente por mes.</small></div>
+   <div class="field"><label for="adminExpenseSplit">Reparto del importe</label><select id="adminExpenseSplit"><option value="shared">50% chofer / 50% Explora</option><option value="driver">100% chofer</option></select></div>
+  </div>
   <div class="field"><label for="adminExpenseAmount">Monto pagado</label><input id="adminExpenseAmount" class="money-input" type="text" inputmode="numeric" data-money-input autocomplete="off" placeholder="0" required></div>
   <div class="field"><label for="adminExpenseDetail">Detalle</label><input id="adminExpenseDetail" maxlength="280" placeholder="Ej. Pago del seguro del auto" required></div>
   <div class="field"><label for="adminExpenseProof">Comprobante</label><input id="adminExpenseProof" type="file" accept="image/*,.pdf" required><label class="admin-no-receipt"><input id="adminExpenseNoReceipt" type="checkbox"> Sin comprobante</label><small class="file-note">Quedará registrado quién confirmó esta operación sin adjunto.</small></div>
@@ -843,7 +848,7 @@
 
 <script src="./functions/period-policy.js?v=20260919-admin-1"></script>
 <script src="./functions/uber-weekly-policy.js?v=20261002-uber-confirmation"></script>
-<script src="./functions/expense-policy.js?v=20260919-admin-1"></script>
-<script type="module" src="./app.js?v=20261007-debt-no-receipt"></script>
+<script src="./functions/expense-policy.js?v=20261007-monthly"></script>
+<script type="module" src="./app.js?v=20261007-monthly"></script>
 </body>
 </html>
