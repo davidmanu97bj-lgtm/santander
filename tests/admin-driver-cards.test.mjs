@@ -97,3 +97,47 @@ test('card action does not dispatch unknown drivers or bypass authorization',()=
     assert.deepEqual(calls,[{action:'digital',uid:'one'}]);
   }finally{globalThis.document=original;}
 });
+
+test('receipts render in bounded pages without dropping records and reset for a different driver or month',()=>{
+  const original=globalThis.document,doc=fakeDocument();globalThis.document=doc;
+  const time=Date.parse('2026-09-20T12:00:00Z');
+  const movements=Array.from({length:121},(_,i)=>({id:String(i),driverUid:'one',time:time-i,amount:i,detail:`Movimiento ${i}`,proof:`https://example.test/${i}.pdf`}));
+  movements.push({id:'other',driverUid:'two',time,amount:1,detail:'Otro chofer',proof:'https://example.test/other.pdf'});
+  let authorized=true,ready=true;
+  const getState=()=>({authorized,ready,accounts:[{uid:'one',name:'David',balance:0},{uid:'two',name:'Javier',balance:0}],movements,closures:[]});
+  try{
+    const workspace=mountAdminWorkspace({getState,loadDocuments(){},openDebt(){},openDigital(){}});
+    const host=doc.getElementById('adminReceiptsTable');
+    doc.getElementById('adminReceiptsMonth').value='2026-09';
+    workspace.openDriverView('receipts','one');
+    const rows=()=>[...host.innerHTML.matchAll(/href="https:\/\/example.test\/([^\"]+)\.pdf"/g)].map(match=>match[1]);
+    const more=()=>host.listeners.click({target:{closest:()=>({dataset:{adminMoreRecords:''}})}});
+    assert.equal(rows().length,50);assert.match(host.innerHTML,/50 de 121/);
+    assert.doesNotMatch(host.innerHTML,/Otro chofer/);
+    more();assert.equal(rows().length,100);assert.match(host.innerHTML,/100 de 121/);
+    more();assert.equal(rows().length,121);assert.equal(new Set(rows()).size,121);
+    assert.doesNotMatch(host.innerHTML,/data-admin-more-records/);
+    workspace.openDriverView('receipts','two');assert.deepEqual(rows(),['other']);
+    workspace.openDriverView('receipts','one');assert.equal(rows().length,50);
+    more();doc.getElementById('adminReceiptsMonth').onchange();assert.equal(rows().length,50);
+    authorized=false;more();assert.equal(rows().length,50);
+    authorized=true;ready=false;workspace.refresh();assert.match(host.innerHTML,/Sincronizando comprobantes/);assert.deepEqual(rows(),[]);
+  }finally{globalThis.document=original;}
+});
+
+test('closures paginate and scoped refreshes leave hidden driver cards untouched',()=>{
+  const original=globalThis.document,doc=fakeDocument();globalThis.document=doc;
+  const accounts=[{uid:'one',name:'David',balance:0}];
+  const closures=Array.from({length:55},(_,i)=>({driverUid:'one',time:Date.now()-i,amount:i,detail:`Cierre ${i}`,status:'Completado',proof:`https://example.test/${i}.pdf`}));
+  try{
+    const workspace=mountAdminWorkspace({getState:()=>({authorized:true,ready:true,accounts,movements:[],closures}),loadDocuments(){},openDebt(){},openDigital(){}});
+    workspace.refresh();const initialCards=doc.getElementById('adminDriverList').innerHTML;
+    workspace.openDriverView('closures','one');accounts[0].balance=300;
+    workspace.refresh();assert.equal(doc.getElementById('adminDriverList').innerHTML,initialCards);
+    const host=doc.getElementById('adminClosuresTable'),rows=()=>host.innerHTML.match(/Ver comprobante/g)||[];
+    assert.equal(rows().length,50);assert.match(host.innerHTML,/50 de 55/);
+    host.listeners.click({target:{closest:()=>({})}});assert.equal(rows().length,55);
+    assert.doesNotMatch(host.innerHTML,/data-admin-more-records/);
+    workspace.openDriverView('overview');assert.notEqual(doc.getElementById('adminDriverList').innerHTML,initialCards);
+  }finally{globalThis.document=original;}
+});

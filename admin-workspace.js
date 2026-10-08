@@ -1,8 +1,12 @@
 import {escapeUi as esc,exploraIcon} from './explora-ui.js?v=20260919-admin-1';
 
-const money=n=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2}).format(Number(n)||0);
-const date=ms=>ms?new Intl.DateTimeFormat('es-AR',{timeZone:'America/Argentina/Buenos_Aires',day:'2-digit',month:'2-digit',year:'2-digit'}).format(new Date(ms)):'Sin fecha';
-const monthOf=ms=>ms?new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit'}).format(new Date(ms)):'';
+const moneyFormat=new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2});
+const dateFormat=new Intl.DateTimeFormat('es-AR',{timeZone:'America/Argentina/Buenos_Aires',day:'2-digit',month:'2-digit',year:'2-digit'});
+const monthFormat=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit'});
+const waiverDateFormat=new Intl.DateTimeFormat('es-AR',{timeZone:'America/Argentina/Buenos_Aires',day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
+const money=n=>moneyFormat.format(Number(n)||0);
+const date=ms=>ms?dateFormat.format(new Date(ms)):'Sin fecha';
+const monthOf=ms=>ms?monthFormat.format(new Date(ms)):'';
 const safeUrl=value=>/^https?:\/\//i.test(value||'')?esc(value):'';
 const empty=message=>`<div class="admin-empty-state">${esc(message)}</div>`;
 const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
@@ -16,7 +20,7 @@ const scopedViews=new Set(['movements','closures','receipts','accountant']);
 
 export function filterAdminRows(rows,{month,type='all',search='',driverUid=null}={}){
   const query=normalize(search);
-  return rows.filter(r=>(driverUid===null||r.driverUid===driverUid)&&(!month||monthOf(r.time)===month)&&(type==='all'||r.kind===type)&&normalize(`${r.driver} ${r.detail}`).includes(query)).sort((a,b)=>b.time-a.time);
+  return rows.filter(r=>(driverUid===null||r.driverUid===driverUid)&&(!month||monthOf(r.time)===month)&&(type==='all'||r.kind===type)&&(!query||normalize(`${r.driver} ${r.detail}`).includes(query))).sort((a,b)=>b.time-a.time);
 }
 
 export function renderDriverCards(accounts,{ready=true}={}){
@@ -42,7 +46,7 @@ export function adminProofMarkup(row){
   if(url)return `<a href="${url}" target="_blank" rel="noopener">Ver comprobante ↗</a>`;
   if(row.receiptStatus==='waived_by_admin'&&row.receiptWaivedByUid){
     const at=Number(row.receiptWaivedAtMs),valid=at>0&&Number.isFinite(new Date(at).getTime());
-    const when=valid?new Intl.DateTimeFormat('es-AR',{timeZone:'America/Argentina/Buenos_Aires',day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(at)):'';
+    const when=valid?waiverDateFormat.format(new Date(at)):'';
     return `<span class="admin-badge no-proof">Sin comprobante · administración</span>${when?`<small class="admin-waiver-date">Registrado ${esc(when)}</small>`:''}`;
   }
   return '<span class="admin-muted">Sin adjunto</span>';
@@ -84,8 +88,16 @@ export function mountAdminWorkspace({getState,loadDocuments,openDebt,openDigital
   $('adminGroupDebtBtn').addEventListener('click',()=>{if(getState().authorized&&getState().ready)openDebt(true);});
   $('adminDigitalExpenseBtn').addEventListener('click',openDigital);
   for(const id of ['adminActivityMonth','adminActivityType','adminActivitySearch'])$(id).addEventListener(id==='adminActivitySearch'?'input':'change',()=>{count=50;renderActivity(getState());});
-  $('adminReceiptsMonth').onchange=()=>renderReceipts(getState());
+  $('adminReceiptsMonth').onchange=()=>{count=50;renderReceipts(getState());};
   $('adminMoreActivity').onclick=()=>{count+=50;renderActivity(getState());};
+  for(const [id,panel,render] of [['adminReceiptsTable','receipts',renderReceipts],['adminClosuresTable','closures',renderClosures]]){
+    $(id).addEventListener('click',event=>{
+      if(!event.target.closest('[data-admin-more-records]')||view!==panel)return;
+      const state=getState();if(!state.authorized||!state.ready)return;
+      count+=50;render(state);
+    });
+  }
+  const moreRecords=(rows,label)=>rows.length>count?`<button type="button" class="admin-outline" data-admin-more-records>Ver más ${label} · ${Math.min(count,rows.length)} de ${rows.length}</button>`:'';
   function renderActivity(state){
     if(!state.authorized)return;
     if(!state.ready){$('adminActivityTable').innerHTML=empty('Sincronizando movimientos…');$('adminMoreActivity').hidden=true;return;}
@@ -97,13 +109,13 @@ export function mountAdminWorkspace({getState,loadDocuments,openDebt,openDigital
     if(!state.authorized)return;
     if(!state.ready){$('adminClosuresTable').innerHTML=empty('Sincronizando cierres…');return;}
     const rows=filterAdminRows(state.closures,{driverUid:selectedDriverUid||''});
-    $('adminClosuresTable').innerHTML=rows.length?`<table class="admin-table"><thead><tr><th>Fecha</th><th>Estado</th><th>Quién paga</th><th class="number">Monto</th><th>Comprobante</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${date(r.time)}</td><td><span class="admin-badge ${r.completed?'done':'pending'}">${esc(r.status)}</span></td><td>${esc(r.direction)}</td><td class="number">${money(r.amount)}</td><td>${adminProofMarkup(r)}</td></tr>`).join('')}</tbody></table>`:empty('Este chofer todavía no tiene cierres registrados.');
+    $('adminClosuresTable').innerHTML=rows.length?`<table class="admin-table"><thead><tr><th>Fecha</th><th>Estado</th><th>Quién paga</th><th class="number">Monto</th><th>Comprobante</th></tr></thead><tbody>${rows.slice(0,count).map(r=>`<tr><td>${date(r.time)}</td><td><span class="admin-badge ${r.completed?'done':'pending'}">${esc(r.status)}</span></td><td>${esc(r.direction)}</td><td class="number">${money(r.amount)}</td><td>${adminProofMarkup(r)}</td></tr>`).join('')}</tbody></table>${moreRecords(rows,'cierres')}`:empty('Este chofer todavía no tiene cierres registrados.');
   }
   function renderReceipts(state){
     if(!state.authorized)return;
     if(!state.ready){$('adminReceiptsTable').innerHTML=empty('Sincronizando comprobantes…');return;}
     const rows=filterAdminRows([...state.movements,...state.closures],{driverUid:selectedDriverUid||'',month:$('adminReceiptsMonth').value});
-    $('adminReceiptsTable').innerHTML=rows.length?`<table class="admin-table"><thead><tr><th>Fecha</th><th>Movimiento</th><th class="number">Monto</th><th>Comprobante</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${date(r.time)}</td><td>${esc(r.detail)}<small>${esc(r.label)}</small></td><td class="number">${money(r.amount)}</td><td>${adminProofMarkup(r)}</td></tr>`).join('')}</tbody></table>`:empty('Este chofer no tiene comprobantes para este mes.');
+    $('adminReceiptsTable').innerHTML=rows.length?`<table class="admin-table"><thead><tr><th>Fecha</th><th>Movimiento</th><th class="number">Monto</th><th>Comprobante</th></tr></thead><tbody>${rows.slice(0,count).map(r=>`<tr><td>${date(r.time)}</td><td>${esc(r.detail)}<small>${esc(r.label)}</small></td><td class="number">${money(r.amount)}</td><td>${adminProofMarkup(r)}</td></tr>`).join('')}</tbody></table>${moreRecords(rows,'comprobantes')}`:empty('Este chofer no tiene comprobantes para este mes.');
   }
   function renderCards(state){
     const host=$('adminDriverList'),markup=renderDriverCards(state.accounts,{ready:state.ready});
@@ -122,9 +134,11 @@ export function mountAdminWorkspace({getState,loadDocuments,openDebt,openDigital
     $('adminWorkspaceSubtitle').classList.toggle('is-driver-name',scopedViews.has(view));
     document.querySelectorAll('[data-admin-scoped-name]').forEach(el=>el.textContent=driver?.name||'Chofer seleccionado');
     for(const id of ['adminMovementsBtn','adminManageClosuresBtn','adminAdjustmentBtn','adminHistoryBtn'])$(id).disabled=!state.ready||!driver;
-    const owed=state.accounts.reduce((n,d)=>n+Math.max(0,d.balance),0),pay=state.accounts.reduce((n,d)=>n+Math.max(0,-d.balance),0);
-    $('adminOverviewMetrics').innerHTML=[['Choferes activos',state.accounts.length],['Por cobrar a choferes',money(owed)],['Por pagar a choferes',money(pay)]].map(([label,value])=>`<article><span>${label}</span><strong>${state.ready?value:'—'}</strong></article>`).join('');
-    renderCards(state);
+    if(view==='overview'){
+      const owed=state.accounts.reduce((n,d)=>n+Math.max(0,d.balance),0),pay=state.accounts.reduce((n,d)=>n+Math.max(0,-d.balance),0);
+      $('adminOverviewMetrics').innerHTML=[['Choferes activos',state.accounts.length],['Por cobrar a choferes',money(owed)],['Por pagar a choferes',money(pay)]].map(([label,value])=>`<article><span>${label}</span><strong>${state.ready?value:'—'}</strong></article>`).join('');
+      renderCards(state);
+    }
     if(view==='movements')renderActivity(state);if(view==='closures')renderClosures(state);if(view==='receipts')renderReceipts(state);
   }
   function renderDocuments(){

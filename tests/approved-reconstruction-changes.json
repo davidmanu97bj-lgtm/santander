@@ -106,8 +106,8 @@
       "reason": "La nueva carga Uber exclusiva admin se cierra e invalida al abandonar la sesión; no cambia los movimientos, cierres ni saldos existentes."
     },
     "renderAdminDashboardUpdates": {
-      "hash": "14f8ff598054c14d03656fe8ed1bc1fd8c57db11ed5add32ac84bab96ec2dbee",
-      "reason": "Pedido del usuario 07/10/2026: refrescar los avisos de canon/patente en el formulario abierto cuando llegan registros de otro administrador; no modifica fuentes, saldos ni otras acciones del panel."
+      "hash": "3c5b4e6ae39b2d56cc8a0510327edc1a1d8a85a62e377c63913eed8cc1dfb9bc",
+      "reason": "Solicitud del usuario 07/10/2026: mayor fluidez al abrir comprobantes y dashboard; evita doble render de la misma vista por snapshot. Sin cambios en cálculos, saldos ni permisos."
     },
     "subscribeAdminDashboard": {
       "hash": "b630e8d214bd34e2bb3c86e0b91280e1560f1d383a3a91768c2d1beeda9fc6c3",
@@ -188,16 +188,24 @@
     "renderDriverDebtConfirmation": {
       "hash": "81c51c94faa9b43ee0843ec44514440bb61d25ee73e70506f61b1c855dbf0df0",
       "reason": "Solicitud expresa del 07/10/2026: permitir Sin comprobante en deuda individual 100% chofer sólo para administración, con actor/hora auditados, Telegram y aceptación del chofer; conserva importe, grupo y fórmulas."
+    },
+    "runTransactionWithRetry": {
+      "hash": "f57ae20f3dde76fa719c312a1f0cdc929475f8b22e18deb82fc2e378a7ac011a",
+      "reason": "El usuario pide resolver la demora del guardado: acotar reintentos y confirmaciones del servidor sin anunciar éxito para escrituras no confirmadas ni cambiar identificadores."
+    },
+    "confirmCommittedOperation": {
+      "hash": "d3a6ba79fa123768a2c484e6efdba3fb41dc9788a16a19995acf72e4576b20f2",
+      "reason": "El usuario pide resolver la demora del guardado: acotar reintentos y confirmaciones del servidor sin anunciar éxito para escrituras no confirmadas ni cambiar identificadores."
     }
   },
   "handlers": {
     "chargeForm": {
-      "hash": "a146d32d8268f3776e53e2a89f63ff90078449d75b437dab8182205921b18668",
-      "reason": "Salió vs cobro: paso remis/viaje privado tras salida-llegada; persiste remisNumber/viajePrivado en billing_records; panel Ops marca salida y cruza por número (sin adjudicación)."
+      "hash": "759ae5b44cee0396bec156c4767d19a85406dcfa50d0a74d31615c6543c1c648",
+      "reason": "El usuario pide cobros y aplicación más rápidos: comprimir fotos legibles, mostrar avance de carga, limitar esperas y conservar el identificador al reintentar sin duplicar movimientos."
     },
     "expenseForm": {
-      "hash": "13ce7fe6b3c7965ee24907afd5ae745cf93df8afba529e512505ca342a41b94a",
-      "reason": "Gastos del chofer solo efectivo y seis categorías; la foto es el último paso y el botón confirma directamente."
+      "hash": "07684e270cb9776b57d13c60a01cceef3367ce149cd83023c2b95bd3f140a463",
+      "reason": "El usuario pide cobros y aplicación más rápidos: comprimir fotos legibles, mostrar avance de carga, limitar esperas y conservar el identificador al reintentar sin duplicar movimientos."
     },
     "managementForm": {
       "hash": null,
