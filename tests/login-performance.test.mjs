@@ -9,6 +9,14 @@ function declaration(name) {
 }
 function load(ctx,...names) { vm.runInContext(names.map(declaration).join('\n'),ctx); }
 const credentialError=()=>Object.assign(new Error('Credenciales'),{code:'auth/invalid-credential'});
+
+test('el inicio reutiliza exactamente el módulo precargado y no descarga otra versión de la app',()=>{
+  const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
+  const preloads=[...html.matchAll(/<link\b[^>]*rel="modulepreload"[^>]*href="([^"]+)"/g)].map(match=>match[1]);
+  const scripts=[...html.matchAll(/<script\b[^>]*type="module"[^>]*src="([^"]+)"/g)].map(match=>match[1]);
+  const app=scripts.find(url=>url.startsWith('./app.js?'));
+  assert.ok(app);assert.deepEqual(preloads.filter(url=>url.startsWith('./app.js?')),[app]);
+});
 function loginHarness(signIn,aliasEmail) {
   const calls=[],lookups=[];
   const ctx=vm.createContext({auth:{},db:{},LOGIN_ALIASES:{},USER_EMAIL_DOMAIN:'explora.local',console,

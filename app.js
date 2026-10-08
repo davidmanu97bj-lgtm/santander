@@ -8,7 +8,7 @@ import {
   mountOpsSalidasBoard
 } from "./ops-salidas.js?v=20261002-retiro-disponibilidad";
 import { createOpsExitStore } from "./ops-salidas-store.js?v=20260930-operaciones-v3";
-import { mountAdminWorkspace } from "./admin-workspace.js?v=20261007-monthly";
+import { mountAdminWorkspace } from "./admin-workspace.js?v=20261007-fluidez";
 import { mountUberFleet } from "./uber-fleet-ui.js?v=20260929-fleet-shadow";
 import { mountAdminUberLiquidation, isPendingAdminUberConfirmation, driverUberConfirmationMarkup } from "./admin-uber-liquidation-ui.js?v=20261002-uber-confirmation";
 import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20261007-admin-receipts";
@@ -22,6 +22,7 @@ import { searchTourismPlaces, tourismRoute } from "./tourism-catalog.js?v=202609
 import { mountTripCalendar } from "./trip-calendar.js?v=20260913-calendario-detalles";
 import { monthRange, normalizeTripDraft, canManageTrip } from "./calendar-core.js?v=20260913-calendario-detalles";
 import * as firebaseSettings from "./firebase-config.js?v=20260824-15";
+import { prepareReceiptFile, uploadReceiptFile, runBoundedTransaction, withOperationDeadline } from "./receipt-upload.js?v=20261008-upload-progress";
 
 const { BUSINESS_ID, USER_EMAIL_DOMAIN } = firebaseSettings;
 const LOGIN_ALIASES = firebaseSettings.LOGIN_ALIASES || {};
@@ -34,7 +35,7 @@ import {
   onSnapshot, onSnapshotsInSync, serverTimestamp, deleteField, query, where, or, orderBy, limit, writeBatch, runTransaction
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import {
-  getStorage, ref, uploadBytes, getDownloadURL
+  getStorage, ref, uploadBytes, uploadBytesResumable, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js";
 import {
   getFunctions, httpsCallable
@@ -400,10 +401,11 @@ async function retryFirebaseOperation(task, attempts = 4) {
 }
 
 async function runTransactionWithRetry(handler) {
-  return retryFirebaseOperation(() => runTransaction(db, handler), 4);
+  // Firestore already retries contention. Do not multiply its attempts by four.
+  return runBoundedTransaction(runTransaction, db, handler);
 }
 
-async function confirmCommittedOperation(documentRef, operationId, fingerprint) {
+async function confirmCommittedOperation(documentRef, operationId, fingerprint, {attempts = 3} = {}) {
   // Un dato local pendiente no equivale a una confirmación del servidor.
   // Una conexión inestable nunca debe anunciar como guardado un alta sin confirmar.
   const matchesOperation = snapshot => {
@@ -413,22 +415,34 @@ async function confirmCommittedOperation(documentRef, operationId, fingerprint) 
     return data.idempotencyKey === operationId && data.submissionFingerprint === fingerprint;
   };
 
-  try {
-    const localOrServerSnapshot = await getDoc(documentRef);
-    if (matchesOperation(localOrServerSnapshot)) return true;
-  } catch (_) {}
-
-  // Si todavía no aparece, reintenta contra servidor durante unos segundos.
+  // Consulta acotada al servidor, incluso si se perdió la conexión.
   // Nunca genera otro documento: siempre consulta el mismo operationId.
-  const waits = [0, 500, 1200, 2200, 3800, 6000];
+  const waits = [0, 600, 1200].slice(0, attempts);
   for (const waitMs of waits) {
     if (waitMs) await delay(waitMs);
     try {
-      const snapshot = await getDocFromServer(documentRef);
+      const snapshot = await withOperationDeadline(getDocFromServer(documentRef), 2500);
       if (matchesOperation(snapshot)) return true;
-    } catch (_) {}
+    } catch (error) {
+      if (["permission-denied", "unauthenticated"].some(code => String(error?.code || "").includes(code))) return false;
+    }
   }
   return false;
+}
+
+function shouldCheckUncertainWrite(error, attempted) {
+  if (!attempted) return false;
+  const code = firebaseErrorCode(error);
+  return !["permission-denied", "unauthenticated", "invalid-argument", "operation-id-conflict"].some(value => code.includes(value));
+}
+
+function receiptSaveError(error, noun) {
+  const code = firebaseErrorCode(error);
+  if (code.includes("permission-denied") || code.includes("storage/unauthorized")) return `Tu sesión no tiene permiso para guardar este ${noun}. Volvé a iniciar sesión e intentá nuevamente.`;
+  if (code.includes("unauthenticated")) return "La sesión venció. Volvé a iniciar sesión.";
+  if (code.startsWith("receipt/")) return error.message;
+  if (code === "operation-timeout" && error.stage === "upload") return `${error.message} Se conserva la misma operación para evitar duplicados.`;
+  return `No pudimos confirmar el ${noun}. Podés volver a tocar Confirmar: se reintentará la misma operación sin duplicarla.`;
 }
 
 function assertSameCommittedOperation(snapshot, operationId, fingerprint) {
@@ -3338,8 +3352,8 @@ function renderAdminDashboardUpdates() {
     uberEntry.title = uberEntry.disabled ? "Sincronizando los datos de los choferes" : "Cargar el cierre semanal conciliado de Fleet";
   }
   if (typeof opsSalidasBoard !== "undefined") opsSalidasBoard?.refresh();
-  adminWorkspace?.refresh();
   if (!dashboardLoad?.complete()) {
+    adminWorkspace?.refresh();
     $("adminDriverList").innerHTML = `<div class="admin-driver-empty">${dashboardLoad?.errors.size ? "No se pudieron cargar los saldos. Recargá para volver a intentar." : "Consultando los saldos del equipo…"}</div>`;
     return;
   }
@@ -4958,6 +4972,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
   let operation = null;
   let paymentRef = null;
   let completedSuccessfully = false;
+  let writeAttempted = false;
   try {
     const enteredDetail = $("detail").value.trim();
     const chargeDelta = ExploraPeriodPolicy.chargeDelta(amount, mode);
@@ -4970,18 +4985,37 @@ $("chargeForm")?.addEventListener("submit", async e => {
       remisNumber: remisSelection.viajePrivado ? null : remisSelection.remisNumber,
       viajePrivado: remisSelection.viajePrivado === true
     });
+    const previousAttempt = safePendingRegistry("payment", user.uid)[fingerprint];
     operation = reservePendingOperation("payment", user.uid, fingerprint);
     paymentRef = doc(db, ROOT_COLLECTIONS.payments, operation.operationId);
-    $("saveChargeBtn").textContent = "Guardando…";
+    // Recover a lost acknowledgement before re-uploading the same proof.
+    if (previousAttempt) {
+      let previous = null;
+      try { previous = await withOperationDeadline(getDocFromServer(paymentRef), 5000); }
+      catch (error) { if (["permission-denied", "unauthenticated"].some(code => firebaseErrorCode(error).includes(code))) throw error; }
+      if (previous && assertSameCommittedOperation(previous, operation.operationId, fingerprint)) {
+        clearPendingOperation("payment", user.uid, fingerprint, operation.operationId);
+        completedSuccessfully = true;
+        $("chargeStatus").textContent = "Éxito. El cobro ya estaba registrado y se mantuvo una sola vez.";
+        $("chargeStatus").className = "status success";
+        $("chargeForm").reset();
+        syncChargeCustomerFields();
+        closeModalAndGoTop("chargeModal");
+        return;
+      }
+    }
 
     let proofUrl = "";
     let proofPath = "";
     if (mode === "digital" && file) {
-      const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+      $("saveChargeBtn").textContent = "Preparando comprobante…";
+      const uploadFile = await prepareReceiptFile(file);
+      const cleanName = uploadFile.name.replace(/[^a-zA-Z0-9._-]/g,"_");
       proofPath = `billing_receipts/${user.uid}/${localDayKey()}/${operation.operationId}_${cleanName}`;
       const storageRef = ref(storage, proofPath);
-      await retryFirebaseOperation(() => uploadBytes(storageRef, file), 4);
-      proofUrl = await retryFirebaseOperation(() => getDownloadURL(storageRef), 4);
+      const uploaded = await uploadReceiptFile({reference:storageRef, file:uploadFile, uploadBytesResumable, getDownloadURL,
+        onProgress:percent => { $("saveChargeBtn").textContent = percent < 100 ? `Subiendo comprobante ${percent}%…` : "Confirmando comprobante…"; }});
+      proofUrl = uploaded.url;
     }
 
     const candidateAdvanceRefs = mode === "digital"
@@ -4992,6 +5026,8 @@ $("chargeForm")?.addEventListener("submit", async e => {
 
     // La transacción vuelve a leer los adelantos antes de descontarlos. Así,
     // dos cobros simultáneos no pueden pisarse ni perder una devolución.
+    $("saveChargeBtn").textContent = "Guardando cobro…";
+    writeAttempted = true;
     const transactionResult = await runTransactionWithRetry(async transaction => {
       const existingPayment = await transaction.get(paymentRef);
       if (assertSameCommittedOperation(existingPayment, operation.operationId, fingerprint)) {
@@ -5099,7 +5135,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
     closeModalAndGoTop("chargeModal");
   } catch (err) {
     console.error(err);
-    const committed = paymentRef && operation && fingerprint
+    const committed = shouldCheckUncertainWrite(err, writeAttempted) && paymentRef && operation && fingerprint
       ? await confirmCommittedOperation(paymentRef, operation.operationId, fingerprint)
       : false;
     if (committed) {
@@ -5112,7 +5148,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
     syncChargeCustomerFields();
       closeModalAndGoTop("chargeModal");
     } else {
-      $("chargeStatus").textContent = "No pudimos confirmar el cobro. Podés volver a tocar Registrar: se reintentará la misma operación sin duplicarla.";
+      $("chargeStatus").textContent = receiptSaveError(err, "cobro");
       $("chargeStatus").className = "status error";
     }
   } finally {
@@ -5610,6 +5646,7 @@ $("expenseForm")?.addEventListener("submit", async e => {
   let operation = null;
   let expenseRef = null;
   let completedSuccessfully = false;
+  let writeAttempted = false;
   let expenseBeforeBalance = 0;
   let expenseAfterBalance = 0;
   try {
@@ -5620,16 +5657,19 @@ $("expenseForm")?.addEventListener("submit", async e => {
       receiptFlowVersion:ExploraExpensePolicy.version,
       expensePaymentMethod, settlementRuleVersion:ExploraPeriodPolicy.VERSION
     });
+    const previousAttempt = safePendingRegistry("expense", user.uid)[fingerprint];
     operation = reservePendingOperation("expense", user.uid, fingerprint);
     expenseRef = doc(db, ROOT_COLLECTIONS.expenses, operation.operationId);
     // A retry must keep the original committed balance snapshot.
     let alreadyCommitted = false;
-    try {
-      const existing = await getDocFromServer(expenseRef);
-      alreadyCommitted = assertSameCommittedOperation(existing, operation.operationId, fingerprint);
-    } catch (error) {
-      if (error.code === "operation-id-conflict") throw error;
-      // A missing expense cannot yet be read under the ownership rules.
+    if (previousAttempt) {
+      try {
+        const existing = await withOperationDeadline(getDocFromServer(expenseRef), 5000);
+        alreadyCommitted = assertSameCommittedOperation(existing, operation.operationId, fingerprint);
+      } catch (error) {
+        if (error.code === "operation-id-conflict") throw error;
+        // A missing expense cannot yet be read under the ownership rules.
+      }
     }
     if (alreadyCommitted) {
       clearPendingOperation("expense", user.uid, fingerprint, operation.operationId);
@@ -5640,13 +5680,16 @@ $("expenseForm")?.addEventListener("submit", async e => {
       closeModalAndGoTop("expenseModal");
       return;
     }
-    $("saveExpenseBtn").textContent = "Guardando…";
+    $("saveExpenseBtn").textContent = "Preparando comprobante…";
 
-    const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+    const uploadFile = await prepareReceiptFile(file);
+    const cleanName = uploadFile.name.replace(/[^a-zA-Z0-9._-]/g,"_");
     const proofPath = `gastos/${user.uid}/${operation.operationId}/comprobante_${cleanName}`;
     const storageRef = ref(storage, proofPath);
-    await retryFirebaseOperation(() => uploadBytes(storageRef, file), 4);
-    const proofUrl = await retryFirebaseOperation(() => getDownloadURL(storageRef), 4);
+    const uploaded = await uploadReceiptFile({reference:storageRef, file:uploadFile, uploadBytesResumable, getDownloadURL,
+      onProgress:percent => { $("saveExpenseBtn").textContent = percent < 100 ? `Subiendo comprobante ${percent}%…` : "Confirmando comprobante…"; }});
+    const proofUrl = uploaded.url;
+    $("saveExpenseBtn").textContent = "Guardando gasto…";
 
     // El gasto completo suma deuda y su reintegro se descuenta en el mismo registro.
     // Se congela el saldo justo antes del alta para mostrar el cambio exacto en el modal
@@ -5709,7 +5752,8 @@ $("expenseForm")?.addEventListener("submit", async e => {
       businessId: BUSINESS_ID,
       createdAt: serverTimestamp()
     };
-    await retryFirebaseOperation(() => setDoc(expenseRef, expensePayload), 4);
+    writeAttempted = true;
+    await withOperationDeadline(setDoc(expenseRef, expensePayload), 45000, "La conexión tardó demasiado en confirmar el gasto.");
     const transactionResult = { alreadyRegistered:false };
 
     clearPendingOperation("expense", user.uid, fingerprint, operation.operationId);
@@ -5723,8 +5767,11 @@ $("expenseForm")?.addEventListener("submit", async e => {
     closeModalAndGoTop("expenseModal");
   } catch (err) {
     console.error(err);
-    const committed = expenseRef && operation && fingerprint
-      ? await confirmCommittedOperation(expenseRef, operation.operationId, fingerprint)
+    // An earlier timed-out write may commit between the retry preflight and setDoc.
+    // Immutable expense rules then reject the retry: check that exact ID once.
+    const permissionAfterWrite = writeAttempted && firebaseErrorCode(err).includes("permission-denied");
+    const committed = (permissionAfterWrite || shouldCheckUncertainWrite(err, writeAttempted)) && expenseRef && operation && fingerprint
+      ? await confirmCommittedOperation(expenseRef, operation.operationId, fingerprint, {attempts:permissionAfterWrite ? 1 : 3})
       : false;
     if (committed) {
       clearPendingOperation("expense", user.uid, fingerprint, operation.operationId);
@@ -5733,15 +5780,9 @@ $("expenseForm")?.addEventListener("submit", async e => {
       completedSuccessfully = true;
       $("saveExpenseBtn").textContent = "Éxito ✓";
       $("expenseForm").reset();
-      try {
-        const committedSnapshot = await getDoc(expenseRef);
-        const committedData = committedSnapshot.exists() ? committedSnapshot.data() : {};
-        expenseBeforeBalance = Number(committedData.telegramSettlementBeforeBalance ?? expenseBeforeBalance ?? 0);
-        expenseAfterBalance = Number(committedData.telegramSettlementAfterBalance ?? (expenseBeforeBalance + amount * (1 - refundRate)));
-      } catch (_) {}
       closeModalAndGoTop("expenseModal");
     } else {
-      $("expenseStatus").textContent = "No pudimos confirmar el gasto. Podés volver a tocar Registrar: se reintentará la misma operación sin duplicarla.";
+      $("expenseStatus").textContent = receiptSaveError(err, "gasto");
       $("expenseStatus").className = "status error";
     }
   } finally {
@@ -7089,9 +7130,17 @@ $("invoicesModal").addEventListener("keydown",event=>{
 
 function adminWorkspaceState() {
   const authorized=Boolean(auth.currentUser&&isAdminProfile()),ready=authorized&&Boolean(dashboardLoad?.complete());
-  if(!authorized||!ready)return {authorized,ready,error:Boolean(dashboardLoad?.errors.size),accounts:[],movements:[],closures:[]};
+  if(!authorized||!ready){adminWorkspaceState.cached=null;return {authorized,ready,error:Boolean(dashboardLoad?.errors.size),accounts:[],movements:[],closures:[]};}
+  // Snapshot arrays are replaced when Firestore changes. Reuse the derived view
+  // between clicks; never keep it across a new snapshot, session, or month.
+  const month=monthlyChargeMonth();
+  const sources=[auth.currentUser,dashboardLoad,typeof currentProfile==='undefined'?null:currentProfile,month,
+    adminDrivers,adminPayments,adminExpenses,adminDebts,adminDebtPayments,adminUberClosures,adminAllClosures];
+  const cached=adminWorkspaceState.cached;
+  if(cached&&sources.every((value,index)=>value===cached.sources[index]))return cached.value;
   const drivers=adminDrivers.filter(d=>!adminDriverIsAdministrator(d));
-  const owner=r=>adminScopedRecordOwner(r);
+  const owners=new Map();
+  const owner=r=>{if(!owners.has(r))owners.set(r,adminScopedRecordOwner(r));return owners.get(r);};
   const name=r=>{const d=owner(r);return d?adminDriverLabel(d):r.driverName||r.operatorName||'Chofer sin identificar';};
   const row=(r,kind,label,method,amount=r.amount)=>({id:r.id,driverUid:owner(r)?.id||'',receiptStatus:r.receiptStatus||'',receiptWaivedByUid:r.receiptWaivedByUid||'',receiptWaivedAtMs:r.receiptWaivedAtMs||0,kind,label,method,amount:Number(amount)||0,time:recordTimestampMs(r),driver:name(r),detail:r.invoiceRequest?.origin&&r.invoiceRequest?.destination?r.invoiceRequest.origin+' → '+r.invoiceRequest.destination:r.detail||r.notes||r.reason||r.expenseLabel||label,proof:recordProofUrl(r)});
   const movements=[];
@@ -7111,8 +7160,9 @@ function adminWorkspaceState() {
       status:statusNames[r.status]||r.status||'Pendiente',completed:['completed','paid','approved'].includes(r.status),
       direction:['driver_to_explora','driver_pays_explora'].includes(direction)?'Chofer → Explora':['explora_to_driver','explora_pays_driver'].includes(direction)?'Explora → chofer':'Sin transferencia'};
   }).sort((a,b)=>b.time-a.time);
-  const month=monthlyChargeMonth();
-  return {authorized,ready,accounts:drivers.filter(adminDriverIsActive).map(d=>({uid:d.id,name:adminDriverLabel(d),balance:adminBillingBalanceForDriver(d),monthlyCharges:monthlyChargesForDriver(adminExpenses,d.id,month,r=>owner(r)?.id||'')})),movements,closures:closureRows};
+  const value={authorized,ready,accounts:drivers.filter(adminDriverIsActive).map(d=>({uid:d.id,name:adminDriverLabel(d),balance:adminBillingBalanceForDriver(d),monthlyCharges:monthlyChargesForDriver(adminExpenses,d.id,month,r=>owner(r)?.id||'')})),movements,closures:closureRows};
+  adminWorkspaceState.cached={sources,value};
+  return value;
 }
 function renderGroupDebtPreview(){
   const group=$('debtDriver').value==='__all__';

@@ -63,5 +63,25 @@ export async function uploadBytes(reference,file) {
   await local('upload',{path:reference.path,contentType:file.type,size:file.size,data});
   return {ref:reference};
 }
+export function uploadBytesResumable(reference,file) {
+  let canceled = false;
+  const task = {snapshot:{ref:reference,bytesTransferred:0,totalBytes:file.size,state:"running"},
+    cancel() { canceled = true; return true; },
+    on(_event,progress,error,complete) {
+      let subscribed = true;
+      queueMicrotask(async () => {
+        try {
+          if (subscribed) progress(task.snapshot);
+          await uploadBytes(reference,file);
+          if (canceled) throw Object.assign(new Error("Carga cancelada."), {code:"storage/canceled"});
+          task.snapshot = {...task.snapshot,bytesTransferred:file.size,state:"success"};
+          if (subscribed) { progress(task.snapshot); complete(); }
+        } catch (failure) { if (subscribed) error(failure); }
+      });
+      return () => { subscribed = false; };
+    }
+  };
+  return task;
+}
 export async function getDownloadURL(reference) { return uploaded.get(reference.path) || '/__preview__/proof.svg'; }
 export const httpsCallable = (_,name) => async input => {const data=await local('call',{name,input});if(['confirmPeriodClosure','adminRegisterUberWeeklyClosure','driverConfirmAdminUberWeeklyClosure'].includes(name))await notify();return {data};};

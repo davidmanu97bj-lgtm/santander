@@ -229,3 +229,30 @@ test('el mapa de la vista conserva fuentes y saldos y asigna un único propietar
   assert.equal(JSON.stringify(c.adminPayments),before);assert.equal(JSON.stringify(c.adminDrivers),driversBefore);
   c.auth.currentUser=null;assert.equal(c.adminWorkspaceState().movements.length,0);
 });
+
+test('la vista reutiliza el historial entre clics y se actualiza con cada snapshot',()=>{
+  const {context:c}=fixture();let calculations=0;
+  c.adminBillingBalanceForDriver=()=>{calculations++;return 50;};
+  const first=c.adminWorkspaceState();assert.equal(calculations,2);
+  assert.equal(c.adminWorkspaceState(),first);assert.equal(calculations,2);
+  for(const key of ['adminDrivers','adminPayments','adminExpenses','adminDebts','adminDebtPayments','adminUberClosures','adminAllClosures']){
+    const before=c.adminWorkspaceState();c[key]=[...c[key]];
+    assert.notEqual(c.adminWorkspaceState(),before,key+' invalidates cached view');
+  }
+  c.adminPayments=[{id:'new',driverUid:'auth-a',amount:900,method:'digital',createdAtMs:1000}];
+  assert.equal(c.adminWorkspaceState().movements[0].amount,900);
+});
+
+test('la vista descarta caché al cambiar mes, sesión, permisos o sincronización',()=>{
+  const {context:c}=fixture();c.monthlyChargeMonth=()=> '2026-10';
+  let previous=c.adminWorkspaceState();c.monthlyChargeMonth=()=> '2026-11';
+  assert.notEqual(c.adminWorkspaceState(),previous);
+  previous=c.adminWorkspaceState();c.auth.currentUser={uid:'another-admin'};
+  assert.notEqual(c.adminWorkspaceState(),previous);
+  c.adminAllowed=false;assert.equal(c.adminWorkspaceState().accounts.length,0);
+  c.adminAllowed=true;previous=c.adminWorkspaceState();
+  c.dashboardLoad.complete=()=>false;assert.equal(c.adminWorkspaceState().accounts.length,0);
+  c.dashboardLoad.complete=()=>true;assert.notEqual(c.adminWorkspaceState(),previous);
+  previous=c.adminWorkspaceState();c.currentProfile={role:'admin',active:true};
+  assert.notEqual(c.adminWorkspaceState(),previous);
+});

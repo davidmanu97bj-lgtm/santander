@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {withOperationDeadline} from '../receipt-upload.js';
 import {createRequire} from 'node:module';
 const periodPolicy=createRequire(import.meta.url)('../functions/period-policy.js');
 
@@ -137,7 +138,7 @@ test('un comprobante local sin acuse del servidor nunca se anuncia como confirma
   const snapshot=(metadata)=>({exists:()=>true,data:()=>({idempotencyKey:'id',submissionFingerprint:'fp'}),metadata});
   let serverReads=0,confirmed=false;
   const ctx=vm.createContext({getDoc:async()=>snapshot({fromCache:true,hasPendingWrites:true}),
-    getDocFromServer:async()=>{serverReads++;if(!confirmed)throw Error('Sin conexión');return snapshot({fromCache:false,hasPendingWrites:false});},delay:async()=>{}});
+    getDocFromServer:async()=>{serverReads++;if(!confirmed)throw Error('Sin conexión');return snapshot({fromCache:false,hasPendingWrites:false});},delay:async()=>{},withOperationDeadline});
   load(ctx,'confirmCommittedOperation');
   assert.equal(await ctx.confirmCommittedOperation({},'id','fp'),false);assert.ok(serverReads>0);
   confirmed=true;assert.equal(await ctx.confirmCommittedOperation({},'id','fp'),true);
