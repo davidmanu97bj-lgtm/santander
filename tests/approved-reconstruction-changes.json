@@ -1,6 +1,10 @@
 {
   "context": "Excepciones por ampliación explícita del alcance del usuario: reglas financieras, cierre único y Telegram. El baseline original se conserva. Normalizar CRLF evita diferencias propias de Windows.",
   "functions": {
+    "normalizeClosureRecord": {
+      "hash": "f041b49cd1f02b29ec5d17f2cc2b60742234e82a2edde969e0875b4588362a36",
+      "reason": "Solicitud de reiniciar comprobantes tras cierres finalizados: agrega exclusivamente una marca de presentación para distinguir saldos persistidos de los inferidos en cierres legacy cerrados sin totales de pago. Conserva sin cambios settlementAmount, paidAmountTotal, remainingAmount y todos los cálculos financieros; prueba ejecuta el normalizador real."
+    },
     "createInvoiceCard": {
       "hash": "79fcc9d8fd599eb8c039c2b5bd72c53c9b52e74da11ce779b1d1bfbc7ea4ff15",
       "reason": "Solicitud expresa del 01/10/2026: factura A según receptor, habilitación fiscal pendiente visible y series independientes; se conservan cobros, saldos y cierres."
@@ -46,8 +50,8 @@
       "reason": "Nueva carga Uber autorizada: mostrar efectivo y digital y separar principal y caja para el nuevo marcador, sin modificar registros ni recibos antiguos."
     },
     "render": {
-      "hash": "51efd30855fc1eaff2edb1ac922ec4da31543a7ac301ccb455464e4e9da06e15",
-      "reason": "Inicio y actividades con presentación compartida; nuevo período tras cierre sin eliminar historial. Oculta comprobantes de caja chica solo en Todas las actividades, antes de contar y paginar, sin modificar cálculos ni registros. Oculta el asiento interno de migración únicamente en actividades; la deuda inicial continúa en Billeteras y en el cálculo."
+      "hash": "5234cad491320e6e6f3fdcb40437f308093bbe571346c3571a6d0eb4709fea26",
+      "reason": "Solicitud expresa del 15/10/2026: comprobantes del período actual tras el último cierre finalizado para choferes nuevos y antiguos, con Historial completo disponible. Filtra antes de contar y paginar; recientes usa el mismo corte real y conserva gastos tardíos. No modifica saldos, cierres, facturas ni registros. Mantiene ocultos caja chica y asiento de migración en actividades."
     },
     "receiptBalanceSnapshot": {
       "hash": "c2009843d2e2b2c0df64aed86ae989fe40f12e1ca01276ff2c4eea1c8c8007bd",
@@ -222,8 +226,8 @@
       "reason": "Pedido del usuario 07/10/2026: canon y patente mensuales con reparto seleccionable 50/50 o 100% chofer. Agrega canon_compartido y patente_chofer sin modificar IDs ni porcentajes históricos; pruebas de ledger/cierre y permisos."
     },
     "functions/index.js": {
-      "hash": "6272f71b039fa50e079b25c227962534738ecc043154ff750bfdd0a0341a4b40",
-      "reason": "Cierres sin comprobante autorizados el 07/10/2026: aclarar ausencia explícita del adjunto en Telegram conservando importes y disparadores financieros."
+      "hash": "8e1dc9ecb3b4f27b5369803d432b156f5badf99ef081e635b18e396d16d2fe58",
+      "reason": "Solicitud del usuario 15/10/2026: incluir altas administrativas de choferes en approvedDriverUids de ARCA dentro de la transacción, sin modificar cobros ni saldos; pruebas de concurrencia, reversión y selección A/B."
     },
     "functions/telegram-billing-balance.js": {
       "hash": "3077e8d40d0fbcc23478a4a1010545b8312d4c6c1c9b1879ed223ba6a6f96e5d",
@@ -246,8 +250,8 @@
       "reason": "La carga semanal futura queda exclusivamente en admin por pedido de David; el callable anterior rechaza nuevas cargas y sólo permite repetir lectura del registro ya aplicado."
     },
     "package.json": {
-      "hash": "40c21405917c3460de89730d565da267aadda0dcbb8c67cfc2e50c2245cc746a",
-      "reason": "Dependencia Playwright para verificación local de navegadores."
+      "hash": "f330992aa187af910ce1f7851c0b229afe4377abd265d7575d36d7593b8919a2",
+      "reason": "Versión 2.5.5 para incorporación fiscal de choferes y reinicio visual de comprobantes tras cierre, conservando dependencias, scripts y cálculos."
     },
     "storage.rules": {
       "hash": "bf42ee53ccd3cfe85a6c0e261df8641e0ab67d35a2bca6df1820dc5efd7657ca",
@@ -288,6 +292,18 @@
     "functions/telegram-trip-delivery.js": {
       "hash": "d51c20820101433f0399aa13a964df3441e116f14d9c0029028c875a7d7f8bec",
       "reason": "Solicitud expresa del 01/10/2026: factura A según receptor, habilitación fiscal pendiente visible y series independientes; se conservan cobros, saldos y cierres."
+    },
+    "functions/package.json": {
+      "hash": "9ef6e777f2504ad48e2bdbbe7f0ae2477b747021519b70fc43b57de7139c4de3",
+      "reason": "Actualización únicamente de versión del paquete para la entrega de altas fiscales y vista de comprobantes del 15/10/2026. Dependencias fijadas y sus integridades se conservan."
+    },
+    "functions/package-lock.json": {
+      "hash": "9c9e270b2b45c809d3c37bc902d712a1007917d0ce8e098ee904a72b7914c696",
+      "reason": "Actualización únicamente de versión del paquete para la entrega de altas fiscales y vista de comprobantes del 15/10/2026. Dependencias fijadas y sus integridades se conservan."
+    },
+    "package-lock.json": {
+      "hash": "0350b5dc2a2b48ecad195a830da60c15d7b637451e1938997da09b0093ab5443",
+      "reason": "Actualización únicamente de versión del paquete para la entrega de altas fiscales y vista de comprobantes del 15/10/2026. Dependencias fijadas y sus integridades se conservan."
     }
   }
 }

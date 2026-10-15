@@ -16,7 +16,7 @@
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js" crossorigin />
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js" crossorigin />
   <script type="module" async src="./login-entry.js?v=20260921-release-number-2"></script>
-  <link rel="modulepreload" href="./app.js?v=20261007-fluidez" />
+  <link rel="modulepreload" href="./app.js?v=20261015-choferes-comprobantes" />
   <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
@@ -127,7 +127,7 @@
   </style>
   <link rel="stylesheet" href="./styles.css?v=20261002-login-uber" />
   <link rel="stylesheet" href="./movement-colors.css?v=20260919-admin-1" />
-  <link rel="stylesheet" href="./explora-ui.css?v=20260919-admin-1" />
+  <link rel="stylesheet" href="./explora-ui.css?v=20261015-choferes-comprobantes" />
   <link rel="stylesheet" href="./ops-salidas.css?v=20261002-retiro-disponibilidad" />
   <link rel="stylesheet" href="./admin-workspace.css?v=20261007-monthly" />
   <link rel="stylesheet" href="./uber-fleet-ui.css?v=20260929-fleet-shadow" />
@@ -204,7 +204,7 @@
         </section>
         <section data-admin-panel="receipts" hidden class="admin-surface">
           <div class="admin-section-label"><div><h2>Comprobantes · <span data-admin-scoped-name></span></h2><p>Respaldos de sus movimientos y cierres. Las cargas sin comprobante quedan identificadas.</p></div></div>
-          <div class="admin-filters"><label>Mes<select id="adminReceiptsMonth"></select></label></div>
+          <div class="admin-filters"><label>Comprobantes<select id="adminReceiptsScope"><option value="current">Período actual</option><option value="history">Historial completo</option></select></label><label>Mes<select id="adminReceiptsMonth"></select></label></div>
           <div id="adminReceiptsTable" class="admin-table-scroll" tabindex="0" aria-label="Comprobantes del chofer"></div>
         </section>
         <section data-admin-panel="accountant" hidden class="admin-surface">
@@ -270,7 +270,8 @@
       </section>
       <section id="historyView" class="hidden" tabindex="-1"><button type="button" id="backFromHistory" class="text-back">← Principal</button>
       <section class="driver-history" id="driverHistory" aria-labelledby="driverHistoryTitle" tabindex="-1">
-        <div class="driver-history-heading"><h2 id="driverHistoryTitle">Todas las actividades <span id="receiptCount">0</span></h2><label class="driver-sort"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M6 12h12M9 18h6"/></svg><select id="receiptSort" aria-label="Orden del historial"><option value="newest">Más recientes</option><option value="oldest">Más antiguos</option></select></label></div>
+        <div class="driver-history-heading"><h2 id="driverHistoryTitle"><span id="receiptScopeTitle">Período actual</span> <span id="receiptCount">0</span></h2><label class="driver-sort"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M6 12h12M9 18h6"/></svg><select id="receiptSort" aria-label="Orden del historial"><option value="newest">Más recientes</option><option value="oldest">Más antiguos</option></select></label></div>
+        <label class="driver-receipt-scope">Comprobantes<select id="receiptScope"><option value="current">Período actual</option><option value="history">Historial completo</option></select></label>
         <div id="receiptList" class="activity-list"><div class="empty">Los movimientos aparecerán acá.</div></div>
         <button id="receiptsToggle" class="receipts-toggle hidden" type="button">Ver más movimientos</button>
       </section>
@@ -849,6 +850,6 @@
 <script src="./functions/period-policy.js?v=20260919-admin-1"></script>
 <script src="./functions/uber-weekly-policy.js?v=20261002-uber-confirmation"></script>
 <script src="./functions/expense-policy.js?v=20261007-monthly"></script>
-<script type="module" src="./app.js?v=20261007-fluidez"></script>
+<script type="module" src="./app.js?v=20261015-choferes-comprobantes"></script>
 </body>
 </html>

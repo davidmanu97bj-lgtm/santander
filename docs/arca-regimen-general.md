@@ -9,7 +9,7 @@ Esta implementación agrega B (código 6) sin activar producción. Conserva las 
 - Clientes responsables inscriptos o monotributistas seleccionan A (código 1), con CUIT obligatorio. Quedan en revisión hasta verificar y activar separadamente esa emisión. Una factura nominada para consumidor final o exento sigue siendo B.
 - El transporte internacional de pasajeros puede habilitarse como B exenta mediante una política y fecha de activación específicas, luego de verificar su encuadre. No hereda la habilitación internacional del antiguo emisor C. No se le aplica el límite nacional de 100 km.
 - Traslados internacionales sin esa habilitación, nacionales mayores a 100 km, datos incompletos y servicios anteriores a la activación quedan en revisión. La distancia por sí sola no determina el tratamiento de un cruce de frontera.
-- Solo los identificadores de choferes reales incluidos expresamente en `approvedDriverUids` pueden generar solicitudes B automáticas. Los perfiles de prueba quedan en revisión.
+- Solo los identificadores de choferes reales incluidos en `approvedDriverUids` pueden generar solicitudes automáticas. El alta administrativa de un chofer real incorpora su UID a esa lista en la misma transacción que crea su perfil y alias. Los perfiles creados por otras vías no se incorporan automáticamente y los cobros marcados como simulados siguen excluidos de la emisión.
 - No implementa el futuro cambio del emisor a IVA exento ni presume que esa inscripción haya sido aprobada.
 
 ## Activación pendiente
@@ -31,6 +31,16 @@ Configuración adicional en `arca_settings/current`:
 ```
 
 Además deben verificarse los campos existentes de emisor, punto exclusivo, inscripción, ambiente y fecha de activación. El ejemplo no debe copiarse como autorización para marcar las verificaciones en verdadero. El nuevo indicador `generalHomologationPassed` no se hereda de la prueba de monotributo. Usar un corte de activación nuevo, nunca reutilizar la fecha histórica del emisor C.
+
+### Altas administrativas de choferes
+
+`adminCreateDriver` agrega el UID de Authentication mediante `arrayUnion`, sin duplicar ni sustituir identificadores existentes. Lee la configuración antes de cualquier escritura de la transacción, también cuando se reasigna un vehículo. El perfil, el alias y la incorporación fiscal se confirman juntos; una transacción fallida no deja un UID autorizado sin el alta correspondiente.
+
+La incorporación se realiza aunque la configuración esté deshabilitada o use otro régimen, siempre que `arca_settings/current` exista y `approvedDriverUids` sea un array de strings no vacíos. No modifica `enabled`, régimen, comprobantes, homologaciones, fechas ni otros controles fiscales. Se admite una lista vacía: la primera alta completa ese requisito de elegibilidad, pero no omite los restantes controles de activación.
+
+Si el documento de configuración no existe, el campo falta o la lista es inválida, el alta conserva la configuración tal como está y registra `arcaEnrollmentStatus` en `admin_audit` como `settings_missing`, `allowlist_missing` o `allowlist_invalid`. No crea ni repara una política fiscal. Esas altas requieren incorporación posterior cuando la configuración sea válida. Una lectura fallida de Firestore aborta la transacción; no se confunde con configuración ausente. Los estados `enrolled` y `already_approved` indican una incorporación realizada o un UID que ya estaba autorizado.
+
+Este flujo no incorpora perfiles históricos, no modifica cobros y no reencola solicitudes en revisión. Los cobros nuevos del chofer incorporado pasan por las mismas validaciones fiscales que los de los choferes anteriores.
 
 Para transporte internacional verificado se requieren adicionalmente `internationalInvoiceType: 6`, `internationalTaxPolicy: "international_passenger_transport_exempt_v1"`, `internationalTransportExemptionVerified: true` e `internationalActiveFrom` nuevo. La matrícula del pasajero, su nacionalidad o una etiqueta de distancia no acreditan por sí solas un transporte internacional. El alcance configurado debe corresponder a los traslados efectivamente vendidos por el emisor.
 

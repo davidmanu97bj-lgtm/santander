@@ -8,14 +8,14 @@ import {
   mountOpsSalidasBoard
 } from "./ops-salidas.js?v=20261002-retiro-disponibilidad";
 import { createOpsExitStore } from "./ops-salidas-store.js?v=20260930-operaciones-v3";
-import { mountAdminWorkspace } from "./admin-workspace.js?v=20261007-fluidez";
+import { mountAdminWorkspace } from "./admin-workspace.js?v=20261015-choferes-comprobantes";
 import { mountUberFleet } from "./uber-fleet-ui.js?v=20260929-fleet-shadow";
 import { mountAdminUberLiquidation, isPendingAdminUberConfirmation, driverUberConfirmationMarkup } from "./admin-uber-liquidation-ui.js?v=20261002-uber-confirmation";
 import { buildAdminDigitalExpense } from "./admin-digital-expense.js?v=20261007-admin-receipts";
 import {monthlyChargeMonth,monthlyChargeConcept,monthlyChargeType,monthlyChargeId,monthlyChargesForDriver,commitMonthlyExpense} from './admin-monthly-charges.js?v=20261007-monthly';
 import { mountPeriodClose } from "./period-ui.js?v=20261002-uber-cashbox-separated";
 import { mountMonthlyManagement } from "./monthly-management.js?v=20261002-uber-net";
-import { exploraIcon, activityKind, activityRowContent, recentActivitiesMarkup } from "./explora-ui.js?v=20260919-login-period-1";
+import { exploraIcon, activityKind, activityRowContent, recentActivitiesMarkup, receiptCycle, currentCycleReceipts, receiptRecordedAtMs } from "./explora-ui.js?v=20261015-choferes-comprobantes";
 import { app, auth, authReady } from "./auth-session.js?v=20260914-web-only-1";
 import { movementColor } from "./movement-colors.js?v=20260914-web-only-1";
 import { searchTourismPlaces, tourismRoute } from "./tourism-catalog.js?v=20260922-maps-faster-iguazu";
@@ -205,6 +205,7 @@ const RECENT_RECEIPTS_LIMIT = 10;
 const RECEIPTS_PAGE_SIZE = 10;
 let visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
 let receiptSortOrder = "newest";
+let receiptScope = "current";
 let pendingOperationPreview = null;
 // Primera semana administrada por este selector. Desde aquí, toda semana
 // cerrada sin comprobante permanece pendiente hasta que el chofer la cargue.
@@ -715,6 +716,9 @@ function normalizeClosureRecord(id, item = {}) {
     requestedAmount: Number(item.requestedAmount ?? settlementAmount) || settlementAmount,
     paidAmountTotal,
     remainingAmount: Number(item.remainingAmount ?? Math.max(0, settlementAmount - paidAmountTotal)) || 0,
+    // Presentation only: legacy closed documents did not persist payment totals.
+    // Keep the existing financial fallback, but do not mistake it for an unpaid close.
+    _receiptCycleBalanceKnown: item._receiptCycleBalanceKnown ?? [item.remainingAmount, item.paidAmountTotal, item.amountPaid, item.billingSettlementPaymentTotal].some(value => value != null),
     operatorUid: item.operatorUid || item.driverUid || item.choferUid || item.uid || "",
     operatorName: item.operatorName || item.driverName || item.choferNombre || item.nombreChofer || "",
     proofUrl: recordProofUrl(item),
@@ -2056,7 +2060,10 @@ function render() {
   syncDriverDebtConfirmationModal();
   syncUberDriverConfirmationModal();
   const model = settlementModel();
-  const receipts = buildUnifiedReceipts(receiptSortOrder).filter(item => !isCashboxReceipt(item) && item.migrationVersion !== "opening_balance_20260918_v1");
+  const cycle = receiptCycle(closures);
+  const allReceipts = buildUnifiedReceipts(receiptSortOrder);
+  const periodReceipts = currentCycleReceipts(allReceipts, cycle);
+  const receipts = (receiptScope === "history" ? allReceipts : periodReceipts).filter(item => !isCashboxReceipt(item) && item.migrationVersion !== "opening_balance_20260918_v1");
   const visibleReceipts = visibleReceiptRows(receipts, Math.max(RECENT_RECEIPTS_LIMIT, visibleReceiptCount));
 
   setMoney("settlementTotal", Math.abs(model.balance));
@@ -2065,6 +2072,7 @@ function render() {
   $("driverBalanceCard").dataset.state = model.balance > 0.5 ? "owing" : model.balance < -0.5 ? "receiving" : "balanced";
   $("driverBalanceBadge").textContent = model.balance > 0.5 ? "Por liquidar" : model.balance < -0.5 ? "A tu favor" : "Al día";
   $("receiptCount").textContent = receipts.length;
+  $("receiptScopeTitle").textContent = receiptScope === "history" ? "Historial completo" : "Período actual";
 
   const toggle = $("receiptsToggle");
   toggle.classList.toggle("hidden", visibleReceipts.length >= receipts.length);
@@ -2073,10 +2081,8 @@ function render() {
   renderUberPendingBadge();
   if (!$("uberModal")?.classList.contains("hidden") && uberStep === 2) renderUberAccountPreview();
   renderList("receiptList", visibleReceipts);
-  const periodStartedAt = closures
-    .filter(item => item.closureWorkflowVersion === "period_proof_automatic_v1" && item.status === "completed" && !movementIsDeleted(item))
-    .reduce((latest,item) => Math.max(latest,Number(item.cutoffAtMs || item.completedAtMs || item.createdAtMs || 0)),0);
-  $("recentActivities").innerHTML = recentActivitiesMarkup(buildUnifiedReceipts("newest"), {money, timestamp:recordTimestampMs, periodStartedAt});
+  if (!receipts.length && receiptScope === "current" && cycle.cutoffAtMs) $("receiptList").innerHTML = '<div class="empty">Período nuevo iniciado, sin comprobantes. Podés consultar los anteriores en Historial completo.</div>';
+  $("recentActivities").innerHTML = recentActivitiesMarkup(sortUnifiedReceipts(periodReceipts, "newest"), {money, timestamp:receiptRecordedAtMs, periodStartedAt:cycle.cutoffAtMs});
   if (!$("walletView").classList.contains("hidden")) refreshPeriodWallets();
   if (!$("chargeModal").classList.contains("hidden")) renderChargePreview();
   if (!$("expenseModal").classList.contains("hidden")) renderExpensePreview();
@@ -2590,6 +2596,11 @@ $("receiptsToggle")?.addEventListener("click", () => {
 
 $("receiptSort")?.addEventListener("change", event => {
   receiptSortOrder = event.target.value;
+  visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
+  render();
+});
+$("receiptScope")?.addEventListener("change", event => {
+  receiptScope = event.target.value === "history" ? "history" : "current";
   visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
   render();
 });
@@ -4446,6 +4457,8 @@ onAuthStateChanged(auth, async user => {
   }
 
   visibleReceiptCount = RECENT_RECEIPTS_LIMIT;
+  receiptScope = "current";
+  $("receiptScope").value = "current";
   $("splashMessage").textContent = "Cargando tu cuenta…";
   currentProfile = fallbackProfile(user);
   const initialAdmin = isAdminProfile();
@@ -7142,7 +7155,7 @@ function adminWorkspaceState() {
   const owners=new Map();
   const owner=r=>{if(!owners.has(r))owners.set(r,adminScopedRecordOwner(r));return owners.get(r);};
   const name=r=>{const d=owner(r);return d?adminDriverLabel(d):r.driverName||r.operatorName||'Chofer sin identificar';};
-  const row=(r,kind,label,method,amount=r.amount)=>({id:r.id,driverUid:owner(r)?.id||'',receiptStatus:r.receiptStatus||'',receiptWaivedByUid:r.receiptWaivedByUid||'',receiptWaivedAtMs:r.receiptWaivedAtMs||0,kind,label,method,amount:Number(amount)||0,time:recordTimestampMs(r),driver:name(r),detail:r.invoiceRequest?.origin&&r.invoiceRequest?.destination?r.invoiceRequest.origin+' → '+r.invoiceRequest.destination:r.detail||r.notes||r.reason||r.expenseLabel||label,proof:recordProofUrl(r)});
+  const row=(r,kind,label,method,amount=r.amount)=>({id:r.id,driverUid:owner(r)?.id||'',receiptCycleRecord:r,receiptStatus:r.receiptStatus||'',receiptWaivedByUid:r.receiptWaivedByUid||'',receiptWaivedAtMs:r.receiptWaivedAtMs||0,kind,label,method,amount:Number(amount)||0,time:recordTimestampMs(r),driver:name(r),detail:r.invoiceRequest?.origin&&r.invoiceRequest?.destination?r.invoiceRequest.origin+' → '+r.invoiceRequest.destination:r.detail||r.notes||r.reason||r.expenseLabel||label,proof:recordProofUrl(r)});
   const movements=[];
   for(const r of adminPayments.filter(r=>!movementIsDeleted(r)&&!r.migrationVersion)){
     const adjustment=isSettlementAdjustment(r)||isReimbursementCompensation(r);
@@ -7151,7 +7164,7 @@ function adminWorkspaceState() {
   }
   for(const r of adminExpenses.filter(r=>!movementIsDeleted(r)))movements.push(row(r,'expense',(r.expenseLabel||'Gasto')+(r.expenseMonth?' · Mes '+r.expenseMonth:''),r.expensePaymentMethod==='digital'?'Digital · Explora':'Efectivo · Chofer'));
   for(const r of adminDebts.filter(r=>!movementIsDeleted(r)))movements.push(row(r,'debt','Deuda 100% chofer','Deuda',r.totalAmount||r.originalAmount||r.amount));
-  for(const r of adminDebtPayments.filter(r=>!movementIsDeleted(r)))movements.push(row(r,'payment','Pago de deuda','Chofer → Explora'));
+  for(const r of adminDebtPayments.filter(r=>!movementIsDeleted(r)))movements.push({...row(r,'payment','Pago de deuda','Chofer → Explora'),receiptCycleSource:'debtPayment'});
   for(const r of adminUberClosures.filter(r=>!movementIsDeleted(r)))movements.push(row(r,'uber','Liquidación Uber','Efectivo y Uber',r.grossAmount??r.amount));
   const statusNames={completed:'Completado',paid:'Pagado',approved:'Aprobado',pending:'Pendiente',requested:'Solicitado',rejected:'Rechazado',cancelled:'Anulado'};
   const closureRows=adminAllClosures.filter(r=>!movementIsDeleted(r)).map(r=>{
