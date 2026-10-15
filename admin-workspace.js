@@ -1,4 +1,4 @@
-import {escapeUi as esc,exploraIcon} from './explora-ui.js?v=20260919-admin-1';
+import {escapeUi as esc,exploraIcon,receiptCycle,currentCycleReceipts} from './explora-ui.js?v=20261015-choferes-comprobantes';
 
 const moneyFormat=new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:2});
 const dateFormat=new Intl.DateTimeFormat('es-AR',{timeZone:'America/Argentina/Buenos_Aires',day:'2-digit',month:'2-digit',year:'2-digit'});
@@ -59,6 +59,7 @@ export function mountAdminWorkspace({getState,loadDocuments,openDebt,openDigital
   const now=new Date();
   const months=Array.from({length:36},(_,i)=>{const d=new Date(now.getFullYear(),now.getMonth()-i,15);return {value:monthOf(d.getTime()),label:new Intl.DateTimeFormat('es-AR',{month:'long',year:'numeric'}).format(d)};});
   for(const id of ['adminActivityMonth','adminDocumentsMonth','adminReceiptsMonth'])$(id).innerHTML=months.map(m=>`<option value="${m.value}">${esc(m.label)}</option>`).join('');
+  $('adminReceiptsMonth').innerHTML='<option value="">Todos los meses</option>'+$('adminReceiptsMonth').innerHTML;
   function selectedDriver(state=getState()){return state.accounts.find(d=>d.uid===selectedDriverUid);}
   const documentKey=()=>`${$('adminDocumentsMonth').value}|${selectedDriverUid||''}`;
   function setView(next,uid=null){
@@ -66,6 +67,7 @@ export function mountAdminWorkspace({getState,loadDocuments,openDebt,openDigital
     if(scopedViews.has(next)&&(!uid||!state.accounts.some(d=>d.uid===uid)))return false;
     const changed=view!==next||selectedDriverUid!==uid;
     view=next;selectedDriverUid=scopedViews.has(next)?uid:null;count=50;
+    if(changed)$('adminReceiptsScope').value='current';
     if(changed){documentSequence++;clearTimeout(refreshTimer);$('adminActivitySearch').value='';$('adminActivityType').value='all';$('adminRefreshDocuments').disabled=false;$('adminDocumentsStatus').textContent='';}
     document.querySelectorAll('[data-admin-view]').forEach(b=>{if(b.dataset.adminView===view)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
     document.querySelectorAll('[data-admin-panel]').forEach(p=>p.hidden=p.dataset.adminPanel!==view);
@@ -89,6 +91,7 @@ export function mountAdminWorkspace({getState,loadDocuments,openDebt,openDigital
   $('adminDigitalExpenseBtn').addEventListener('click',openDigital);
   for(const id of ['adminActivityMonth','adminActivityType','adminActivitySearch'])$(id).addEventListener(id==='adminActivitySearch'?'input':'change',()=>{count=50;renderActivity(getState());});
   $('adminReceiptsMonth').onchange=()=>{count=50;renderReceipts(getState());};
+  $('adminReceiptsScope').onchange=()=>{count=50;renderReceipts(getState());};
   $('adminMoreActivity').onclick=()=>{count+=50;renderActivity(getState());};
   for(const [id,panel,render] of [['adminReceiptsTable','receipts',renderReceipts],['adminClosuresTable','closures',renderClosures]]){
     $(id).addEventListener('click',event=>{
@@ -114,8 +117,11 @@ export function mountAdminWorkspace({getState,loadDocuments,openDebt,openDigital
   function renderReceipts(state){
     if(!state.authorized)return;
     if(!state.ready){$('adminReceiptsTable').innerHTML=empty('Sincronizando comprobantes…');return;}
-    const rows=filterAdminRows([...state.movements,...state.closures],{driverUid:selectedDriverUid||'',month:$('adminReceiptsMonth').value});
-    $('adminReceiptsTable').innerHTML=rows.length?`<table class="admin-table"><thead><tr><th>Fecha</th><th>Movimiento</th><th class="number">Monto</th><th>Comprobante</th></tr></thead><tbody>${rows.slice(0,count).map(r=>`<tr><td>${date(r.time)}</td><td>${esc(r.detail)}<small>${esc(r.label)}</small></td><td class="number">${money(r.amount)}</td><td>${adminProofMarkup(r)}</td></tr>`).join('')}</tbody></table>${moreRecords(rows,'comprobantes')}`:empty('Este chofer no tiene comprobantes para este mes.');
+    const history=$('adminReceiptsScope').value==='history';
+    const scopedClosures=state.closures.filter(row=>row.driverUid===selectedDriverUid);
+    const scopedRows=[...state.movements,...state.closures].filter(row=>row.driverUid===selectedDriverUid);
+    const rows=filterAdminRows(history?scopedRows:currentCycleReceipts(scopedRows,receiptCycle(scopedClosures)),{driverUid:selectedDriverUid||'',month:$('adminReceiptsMonth').value});
+    $('adminReceiptsTable').innerHTML=rows.length?`<table class="admin-table"><thead><tr><th>Fecha</th><th>Movimiento</th><th class="number">Monto</th><th>Comprobante</th></tr></thead><tbody>${rows.slice(0,count).map(r=>`<tr><td>${date(r.time)}</td><td>${esc(r.detail)}<small>${esc(r.label)}</small></td><td class="number">${money(r.amount)}</td><td>${adminProofMarkup(r)}</td></tr>`).join('')}</tbody></table>${moreRecords(rows,'comprobantes')}`:empty(history?'Este chofer no tiene comprobantes para este mes.':'Este chofer no tiene comprobantes del período actual para este mes. Los anteriores están en Historial completo.');
   }
   function renderCards(state){
     const host=$('adminDriverList'),markup=renderDriverCards(state.accounts,{ready:state.ready});

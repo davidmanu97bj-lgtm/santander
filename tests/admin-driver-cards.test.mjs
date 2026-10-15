@@ -141,3 +141,24 @@ test('closures paginate and scoped refreshes leave hidden driver cards untouched
     workspace.openDriverView('overview');assert.notEqual(doc.getElementById('adminDriverList').innerHTML,initialCards);
   }finally{globalThis.document=original;}
 });
+
+test('comprobantes actuales e historial comparten corte por chofer sin recortar Movimientos ni Cierres',()=>{
+  const original=globalThis.document,doc=fakeDocument();globalThis.document=doc;
+  const cut=Date.parse('2026-10-07T12:00:00Z'),accounts=[{uid:'one',name:'Chofer anterior',balance:0},{uid:'two',name:'Chofer nuevo',balance:0}];
+  const movement=(id,driverUid,time)=>({id,driverUid,time,detail:id,kind:'cash',amount:100,receiptCycleRecord:{id,createdAtMs:time},proof:`https://example.test/${id}.pdf`});
+  const movements=[movement('old-one','one',cut-1),movement('new-one','one',cut+1),movement('old-two','two',cut-1)];
+  let closures=[{...movement('close-one','one',cut),kind:'closure',receiptCycleRecord:{id:'close-one',status:'completed',closureMode:'on_demand',closureKind:'facturacion',cutoffAtMs:cut}}];
+  try{
+    const workspace=mountAdminWorkspace({getState:()=>({authorized:true,ready:true,accounts,movements,closures}),loadDocuments(){},openDebt(){},openDigital(){}});
+    doc.getElementById('adminReceiptsMonth').value='';workspace.openDriverView('receipts','one');
+    const html=()=>doc.getElementById('adminReceiptsTable').innerHTML;
+    assert.match(html(),/new-one/);assert.doesNotMatch(html(),/old-one|close-one|old-two/);
+    doc.getElementById('adminReceiptsScope').value='history';doc.getElementById('adminReceiptsScope').onchange();
+    assert.match(html(),/old-one/);assert.match(html(),/close-one/);
+    workspace.openDriverView('receipts','two');assert.equal(doc.getElementById('adminReceiptsScope').value,'current');assert.match(html(),/old-two/);
+    closures=[...closures,{...movement('close-two','two',cut),kind:'closure',receiptCycleRecord:{id:'close-two',status:'completed',closureWorkflowVersion:'period_proof_automatic_v1',cutoffAtMs:cut}}];
+    workspace.refresh();assert.doesNotMatch(html(),/old-two|close-two/);assert.match(html(),/Historial completo/);
+    doc.getElementById('adminActivityMonth').value='';workspace.openDriverView('movements','one');assert.match(doc.getElementById('adminActivityTable').innerHTML,/old-one/);
+    workspace.openDriverView('closures','one');assert.match(doc.getElementById('adminClosuresTable').innerHTML,/close-one/);
+  }finally{globalThis.document=original;}
+});

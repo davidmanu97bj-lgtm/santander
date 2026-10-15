@@ -1,6 +1,6 @@
 {
   "name": "explora-admin-functions",
-  "version": "2.4.73",
+  "version": "2.4.74",
   "private": true,
   "main": "index.js",
   "scripts": {

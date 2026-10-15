@@ -17,6 +17,7 @@ const {
 const { isAdminDebtPayment } = require("./telegram-debt-payment");
 const { isAdminDriverDebt } = require("./telegram-driver-debt");
 const { prepareInvoiceDraft } = require("./arca-invoice-draft");
+const { prepareArcaDriverEnrollment } = require("./arca-driver-enrollment");
 const { validateRouteRequest, RouteError } = require("./route-service");
 const { queryGoogleRoute: queryRouteService } = require("./google-route-service");
 const telegramCompact = require("./telegram-compact");
@@ -1513,6 +1514,8 @@ exports.adminCreateDriver = onCall({ region: "southamerica-east1", timeoutSecond
     await db.runTransaction(async tx => {
       const freshAlias = await tx.get(aliasRef);
       if (freshAlias.exists) throw new HttpsError("already-exists", "Ese ID de acceso ya está en uso.");
+      // Vehicle reassignment below may write; read the fiscal configuration first.
+      const arcaEnrollment = await prepareArcaDriverEnrollment({db,tx,uid,arrayUnion:FieldValue.arrayUnion});
 
       let vehicleData = null;
       if (vehicleRef) {
@@ -1558,9 +1561,11 @@ exports.adminCreateDriver = onCall({ region: "southamerica-east1", timeoutSecond
           updatedAt: now, updatedByUid: adminUid
         }, { merge: true });
       }
+      if (arcaEnrollment.update) tx.update(arcaEnrollment.ref, arcaEnrollment.update);
       tx.set(auditRef, {
         action: "admin_create_driver", adminUid, targetUid: uid, targetUsername: username,
-        vehicleId: vehicleId || null, createdAt: now, status: "completed"
+        vehicleId: vehicleId || null, createdAt: now, status: "completed",
+        arcaEnrollmentStatus: arcaEnrollment.status
       });
     });
     return { ok: true, uid, username, email, vehicleId: vehicleId || null };

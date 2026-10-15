@@ -23,6 +23,74 @@ export function activityKind(item) {
 export function escapeUi(value) {
   return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+function receiptTimestamp(value) {
+  if (value == null || value === '') return 0;
+  const ms = typeof value?.toMillis === 'function' ? value.toMillis()
+    : typeof value?.toDate === 'function' ? value.toDate().getTime()
+    : value instanceof Date ? value.getTime()
+    : typeof value === 'number' ? value
+    : typeof value?.seconds === 'number' ? value.seconds * 1000 + (value.nanoseconds || 0) / 1e6
+    : typeof value?._seconds === 'number' ? value._seconds * 1000 + (value._nanoseconds || 0) / 1e6
+    : /^\d+(?:\.\d+)?$/.test(String(value)) ? Number(value) : Date.parse(value);
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
+}
+const receiptRaw = row => row.receiptCycleRecord || row;
+const firstReceiptTime = values => values.map(receiptTimestamp).find(Boolean) || 0;
+export function receiptRecordedAtMs(row = {}) {
+  const raw = receiptRaw(row);
+  // Registration defines the cycle: a backdated expense entered after a close
+  // belongs to the new cycle; editing an old receipt never reopens it.
+  return firstReceiptTime([raw.createdAt, raw.createdAtMs, raw.timestampMs,
+    raw.completedAt, raw.completedAtMs, raw.receiptUploadedAt, raw.receiptUploadedAtMs,
+    raw.expenseDate, raw.fechaISO, raw.date, raw.fecha, row.time]);
+}
+function completedReceiptClosure(row = {}) {
+  const raw = receiptRaw(row);
+  const tokens = [raw.status, raw.estado, raw.closureStatus, raw.reviewStatus, raw.paymentStatus,
+    raw.receiptStatus, raw.rejectionReason, raw.rollbackStatus, raw.closureMode, raw.periodType]
+    .map(value => String(value || '').trim().toLowerCase());
+  if (raw.deleted || raw.isDeleted || raw.eliminado || raw.isSimulated || raw.createdBySimulation || raw.verificationMode === 'simulation' || raw.rejected || raw.rollbackRestored || raw.invalidatesCutoff || raw.cutoffActive === false ||
+    tokens.some(value => /reject|rechaz|cancel|anulad|deleted|eliminad|borrad|partial|parcial|no aceptado/.test(value))) return false;
+  const primaryStatus = String(raw.status || raw.estado || raw.closureStatus || '').toLowerCase();
+  if (/pending|pendiente|awaiting|requested|solicit/.test(primaryStatus)) return false;
+  const kind = String(raw.closureKind || raw.closureType || raw.payTab || raw.closeKind || raw.kind || raw.cierreTipo || raw.type || raw.category || raw.homeModule || raw.moduleKey || '').toLowerCase();
+  if (/gasto|expense|caja|chica|cashbox|uber|deuda|debt|pendiente/.test(kind)) return false;
+  const remainingKnown = raw._receiptCycleBalanceKnown !== false && raw.remainingAmount != null;
+  if (remainingKnown && Number(raw.remainingAmount) > .5) return false;
+  const finalStatuses = new Set(['completed','closed','paid','confirmed','completado','cerrado','pagado','confirmado','al_dia','al día']);
+  return raw.completed === true || raw.closed === true || raw.paid === true || tokens.some(value => finalStatuses.has(value)) ||
+    (tokens.includes('approved') && remainingKnown && Number(raw.remainingAmount) <= .5);
+}
+export function receiptCycle(closures = []) {
+  const completed = closures.filter(completedReceiptClosure).map(receiptRaw);
+  const cutoffAtMs = completed.reduce((latest, row) => Math.max(latest, firstReceiptTime([
+    row.cutoffAtMs, row.cutoffAt, row.requestedAtMs, row.requestedAt, row.createdAtMs, row.createdAt,
+    row.completedAtMs, row.completedAt, row.closedAtMs, row.closedAt, row.confirmedAtMs, row.confirmedAt
+  ])), 0);
+  const ids = fields => new Set(completed.flatMap(row => fields.flatMap(field => Array.isArray(row[field]) ? row[field] : row[field] ? [row[field]] : [])).map(String));
+  return {cutoffAtMs, closureIds:ids(['id','closureId']),
+    billingIds:ids(['includedBillingIds','includedBillingSettlementPaymentIds','paymentRecordId']),
+    expenseIds:ids(['includedExpenseIds']), uberIds:ids(['includedUberIds','includedUberWeekIds']),
+    debtIds:ids(['includedDebtIds'])};
+}
+export function currentCycleReceipts(rows = [], cycle = receiptCycle()) {
+  if (!cycle.cutoffAtMs) return [...rows];
+  return rows.filter(row => {
+    const raw = receiptRaw(row), id = String(raw.id || ''), linkedClosure = String(raw.closureId || raw.periodClosureId || '');
+    if (linkedClosure && cycle.closureIds.has(linkedClosure)) return false;
+    const group = String(row._receiptGroupKey || '').split(':');
+    const source = row.receiptCycleSource || group[0] || row.kind || row.method || '';
+    const sourceId = group.length > 1 ? group.slice(1).join(':') : id;
+    if (source === 'closure' && cycle.closureIds.has(id)) return false;
+    if (['payment','billing','cash','digital'].includes(source) && cycle.billingIds.has(sourceId)) return false;
+    if (source === 'expense' && cycle.expenseIds.has(sourceId)) return false;
+    if (source === 'uber' && cycle.uberIds.has(sourceId)) return false;
+    if (source === 'debt' && cycle.debtIds.has(sourceId)) return false;
+    const time = receiptRecordedAtMs(row);
+    // Keep undated legacy documents reviewable when their membership is unknown.
+    return !time || time > cycle.cutoffAtMs;
+  });
+}
 export function recentActivitiesMarkup(receipts, {money, timestamp, now = new Date(), periodStartedAt = 0}) {
   const entries = receipts.filter(item => !['cashbox_receipt','expense_reimbursement_receipt'].includes(item.type))
     .filter(item => item.migrationVersion !== 'opening_balance_20260918_v1')
