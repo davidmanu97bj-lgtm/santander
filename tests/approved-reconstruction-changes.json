@@ -78,8 +78,8 @@
       "reason": "Chofer: seis categorías autorizadas, solo efectivo y avance inmediato al elegir categoría. La foto es el tercer y último paso; al elegirla se habilita Confirmar gasto."
     },
     "initializePhotoSourcePickers": {
-      "hash": "4e746af2da1cd30956bf6b45153eccaa72577cf593ff581ca3e1d2934fef17c6",
-      "reason": "Al seleccionar la foto de un gasto se mantiene el comprobante elegido y se habilita su confirmación en el tercer paso."
+      "hash": "215cdd713fb529f18385f2f6f96c37e127d070499b1c171fb4fa7c7f52cda28e",
+      "reason": "Solicitud expresa del 23/10/2026: acelerar cobros digitales que quedan en Subiendo/Guardando. Adelanta la subida privada del comprobante y permite límite de confirmación de 15 segundos sólo para cobros; conserva las transacciones, las fórmulas y la confirmación real del servidor."
     },
     "validateExpenseStep": {
       "hash": "dcd7e40ada9e662ddccfe31140eb2f7598959c55d28b7b6611dfe95e5b0c3303",
@@ -194,8 +194,8 @@
       "reason": "Solicitud expresa del 07/10/2026: permitir Sin comprobante en deuda individual 100% chofer sólo para administración, con actor/hora auditados, Telegram y aceptación del chofer; conserva importe, grupo y fórmulas."
     },
     "runTransactionWithRetry": {
-      "hash": "f57ae20f3dde76fa719c312a1f0cdc929475f8b22e18deb82fc2e378a7ac011a",
-      "reason": "El usuario pide resolver la demora del guardado: acotar reintentos y confirmaciones del servidor sin anunciar éxito para escrituras no confirmadas ni cambiar identificadores."
+      "hash": "6c318bc6f2fb55decdb64176fcb8972c565b8c29292a9cde2b1f2f2dd9614026",
+      "reason": "Solicitud expresa del 23/10/2026: acelerar cobros digitales que quedan en Subiendo/Guardando. Adelanta la subida privada del comprobante y permite límite de confirmación de 15 segundos sólo para cobros; conserva las transacciones, las fórmulas y la confirmación real del servidor."
     },
     "confirmCommittedOperation": {
       "hash": "d3a6ba79fa123768a2c484e6efdba3fb41dc9788a16a19995acf72e4576b20f2",
@@ -204,8 +204,8 @@
   },
   "handlers": {
     "chargeForm": {
-      "hash": "759ae5b44cee0396bec156c4767d19a85406dcfa50d0a74d31615c6543c1c648",
-      "reason": "El usuario pide cobros y aplicación más rápidos: comprimir fotos legibles, mostrar avance de carga, limitar esperas y conservar el identificador al reintentar sin duplicar movimientos."
+      "hash": "810c80096bbcdf3b61364e7be313f74c068de1ebc0749ed3a3fabd58238b5bb7",
+      "reason": "Solicitud expresa del 23/10/2026: reutilizar comprobante precargado y persistido durante reintentos, bloquear edición durante confirmación y leer anticipos en paralelo dentro de la misma transacción. Mantiene IDs idempotentes, importes, facturas y reparto; pruebas de ACK perdido, recarga, doble envío y cambio de foto."
     },
     "expenseForm": {
       "hash": "07684e270cb9776b57d13c60a01cceef3367ce149cd83023c2b95bd3f140a463",
@@ -250,8 +250,8 @@
       "reason": "La carga semanal futura queda exclusivamente en admin por pedido de David; el callable anterior rechaza nuevas cargas y sólo permite repetir lectura del registro ya aplicado."
     },
     "package.json": {
-      "hash": "f330992aa187af910ce1f7851c0b229afe4377abd265d7575d36d7593b8919a2",
-      "reason": "Versión 2.5.5 para incorporación fiscal de choferes y reinicio visual de comprobantes tras cierre, conservando dependencias, scripts y cálculos."
+      "hash": "66137a37c8d30e9bc5fe49235ce71cecddbb54080021b16e3217b727923aac59",
+      "reason": "Versión 2.5.6 para la corrección solicitada del guardado digital lento. Sin cambios en dependencias, scripts, motores ni reglas financieras."
     },
     "storage.rules": {
       "hash": "bf42ee53ccd3cfe85a6c0e261df8641e0ab67d35a2bca6df1820dc5efd7657ca",

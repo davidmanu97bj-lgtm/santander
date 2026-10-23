@@ -83,5 +83,5 @@ export function uploadBytesResumable(reference,file) {
   };
   return task;
 }
-export async function getDownloadURL(reference) { return uploaded.get(reference.path) || '/__preview__/proof.svg'; }
+export async function getDownloadURL() { return new URL('/__preview__/proof.svg', window.location.origin).href; }
 export const httpsCallable = (_,name) => async input => {const data=await local('call',{name,input});if(['confirmPeriodClosure','adminRegisterUberWeeklyClosure','driverConfirmAdminUberWeeklyClosure'].includes(name))await notify();return {data};};

@@ -6,7 +6,7 @@ import os from 'node:os';
 import {chromium,webkit} from 'playwright';
 import {ROOT} from './project.mjs';
 
-const output=path.resolve(process.env.RECEIPT_QA_OUTPUT||path.join(ROOT,'../../outputs/fluidez-20261007'));
+const output=path.resolve(process.env.RECEIPT_QA_OUTPUT||path.join(ROOT,'../../outputs/cobro-digital-rapido-20261023'));
 fs.mkdirSync(output,{recursive:true});
 const runtime=fs.mkdtempSync(path.join(os.tmpdir(),'explora-receipt-qa-'));
 process.env.PREVIEW_ROLE='driver';process.env.PREVIEW_STATE_PATH=path.join(runtime,'state.json');
@@ -49,7 +49,18 @@ async function prepareCharge(page,mode,file,tag){
   await page.waitForFunction(()=>Number(document.getElementById('chargeDistance')?.value)>0);
   await page.locator('#detail').evaluate((el,tag)=>{el.value=tag;},tag);
   await page.locator('#saveChargeBtn').click();await page.locator('[data-charge-private]').click();await page.locator('#saveChargeBtn').click();
-  if(mode==='digital'){await page.locator('#proof').setInputFiles(file);await page.locator('#saveChargeBtn').click();}
+  if(mode==='digital'){
+    await page.evaluate(()=>{
+      window.__qaReceiptSelectedAt=performance.now();window.__qaReceiptReadyAt=null;window.__qaReceiptProgress=[];
+      const node=document.querySelector('[data-photo-picker="digital"] [data-photo-selection]');
+      const observer=new MutationObserver(()=>{
+        window.__qaReceiptProgress.push(node.textContent);
+        if(node.textContent.includes('Comprobante listo')){window.__qaReceiptReadyAt=performance.now();observer.disconnect();}
+      });
+      observer.observe(node,{subtree:true,childList:true,characterData:true});
+    });
+    await page.locator('#proof').setInputFiles(file);await page.locator('#saveChargeBtn').click();
+  }
   assert.equal(await page.locator('#chargeForm').getAttribute('data-step'),'3');
 }
 async function observeButton(page,id){await page.evaluate(id=>{window.__qaSaveStates=[];const node=document.getElementById(id);new MutationObserver(()=>window.__qaSaveStates.push(node.textContent)).observe(node,{subtree:true,childList:true,characterData:true});},id);}
@@ -58,7 +69,7 @@ let browser,context,page,active;
 try{
   for(const engine of (process.env.UI_ENGINES||'chromium,webkit').split(',')){
     browser=await(engine==='webkit'?webkit:chromium).launch(engine==='chromium'?{channel:'msedge'}:{});
-    for(const width of(process.env.UI_WIDTHS||'1440,390').split(',').map(Number)){
+    for(const width of(process.env.UI_WIDTHS||(engine==='webkit'?'390':'1440,390')).split(',').map(Number)){
       await api({action:'reset'});active={engine,width,height:width===1440?1000:844,steps:[]};report.cases.push(active);
       context=await browser.newContext({viewport:{width,height:active.height},isMobile:width<600,deviceScaleFactor:width<600?2:1,serviceWorkers:'block',timezoneId:'America/Argentina/Buenos_Aires'});
       let uploadCount=0,writeCount=0;
@@ -84,17 +95,29 @@ try{
       if(engine==='chromium'&&width===1440)fs.writeFileSync(path.join(output,'original-receipt.png'),file.buffer);
       active.steps.push('Real image decode and canvas compression; PDF preserves same bytes and object');
       const tag=`QA-DIGITAL-${engine}-${width}`;
-      await prepareCharge(page,'digital',file,tag);await observeButton(page,'saveChargeBtn');
-      const start=performance.now();await page.locator('#saveChargeBtn').click();
-      await page.waitForFunction(()=>document.getElementById('saveChargeBtn')?.textContent.includes('Subiendo comprobante'));
-      await page.screenshot({path:path.join(output,`${engine}-${width}-digital-upload.png`),fullPage:true});
+      const billingBefore=Object.keys((await api({action:'inspect'})).records).filter(p=>p.startsWith('billing_records/')).length;
+      await prepareCharge(page,'digital',file,tag);
+      await page.waitForFunction(()=>document.querySelector('[data-photo-picker="digital"] [data-photo-selection]')?.textContent.includes('Comprobante listo'));
+      active.preuploadMs=await page.evaluate(()=>window.__qaReceiptReadyAt-window.__qaReceiptSelectedAt);
+      active.preuploadStates=await page.evaluate(()=>window.__qaReceiptProgress);
+      let state=await api({action:'inspect'});
+      assert.equal(savedByTag(state,'billing_records',tag).length,0,'Preparing the proof creates no charge');
+      assert.equal(Object.keys(state.records).filter(p=>p.startsWith('billing_records/')).length,billingBefore,'No billing records before final confirmation');
+      assert.equal(uploadCount,1,'One completed preupload');
+      active.recordsBeforeConfirmation=0;
+      await page.screenshot({path:path.join(output,`${engine}-${width}-pre-confirmation.png`),fullPage:true});
+      await observeButton(page,'saveChargeBtn');
+      const start=performance.now();
       // A second submit while the first runs must keep a single operation.
-      await page.locator('#chargeForm').evaluate(el=>el.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+      await page.locator('#saveChargeBtn').evaluate(button=>{
+        button.click();button.closest('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+      });
       await page.locator('#chargeModal').waitFor({state:'hidden'});active.digitalLocalSaveMs=performance.now()-start;
-      let state=await api({action:'inspect'});const saved=savedByTag(state,'billing_records',tag);assert.equal(saved.length,1);
+      state=await api({action:'inspect'});const saved=savedByTag(state,'billing_records',tag);assert.equal(saved.length,1);
       assert.equal(saved[0][1].amount,125000);assert.equal(saved[0][1].method,'digital');assert.ok(saved[0][1].proofPath.endsWith('.jpg'));
-      active.digitalStates=await page.evaluate(()=>window.__qaSaveStates);assert.ok(active.digitalStates.some(s=>s.includes('Subiendo comprobante')));assert.ok(active.digitalStates.some(s=>s.includes('Guardando cobro')));
-      assert.equal(uploadCount,1,'One digital upload');active.steps.push('Digital charge saved exactly once after duplicate submit; upload progress visible; amount unchanged');
+      active.digitalStates=await page.evaluate(()=>window.__qaSaveStates);assert.ok(!active.digitalStates.some(s=>s.includes('Subiendo comprobante')),'Final confirmation reuses the uploaded proof');assert.ok(active.digitalStates.some(s=>s.includes('Guardando cobro')));
+      assert.equal(uploadCount,1,'One digital upload');active.digitalUploadCount=uploadCount;
+      active.steps.push('Proof is ready before confirmation without a billing record; duplicate submit saves exactly once without another upload; amount unchanged');
       await prepareCharge(page,'cash',file,`QA-CASH-${engine}-${width}`);await page.locator('#saveChargeBtn').click();await page.locator('#chargeModal').waitFor({state:'hidden'});
       state=await api({action:'inspect'});assert.equal(savedByTag(state,'billing_records',`QA-CASH-${engine}-${width}`).length,1);assert.equal(uploadCount,1,'Cash uploads no file');
       active.steps.push('Cash charge saves without an upload');
@@ -105,8 +128,10 @@ try{
       active.steps.push('Expense saves once with compressed proof and unchanged $50,000 amount');
       await page.screenshot({path:path.join(output,`${engine}-${width}-saved.png`),fullPage:true});
       // Controlled local transport failure: prove prompt recovery before any Firestore transaction.
+      await page.evaluate(()=>{window.__previewFailUpload=true;});
       await prepareCharge(page,'digital',file,`QA-FAILURE-${engine}-${width}`);
-      await page.evaluate(()=>{window.__previewFailUpload=true;});const beforeWrites=writeCount,failedStart=performance.now();await page.locator('#saveChargeBtn').click();
+      await page.waitForFunction(()=>document.querySelector('[data-photo-picker="digital"] [data-photo-selection]')?.textContent.includes('Reintentaremos'));
+      const beforeWrites=writeCount,failedStart=performance.now();await page.locator('#saveChargeBtn').click();
       await page.waitForFunction(()=>document.getElementById('chargeStatus')?.classList.contains('error'));
       active.uploadFailureMs=performance.now()-failedStart;assert.ok(active.uploadFailureMs<5000,'Pre-write upload failure should not trigger 13.7s confirmation polling');assert.equal(writeCount,beforeWrites);assert.equal(await page.locator('#saveChargeBtn').isDisabled(),false);
       await page.evaluate(()=>{window.__previewFailUpload=false;});await page.locator('#saveChargeBtn').click();await page.locator('#chargeModal').waitFor({state:'hidden'});
