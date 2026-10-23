@@ -121,3 +121,70 @@ export async function runBoundedTransaction(runTransaction, db, handler, timeout
     }, {maxAttempts:3}), timeoutMs, "La conexión tardó demasiado en confirmar el guardado.");
   } finally { active = false; }
 }
+
+// Preparing a receipt and confirming its payment share the same upload. The
+// newest caller owns progress updates; a stale form must not keep receiving them.
+export function createReceiptUploadCache({prepareFile, uploadFile, createPath}) {
+  if (![prepareFile, uploadFile, createPath].every(value => typeof value === "function")) {
+    throw new TypeError("Faltan las funciones de preparación y carga del comprobante.");
+  }
+  const files = new WeakMap();
+  const notify = entry => {
+    try { entry.onProgress?.({...entry.progress}); } catch (_) {}
+  };
+  const update = (entry, stage, percent) => {
+    if (entry.finished) return;
+    entry.progress = {stage, percent:Math.max(0, Math.min(100, Number(percent) || 0))};
+    notify(entry);
+  };
+
+  return {
+    get(file, scope, onProgress) {
+      if (!file || typeof file !== "object" || typeof scope !== "string" || !scope.trim()) {
+        return Promise.reject(Object.assign(new Error("No se pudo identificar el comprobante o su usuario."), {code:"receipt/invalid-file"}));
+      }
+      let scopes = files.get(file);
+      if (!scopes) { scopes = new Map(); files.set(file, scopes); }
+      let entry = scopes.get(scope);
+      if (entry) {
+        entry.onProgress = typeof onProgress === "function" ? onProgress : null;
+        notify(entry);
+        if (entry.finished) entry.onProgress = null;
+        return entry.promise;
+      }
+
+      entry = {onProgress:typeof onProgress === "function" ? onProgress : null,
+        progress:{stage:"prepare", percent:0}, finished:false, promise:null};
+      scopes.set(scope, entry);
+      // Defer work until the promise is installed so overlapping callers always
+      // receive exactly the same promise, including during synchronous callbacks.
+      entry.promise = Promise.resolve().then(async () => {
+        notify(entry);
+        const preparedFile = await prepareFile(file);
+        const path = await createPath(preparedFile, scope);
+        if (typeof path !== "string" || !path.trim()) {
+          throw Object.assign(new Error("No se pudo preparar la ruta del comprobante."), {code:"receipt/invalid-path"});
+        }
+        update(entry, "upload", 0);
+        const uploaded = await uploadFile({file:preparedFile, path, onProgress:value => {
+          const percent = typeof value === "object" ? value?.percent : value;
+          const stage = value?.stage === "url" || Number(percent) >= 100 ? "url" : "upload";
+          update(entry, stage, percent);
+        }});
+        const url = typeof uploaded?.url === "string" ? uploaded.url.trim() : "";
+        let valid = false;
+        try { valid = ["https:", "http:"].includes(new URL(url).protocol); } catch (_) {}
+        if (!valid) throw Object.assign(new Error("El comprobante todavía no tiene un enlace válido."), {code:"receipt/invalid-url"});
+        update(entry, "ready", 100);
+        return {url, path};
+      }).catch(error => {
+        if (scopes.get(scope) === entry) scopes.delete(scope);
+        throw error;
+      }).finally(() => {
+        entry.finished = true;
+        entry.onProgress = null;
+      });
+      return entry.promise;
+    }
+  };
+}

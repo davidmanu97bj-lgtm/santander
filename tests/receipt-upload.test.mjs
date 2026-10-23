@@ -98,8 +98,20 @@ function declaration(name) {
   const start=source.search(new RegExp(`^(?:async )?function ${name}\\(`,'m'));
   assert.ok(start>=0,name);return source.slice(start,source.indexOf('\n}',start)+2);
 }
-function chargeHarness({failUpload=false,loseAcknowledgement=false}={}) {
-  const nodes=new Map(),stored=new Map(),pending={};let submit,uploads=0,writes=0,confirmations=0;
+test('al elegir otra vez la foto tras recargar, la precarga recupera la prueba persistida sin subirla de nuevo', async()=>{
+  const file=photo(100),selection={textContent:''};let uploads=0;
+  const pending=JSON.parse(JSON.stringify({pending:{receipt:{fileHash:'same-photo',path:'billing_receipts/driver/day/proof.jpg',url:'https://example.test/proof.jpg'}}}));
+  const context=vm.createContext({auth:{currentUser:{uid:'driver'}},photoPicker:()=>({querySelector:()=>selection}),selectedPhotoFile:()=>file,
+    chargeReceiptIdentity:async()=> 'same-photo',safePendingRegistry:(_kind,uid)=>{assert.equal(uid,'driver');return pending;},
+    chargeReceiptCache:{get:async()=>{uploads++;}},Object});
+  vm.runInContext(declaration('warmChargeReceipt'),context);
+  await context.warmChargeReceipt(file);
+  assert.equal(uploads,0);assert.match(selection.textContent,/listo para confirmar/);
+  pending.pending.receipt.fileHash='different-photo';
+  await context.warmChargeReceipt(file);assert.equal(uploads,1);
+});
+function chargeHarness({failUpload=false,loseAcknowledgement=false,failCommitOnce=false,registry={}}={}) {
+  const nodes=new Map(),stored=new Map(),pending=registry;let submit,uploads=0,writes=0,confirmations=0,commitAttempts=0,fileHash='original-file';
   const $=id=>{if(!nodes.has(id))nodes.set(id,{value:'',dataset:{step:'3'},disabled:false,classList:{add(){},remove(){}},reset(){},addEventListener(_name,callback){submit=callback;}});return nodes.get(id);};
   $('chargeMode').value='digital';$('chargeAmount').value='32500';$('detail').value='Viaje';
   const context=vm.createContext({$,auth:{currentUser:{uid:'driver'}},validateChargeStep:()=>true,chargeSteps:()=>[3],parseMoneyInput:Number,
@@ -109,18 +121,36 @@ function chargeHarness({failUpload=false,loseAcknowledgement=false}={}) {
     safePendingRegistry:()=>pending,reservePendingOperation:(_kind,_uid,fingerprint)=>pending[fingerprint]??=( {operationId:'same-operation',createdAtMs:1}),
     clearPendingOperation:(_kind,_uid,fingerprint)=>delete pending[fingerprint],db:{},ROOT_COLLECTIONS:{payments:'billing_records'},
     doc:(_db,collection,id)=>({path:`${collection}/${id}`}),getDocFromServer:async reference=>({exists:()=>stored.has(reference.path),data:()=>stored.get(reference.path)}),
-    prepareReceiptFile:async file=>file,ref:(_storage,path)=>({path}),storage:{},uploadBytesResumable(){},getDownloadURL(){},
-    uploadReceiptFile:async()=>{uploads++;if(failUpload)throw Object.assign(Error('No permitido'),{code:'storage/unauthorized'});return {url:'https://example.test/proof.jpg'};},
+    setChargeFormBusy(){},chargeReceiptIdentity:async()=>fileHash,
+    rememberChargeReceipt:(_uid,fp,_id,receipt)=>{pending[fp].receipt=receipt;},
+    chargeReceiptCache:{get:async()=>{uploads++;if(failUpload)throw Object.assign(Error('No permitido'),{code:'storage/unauthorized'});return {url:'https://example.test/proof.jpg',path:'billing_receipts/driver/day/proof.jpg'};}},
     localDayKey:()=> '2026-10-07',advances:[],captureSubmissionBalance:()=>0,normalizedSettlementBalance:value=>value,renderChargePreview(){},
     currentWeeklyPeriodId:()=> 'week',currentDriverName:()=> 'Chofer',serverTimestamp:()=> 'server',BUSINESS_ID:'explora',
-    runTransactionWithRetry:async handler=>{const result=await handler({get:async reference=>({exists:()=>stored.has(reference.path),data:()=>stored.get(reference.path)}),set(reference,data){writes++;stored.set(reference.path,data);}});if(loseAcknowledgement)throw Object.assign(Error('ACK perdido'),{code:'unavailable'});return result;},
+    runTransactionWithRetry:async(handler,timeout)=>{assert.equal(timeout,15000);if(failCommitOnce&&commitAttempts++===0)throw Object.assign(Error('Red caída'),{code:'unavailable'});const result=await handler({get:async reference=>({exists:()=>stored.has(reference.path),data:()=>stored.get(reference.path)}),set(reference,data){writes++;stored.set(reference.path,data);}});if(loseAcknowledgement)throw Object.assign(Error('ACK perdido'),{code:'unavailable'});return result;},
     planAdvanceRepayment:()=>({allocations:[],totalApplied:0}),syncChargeCustomerFields(){},closeModalAndGoTop(){},money:String,
     confirmCommittedOperation:async()=>{confirmations++;return false;},withOperationDeadline,console:{error(){}},Date});
   vm.runInContext(['firebaseErrorCode','assertSameCommittedOperation','shouldCheckUncertainWrite','receiptSaveError'].map(declaration).join('\n'),context);
   const start=source.indexOf('$("chargeForm")?.addEventListener("submit",');
   vm.runInContext(source.slice(start,source.indexOf('\n});',start)+4),context);
-  return {submit:()=>submit({preventDefault(){}}),nodes,stored,pending,get uploads(){return uploads;},get writes(){return writes;},get confirmations(){return confirmations;}};
+  return {submit:()=>submit({preventDefault(){}}),nodes,stored,pending,setFileHash:value=>{fileHash=value;},get uploads(){return uploads;},get writes(){return writes;},get confirmations(){return confirmations;}};
 }
+
+test('reintento tras recargar conserva comprobante y operación, sin volver a subir ni cambiar importes',async()=>{
+  const first=chargeHarness({failCommitOnce:true});await first.submit();
+  assert.equal(first.uploads,1);assert.equal(first.writes,0);
+  const restored=JSON.parse(JSON.stringify(first.pending));
+  const next=chargeHarness({registry:restored});await next.submit();
+  assert.equal(next.uploads,0);assert.equal(next.writes,1);
+  const row=next.stored.get('billing_records/same-operation');
+  assert.equal(row.amount,32500);assert.equal(row.cashboxAmount,3250);assert.equal(row.principalMovementAmount,-16250);
+  assert.equal(row.invoiceRequest.origin,'A');assert.equal(row.idempotencyKey,'same-operation');
+});
+
+test('otro archivo no reutiliza la prueba anterior aunque el cobro pendiente sea el mismo',async()=>{
+  const first=chargeHarness({failCommitOnce:true});await first.submit();
+  const next=chargeHarness({registry:JSON.parse(JSON.stringify(first.pending))});next.setFileHash('different-content');
+  await next.submit();assert.equal(next.uploads,1);assert.equal(next.writes,1);
+});
 
 test('fallo de Storage no consulta Firestore ni borra identidad de reintento; libera el botón de cobro',async()=>{
   const app=chargeHarness({failUpload:true});await app.submit();

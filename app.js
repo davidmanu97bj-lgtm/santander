@@ -22,7 +22,7 @@ import { searchTourismPlaces, tourismRoute } from "./tourism-catalog.js?v=202609
 import { mountTripCalendar } from "./trip-calendar.js?v=20260913-calendario-detalles";
 import { monthRange, normalizeTripDraft, canManageTrip } from "./calendar-core.js?v=20260913-calendario-detalles";
 import * as firebaseSettings from "./firebase-config.js?v=20260824-15";
-import { prepareReceiptFile, uploadReceiptFile, runBoundedTransaction, withOperationDeadline } from "./receipt-upload.js?v=20261008-upload-progress";
+import { prepareReceiptFile, uploadReceiptFile, createReceiptUploadCache, runBoundedTransaction, withOperationDeadline } from "./receipt-upload.js?v=20261023-cobro-rapido";
 
 const { BUSINESS_ID, USER_EMAIL_DOMAIN } = firebaseSettings;
 const LOGIN_ALIASES = firebaseSettings.LOGIN_ALIASES || {};
@@ -43,6 +43,17 @@ import {
 
 const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 const storage = getStorage(app);
+// Only the proof is prepared early. No charge, wallet movement or invoice exists
+// until the driver confirms and the Firestore transaction is acknowledged.
+const chargeReceiptCache = createReceiptUploadCache({
+  prepareFile:file => prepareReceiptFile(file, {timeoutMs:5000}),
+  createPath:(file, uid) => `billing_receipts/${uid}/${localDayKey()}/proof_${randomOperationToken()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,"_")}`,
+  uploadFile:({file, path, onProgress}) => uploadReceiptFile({
+    reference:ref(storage, path), file, uploadBytesResumable, getDownloadURL, onProgress,
+    idleTimeoutMs:15000, totalTimeoutMs:45000, urlTimeoutMs:8000
+  })
+});
+const chargeReceiptHashes = new WeakMap();
 const functions = getFunctions(app, "southamerica-east1");
 const exploraRouteCallable = httpsCallable(functions, "exploraRoute");
 const adminCreateDriverCallable = httpsCallable(functions, "adminCreateDriver");
@@ -143,6 +154,7 @@ function initializePhotoSourcePickers() {
         if (picker.dataset.photoPicker === "expense") {
           showExpenseStep(2);
         }
+        if (picker.dataset.photoPicker === "digital") warmChargeReceipt(file);
       });
     });
 
@@ -153,6 +165,62 @@ function initializePhotoSourcePickers() {
 }
 
 initializePhotoSourcePickers();
+
+function warmChargeReceipt(file) {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+  const selection = photoPicker("digital")?.querySelector("[data-photo-selection]");
+  const current = () => auth.currentUser?.uid === uid && selectedPhotoFile("digital") === file;
+  const showProgress = progress => {
+    if (!current() || !selection) return;
+    selection.textContent = progress.stage === "ready" ? "Comprobante listo para confirmar el cobro."
+      : progress.stage === "prepare" ? "Preparando comprobante… Podés continuar."
+      : `Subiendo comprobante ${progress.percent || 0}%… Podés continuar.`;
+  };
+  // A reload creates a new File object: consult the pending operation before
+  // starting a second upload of a proof already acknowledged by Storage.
+  return chargeReceiptIdentity(file).then(fileHash => {
+    if (!current()) return;
+    const previous = Object.values(safePendingRegistry("payment", uid)).find(item =>
+      item.receipt?.fileHash === fileHash && item.receipt.path?.startsWith(`billing_receipts/${uid}/`) && item.receipt.url);
+    if (previous) { showProgress({stage:"ready", percent:100}); return; }
+    return chargeReceiptCache.get(file, uid, showProgress);
+  }).catch(() => {
+    if (current() && selection) selection.textContent = "La foto sigue seleccionada. Reintentaremos su subida al confirmar.";
+  });
+}
+
+function chargeReceiptIdentity(file) {
+  if (!chargeReceiptHashes.has(file)) {
+    const promise = withOperationDeadline(file.arrayBuffer().then(sha256Hex), 5000);
+    chargeReceiptHashes.set(file, promise);
+    promise.catch(() => chargeReceiptHashes.delete(file));
+  }
+  return chargeReceiptHashes.get(file);
+}
+
+function rememberChargeReceipt(uid, fingerprint, operationId, receipt) {
+  const registry = safePendingRegistry("payment", uid);
+  if (registry[fingerprint]?.operationId !== operationId) return;
+  registry[fingerprint].receipt = receipt;
+  savePendingRegistry("payment", uid, registry);
+}
+
+function setChargeFormBusy(busy) {
+  const controls = new Set([
+    ...($("chargeForm")?.querySelectorAll("input,select,textarea,button:not(#saveChargeBtn)") || []),
+    ...($("chargeModal")?.querySelectorAll("[data-close]") || [])
+  ]);
+  controls.forEach(control => {
+    if (busy) {
+      control.dataset.chargeDisabledBeforeSave = control.disabled ? "1" : "0";
+      control.disabled = true;
+    } else if (control.dataset.chargeDisabledBeforeSave !== undefined) {
+      control.disabled = control.dataset.chargeDisabledBeforeSave === "1";
+      delete control.dataset.chargeDisabledBeforeSave;
+    }
+  });
+}
 let unsubscribePayments = null;
 let unsubscribeExpenses = null;
 let unsubscribeUber = null;
@@ -401,9 +469,9 @@ async function retryFirebaseOperation(task, attempts = 4) {
   throw lastError;
 }
 
-async function runTransactionWithRetry(handler) {
+async function runTransactionWithRetry(handler, timeoutMs = 45000) {
   // Firestore already retries contention. Do not multiply its attempts by four.
-  return runBoundedTransaction(runTransaction, db, handler);
+  return runBoundedTransaction(runTransaction, db, handler, timeoutMs);
 }
 
 async function confirmCommittedOperation(documentRef, operationId, fingerprint, {attempts = 3} = {}) {
@@ -4513,6 +4581,7 @@ onAuthStateChanged(auth, async user => {
 
 document.querySelectorAll("[data-mode]").forEach(btn => {
   btn.addEventListener("click", () => {
+    if (activeSubmissionLocks.has("charge")) return;
     const mode = btn.dataset.mode;
     refreshArcaBillingStatus();
     $("chargeForm").reset();
@@ -4978,6 +5047,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
   }
 
   $("saveChargeBtn").disabled = true;
+  setChargeFormBusy(true);
   $("saveChargeBtn").textContent = "Verificando…";
   $("chargeStatus").textContent = "";
 
@@ -5021,15 +5091,24 @@ $("chargeForm")?.addEventListener("submit", async e => {
     let proofUrl = "";
     let proofPath = "";
     if (mode === "digital" && file) {
-      $("saveChargeBtn").textContent = "Preparando comprobante…";
-      const uploadFile = await prepareReceiptFile(file);
-      const cleanName = uploadFile.name.replace(/[^a-zA-Z0-9._-]/g,"_");
-      proofPath = `billing_receipts/${user.uid}/${localDayKey()}/${operation.operationId}_${cleanName}`;
-      const storageRef = ref(storage, proofPath);
-      const uploaded = await uploadReceiptFile({reference:storageRef, file:uploadFile, uploadBytesResumable, getDownloadURL,
-        onProgress:percent => { $("saveChargeBtn").textContent = percent < 100 ? `Subiendo comprobante ${percent}%…` : "Confirmando comprobante…"; }});
-      proofUrl = uploaded.url;
+      const fileHash = await chargeReceiptIdentity(file);
+      const savedProof = operation.receipt;
+      if (savedProof?.fileHash === fileHash && savedProof.path?.startsWith(`billing_receipts/${user.uid}/`) && savedProof.url) {
+        proofPath = savedProof.path;
+        proofUrl = savedProof.url;
+      } else {
+        const uploaded = await chargeReceiptCache.get(file, user.uid, progress => {
+          $("saveChargeBtn").textContent = progress.stage === "prepare" ? "Preparando comprobante…"
+            : progress.stage === "ready" ? "Comprobante listo"
+            : progress.percent < 100 ? `Subiendo comprobante ${progress.percent || 0}%…` : "Confirmando comprobante…";
+        });
+        proofPath = uploaded.path;
+        proofUrl = uploaded.url;
+        rememberChargeReceipt(user.uid, fingerprint, operation.operationId, {fileHash, path:proofPath, url:proofUrl});
+      }
     }
+
+    if (auth.currentUser?.uid !== user.uid) throw Object.assign(new Error("La sesión cambió."), {code:"unauthenticated"});
 
     const candidateAdvanceRefs = mode === "digital"
       ? advances
@@ -5047,11 +5126,8 @@ $("chargeForm")?.addEventListener("submit", async e => {
         return { alreadyRegistered:true };
       }
 
-      const freshAdvances = [];
-      for (const advanceRef of candidateAdvanceRefs) {
-        const snap = await transaction.get(advanceRef);
-        if (snap.exists()) freshAdvances.push({ id: snap.id, ...snap.data() });
-      }
+      const advanceSnapshots = await Promise.all(candidateAdvanceRefs.map(advanceRef => transaction.get(advanceRef)));
+      const freshAdvances = advanceSnapshots.filter(snap => snap.exists()).map(snap => ({id:snap.id, ...snap.data()}));
 
       const repaymentPlan = mode === "digital"
         ? planAdvanceRepayment(Math.floor(amount * 0.50), freshAdvances)
@@ -5132,7 +5208,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
         });
       });
       return { alreadyRegistered:false };
-    });
+    }, 15000);
 
     clearPendingOperation("payment", user.uid, fingerprint, operation.operationId);
     $("chargeStatus").textContent = transactionResult?.alreadyRegistered
@@ -5165,6 +5241,7 @@ $("chargeForm")?.addEventListener("submit", async e => {
       $("chargeStatus").className = "status error";
     }
   } finally {
+    setChargeFormBusy(false);
     releaseSubmissionLock("charge");
     if (!completedSuccessfully) {
       $("saveChargeBtn").disabled = false;

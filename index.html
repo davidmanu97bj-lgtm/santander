@@ -16,7 +16,7 @@
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js" crossorigin />
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js" crossorigin />
   <script type="module" async src="./login-entry.js?v=20260921-release-number-2"></script>
-  <link rel="modulepreload" href="./app.js?v=20261015-choferes-comprobantes" />
+  <link rel="modulepreload" href="./app.js?v=20261023-cobro-rapido" />
   <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
@@ -391,7 +391,7 @@
           <input id="proof" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1">
           <div class="photo-source-selection" data-photo-selection aria-live="polite">Ninguna foto seleccionada.</div>
         </div>
-        <div class="file-note">Al elegir la foto se habilita la confirmación.</div>
+        <div class="file-note">La foto se sube mientras continuás. El cobro se registra al confirmar.</div>
       </div>
 </section><section data-charge-step="3" class="charge-step hidden">
         <div class="charge-named-invoice"><label class="charge-invoice-toggle"><input id="chargeNamedInvoice" type="checkbox" aria-controls="chargeCustomerFields" aria-expanded="false">El pasajero pide factura a su nombre</label><div id="chargeCustomerFields" class="hidden"><div class="field"><label for="chargeCustomerName">Nombre o razón social</label><input id="chargeCustomerName" maxlength="160" disabled></div><div class="charge-two-columns"><div class="field"><label for="chargeCustomerDocType">Documento</label><select id="chargeCustomerDocType" disabled><option value="DNI">DNI</option><option value="CUIT">CUIT</option><option value="passport">Pasaporte</option></select></div><div class="field"><label for="chargeCustomerDoc">Número</label><input id="chargeCustomerDoc" maxlength="30" autocomplete="off" disabled></div></div><div class="field"><label for="chargeCustomerVat">Condición frente al IVA</label><select id="chargeCustomerVat" disabled><option value="">Seleccioná la condición fiscal</option><option value="consumer">Consumidor final · Factura B</option><option value="registered">Responsable inscripto · Factura A</option><option value="monotributo">Monotributista · Factura A</option><option value="exempt">Exento · Factura B</option><option value="pending">Por confirmar · requiere revisión</option></select></div><p id="chargeCustomerInvoiceHint" class="muted" role="status" aria-live="polite"></p></div></div>
@@ -576,7 +576,7 @@
           <input id="expenseProof" class="photo-source-input" type="file" accept="image/*" data-photo-source="gallery" tabindex="-1">
           <div class="photo-source-selection" data-photo-selection aria-live="polite">Ninguna foto seleccionada.</div>
         </div>
-<p class="file-note">Al elegir la foto se habilita la confirmación.</p></section>
+<p class="file-note">La foto se sube mientras continuás. El cobro se registra al confirmar.</p></section>
       <div id="expenseStatus" class="status" role="status" aria-live="polite"></div>
       <div class="modal-actions"><button id="expenseStepBack" type="button" class="secondary">Cancelar</button><button id="saveExpenseBtn" type="submit" class="save">Continuar</button></div>
     </form>
@@ -850,6 +850,6 @@
 <script src="./functions/period-policy.js?v=20260919-admin-1"></script>
 <script src="./functions/uber-weekly-policy.js?v=20261002-uber-confirmation"></script>
 <script src="./functions/expense-policy.js?v=20261007-monthly"></script>
-<script type="module" src="./app.js?v=20261015-choferes-comprobantes"></script>
+<script type="module" src="./app.js?v=20261023-cobro-rapido"></script>
 </body>
 </html>
