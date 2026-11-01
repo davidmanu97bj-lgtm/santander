@@ -1,14 +1,15 @@
 "use strict";
 const {randomUUID}=require('node:crypto');
-const {buildInvoice,isSimulatedFiscalSource,matchesAuthorized,authorizationFromResponse}=require('./arca-invoice');
-const {configuredInvoiceType,generalPolicyReady,internationalBEnabled,invoiceTypeOf,pointMatches,enabledInvoiceTypes}=require('./arca-policy');
+const {buildInvoice,isSimulatedFiscalSource,matchesAuthorized,authorizationFromResponse,localDate}=require('./arca-invoice');
+const {configuredInvoiceType,generalPolicyReady,ivaExemptActive,internationalBEnabled,internationalExemptCEnabled,invoiceTypeOf,pointMatches,enabledInvoiceTypes}=require('./arca-policy');
 const LEASE_MS=180000;
 const JOBS='arca_invoices',SERIES='arca_series';
-function enabled(config) {
+function enabled(config, now=Date.now()) {
   return config?.enabled===true && ['homologation','production'].includes(config.environment) &&
-    (config.regime==='monotributo'||generalPolicyReady(config)) && config.exclusivePointOfSale===true &&
-    (config.environment!=='production'||(config.homologationPassed===true&&config.registrationVerified===true&&
-      (config.regime!=='general'||config.generalHomologationPassed===true)));
+    (config.regime==='monotributo'||generalPolicyReady(config)||ivaExemptActive(config,now)) && config.exclusivePointOfSale===true &&
+    (config.environment!=='production'||(config.registrationVerified===true&&
+      (config.regime==='iva_exento'?config.ivaExemptHomologationPassed===true:
+        config.homologationPassed===true&&(config.regime!=='general'||config.generalHomologationPassed===true))));
 }
 const seriesKey=(c,type=configuredInvoiceType(c))=>`${c.environment}_${c.cuit}_${Number(c.pointOfSale)}_${type}`;
 async function enqueueInvoice(db,id,config,now=Date.now()) {
@@ -20,13 +21,13 @@ async function enqueueInvoice(db,id,config,now=Date.now()) {
     const invoice=buildInvoice(payment,config,new Date(now));if(!invoice)return;
     const created=payment.createdAt?.toMillis?.();
     const cutoff=Date.parse(config.activeFrom||'');
-    const active=enabled(config)&&Number.isFinite(created)&&Number.isFinite(cutoff)&&created>=cutoff;
+    const active=enabled(config,now)&&Number.isFinite(created)&&Number.isFinite(cutoff)&&created>=cutoff;
     const status=!active?'disabled':invoice.issues.length?'review':'queued';
     tx.create(jobRef,{...invoice,paymentId:id,driverUid:String(payment.driverUid||''),status,createdAtMs:now,updatedAtMs:now,number:null,cae:null,caeExpires:null,seriesKey:seriesKey(config,invoice.invoiceType),leaseUntil:0});
   });
 }
 async function processInvoice({db,id,config,client,now=()=>Date.now()}) {
-  if(!enabled(config))return;
+  if(!enabled(config,now()))return;
   const ref=db.collection(JOBS).doc(id),paymentRef=db.collection('billing_records').doc(id);
   // Read the immutable fiscal snapshot first, then recheck it while locking its own series.
   const initial=await db.runTransaction(async tx=>(await tx.get(ref)).data());
@@ -47,6 +48,17 @@ async function processInvoice({db,id,config,client,now=()=>Date.now()}) {
     if(config.regime==='general'&&(j.issuerRegime!=='general'||j.taxPolicy!==config.taxPolicy||j.issues?.length))return null;
     if(config.regime==='general'&&!config.approvedDriverUids.includes(j.driverUid))return null;
     if(config.regime==='general'&&j.scope==='international'&&(!internationalBEnabled(config,new Date(now()))||j.internationalTaxPolicy!==config.internationalTaxPolicy))return null;
+    if(config.regime==='iva_exento') {
+      // Historical A/B/C jobs keep their immutable issuer snapshot. In particular,
+      // a monotributo C never becomes an exempt C just because both have type 11.
+      if(j.issuerRegime!=='iva_exento'||type!==11||j.issuer?.vatCondition!=='IVA Exento'||
+        j.taxPolicy!==config.taxPolicy||j.regimeEffectiveFrom!==config.regimeEffectiveFrom||j.issues?.length||
+        !config.approvedDriverUids.includes(j.driverUid))return null;
+      const effectiveDate=localDate(new Date(config.regimeEffectiveFrom)).replaceAll('-','');
+      if(String(j.detail?.FchServDesde||'')<effectiveDate||String(j.detail?.CbteFch||'')<effectiveDate)return null;
+      if(j.scope==='international'&&(!internationalExemptCEnabled(config,new Date(now()))||j.internationalTaxPolicy!==config.internationalTaxPolicy))return null;
+    }
+    if(config.regime==='monotributo'&&j.issuerRegime&&j.issuerRegime!=='monotributo')return null;
     // An uncertain request blocks this entire point/type series until reconciled.
     if(lock.activeId&&lock.activeId!==id)return null;
     tx.set(series,{activeId:id},{merge:true});
@@ -64,7 +76,7 @@ async function processInvoice({db,id,config,client,now=()=>Date.now()}) {
   try {
     if(job.status==='sent'||job.status==='uncertain') {
       const record=await client.consult(job.issuer.pointOfSale,job.number,type);
-      if(record&&matchesAuthorized(record,job.detail,job.issuer.pointOfSale,type))await finish({status:'authorized',cae:String(record.CodAutorizacion),caeExpires:String(record.FchVto),reconciled:true});
+      if(record&&matchesAuthorized(record,job.detail,job.issuer.pointOfSale,type,{requireRecipientVat:job.issuerRegime==='iva_exento'}))await finish({status:'authorized',cae:String(record.CodAutorizacion),caeExpires:String(record.FchVto),reconciled:true});
       else await update({status:'uncertain',issue:record?'number_conflict':'awaiting_reconciliation',leaseUntil:0});
       return; // Never send again after an ambiguous response, even if ARCA currently returns not found.
     }

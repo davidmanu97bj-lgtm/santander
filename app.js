@@ -4609,6 +4609,7 @@ document.querySelectorAll("[data-mode]").forEach(btn => {
   });
 });
 
+let arcaBillingDisplay = null;
 function syncChargeCustomerFields() {
   const enabled = $("chargeNamedInvoice").checked;
   $("chargeCustomerFields").classList.toggle("hidden", !enabled);
@@ -4622,9 +4623,11 @@ function syncChargeCustomerFields() {
   if (needsCuit) $("chargeCustomerDocType").value = "CUIT";
   $("chargeCustomerDocType").disabled = !enabled || needsCuit;
   $("chargeCustomerInvoiceHint").textContent = !enabled ? "" :
-    ["registered","monotributo"].includes(vat) ? "Factura A: ingresá el CUIT y la razón social del receptor. Se emitirá cuando ARCA la autorice." :
-    ["consumer","exempt"].includes(vat) ? "Factura B a nombre del pasajero. Para factura A elegí Responsable inscripto o Monotributista, según su constancia." :
-    "Confirmá la condición fiscal del receptor antes de solicitar la factura.";
+    !["consumer","registered","monotributo","exempt"].includes(vat) ? "Confirmá la condición fiscal del receptor antes de solicitar la factura." :
+    arcaBillingDisplay?.regime === "iva_exento" ? "Explora es IVA exento: corresponde Factura C a nombre del pasajero o empresa. La emisión depende de la autorización de ARCA." :
+    arcaBillingDisplay?.regime === "monotributo" ? "Corresponde Factura C a nombre del pasajero o empresa. La emisión depende de la autorización de ARCA." :
+    arcaBillingDisplay?.regime === "general" ? (["registered","monotributo"].includes(vat) ? "Factura A: ingresá el CUIT y la razón social del receptor. Se emitirá cuando ARCA la autorice." : "Factura B a nombre del pasajero. La clase de factura depende de la condición fiscal del emisor y del receptor.") :
+    "Ingresá los datos fiscales del receptor. La clase de factura se determina al verificar la condición de Explora en ARCA.";
 }
 $("chargeNamedInvoice")?.addEventListener("change", syncChargeCustomerFields);
 $("chargeCustomerVat")?.addEventListener("change", syncChargeCustomerFields);
@@ -7003,7 +7006,14 @@ async function refreshArcaBillingStatus() {
   try {
     const data = await cachedArcaStatus(uid);
     if (generation !== authGeneration || uid !== auth.currentUser?.uid) return;
+    arcaBillingDisplay = data;
+    syncChargeCustomerFields();
     $("arcaModeLabel").textContent=data.enabled ? (data.environment === "production" ? "Automática" : "Pruebas") : "Sin activar";
+    if(data.enabled && data.environment === "production" && data.regime === "iva_exento") {
+      $("arcaModeLabel").textContent="Automática · Factura C";
+      $("arcaModeNote").textContent="Explora es IVA exento. Se solicitará Factura C para pasajeros y empresas. Los servicios anteriores al cambio o con datos incompletos quedan para revisión.";
+      return;
+    }
     if(data.enabled && data.environment === "production" && data.regime === "general" && !data.invoiceAEnabled) {
       $("arcaModeNote").textContent="Factura B automática para traslados exentos habilitados. Las solicitudes de factura A quedan pendientes hasta habilitar su emisión en ARCA.";
       return;
@@ -7011,6 +7021,8 @@ async function refreshArcaBillingStatus() {
     $("arcaModeNote").textContent=data.enabled ? (data.environment === "production" ? (data.regime === "general" ? (data.internationalEnabled ? "Se solicitará factura A para responsables inscriptos o monotributistas, y B para consumidores finales o exentos. Los datos incompletos o servicios fuera del alcance habilitado quedan para revisión." : "Se solicitará factura A o B según la condición fiscal del receptor, para viajes nacionales exentos habilitados. Los demás casos quedan para revisión.") : data.internationalEnabled ? "Al confirmar se solicitará la Factura C del viaje." : "Al confirmar se solicitará la factura. Los viajes internacionales quedan para revisión.") : "Homologación: las facturas de prueba no tienen validez fiscal.") : "El viaje se guarda. La emisión fiscal todavía no está activada.";
   } catch {
     if (generation !== authGeneration || uid !== auth.currentUser?.uid) return;
+    arcaBillingDisplay = null;
+    syncChargeCustomerFields();
     $("arcaModeLabel").textContent="Por verificar";
     $("arcaModeNote").textContent="Consultá el estado de la factura después de registrar el cobro.";
   }
@@ -7103,6 +7115,7 @@ function createInvoiceCard(invoice) {
       invoice_a_requires_review: "La condición fiscal del cliente requiere revisar la emisión de factura A.",
       driver_not_authorized_for_invoicing: "Este perfil todavía no está habilitado para emitir facturas reales.",
       service_before_regime_activation: "El servicio es anterior a la activación y debe conciliarse con las facturas anteriores.",
+      issuer_regime_not_active: "La nueva condición fiscal del emisor todavía no está vigente. Requiere revisión antes de emitir.",
       point_of_sale_unavailable: "El punto de venta requiere verificación en ARCA."
     };
     const messages = [...new Set([...(invoice.issues || []), invoice.issue].map(code => reasons[code]).filter(Boolean))];
@@ -7116,6 +7129,7 @@ function createInvoiceCard(invoice) {
   addData("Pasajero", invoice.customer?.name || "Consumidor final");
   addData("Emisor", invoice.issuer?.legalName);
   addData("CUIT", invoice.issuer?.cuit);
+  if(invoice.issuerRegime === "iva_exento") addData("Condición del emisor", "IVA Exento");
   const point = Number(invoice.issuer?.pointOfSale);
   if (Number.isInteger(point) && point > 0 && point < 99999) addData("Punto de venta", String(point).padStart(5, "0"));
   if (!authorized && Number.isSafeInteger(invoice.number) && invoice.number > 0) {
@@ -7206,7 +7220,7 @@ document.querySelectorAll("[data-invoice-filter]").forEach(button=>button.addEve
 $("showInvoicesBtn").addEventListener("click",()=>showInvoices());
 $("adminInvoicesBtn").addEventListener("click",()=>showInvoices(true));
 // Do not retain another driver's fiscal data after sign-out or account switch.
-onAuthStateChanged(auth,()=>{invoiceViewGeneration++;invoiceViewCache.clear();arcaStatusCache=null;stopInvoiceSubscription?.();stopInvoiceSubscription=null;clearInvoiceFiles();invoiceRows=[];$("invoicesList").replaceChildren();$("invoicesModal").classList.add("hidden");});
+onAuthStateChanged(auth,()=>{invoiceViewGeneration++;invoiceViewCache.clear();arcaStatusCache=null;arcaBillingDisplay=null;stopInvoiceSubscription?.();stopInvoiceSubscription=null;clearInvoiceFiles();invoiceRows=[];$("invoicesList").replaceChildren();$("invoicesModal").classList.add("hidden");});
 document.querySelector('[data-close="invoicesModal"]').addEventListener('click',()=>{invoiceViewGeneration++;stopInvoiceSubscription?.();stopInvoiceSubscription=null;clearInvoiceFiles();invoiceRows=[];$("invoicesList").replaceChildren();});
 $("invoicesModal").addEventListener("keydown",event=>{
   if(event.key==="Escape"){event.preventDefault();document.querySelector('[data-close="invoicesModal"]').click();return;}

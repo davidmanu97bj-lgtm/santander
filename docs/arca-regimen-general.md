@@ -1,6 +1,6 @@
 # Régimen general: factura B por traslado exento
 
-Esta implementación agrega B (código 6) sin activar producción. Conserva las C históricas (código 11), sus series y sus PDF. No modifica pagos, saldos, porcentajes de choferes ni documentos de liquidación.
+Este documento conserva el contrato del régimen general: B (código 6) y la ampliación A (código 1). Conserva las C históricas (código 11), sus series y sus PDF. No modifica pagos, saldos, porcentajes de choferes ni documentos de liquidación. El cambio posterior del emisor a IVA exento está documentado por separado en [arca-iva-exento.md](arca-iva-exento.md); no reinterpreta estas facturas históricas.
 
 ## Alcance
 
@@ -10,9 +10,9 @@ Esta implementación agrega B (código 6) sin activar producción. Conserva las 
 - El transporte internacional de pasajeros puede habilitarse como B exenta mediante una política y fecha de activación específicas, luego de verificar su encuadre. No hereda la habilitación internacional del antiguo emisor C. No se le aplica el límite nacional de 100 km.
 - Traslados internacionales sin esa habilitación, nacionales mayores a 100 km, datos incompletos y servicios anteriores a la activación quedan en revisión. La distancia por sí sola no determina el tratamiento de un cruce de frontera.
 - Solo los identificadores de choferes reales incluidos en `approvedDriverUids` pueden generar solicitudes automáticas. El alta administrativa de un chofer real incorpora su UID a esa lista en la misma transacción que crea su perfil y alias. Los perfiles creados por otras vías no se incorporan automáticamente y los cobros marcados como simulados siguen excluidos de la emisión.
-- No implementa el futuro cambio del emisor a IVA exento ni presume que esa inscripción haya sido aprobada.
+- Esta configuración de régimen general no se utiliza para el emisor IVA exento. Desde la implementación del 01/11/2026 existe `regime: "iva_exento"`, con sus verificaciones, fecha efectiva y punto de venta propios; consultar el documento específico.
 
-## Activación pendiente
+## Requisitos de activación del régimen general
 
 Se requieren comprobación registral, prueba B autorizada en homologación, revisión del alcance fiscal y aprobación de la activación. Las pruebas automáticas con respuestas simuladas **no** equivalen a homologación ante ARCA.
 
