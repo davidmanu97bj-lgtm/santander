@@ -109,12 +109,14 @@ exports.prepareArcaInvoiceDraft = onDocumentWritten({document:"billing_records/{
       if (existing.exists) transaction.update(draftRef,{status:"cancelled",updatedAt:FieldValue.serverTimestamp()});
       return;
     }
-    const draft = prepareInvoiceDraft(payment,event.params.paymentId,{
-      regime:existing.exists ? existing.data().targetRegime : (process.env.ARCA_ISSUER_REGIME || "monotributo"),
-      cuit:process.env.ARCA_ISSUER_CUIT,
-      legalName:process.env.ARCA_ISSUER_LEGAL_NAME,
-      pointOfSale:process.env.ARCA_POINT_OF_SALE
-    });
+    if (payment.invoiceRequest?.version !== "arca_preparation_v1") return;
+    // Existing draft issuers remain historical snapshots. Only a new draft reads
+    // the current fiscal configuration; missing configuration never assumes mono.
+    const previous = existing.exists ? existing.data() : null;
+    const currentIssuer = previous ? null : (await transaction.get(db.collection("arca_settings").doc("current"))).data() || {};
+    const issuer = previous ? {...previous.issuer,regime:previous.targetRegime || "unknown"}
+      : {...currentIssuer,regime:currentIssuer.regime || "unknown"};
+    const draft = prepareInvoiceDraft(payment,event.params.paymentId,issuer);
     if (!draft) return;
     transaction.set(draftRef,{...draft,createdAt:existing.exists ? existing.data().createdAt : FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
   });

@@ -11,7 +11,8 @@ function qrUrl(invoice) {
 async function invoicePdf(invoice) {
   if(invoice.status!=='authorized'||!/^\d{14}$/.test(invoice.cae)||!invoice.number)throw new Error('INVOICE_NOT_AUTHORIZED');
   const type=invoiceTypeOf(invoice),letter={1:'A',6:'B',11:'C'}[type];
-  if(!letter||([1,6].includes(type)&&invoice.issuerRegime!=='general'))throw new Error('INVOICE_FISCAL_SNAPSHOT_INVALID');
+  if(!letter||([1,6].includes(type)&&invoice.issuerRegime!=='general')||
+    (type===11&&invoice.issuerRegime!==undefined&&!['monotributo','iva_exento'].includes(invoice.issuerRegime)))throw new Error('INVOICE_FISCAL_SNAPSHOT_INVALID');
   const doc=new PDFDocument({size:'A4',margin:45,info:{Title:`Factura ${letter} - Explora`}}),buffers=[];
   const done=new Promise((resolve,reject)=>{doc.on('data',b=>buffers.push(b));doc.on('end',()=>resolve(Buffer.concat(buffers)));doc.on('error',reject);});
   const i=invoice.issuer,d=invoice.detail;
@@ -22,7 +23,9 @@ async function invoicePdf(invoice) {
   doc.font('Helvetica').fontSize(10).text(`Código ${String(type).padStart(3,'0')} · ORIGINAL`,360,71,{width:190,align:'right'});
   doc.text(`${String(i.pointOfSale).padStart(5,'0')}-${String(invoice.number).padStart(8,'0')}`,360,88,{width:190,align:'right'});
   doc.text(`Fecha de emisión: ${date(d.CbteFch)}`,360,105,{width:190,align:'right'});
-  doc.fontSize(11).text(i.legalName,45,87,{width:290}).text(`CUIT: ${i.cuit}`).text([1,6].includes(type)?'IVA Responsable Inscripto':'Responsable Monotributo');
+  // Read the immutable invoice snapshot, never today's issuer configuration.
+  const issuerVatText=invoice.issuerRegime==='iva_exento'?'IVA Exento':[1,6].includes(type)?'IVA Responsable Inscripto':'Responsable Monotributo';
+  doc.fontSize(11).text(i.legalName,45,87,{width:290}).text(`CUIT: ${i.cuit}`).text(issuerVatText);
   doc.text(i.address,{width:300}).text(`Ingresos Brutos: ${i.grossIncomeId}`,{width:300}).text(`Inicio de actividades: ${i.activityStart}`);
   doc.moveTo(45,215).lineTo(550,215).strokeColor('#d8dfed').stroke();
   doc.font('Helvetica-Bold').text('RECEPTOR',45,235);

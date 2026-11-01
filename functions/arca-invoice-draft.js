@@ -13,7 +13,8 @@ function prepareInvoiceDraft(payment, paymentId, issuer = {}) {
   const missing = [];
   const regime = issuer.regime || "monotributo";
   const nationalMonotributo = regime === "monotributo" && request.scope === "national";
-  if (!["monotributo", "general"].includes(regime)) missing.push("issuerRegime");
+  const exemptIssuer = regime === "iva_exento";
+  if (!["monotributo", "general", "iva_exento"].includes(regime)) missing.push("issuerRegime");
   if (customer.requested === true && (!text(customer.name) || !text(customer.documentNumber))) missing.push("customerReview");
   if (!Number.isFinite(amount) || amount <= 0) missing.push("amount");
   if (!origin || !destination) missing.push("route");
@@ -27,7 +28,7 @@ function prepareInvoiceDraft(payment, paymentId, issuer = {}) {
   return {
     version:"arca_preparation_v1", paymentId, driverUid:text(payment.driverUid),
     status:"preparation", fiscalValidity:false, emissionEnabled:false,
-    targetRegime:regime, vatTreatment:nationalMonotributo ? "monotributo_no_vat_breakdown" : "pending_review", voucherType:nationalMonotributo ? 11 : null,
+    targetRegime:regime, vatTreatment:nationalMonotributo ? "monotributo_no_vat_breakdown" : "pending_review", voucherType:nationalMonotributo || exemptIssuer ? 11 : null,
     issuer:{cuit:/^\d{11}$/.test(cuit) ? cuit : null, legalName:text(issuer.legalName) || null, pointOfSale:issuer.pointOfSale || null, registrationVerified:false},
     total:Number.isFinite(amount) ? amount : 0, currency:"ARS",
     paymentMethod:payment.method, paymentChannel:text(request.paymentChannel,20),
